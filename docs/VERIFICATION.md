@@ -8,7 +8,7 @@ Evidence recorded 2026-08-20. Commands below ran against repository checkout, no
 | -------- | ---------------------------------------- | ------------------------------------- |
 | Windows  | MSVC 19.44, CMake 3.31, Qt 6.10, Node 22 | Build + 9/9 suites + live Chrome pass |
 | Linux    | GCC 16 and Clang 22, Qt 6.11, Node 24    | Both builds + 9/9 suites              |
-| macOS    | Clang + Qt 6.10 GitHub Actions runner    | CI gate; see current workflow badge   |
+| macOS    | Clang + Qt 6.10 GitHub Actions runner    | Build + 9/9 suites                    |
 
 Live Windows browser: Chrome 151.0.7922.138. Minimum supported manifest version is Chrome 116.
 
@@ -40,7 +40,7 @@ Windows generator may add `-A x64`; multi-config builds place executable under `
 
 ## Automated tests
 
-Result: **9/9 passed** under Windows/MSVC, Linux/GCC, and Linux/Clang.
+Result: **9/9 passed** under Windows/MSVC, Linux/GCC, Linux/Clang, and macOS/Clang.
 
 | Test                               | Coverage                                                               |
 | ---------------------------------- | ---------------------------------------------------------------------- |

@@ -32,12 +32,14 @@ AFTER     build passed · tests 9/9 · ESLint 0 · PSScriptAnalyzer 0
 - Applied machine-safe ESLint fixes, then resolved remaining findings manually.
 - Preserved caught errors as JavaScript `Error.cause` and made E2E cleanup failures visible.
 - ESLint: 103 → 0. PSScriptAnalyzer: 66 → 0.
+- PSScriptAnalyzer runs on the Windows CI host and scans only tracked scripts in isolated worker
+  processes. Isolation avoids its upstream shared-state null-reference without disabling any rules.
 
 ### Phase 4 — native types and portability
 
 - Enabled C++20 strict builds with warnings-as-errors under MSVC, GCC, and Clang.
 - Added platform-neutral native IPC handle and Unix-domain bridge implementations.
-- Verified Windows and Linux builds; macOS is mandatory CI matrix target.
+- Verified Windows, Linux, and macOS builds through the CI matrix.
 
 ### Phase 5 — dead code and static analysis
 
@@ -84,7 +86,7 @@ AFTER     build passed · tests 9/9 · ESLint 0 · PSScriptAnalyzer 0
 | Secret scan clean over full history         | Pass   | Gitleaks 8.30.1                                     |
 | Dependency audit clean                      | Pass   | npm audit                                           |
 | ASan+UBSan and TSan wired separately        | Pass   | CI + local Linux 9/9 each                           |
-| Tests pass                                  | Pass   | Windows/Linux 9/9; macOS mandatory CI               |
+| Tests pass                                  | Pass   | Windows/Linux/macOS 9/9                             |
 | Build succeeds                              | Pass   | MSVC, GCC, Clang                                    |
 | Pre-commit installed                        | Pass   | local checkout                                      |
 | CI mirrors local gates                      | Pass   | quality + 3-OS builds + sanitizers                  |

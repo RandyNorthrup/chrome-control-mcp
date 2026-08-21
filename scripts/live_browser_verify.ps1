@@ -163,7 +163,7 @@ try {
         else {
             [IO.Path]::GetFullPath((Join-Path $repoRoot $ScreenshotPath))
         }
-        $screenshotDirectory = Split-Path -Parent $savedScreenshot
+        $screenshotDirectory = Split-Path -Parent -Path $savedScreenshot
         if ($screenshotDirectory -and -not (Test-Path -LiteralPath $screenshotDirectory)) {
             $null = New-Item -ItemType Directory -Path $screenshotDirectory -Force
         }
