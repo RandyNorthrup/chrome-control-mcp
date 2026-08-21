@@ -1,0 +1,195 @@
+name: Release archives
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: ${{ matrix.name }} archive
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Windows x64
+            os: windows-latest
+            qt-arch: win64_msvc2022_64
+            package: windows-x64
+            archive: zip
+            cmake-args: -A x64
+          - name: Linux x64
+            os: ubuntu-latest
+            qt-arch: linux_gcc_64
+            package: linux-x64
+            archive: tar.gz
+            cmake-args: -G Ninja -DCMAKE_BUILD_TYPE=Release
+          - name: macOS ARM64
+            os: macos-15
+            qt-arch: clang_64
+            package: macos-arm64
+            archive: tar.gz
+            cmake-args: -G Ninja -DCMAKE_BUILD_TYPE=Release
+          - name: macOS x64
+            os: macos-15-intel
+            qt-arch: clang_64
+            package: macos-x64
+            archive: tar.gz
+            cmake-args: -G Ninja -DCMAKE_BUILD_TYPE=Release
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - uses: jurplel/install-qt-action@v4
+        with:
+          version: "6.10.0"
+          arch: ${{ matrix.qt-arch }}
+          cache: true
+
+      - name: Configure
+        run: cmake -S . -B build ${{ matrix.cmake-args }} -DBUILD_TESTING=ON
+
+      - name: Build
+        run: cmake --build build --config Release --parallel
+
+      - name: Test
+        run: ctest --test-dir build -C Release --output-on-failure
+
+      - name: Stage release
+        shell: pwsh
+        run: |
+          $cmake = Get-Content CMakeLists.txt -Raw
+          if ($cmake -notmatch 'project\(chrome_control_mcp VERSION ([0-9]+\.[0-9]+\.[0-9]+)') {
+            throw 'Could not read project version from CMakeLists.txt'
+          }
+          $version = $Matches[1]
+          if ($env:GITHUB_REF_TYPE -eq 'tag' -and $env:GITHUB_REF_NAME -ne "v$version") {
+            throw "Tag $env:GITHUB_REF_NAME does not match project version $version"
+          }
+
+          $packageRoot = "chrome-control-mcp-v$version-${{ matrix.package }}"
+          $stagePath = Join-Path 'package' $packageRoot
+          New-Item -ItemType Directory -Force -Path $stagePath | Out-Null
+          cmake --install build --config Release --prefix $stagePath
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+          Copy-Item README.md (Join-Path $stagePath 'README.md')
+          Copy-Item THIRD_PARTY_NOTICES.md (Join-Path $stagePath 'THIRD_PARTY_NOTICES.md')
+          Copy-Item docs/RELEASES.md (Join-Path $stagePath 'RELEASES.md')
+
+          $licenses = Join-Path $stagePath 'LICENSES'
+          New-Item -ItemType Directory -Force -Path $licenses | Out-Null
+          $qtSource = '5a8637e4516bc48a0b3f4b5ec3b18618b92e7222'
+          $qtLicenseBase = "https://raw.githubusercontent.com/qt/qtbase/$qtSource/LICENSES"
+          Invoke-WebRequest "$qtLicenseBase/LGPL-3.0-only.txt" `
+            -OutFile (Join-Path $licenses 'LGPL-3.0-only.txt')
+          Invoke-WebRequest "$qtLicenseBase/GPL-3.0-only.txt" `
+            -OutFile (Join-Path $licenses 'GPL-3.0-only.txt')
+
+          $sbomDirectory = Join-Path $env:QT_ROOT_DIR 'sbom'
+          $sbom = Get-ChildItem $sbomDirectory -Filter 'qtbase-*.spdx' -File |
+            Where-Object Name -NotLike '*.source.spdx' |
+            Select-Object -First 1
+          if (-not $sbom) { throw "QtBase SBOM not found in $sbomDirectory" }
+          Copy-Item $sbom.FullName (Join-Path $licenses 'qtbase.spdx')
+
+          if ($IsLinux) {
+            $qtCoreLink = Get-Item (Join-Path $env:QT_ROOT_DIR 'lib/libQt6Core.so.6')
+            $qtCore = if ($qtCoreLink.LinkType) {
+              $qtCoreLink.ResolveLinkTarget($true)
+            } else {
+              $qtCoreLink
+            }
+            Copy-Item $qtCore.FullName (Join-Path $stagePath 'libQt6Core.so.6')
+          } elseif ($IsMacOS) {
+            $frameworks = Join-Path $stagePath 'Frameworks'
+            New-Item -ItemType Directory -Force -Path $frameworks | Out-Null
+            & ditto (Join-Path $env:QT_ROOT_DIR 'lib/QtCore.framework') `
+              (Join-Path $frameworks 'QtCore.framework')
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
+
+          $executable = if ($IsWindows) {
+            Join-Path $stagePath 'chrome_control_mcp.exe'
+          } else {
+            Join-Path $stagePath 'chrome_control_mcp'
+          }
+          node scripts/mcp_smoke.mjs $executable
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+          New-Item -ItemType Directory -Force -Path 'release-assets' | Out-Null
+          Push-Location package
+          try {
+            if ('${{ matrix.archive }}' -eq 'zip') {
+              cmake -E tar cf "../release-assets/$packageRoot.zip" --format=zip $packageRoot
+            } else {
+              cmake -E tar czf "../release-assets/$packageRoot.tar.gz" `
+                --format=gnutar $packageRoot
+            }
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          } finally {
+            Pop-Location
+          }
+
+      - name: Inspect native dependencies
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          executable="$(find package -maxdepth 2 -type f -name chrome_control_mcp -print -quit)"
+          file "$executable"
+          if [[ "$RUNNER_OS" == "Linux" ]]; then
+            dependencies="$(ldd "$executable")"
+            printf '%s\n' "$dependencies"
+            ! grep -F 'not found' <<<"$dependencies"
+          else
+            otool -L "$executable"
+          fi
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-${{ matrix.package }}
+          path: release-assets/*
+          if-no-files-found: error
+
+  publish:
+    name: Publish GitHub release
+    if: github.ref_type == 'tag'
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: release-*
+          path: release-assets
+          merge-multiple: true
+
+      - name: Create checksums
+        working-directory: release-assets
+        run: sha256sum chrome-control-mcp-v* > SHA256SUMS.txt
+
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          notes="docs/releases/${GITHUB_REF_NAME}.md"
+          test -f "$notes"
+          gh release create "$GITHUB_REF_NAME" release-assets/* \
+            --repo "$GITHUB_REPOSITORY" \
+            --verify-tag \
+            --title "Chrome Control MCP ${GITHUB_REF_NAME}" \
+            --notes-file "$notes"

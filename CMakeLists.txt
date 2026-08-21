@@ -96,6 +96,14 @@ target_link_libraries(chrome_control_mcp PRIVATE chrome_control_mcp_core Qt6::Co
 enable_project_quality(chrome_control_mcp)
 if(WIN32)
     target_compile_definitions(chrome_control_mcp PRIVATE UNICODE _UNICODE)
+elseif(APPLE)
+    set_target_properties(chrome_control_mcp PROPERTIES
+        INSTALL_RPATH "@loader_path/Frameworks"
+    )
+else()
+    set_target_properties(chrome_control_mcp PROPERTIES
+        INSTALL_RPATH "$ORIGIN"
+    )
 endif()
 
 add_custom_command(TARGET chrome_control_mcp POST_BUILD

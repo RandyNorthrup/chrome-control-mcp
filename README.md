@@ -5,6 +5,7 @@
 **Visible, precise Chrome control for AI assistants. Local by design.**
 
 [![Quality](https://github.com/RandyNorthrup/chrome-control-mcp/actions/workflows/quality.yml/badge.svg)](https://github.com/RandyNorthrup/chrome-control-mcp/actions/workflows/quality.yml)
+[![Release](https://img.shields.io/github/v/release/RandyNorthrup/chrome-control-mcp?color=ec4899)](https://github.com/RandyNorthrup/chrome-control-mcp/releases/latest)
 [![MIT License](https://img.shields.io/badge/license-MIT-7c3aed.svg)](LICENSE)
 ![Platforms](https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20%7C%20macOS-2563eb.svg)
 ![C++20](https://img.shields.io/badge/C%2B%2B-20-00599c.svg)
@@ -16,7 +17,7 @@
   through native messaging and Chrome DevTools Protocol.
 </p>
 
-[Quick start](#quick-start) · [Tool catalog](docs/TOOLS.md) · [Architecture](docs/ARCHITECTURE.md) · [Security](docs/SECURITY.md) · [Verification](docs/VERIFICATION.md)
+[Releases](https://github.com/RandyNorthrup/chrome-control-mcp/releases/latest) · [Quick start](#quick-start) · [Tool catalog](docs/TOOLS.md) · [Architecture](docs/ARCHITECTURE.md) · [Security](docs/SECURITY.md) · [Verification](docs/VERIFICATION.md)
 
 </div>
 
@@ -53,6 +54,17 @@ Both images are direct `browser_screenshot` results from live extension, not moc
 > and [open-source repository](https://github.com/inflectra/ui-test-automation-playground) provide
 > focused, practical browser interaction scenarios. They have been invaluable for testing this
 > project's full MCP-to-Chrome path.
+
+## Release archives
+
+[Download the latest release](https://github.com/RandyNorthrup/chrome-control-mcp/releases/latest)
+for Windows x64, Linux x64, Apple silicon macOS, or Intel macOS. Each archive includes the MCP
+executable, unpacked extension, matching Qt Core runtime, licenses, and SPDX inventory. SHA-256
+checksums are published beside the assets.
+
+All artifacts are intentionally unsigned and unnotarized; this project has no signing key and does
+not require one. See the [release guide](docs/RELEASES.md) for verification, platform warnings, and
+the exact packaging boundary.
 
 ## Quick start
 

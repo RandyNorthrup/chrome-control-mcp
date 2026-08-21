@@ -16,14 +16,15 @@ Windows, Linux, and macOS.
 - [x] Warnings-as-errors, lint, static analysis, secret scan, dependency audit, and sanitizers
 - [x] Windows/Linux/macOS CI build and test matrix
 - [x] MIT license, modern README, screenshots, and public test-site credit
+- [x] Unsigned Windows x64, Linux x64, macOS ARM64, and macOS x64 release archives with SHA-256
+      checksums
 
 ## Remaining proof and release work
 
 - [ ] Run live Chrome E2E on physical Linux and macOS desktops; automated native tests cover both
       backends, but current live-browser certification evidence is Windows-only.
-- [ ] Publish unsigned per-platform release archives once release version is tagged. Code signing is
-      intentionally out of scope; users build or inspect artifacts directly.
-- [ ] Add ARM64 build matrix when ARM64 Qt runners are available and verified.
+- [ ] Add Windows and Linux ARM64 build matrices when their Qt runner combinations are verified;
+      macOS ARM64 builds and packages on a standard GitHub-hosted runner.
 
 These items do not block source release. They limit claims about prebuilt artifacts and live Chrome
 behavior on every operating system.

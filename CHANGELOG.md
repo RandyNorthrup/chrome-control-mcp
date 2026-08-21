@@ -4,11 +4,16 @@ All notable changes are documented here. Project follows [Semantic Versioning](h
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-08-20
+
 ### Added
 
+- Initial standalone MIT-licensed Chrome Control MCP release.
+- 43 MCP tools, unpacked MV3 extension, visible control presence, and full live Chrome E2E coverage.
 - Linux and macOS Unix-domain bridge backends with owner-only runtime state and peer credentials.
 - Cross-platform Chrome native-host manifest lifecycle.
 - Windows, Linux, and macOS build/test matrix.
+- Unsigned Windows x64, Linux x64, macOS ARM64, and macOS x64 release archives with checksums.
 - Separate AddressSanitizer + UndefinedBehaviorSanitizer and ThreadSanitizer gates.
 - Cross-platform Node build, MCP smoke, and extension lifecycle commands.
 - Modern README with verified overlay screenshots and UI Test Automation Playground credit.
@@ -25,9 +30,3 @@ All notable changes are documented here. Project follows [Semantic Versioning](h
 
 - Unused JSON-RPC client payload helpers and obsolete test-only native-host loop.
 - Redundant quality branch; development and delivery now happen directly on `main`.
-
-## [1.0.0] - 2026-08-20
-
-- Initial standalone MIT-licensed Chrome Control MCP release.
-- 43 MCP tools, unpacked MV3 extension, visible control presence, hardened Windows bridge, and full
-  live Chrome E2E coverage.
