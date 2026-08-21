@@ -256,7 +256,7 @@ function originOf(url) {
 }
 
 let port = null;
-let health = { connected: false, bridge: null, error: null };
+const health = { connected: false, bridge: null, error: null };
 // True only while the host has completed the bridge_ready handshake AND declared the exact
 // protocol this worker speaks. Command frames are privileged (input injection, cookies, web
 // storage, permissions), so they run only against a bridge that announced itself and agrees on
@@ -1587,9 +1587,9 @@ function shotMatchesRender(shot, now) {
 
 async function handleScreenshot(tabId, args) {
   await ensureAttached(tabId);
-  const fullPage = !!(args && args.full_page === true);
-  const includeControlOverlay = !!(
-    args && args.include_control_overlay === true
+  const fullPage = Boolean(args && args.full_page === true);
+  const includeControlOverlay = Boolean(
+    args && args.include_control_overlay === true,
   );
   const params = { format: "png", captureBeyondViewport: fullPage };
   const metrics = await sendCdp(tabId, "Page.getLayoutMetrics", {}).catch(
@@ -2283,7 +2283,7 @@ async function nodeHasFocus(tabId, backendNodeId) {
     // shadow root -- and Node.contains does NOT cross a shadow boundary, so host.contains(inner)
     // is false and the node we just focused would read as "focus moved away". Testing each
     // level also covers the mirror case, where the ref names a node inside the shadow root.
-    var node = document.activeElement;
+    let node = document.activeElement;
     while (node) {
       if (node === this || this.contains(node)) {
         return true;
@@ -2344,7 +2344,7 @@ async function handleType(tabId, args) {
 // PAGE, serialized by source, so it closes over nothing here -- everything it needs is a
 // parameter. Kept at module scope for that reason: nesting it would imply a closure it cannot have.
 const selectOptionFn = function (mode, value, label, index, values) {
-  var el = this;
+  const el = this;
   if (!el || el.tagName !== "SELECT") {
     return { ok: false, error: "the ref is not a <select> element" };
   }
@@ -2359,8 +2359,8 @@ const selectOptionFn = function (mode, value, label, index, values) {
     // / want["valueOf"] read back truthy for options that were never requested -- and option
     // values and labels are page-controlled data, so a page could have any of them selected by
     // any call. Match against the requested list itself: only what was asked for can hit.
-    var want = [];
-    var hit = [];
+    const want = [];
+    const hit = [];
     for (var k = 0; k < values.length; k++) {
       want[k] = String(values[k]);
       hit[k] = false;
@@ -2368,11 +2368,11 @@ const selectOptionFn = function (mode, value, label, index, values) {
     // Resolve every requested value BEFORE touching the control: a value naming an option this
     // <select> does not have was not honored, and half-applying the request would leave a
     // selection the caller never asked for while reporting a clean success.
-    var take = [];
+    const take = [];
     for (var j = 0; j < el.options.length; j++) {
-      var o = el.options[j];
-      var at = -1;
-      for (var w = 0; w < want.length; w++) {
+      const o = el.options[j];
+      let at = -1;
+      for (let w = 0; w < want.length; w++) {
         if (want[w] === o.value || want[w] === o.text) {
           at = w;
           break;
@@ -2383,7 +2383,7 @@ const selectOptionFn = function (mode, value, label, index, values) {
       }
       take[j] = at >= 0;
     }
-    var missing = "";
+    let missing = "";
     for (k = 0; k < want.length; k++) {
       if (!hit[k]) {
         missing = missing ? missing + ", " + want[k] : want[k];
@@ -2392,7 +2392,7 @@ const selectOptionFn = function (mode, value, label, index, values) {
     if (missing) {
       return { ok: false, error: "no option matched: " + missing };
     }
-    var picked = [];
+    const picked = [];
     for (j = 0; j < el.options.length; j++) {
       el.options[j].selected = take[j];
       if (take[j]) {
@@ -2403,9 +2403,9 @@ const selectOptionFn = function (mode, value, label, index, values) {
     el.dispatchEvent(new Event("change", { bubbles: true }));
     return { ok: true, multiple: true, selected: picked };
   }
-  var chosen = -1;
-  for (var i = 0; i < el.options.length; i++) {
-    var opt = el.options[i];
+  let chosen = -1;
+  for (let i = 0; i < el.options.length; i++) {
+    const opt = el.options[i];
     if (mode === "value" && opt.value === value) {
       chosen = i;
       break;
@@ -2564,11 +2564,11 @@ async function handleSetValue(tabId, args) {
     await moveAgentCursor(tabId, point.x, point.y);
   }
   const setFn = function (mode, value, checked) {
-    var el = this;
+    const el = this;
     if (!el) {
       return { ok: false, error: "no element" };
     }
-    var type = (el.type || "").toLowerCase();
+    const type = (el.type || "").toLowerCase();
     if (mode === "checked") {
       // A checked request aimed at anything else is a mis-identified control (a text input, a
       // <select>, a custom element with a value property). Falling through to the value branch
@@ -2593,7 +2593,7 @@ async function handleSetValue(tabId, args) {
     return {
       ok: true,
       value: "value" in el ? el.value : el.textContent || "",
-      checked: !!el.checked,
+      checked: Boolean(el.checked),
     };
   };
   const mode = hasChecked ? "checked" : "value";
@@ -2634,7 +2634,7 @@ async function handleMedia(tabId, args) {
   }
   const objectId = await resolveNodeObjectId(tabId, args.backendNodeId);
   const mediaFn = async function (action, num) {
-    var el = this;
+    const el = this;
     if (!el || (el.tagName !== "VIDEO" && el.tagName !== "AUDIO")) {
       return {
         ok: false,
@@ -2722,9 +2722,9 @@ async function selectorPresent(tabId, selector) {
       if (root.querySelector(sel)) {
         return true;
       }
-      var all = root.querySelectorAll("*");
-      for (var i = 0; i < all.length; i++) {
-        var sr = all[i].shadowRoot;
+      const all = root.querySelectorAll("*");
+      for (let i = 0; i < all.length; i++) {
+        const sr = all[i].shadowRoot;
         if (sr && walk(sr)) {
           return true;
         }
@@ -2742,7 +2742,7 @@ async function selectorPresent(tabId, selector) {
   if (call && call.exceptionDetails) {
     throw new Error("Invalid selector for browser_wait_for: " + selector);
   }
-  return !!(call && call.result && call.result.value === true);
+  return Boolean(call && call.result && call.result.value === true);
 }
 
 // The page's visible text. A read that FAILED is not empty text: with `absent` set, "" satisfies
@@ -2905,16 +2905,16 @@ async function handleGetValue(tabId, args) {
   requireSnapshotTab(tabId);
   const objectId = await resolveNodeObjectId(tabId, args.backendNodeId);
   const getFn = function () {
-    var el = this;
+    const el = this;
     if (!el) {
       return { ok: false, error: "no element" };
     }
-    var cap = function (s, n) {
+    const cap = function (s, n) {
       return s.length > n ? s.slice(0, n) : s;
     };
-    var out = { ok: true, tag: String(el.tagName || "").toLowerCase() };
+    const out = { ok: true, tag: String(el.tagName || "").toLowerCase() };
     if ("value" in el) {
-      var v = String(el.value);
+      const v = String(el.value);
       out.value = cap(v, 5000);
       if (v.length > 5000) {
         out.value_truncated = true;
@@ -2924,8 +2924,8 @@ async function handleGetValue(tabId, args) {
       out.checked = el.checked;
     }
     if (el.tagName === "SELECT") {
-      out.multiple = !!el.multiple;
-      var picked = el.selectedOptions || [];
+      out.multiple = Boolean(el.multiple);
+      const picked = el.selectedOptions || [];
       out.selected = Array.prototype.slice
         .call(picked, 0, 200)
         .map(function (o) {
@@ -2937,13 +2937,13 @@ async function handleGetValue(tabId, args) {
       out.selected_capped = picked.length > 200;
     }
     if (el.isContentEditable) {
-      var t = String(el.textContent || "");
+      const t = String(el.textContent || "");
       out.text = cap(t, 5000);
       if (t.length > 5000) {
         out.text_truncated = true;
       }
     }
-    out.disabled = !!el.disabled;
+    out.disabled = Boolean(el.disabled);
     return out;
   };
   const r = await callOnNode(tabId, objectId, getFn, []);
@@ -2963,33 +2963,33 @@ async function handleGetAttribute(tabId, args) {
   const objectId = await resolveNodeObjectId(tabId, args.backendNodeId);
   const name = typeof args.name === "string" ? args.name : "";
   const attrFn = function (name) {
-    var el = this;
+    const el = this;
     if (!el || !el.getAttribute) {
       return { ok: false, error: "element has no attributes" };
     }
-    var cap = function (v) {
+    const cap = function (v) {
       return String(v).slice(0, 2048);
     };
-    var bit = function (v) {
+    const bit = function (v) {
       return String(v).length > 2048;
     };
     if (name) {
-      var one = el.getAttribute(name);
+      const one = el.getAttribute(name);
       if (one === null) {
-        return { ok: true, name: name, value: null };
+        return { ok: true, name, value: null };
       }
-      var out = { ok: true, name: name, value: cap(one) };
+      const out = { ok: true, name, value: cap(one) };
       if (bit(one)) {
         out.value_truncated = true;
       }
       return out;
     }
-    var all = {};
-    var cut = [];
-    var total = el.attributes.length;
-    var shown = total > 200 ? 200 : total;
-    for (var i = 0; i < shown; i++) {
-      var a = el.attributes[i];
+    const all = {};
+    const cut = [];
+    const total = el.attributes.length;
+    const shown = total > 200 ? 200 : total;
+    for (let i = 0; i < shown; i++) {
+      const a = el.attributes[i];
       // defineProperty, not all[a.name] = v: an attribute named __proto__ is a legal attribute,
       // and plain assignment of a string to it sets nothing at all. The attribute would then be
       // missing from a listing whose count still claims it -- the page choosing which of its own
@@ -3204,7 +3204,7 @@ async function handleJsClick(tabId, args) {
     await moveAgentCursor(tabId, point.x, point.y);
   }
   const clickFn = function () {
-    var el = this;
+    const el = this;
     if (!el || typeof el.click !== "function") {
       return { ok: false, error: "element is not clickable" };
     }
@@ -3624,7 +3624,7 @@ async function handleListTabs() {
   const groupTitles = new Map();
   const list = [];
   for (const t of tabs.slice(0, MAX_LIST_TABS)) {
-    const entry = { index: t.index, id: t.id, active: !!t.active };
+    const entry = { index: t.index, id: t.id, active: Boolean(t.active) };
     capField(entry, "title", t.title, MAX_TAB_TITLE_CHARS);
     capField(entry, "url", t.url, MAX_TAB_URL_CHARS);
     if (typeof t.groupId === "number" && t.groupId >= 0) {
@@ -3850,8 +3850,8 @@ async function handleListWindows() {
   const list = wins.map((w) => {
     const entry = {
       window_id: w.id,
-      focused: !!w.focused,
-      incognito: !!w.incognito,
+      focused: Boolean(w.focused),
+      incognito: Boolean(w.incognito),
     };
     if (typeof w.type === "string") {
       entry.type = w.type;
@@ -3984,7 +3984,11 @@ async function resetEmulation(tabId) {
   lastShot = null; // clearing the metrics relays the page out from under any screenshot
   // False only when no real UA was ever captured -- in which case no override could have been
   // installed either (see applyUserAgentOverride), so there is nothing left spoofed.
-  return { ok: true, reset: true, user_agent_restored: !!originalUserAgent };
+  return {
+    ok: true,
+    reset: true,
+    user_agent_restored: Boolean(originalUserAgent),
+  };
 }
 
 // A viewport is width AND height together. Skipping the override because one of them was missing
@@ -4357,23 +4361,23 @@ async function storageOperation(tabId, storageId, area, action, key, value) {
           error: "The document origin changed before the storage operation.",
         };
       }
-      var store =
+      const store =
         area === "session"
           ? globalThis.sessionStorage
           : globalThis.localStorage;
-      var proto = globalThis.Storage.prototype;
-      var get = function (k) {
+      const proto = globalThis.Storage.prototype;
+      const get = function (k) {
         return proto.getItem.call(store, k);
       };
-      var length = function () {
+      const length = function () {
         return Object.getOwnPropertyDescriptor(proto, "length").get.call(store);
       };
       if (action === "get") {
-        var got = get(key);
+        const got = get(key);
         if (got === null) {
           return { ok: true, present: false, value: null };
         }
-        var text = String(got);
+        const text = String(got);
         return text.length > maxValue
           ? {
               ok: true,
@@ -4384,12 +4388,12 @@ async function storageOperation(tabId, storageId, area, action, key, value) {
           : { ok: true, present: true, value: text };
       }
       if (action === "keys") {
-        var total = length();
-        var count = Math.min(total, maxKeys);
-        var names = [];
-        var cut = false;
-        for (var i = 0; i < count; i++) {
-          var raw = String(proto.key.call(store, i));
+        const total = length();
+        const count = Math.min(total, maxKeys);
+        const names = [];
+        let cut = false;
+        for (let i = 0; i < count; i++) {
+          let raw = String(proto.key.call(store, i));
           if (raw.length > maxKey) {
             cut = true;
             raw = raw.slice(0, maxKey);
@@ -4416,7 +4420,7 @@ async function storageOperation(tabId, storageId, area, action, key, value) {
         return { ok: true, stored: true };
       }
       if (action === "remove") {
-        var existed = get(key) !== null;
+        const existed = get(key) !== null;
         proto.removeItem.call(store, key);
         if (get(key) !== null) {
           return {
@@ -4426,9 +4430,9 @@ async function storageOperation(tabId, storageId, area, action, key, value) {
         }
         return { ok: true, removed: existed };
       }
-      var before = length();
+      const before = length();
       proto.clear.call(store);
-      var after = length();
+      const after = length();
       if (after > 0) {
         return {
           ok: false,
@@ -4543,17 +4547,17 @@ function cookieView(c) {
   // A value long enough to be sliced is not the value the caller reads back. Chrome's own ~4096
   // byte cookie limit makes the cut rare, but a cap that is silent is a cap that misreports the
   // day it does bite -- every other capped field in this file says so.
-  const overCap = !!(c.value && c.value.length > 4096);
+  const overCap = Boolean(c.value && c.value.length > 4096);
   return {
     name: c.name,
     value: overCap ? c.value.slice(0, 4096) : c.value,
     value_truncated: overCap,
     domain: c.domain,
     path: c.path,
-    secure: !!c.secure,
-    http_only: !!c.httpOnly,
+    secure: Boolean(c.secure),
+    http_only: Boolean(c.httpOnly),
     same_site: c.sameSite || null,
-    session: !!c.session,
+    session: Boolean(c.session),
     expires: c.expirationDate || null,
   };
 }
@@ -4667,7 +4671,12 @@ async function handleCookies(args) {
       url,
       name: String(args.name),
     });
-    return { ok: true, url, name: String(args.name), removed: !!removed };
+    return {
+      ok: true,
+      url,
+      name: String(args.name),
+      removed: Boolean(removed),
+    };
   }
   return await cookiesSet(url, args);
 }

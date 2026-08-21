@@ -279,7 +279,9 @@ async function main() {
       const owned = listing.tabs.filter((tab) =>
         String(tab.url || "").startsWith(fixture.origin),
       );
-      if (owned.length === 0) break;
+      if (owned.length === 0) {
+        break;
+      }
       const target = owned.sort((a, b) => b.index - a.index)[0];
       await client.request("tools/call", {
         name: "browser_close_tab",
@@ -940,7 +942,7 @@ async function main() {
     );
     assert.equal(ungrouped.ungrouped, 2);
 
-    let selectListing = await tabs("list tabs before selection");
+    const selectListing = await tabs("list tabs before selection");
     const primaryFixture = selectListing.tabs.find(
       (tab) => tab.url === `${fixture.origin}/protected`,
     );
@@ -1119,7 +1121,9 @@ async function main() {
           assert.equal(info.isFile(), true);
           await unlink(filePath);
         } catch (error) {
-          if (error.code !== "ENOENT" && !failure) failure = error;
+          if (error.code !== "ENOENT" && !failure) {
+            failure = error;
+          }
         }
       }
     }
@@ -1139,7 +1143,9 @@ async function main() {
     error: failure ? String(failure.stack || failure) : null,
   };
   process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
-  if (failure) process.exitCode = 1;
+  if (failure) {
+    process.exitCode = 1;
+  }
 }
 
 await main();
