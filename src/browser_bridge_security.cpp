@@ -13,7 +13,11 @@
 
 #include <cmath>
 
+#ifdef Q_OS_WIN
 #include <sddl.h>
+#else
+#include <unistd.h>
+#endif
 
 namespace chrome_control_mcp {
 
@@ -30,7 +34,7 @@ constexpr double kMaxAppPidExactDouble = 9.0e15;
 // A well-formed rendezvous record (pipe_name, token, protocol, app_pid) is well
 // under 1 KiB. Cap the read so a corrupt/oversized file cannot force an
 // unbounded allocation before parse.
-constexpr qint64 kMaxRendezvousRecordBytes = 64 * 1024;
+constexpr qint64 kMaxRendezvousRecordBytes = qint64{64} * 1024;
 
 void setError(QString *error, const QString &message) {
   if (error != nullptr) {
@@ -38,11 +42,13 @@ void setError(QString *error, const QString &message) {
   }
 }
 
+#ifdef Q_OS_WIN
 QString lastError(const QString &api) {
   return QStringLiteral("%1 failed (GetLastError=%2)")
       .arg(api)
       .arg(GetLastError());
 }
+#endif
 
 // Random 64-bit value as zero-padded hex, drawn from the OS CSPRNG.
 QString randomHex64() {
@@ -51,9 +57,45 @@ QString randomHex64() {
                                   QLatin1Char('0'));
 }
 
+#ifndef Q_OS_WIN
+QString bridgeRuntimeDirectory() {
+  const QString suffix = QStringLiteral("chrome-control-mcp-%1").arg(geteuid());
+  const QString base =
+      QStandardPaths::writableLocation(QStandardPaths::RuntimeLocation);
+  QString candidate = QDir(base).filePath(suffix);
+  // sockaddr_un::sun_path is only 104 bytes on macOS. Keep ample room for the
+  // random socket filename even when the platform runtime path is long.
+  if (base.isEmpty() || candidate.toUtf8().size() > 64) {
+    candidate = QDir(QDir::tempPath()).filePath(suffix);
+  }
+  return QDir::cleanPath(candidate);
+}
+
+bool ensurePrivateDirectory(const QString &path, QString *error) {
+  if (!QDir().mkpath(path) ||
+      !QFile::setPermissions(path, QFileDevice::ReadOwner |
+                                       QFileDevice::WriteOwner |
+                                       QFileDevice::ExeOwner)) {
+    setError(
+        error,
+        QStringLiteral("Cannot create private runtime directory %1").arg(path));
+    return false;
+  }
+  const QFileInfo info(path);
+  if (info.ownerId() != static_cast<uint>(geteuid())) {
+    setError(error,
+             QStringLiteral("Runtime directory is not owned by this user: %1")
+                 .arg(path));
+    return false;
+  }
+  return true;
+}
+#endif
+
 } // namespace
 
 QString currentUserSidString(QString *error) {
+#ifdef Q_OS_WIN
   HANDLE token = nullptr;
   if (OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &token) == FALSE) {
     setError(error, lastError(QStringLiteral("OpenProcessToken")));
@@ -79,9 +121,14 @@ QString currentUserSidString(QString *error) {
   }
   CloseHandle(token);
   return result;
+#else
+  Q_UNUSED(error);
+  return QString::number(geteuid());
+#endif
 }
 
 QString browserBridgePipeName(QString *error) {
+#ifdef Q_OS_WIN
   const QString sid = currentUserSidString(error);
   if (sid.isEmpty()) {
     return {};
@@ -95,6 +142,14 @@ QString browserBridgePipeName(QString *error) {
       .arg(sid)
       .arg(session)
       .arg(randomHex64());
+#else
+  const QString directory = bridgeRuntimeDirectory();
+  if (!ensurePrivateDirectory(directory, error)) {
+    return {};
+  }
+  return QDir(directory).filePath(
+      QStringLiteral("bridge-%1-%2.sock").arg(getpid()).arg(randomHex64()));
+#endif
 }
 
 QString generateBridgeToken() {
@@ -102,6 +157,7 @@ QString generateBridgeToken() {
 }
 
 QString browserBridgeRendezvousPath() {
+#ifdef Q_OS_WIN
   QString base = qEnvironmentVariable("LOCALAPPDATA");
   if (base.isEmpty()) {
     base =
@@ -109,6 +165,10 @@ QString browserBridgeRendezvousPath() {
   }
   return QDir(base).filePath(
       QStringLiteral("ChromeControlMCP/browser_bridge.json"));
+#else
+  return QDir(bridgeRuntimeDirectory())
+      .filePath(QStringLiteral("browser_bridge.json"));
+#endif
 }
 
 bool writeRendezvousRecord(const QString &path, const RendezvousRecord &record,
@@ -120,6 +180,11 @@ bool writeRendezvousRecord(const QString &path, const RendezvousRecord &record,
         QStringLiteral("Cannot create directory %1").arg(info.absolutePath()));
     return false;
   }
+#ifndef Q_OS_WIN
+  if (!ensurePrivateDirectory(info.absolutePath(), error)) {
+    return false;
+  }
+#endif
   const QJsonObject object{{QStringLiteral("pipe_name"), record.pipe_name},
                            {QStringLiteral("token"), record.token},
                            {QStringLiteral("protocol"), record.protocol},
@@ -137,6 +202,13 @@ bool writeRendezvousRecord(const QString &path, const RendezvousRecord &record,
         QStringLiteral("Cannot write %1: %2").arg(path, file.errorString()));
     return false;
   }
+#ifndef Q_OS_WIN
+  if (!file.setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner)) {
+    setError(error,
+             QStringLiteral("Cannot secure rendezvous record %1").arg(path));
+    return false;
+  }
+#endif
   return true;
 }
 
@@ -185,6 +257,7 @@ bool readRendezvousRecord(const QString &path, RendezvousRecord *out,
   return true;
 }
 
+#ifdef Q_OS_WIN
 bool buildBridgePipeSecurity(SECURITY_ATTRIBUTES *attributes,
                              PSECURITY_DESCRIPTOR *descriptor, QString *error) {
   const QString sid = currentUserSidString(error);
@@ -215,5 +288,6 @@ bool buildBridgePipeSecurity(SECURITY_ATTRIBUTES *attributes,
   *descriptor = sd;
   return true;
 }
+#endif
 
 } // namespace chrome_control_mcp

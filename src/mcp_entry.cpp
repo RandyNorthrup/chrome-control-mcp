@@ -1,12 +1,9 @@
 // Copyright (c) 2026 Randy Northrup. All rights reserved.
 // SPDX-License-Identifier: MIT
 
-// The win32 MCP server. Speaks MCP JSON-RPC 2.0 over stdio (one compact JSON
-// object per line), the same transport the Chrome Control MCP client
-// (AiMcpStdioSession / AiMcpSessionPool) already drives. Runs fully
-// synchronously with no Qt event loop: read a line, route it, write the reply.
-// Folded into the app binary: see win32_mcp_entry.h; the app's main()
-// dispatches here before GUI startup.
+// MCP JSON-RPC 2.0 server over stdio. Runs synchronously with no Qt event loop:
+// read a line, route it, write the reply. The same executable also serves as
+// Chrome's native-messaging relay.
 
 #include "chrome_control_mcp/mcp_entry.h"
 
@@ -20,13 +17,14 @@
 #include <QJsonObject>
 
 #include <cstdio>
+#include <cstdint>
 #include <cstring>
 #include <iostream>
 #include <string>
 
+#ifdef Q_OS_WIN
 #include <fcntl.h>
 #include <io.h>
-
 #ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
 #endif
@@ -34,21 +32,18 @@
 #define NOMINMAX
 #endif
 #include <windows.h>
+#endif
 
 namespace chrome_control_mcp {
 namespace {
-
-// The provider gateway sets this in the spawned server's environment
-// (providers.json).
-constexpr char kWin32McpModeEnv[] = "CHROME_CONTROL_MCP_MODE";
 
 // A single MCP request is one compact JSON object on its own line; a legitimate
 // one is small. Cap the read so a peer that never sends a newline cannot force
 // unbounded memory growth on this process. 4 MiB comfortably clears any real
 // tool call while bounding a hostile/runaway stream.
-constexpr std::size_t kMaxRequestLineBytes = 4u * 1024u * 1024u;
+constexpr std::size_t kMaxRequestLineBytes = std::size_t{4} * 1024U * 1024U;
 
-enum class LineRead { Ok, Eof, TooLong };
+enum class LineRead : std::uint8_t { Ok, Eof, TooLong };
 
 // Read one newline-delimited line, failing closed (TooLong) once the ceiling is
 // crossed instead of letting std::getline grow the string without bound. A
@@ -85,8 +80,7 @@ bool writeResponse(const QJsonObject &response) {
 // peer closed our stdin) and false on an ABNORMAL teardown -- an oversized line
 // that desynchronized the stream, or a failed response write -- so the caller
 // can propagate the distinction as an exit code instead of always exiting 0.
-bool serveRequests(BrowserControl *browser_ptr,
-                   const Win32McpServerPolicy &policy) {
+bool serveRequests(BrowserControl *browser_ptr, const McpServerPolicy &policy) {
   std::string line;
   while (true) {
     const LineRead status = readBoundedLine(std::cin, line);
@@ -94,10 +88,8 @@ bool serveRequests(BrowserControl *browser_ptr,
       return true; // clean end-of-stream
     }
     if (status == LineRead::TooLong) {
-      (void)std::fprintf(
-          stderr,
-          "win32 mcp: request line exceeded %zu bytes; closing stream\n",
-          kMaxRequestLineBytes);
+      std::cerr << "chrome-control-mcp: request line exceeded "
+                << kMaxRequestLineBytes << " bytes; closing stream\n";
       return false; // desynchronized stream: abnormal teardown
     }
     if (line.empty()) {
@@ -114,8 +106,8 @@ bool serveRequests(BrowserControl *browser_ptr,
     const std::optional<QJsonObject> response =
         handleRequest(request, browser_ptr, policy);
     if (response.has_value() && !writeResponse(response.value())) {
-      (void)std::fprintf(stderr,
-                         "win32 mcp: response write failed; closing stream\n");
+      std::cerr
+          << "chrome-control-mcp: response write failed; closing stream\n";
       return false; // lost response ack: abnormal teardown
     }
   }
@@ -136,40 +128,23 @@ bool wantsRelayMode(int argc, char **argv) {
   return false;
 }
 
-// MCP server mode is selected by the provider gateway's spawned child. Require
-// BOTH the exact env token AND a redirected-pipe stdin (QProcess always
-// connects one). This guards against a stray CHROME_CONTROL_MCP_MODE in the
-// user's persistent environment silently launching the GUI-subsystem app
-// headless (EOF on stdin -> exit 0, no window, no error): a normal double-click
-// has a console or no stdin, never a pipe.
-bool wantsMcpServerMode() {
-  if (qEnvironmentVariable(kWin32McpModeEnv) != QLatin1String("1")) {
-    return false;
-  }
-  return GetFileType(GetStdHandle(STD_INPUT_HANDLE)) == FILE_TYPE_PIPE;
-}
-
 } // namespace
 
-bool isWin32McpHelperInvocation(int argc, char **argv) {
-  return wantsRelayMode(argc, argv) || wantsMcpServerMode();
-}
-
-int runWin32McpProcess(int argc, char **argv) {
+int runMcpProcess(int argc, char **argv) {
   // Per-monitor-v2 DPI awareness BEFORE any window/monitor query or input
   // injection: without it the OS virtualizes coordinates on
   // scaled/multi-monitor hosts, so GetWindowRect bounds are wrong and any
   // future click/drag would land in the wrong place. Best-effort (older OSes
   // lack the API); the manifest is not used since this is a console child
   // process.
-#if defined(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2)
+#if defined(Q_OS_WIN) && defined(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2)
   if (SetProcessDpiAwarenessContext(
           DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2) == FALSE) {
     // Best-effort: on a modern OS this succeeds; surface a failure so a
     // virtualized-coordinate session is diagnosable rather than silently wrong.
     // (Older OSes lack the API entirely and compile this branch out.)
-    (void)std::fprintf(stderr,
-                       "win32 mcp: could not set per-monitor DPI awareness\n");
+    std::cerr
+        << "chrome-control-mcp: could not set per-monitor DPI awareness\n";
   }
 #endif
 
@@ -177,12 +152,14 @@ int runWin32McpProcess(int argc, char **argv) {
   // for MCP JSON-RPC, length-prefixed for native messaging). A failure here
   // would corrupt every frame, so fail closed rather than serve on a
   // text-translated stream.
+#ifdef Q_OS_WIN
   if (_setmode(_fileno(stdin), _O_BINARY) == -1 ||
       _setmode(_fileno(stdout), _O_BINARY) == -1) {
-    (void)std::fprintf(
-        stderr, "win32 mcp: could not set binary stdio mode; aborting\n");
+    std::cerr
+        << "chrome-control-mcp: could not set binary stdio mode; aborting\n";
     return 1;
   }
+#endif
 
   // Relay mode (launched by Chrome for the browser-control extension): pump
   // length-prefixed native-messaging frames between Chrome and the bridge pipe
@@ -194,14 +171,14 @@ int runWin32McpProcess(int argc, char **argv) {
 
   // MCP server mode: own the browser authority (pipe server + session) so a
   // browser_* tool call drives the live extension through the relay. If the
-  // pipe fails to start (e.g. squatted), keep serving the built-in win32 tools
+  // bridge fails to start (e.g. squatted), keep serving built-in native tools
   // with browser control off.
   chrome_control_mcp::BrowserControl browser;
   QString browser_error;
   const bool browser_ready = browser.start(&browser_error);
   if (!browser_ready) {
-    (void)std::fprintf(stderr, "browser control unavailable: %s\n",
-                       browser_error.toUtf8().constData());
+    std::cerr << "browser control unavailable: " << browser_error.toStdString()
+              << '\n';
   }
   chrome_control_mcp::BrowserControl *const browser_ptr =
       browser_ready ? &browser : nullptr;
@@ -209,8 +186,8 @@ int runWin32McpProcess(int argc, char **argv) {
   // Enforce the security profile / output redaction the provider gateway set in
   // this process's environment. The gateway pools a distinct process per
   // profile, so reading it once here holds for the process lifetime.
-  const chrome_control_mcp::Win32McpServerPolicy policy =
-      chrome_control_mcp::Win32McpServerPolicy::fromEnvironment();
+  const chrome_control_mcp::McpServerPolicy policy =
+      chrome_control_mcp::McpServerPolicy::fromEnvironment();
 
   const bool clean_exit = serveRequests(browser_ptr, policy);
   browser.stop();

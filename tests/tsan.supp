@@ -1,0 +1,5 @@
+# QtTest's watchdog races with logger teardown in prebuilt Qt 6.11 and leaves
+# its completed QThread visible to TSan. Scope suppressions to exact Qt symbols;
+# project frames remain fully checked.
+race:QAbstractTestLogger::outputString
+thread:QThread::start

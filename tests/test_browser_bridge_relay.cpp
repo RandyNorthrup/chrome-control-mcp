@@ -17,6 +17,9 @@
 
 using chrome_control_mcp::BrowserBridgePipeServer;
 using chrome_control_mcp::BrowserControl;
+using chrome_control_mcp::closeNativeIpcHandle;
+using chrome_control_mcp::kInvalidNativeIpcHandle;
+using chrome_control_mcp::NativeIpcHandle;
 using chrome_control_mcp::relayConnect;
 using chrome_control_mcp::relayHandshake;
 using chrome_control_mcp::relayPumpOnce;
@@ -129,8 +132,8 @@ void BrowserBridgeRelayTests::relayConnect_rejectsForeignServerPid() {
 
   QString token;
   int protocol = 0;
-  const HANDLE pipe = relayConnect(path, &token, &protocol, &error);
-  QCOMPARE(pipe, INVALID_HANDLE_VALUE);
+  const NativeIpcHandle pipe = relayConnect(path, &token, &protocol, &error);
+  QCOMPARE(pipe, kInvalidNativeIpcHandle);
   // pid 999999 -> the single pidIsOwnImage-false message, which contains BOTH
   // substrings, so the || distinguished nothing. Pin the exact deterministic
   // message.
@@ -147,16 +150,16 @@ void BrowserBridgeRelayTests::relayHandshake_rejectsBadToken() {
 
   QString token;
   int protocol = 0;
-  const HANDLE pipe = relayConnect(dir.filePath(QStringLiteral("r.json")),
-                                   &token, &protocol, &error);
-  QVERIFY(pipe != INVALID_HANDLE_VALUE);
+  const NativeIpcHandle pipe = relayConnect(
+      dir.filePath(QStringLiteral("r.json")), &token, &protocol, &error);
+  QVERIFY(pipe != kInvalidNativeIpcHandle);
   // The server drops a wrong-token handshake, so the relay's welcome read
   // fails.
   QVERIFY(
       !relayHandshake(pipe, QStringLiteral("wrong-token"), protocol, &error));
   QCOMPARE(error,
            QStringLiteral("Bridge server closed before welcoming the relay."));
-  CloseHandle(pipe);
+  closeNativeIpcHandle(pipe);
   server.stop();
 }
 
@@ -173,12 +176,12 @@ void BrowserBridgeRelayTests::relayHandshake_rejectsProtocolMismatch() {
 
   QString token;
   int protocol = 0;
-  const HANDLE pipe = relayConnect(dir.filePath(QStringLiteral("r.json")),
-                                   &token, &protocol, &error);
-  QVERIFY(pipe != INVALID_HANDLE_VALUE);
+  const NativeIpcHandle pipe = relayConnect(
+      dir.filePath(QStringLiteral("r.json")), &token, &protocol, &error);
+  QVERIFY(pipe != kInvalidNativeIpcHandle);
   QVERIFY(!relayHandshake(pipe, token, protocol + 1,
                           &error)); // wrong protocol -> refused
-  CloseHandle(pipe);
+  closeNativeIpcHandle(pipe);
   server.stop();
 }
 
@@ -191,9 +194,9 @@ void BrowserBridgeRelayTests::relay_forwardsCommandAndReplyOverRealPipe() {
 
   QString token;
   int protocol = 0;
-  const HANDLE pipe = relayConnect(dir.filePath(QStringLiteral("r.json")),
-                                   &token, &protocol, &error);
-  QVERIFY(pipe != INVALID_HANDLE_VALUE);
+  const NativeIpcHandle pipe = relayConnect(
+      dir.filePath(QStringLiteral("r.json")), &token, &protocol, &error);
+  QVERIFY(pipe != kInvalidNativeIpcHandle);
   QVERIFY2(relayHandshake(pipe, token, protocol, &error), qPrintable(error));
   QTRY_VERIFY_WITH_TIMEOUT(server.clientConnected(), 5000);
 
@@ -220,7 +223,7 @@ void BrowserBridgeRelayTests::relay_forwardsCommandAndReplyOverRealPipe() {
   // The relay forwarded exactly the server's command, id-transparent.
   QCOMPARE(extension.last_command.value(QStringLiteral("cmd")).toString(),
            QStringLiteral("snapshot"));
-  CloseHandle(pipe);
+  closeNativeIpcHandle(pipe);
   server.stop();
 }
 
@@ -237,9 +240,9 @@ void BrowserBridgeRelayTests::
 
   QString token;
   int protocol = 0;
-  const HANDLE pipe = relayConnect(dir.filePath(QStringLiteral("r.json")),
-                                   &token, &protocol, &error);
-  QVERIFY(pipe != INVALID_HANDLE_VALUE);
+  const NativeIpcHandle pipe = relayConnect(
+      dir.filePath(QStringLiteral("r.json")), &token, &protocol, &error);
+  QVERIFY(pipe != kInvalidNativeIpcHandle);
   QVERIFY2(relayHandshake(pipe, token, protocol, &error), qPrintable(error));
   QTRY_VERIFY_WITH_TIMEOUT(server.clientConnected(), 5000);
 
@@ -270,7 +273,7 @@ void BrowserBridgeRelayTests::
   // What matters is that the extension was told, and the exchange still failed
   // for the caller.
 
-  CloseHandle(pipe);
+  closeNativeIpcHandle(pipe);
   server.stop();
 }
 
@@ -303,8 +306,8 @@ void BrowserBridgeRelayTests::control_snapshotRoundTripsThroughRelay() {
   // pumping.
   QString token;
   int protocol = 0;
-  const HANDLE pipe = relayConnect(path, &token, &protocol, &error);
-  QVERIFY2(pipe != INVALID_HANDLE_VALUE, qPrintable(error));
+  const NativeIpcHandle pipe = relayConnect(path, &token, &protocol, &error);
+  QVERIFY2(pipe != kInvalidNativeIpcHandle, qPrintable(error));
   QVERIFY2(relayHandshake(pipe, token, protocol, &error), qPrintable(error));
 
   FakeExtension extension;
@@ -347,7 +350,7 @@ void BrowserBridgeRelayTests::control_snapshotRoundTripsThroughRelay() {
   control.stop(); // tears down the pipe; the relay's next pipe read fails and
                   // it exits
   relay.join();
-  CloseHandle(pipe);
+  closeNativeIpcHandle(pipe);
 }
 
 QTEST_MAIN(BrowserBridgeRelayTests)

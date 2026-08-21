@@ -9,10 +9,13 @@
     "node": ">=20.19"
   },
   "scripts": {
+    "build": "node scripts/build.mjs",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "lint": "eslint --max-warnings=0 .",
     "lint:powershell": "pwsh -NoProfile -File scripts/run_psscriptanalyzer.ps1",
+    "smoke": "node scripts/mcp_smoke.mjs",
+    "smoke:read-only": "node scripts/mcp_smoke.mjs --read-only",
     "test:js": "node --test tests/test_browser_extension_pure.mjs",
     "quality": "npm run format:check && npm run lint && npm run lint:powershell && npm run test:js"
   },

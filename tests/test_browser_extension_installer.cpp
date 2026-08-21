@@ -14,14 +14,16 @@
 #include <QTemporaryDir>
 #include <QtTest/QtTest>
 
+#ifdef Q_OS_WIN
 #include <windows.h>
-
 #include <vector>
+#endif
 
 using namespace chrome_control_mcp;
 
 namespace {
 
+#ifdef Q_OS_WIN
 QString testBase() {
   return QStringLiteral(
              "Software\\ChromeControlMCP_Test\\ExtensionInstaller_%1")
@@ -79,6 +81,7 @@ void seedRegistryDefault(const QString &path, const QString &value) {
       static_cast<LSTATUS>(ERROR_SUCCESS));
   RegCloseKey(key);
 }
+#endif
 
 QString makeFile(const QString &path, const QByteArray &bytes) {
   QFile file(path);
@@ -86,6 +89,8 @@ QString makeFile(const QString &path, const QByteArray &bytes) {
     return {};
   }
   file.close();
+  QFile::setPermissions(path, QFileDevice::ReadOwner | QFileDevice::WriteOwner |
+                                  QFileDevice::ExeOwner);
   return path;
 }
 
@@ -103,8 +108,22 @@ ExtensionInstallConfig configFor(const QString &root, const QString &extension,
   config.extension_path = extension;
   config.data_dir = QDir(root).filePath(QStringLiteral("data"));
   config.host_exe_path = executable;
+#ifdef Q_OS_WIN
   config.native_host_key_path = testBase() + QStringLiteral("\\NativeHost");
+#else
+  config.native_host_manifest_dir =
+      QDir(root).filePath(QStringLiteral("native-hosts"));
+#endif
   return config;
+}
+
+QString registeredManifestPath(const BrowserExtensionInstaller &installer) {
+#ifdef Q_OS_WIN
+  return registryDefault(installer.config().native_host_key_path);
+#else
+  return QDir(installer.config().native_host_manifest_dir)
+      .filePath(QString::fromLatin1(kNativeHostName) + QStringLiteral(".json"));
+#endif
 }
 
 QString extensionIdFromPublicKey(const QByteArray &der) {
@@ -136,13 +155,17 @@ private slots:
 };
 
 void BrowserExtensionInstallerTests::init() {
+#ifdef Q_OS_WIN
   const std::wstring base = wide(testBase());
   RegDeleteTreeW(HKEY_CURRENT_USER, base.c_str());
+#endif
 }
 
 void BrowserExtensionInstallerTests::cleanupTestCase() {
+#ifdef Q_OS_WIN
   const std::wstring base = wide(testBase());
   RegDeleteTreeW(HKEY_CURRENT_USER, base.c_str());
+#endif
 }
 
 void BrowserExtensionInstallerTests::publicManifestIdentityIsPinned() {
@@ -196,8 +219,7 @@ void BrowserExtensionInstallerTests::prepareRegistersValidatedNativeHost() {
            static_cast<int>(ExtensionInstallState::Prepared));
   QVERIFY(result.detail.contains(QDir::toNativeSeparators(extension)));
 
-  const QString registeredManifest =
-      registryDefault(installer.config().native_host_key_path);
+  const QString registeredManifest = registeredManifestPath(installer);
   QVERIFY(QFileInfo(registeredManifest).isFile());
   QFile file(registeredManifest);
   QVERIFY(file.open(QIODevice::ReadOnly));
@@ -224,7 +246,11 @@ void BrowserExtensionInstallerTests::missingExtensionFailsClosed() {
       executable));
   const ExtensionInstallResult result = installer.install();
   QVERIFY(!result.ok);
+#ifdef Q_OS_WIN
   QVERIFY(!registryKeyExists(installer.config().native_host_key_path));
+#else
+  QVERIFY(!QFileInfo(registeredManifestPath(installer)).exists());
+#endif
 }
 
 void BrowserExtensionInstallerTests::uninstallRemovesOnlyOwnedRegistration() {
@@ -237,12 +263,24 @@ void BrowserExtensionInstallerTests::uninstallRemovesOnlyOwnedRegistration() {
       configFor(dir.path(), extension, executable));
   QVERIFY(installer.install().ok);
 
-  const QString foreign = testBase() + QStringLiteral("\\ForeignHost");
+  QString foreign;
+#ifdef Q_OS_WIN
+  foreign = testBase() + QStringLiteral("\\ForeignHost");
   seedRegistryDefault(foreign, QStringLiteral("C:\\foreign.json"));
+#else
+  foreign = QDir(installer.config().native_host_manifest_dir)
+                .filePath(QStringLiteral("foreign-host.json"));
+  QVERIFY(!makeFile(foreign, "{}").isEmpty());
+#endif
   const ExtensionInstallResult result = installer.uninstall();
   QVERIFY2(result.ok, qPrintable(result.detail));
+#ifdef Q_OS_WIN
   QVERIFY(!registryKeyExists(installer.config().native_host_key_path));
   QVERIFY(registryKeyExists(foreign));
+#else
+  QVERIFY(!QFileInfo(registeredManifestPath(installer)).exists());
+  QVERIFY(QFileInfo(foreign).isFile());
+#endif
   QCOMPARE(static_cast<int>(installer.state()),
            static_cast<int>(ExtensionInstallState::Partial));
 }

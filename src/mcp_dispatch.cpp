@@ -97,16 +97,16 @@ QJsonObject initializeResult() {
                    {QStringLiteral("version"), serverVersion()}}}};
 }
 
-// The full tool catalog: the built-in win32 tools plus, when browser control is
+// The full tool catalog: built-in native tools plus, when browser control is
 // live, the browser_* tools the facade owns. Under a read-only profile only the
 // read-only tools are advertised so the model is never shown a tool the profile
 // forbids.
 QJsonArray fullToolCatalog(const BrowserControl *browser,
-                           const Win32McpServerPolicy &policy) {
+                           const McpServerPolicy &policy) {
   QJsonArray tools = toolCatalog();
   if (browser != nullptr) {
     const QJsonArray browser_tools = browser->toolCatalog();
-    for (const QJsonValue &tool : browser_tools) {
+    for (const QJsonValue tool : browser_tools) {
       tools.append(tool);
     }
   }
@@ -114,8 +114,8 @@ QJsonArray fullToolCatalog(const BrowserControl *browser,
     return tools;
   }
   QJsonArray read_only_tools;
-  for (const QJsonValue &tool : tools) {
-    if (win32McpToolIsReadOnly(
+  for (const QJsonValue tool : tools) {
+    if (mcpToolIsReadOnly(
             tool.toObject().value(QStringLiteral("name")).toString())) {
       read_only_tools.append(tool);
     }
@@ -130,7 +130,7 @@ QJsonArray fullToolCatalog(const BrowserControl *browser,
 // best-effort keyword scrubber, not a completeness guarantee. It never claims
 // to have redacted content it does not model, so it does not fail open.
 QJsonObject redactToolCallResult(QJsonObject result,
-                                 const Win32McpServerPolicy &policy) {
+                                 const McpServerPolicy &policy) {
   if (!policy.redact_sensitive_output) {
     return result;
   }
@@ -139,19 +139,20 @@ QJsonObject redactToolCallResult(QJsonObject result,
     QJsonObject block = content.at(i).toObject();
     if (block.value(QStringLiteral("type")).toString() ==
         QLatin1String("text")) {
-      block[QStringLiteral("text")] = redactWin32McpSensitiveText(
-          block.value(QStringLiteral("text")).toString());
-      content[i] = block;
+      block.insert(QStringLiteral("text"),
+                   redactMcpSensitiveText(
+                       block.value(QStringLiteral("text")).toString()));
+      content.replace(i, block);
     }
   }
-  result[QStringLiteral("content")] = content;
+  result.insert(QStringLiteral("content"), content);
   return result;
 }
 
 // True when a JSON value satisfies a JSON-Schema primitive type. An
 // unconstrained/unknown type string is accepted (nothing to reject) rather than
 // guessed.
-bool win32McpJsonMatchesType(const QString &type, const QJsonValue &value) {
+bool mcpJsonMatchesType(const QString &type, const QJsonValue &value) {
   if (type == QLatin1String("string")) {
     return value.isString();
   }
@@ -191,7 +192,7 @@ QString schemaRequiredError(const QJsonObject &schema,
                             const QJsonObject &args) {
   const QJsonArray required =
       schema.value(QStringLiteral("required")).toArray();
-  for (const QJsonValue &r : required) {
+  for (const QJsonValue r : required) {
     const QString key = r.toString();
     if (!args.contains(key)) {
       return QStringLiteral("Missing required argument '%1'").arg(key);
@@ -224,8 +225,7 @@ QString schemaTypeError(const QJsonObject &schema, const QJsonObject &args) {
     }
     const QString type =
         it.value().toObject().value(QStringLiteral("type")).toString();
-    if (!type.isEmpty() &&
-        !win32McpJsonMatchesType(type, args.value(it.key()))) {
+    if (!type.isEmpty() && !mcpJsonMatchesType(type, args.value(it.key()))) {
       return QStringLiteral("Argument '%1' must be of type %2")
           .arg(it.key(), type);
     }
@@ -237,7 +237,7 @@ QString schemaTypeError(const QJsonObject &schema, const QJsonObject &args) {
 // tool is not in the native catalog. Browser tools validate their own args
 // downstream, so they are not looked up here.
 std::optional<QJsonObject> nativeToolInputSchema(const QString &name) {
-  for (const QJsonValue &tool : toolCatalog()) {
+  for (const QJsonValue tool : toolCatalog()) {
     const QJsonObject entry = tool.toObject();
     if (entry.value(QStringLiteral("name")).toString() == name) {
       return entry.value(QStringLiteral("inputSchema")).toObject();
@@ -249,7 +249,7 @@ std::optional<QJsonObject> nativeToolInputSchema(const QString &name) {
 std::optional<QJsonObject> handleToolsCall(const QJsonValue &id,
                                            const QJsonObject &params,
                                            BrowserControl *browser,
-                                           const Win32McpServerPolicy &policy) {
+                                           const McpServerPolicy &policy) {
   const QString name =
       params.value(QStringLiteral("name")).toString().trimmed();
   if (name.isEmpty()) {
@@ -259,7 +259,7 @@ std::optional<QJsonObject> handleToolsCall(const QJsonValue &id,
   // Fail closed under a read-only profile: refuse any tool that is not
   // read-only, so a mutating/input/process tool cannot run even if the client's
   // own policy gate is bypassed.
-  if (policy.read_only_profile && !win32McpToolIsReadOnly(name)) {
+  if (policy.read_only_profile && !mcpToolIsReadOnly(name)) {
     return errorResponse(
         id, kInvalidParams,
         QStringLiteral(
@@ -291,8 +291,7 @@ std::optional<QJsonObject> handleToolsCall(const QJsonValue &id,
   // tool still takes the existing invokeTool error path.
   const std::optional<QJsonObject> schema = nativeToolInputSchema(name);
   if (schema.has_value()) {
-    const QString invalid =
-        win32McpValidateArgsAgainstSchema(*schema, arguments);
+    const QString invalid = mcpValidateArgsAgainstSchema(*schema, arguments);
     if (!invalid.isEmpty()) {
       return errorResponse(id, kInvalidParams, invalid);
     }
@@ -304,8 +303,8 @@ std::optional<QJsonObject> handleToolsCall(const QJsonValue &id,
 
 } // namespace
 
-QString win32McpValidateArgsAgainstSchema(const QJsonObject &input_schema,
-                                          const QJsonObject &args) {
+QString mcpValidateArgsAgainstSchema(const QJsonObject &input_schema,
+                                     const QJsonObject &args) {
   QString error = schemaRequiredError(input_schema, args);
   if (!error.isEmpty()) {
     return error;
@@ -317,9 +316,9 @@ QString win32McpValidateArgsAgainstSchema(const QJsonObject &input_schema,
   return schemaTypeError(input_schema, args);
 }
 
-Win32McpServerPolicy Win32McpServerPolicy::fromEnvironment() {
+McpServerPolicy McpServerPolicy::fromEnvironment() {
   const QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
-  Win32McpServerPolicy policy;
+  McpServerPolicy policy;
   policy.read_only_profile = resolveReadOnlyProfile(
       env.value(QStringLiteral("CHROME_CONTROL_MCP_SECURITY_PROFILE")));
   policy.redact_sensitive_output = resolveRedactSensitiveOutput(
@@ -327,12 +326,10 @@ Win32McpServerPolicy Win32McpServerPolicy::fromEnvironment() {
   return policy;
 }
 
-bool win32McpToolIsReadOnly(const QString &tool_name) {
-  // Mirror of AiProviderGateway::isWin32ReadOnlyTool -- the server enforces the
-  // read-only profile independently, never trusting the client. KEEP IN SYNC
-  // with that list. browser_focus/hover/reveal are deliberately NOT here: they
-  // mutate UI state (move focus, dispatch hover, scroll into view), so they are
-  // not passive inspectors.
+bool mcpToolIsReadOnly(const QString &tool_name) {
+  // browser_focus/hover/reveal are deliberately absent: they mutate UI state
+  // (move focus, dispatch hover, scroll into view), so they are not passive
+  // inspectors.
   static const QSet<QString> kReadOnly{
       QStringLiteral("assert_text_visible"),
       QStringLiteral("browser_box"),
@@ -373,7 +370,7 @@ bool win32McpToolIsReadOnly(const QString &tool_name) {
   return kReadOnly.contains(tool_name.trimmed());
 }
 
-QString redactWin32McpSensitiveText(const QString &text) {
+QString redactMcpSensitiveText(const QString &text) {
   if (text.isEmpty()) {
     return text;
   }
@@ -416,7 +413,7 @@ QJsonObject toolCallResult(const ToolResult &result) {
 
 std::optional<QJsonObject> handleRequest(const QJsonObject &request,
                                          BrowserControl *browser,
-                                         const Win32McpServerPolicy &policy) {
+                                         const McpServerPolicy &policy) {
   const QString method = request.value(QStringLiteral("method")).toString();
   const bool has_id = request.contains(QStringLiteral("id")) &&
                       !request.value(QStringLiteral("id")).isNull();

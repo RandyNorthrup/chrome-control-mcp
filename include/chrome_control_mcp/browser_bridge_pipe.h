@@ -3,6 +3,8 @@
 
 #pragma once
 
+#include "chrome_control_mcp/native_ipc.h"
+
 #include <QHash>
 #include <QJsonObject>
 #include <QString>
@@ -10,14 +12,6 @@
 #include <condition_variable>
 #include <mutex>
 #include <thread>
-
-#ifndef WIN32_LEAN_AND_MEAN
-#define WIN32_LEAN_AND_MEAN
-#endif
-#ifndef NOMINMAX
-#define NOMINMAX
-#endif
-#include <windows.h>
 
 /// @file browser_bridge_pipe.h
 /// @brief The browser-control bridge pipe SERVER, hosted in the long-lived MCP
@@ -40,14 +34,14 @@
 namespace chrome_control_mcp {
 
 /// Default per read/write deadline for a bridge exchange, in milliseconds.
-inline constexpr DWORD kBrowserBridgeDefaultIoTimeoutMs = 30'000;
+inline constexpr int kBrowserBridgeDefaultIoTimeoutMs = 30'000;
 
 class BrowserBridgePipeServer {
 public:
   struct Options {
     int protocol{1};                    ///< kBrowserBridgeProtocol.
     bool require_chrome_ancestor{true}; ///< Production; tests relax this.
-    DWORD io_timeout_ms{
+    int io_timeout_ms{
         kBrowserBridgeDefaultIoTimeoutMs}; ///< Per read/write deadline.
     QString rendezvous_path; ///< Empty -> the real per-user location.
   };
@@ -59,7 +53,8 @@ public:
     QString error;
   };
 
-  explicit BrowserBridgePipeServer(Options options = {});
+  BrowserBridgePipeServer();
+  explicit BrowserBridgePipeServer(Options options);
   ~BrowserBridgePipeServer();
 
   BrowserBridgePipeServer(const BrowserBridgePipeServer &) = delete;
@@ -103,9 +98,9 @@ public:
   ///        Chrome-launched peer bind (defense in depth over the handshake
   ///        token).
   [[nodiscard]] static bool ancestorChainContainsImageForTesting(
-      DWORD pid, const QHash<DWORD, DWORD> &parent,
-      const QHash<DWORD, QString> &image, const QString &target_basename_lower,
-      int max_depth);
+      quint64 pid, const QHash<quint64, quint64> &parent,
+      const QHash<quint64, QString> &image,
+      const QString &target_basename_lower, int max_depth);
 
 private:
   // Create the named pipe + shutdown event and publish the rendezvous record.
@@ -123,8 +118,14 @@ private:
   QString token_;
   QString rendezvous_path_;
 
-  HANDLE pipe_{INVALID_HANDLE_VALUE};
-  HANDLE shutdown_event_{nullptr};
+#ifdef Q_OS_WIN
+  NativeIpcHandle pipe_{kInvalidNativeIpcHandle};
+  void *shutdown_event_{nullptr};
+#else
+  int listener_fd_{-1};
+  int connection_fd_{-1};
+  int shutdown_pipe_[2]{-1, -1};
+#endif
   std::thread thread_;
   // Serializes start()/stop() so a concurrent stop() (or the destructor) BLOCKS
   // until an in-progress teardown finishes, and so start() never move-assigns

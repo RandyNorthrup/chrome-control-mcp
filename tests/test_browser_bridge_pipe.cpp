@@ -11,11 +11,21 @@
 #include <QtTest/QtTest>
 
 #include <atomic>
+#include <chrono>
+#include <cstring>
 #include <thread>
 
+#ifndef Q_OS_WIN
+#include <sys/socket.h>
+#include <sys/un.h>
+#endif
+
 using chrome_control_mcp::BrowserBridgePipeServer;
+using chrome_control_mcp::closeNativeIpcHandle;
 using chrome_control_mcp::encodeFrame;
+using chrome_control_mcp::kInvalidNativeIpcHandle;
 using chrome_control_mcp::NativeFrame;
+using chrome_control_mcp::NativeIpcHandle;
 using chrome_control_mcp::parseFrame;
 
 namespace {
@@ -23,54 +33,108 @@ namespace {
 // -- Minimal synchronous test client (stands in for the Chrome-spawned relay)
 // ------
 
-HANDLE clientConnect(const QString &name) {
+void sleepMilliseconds(int milliseconds) {
+  std::this_thread::sleep_for(std::chrono::milliseconds(milliseconds));
+}
+
+void flushClient(NativeIpcHandle handle) {
+#ifdef Q_OS_WIN
+  FlushFileBuffers(handle);
+#else
+  Q_UNUSED(handle);
+#endif
+}
+
+NativeIpcHandle clientConnect(const QString &name) {
+#ifdef Q_OS_WIN
   const std::wstring wide = name.toStdWString();
   for (int attempt = 0; attempt < 200; ++attempt) {
-    const HANDLE handle = CreateFileW(
+    const NativeIpcHandle handle = CreateFileW(
         wide.c_str(), GENERIC_READ | GENERIC_WRITE, 0, nullptr, OPEN_EXISTING,
         SECURITY_SQOS_PRESENT | SECURITY_IDENTIFICATION, nullptr);
-    if (handle != INVALID_HANDLE_VALUE) {
+    if (handle != kInvalidNativeIpcHandle) {
       return handle;
     }
     if (GetLastError() == ERROR_PIPE_BUSY) {
       WaitNamedPipeW(wide.c_str(), 100);
     } else {
-      Sleep(10);
+      sleepMilliseconds(10);
     }
   }
-  return INVALID_HANDLE_VALUE;
+  return kInvalidNativeIpcHandle;
+#else
+  const QByteArray endpoint = QFile::encodeName(name);
+  for (int attempt = 0; attempt < 200; ++attempt) {
+    const int handle = socket(AF_UNIX, SOCK_STREAM, 0);
+    if (handle >= 0) {
+      sockaddr_un address{};
+      address.sun_family = AF_UNIX;
+      if (endpoint.size() <
+          static_cast<qsizetype>(sizeof(sockaddr_un::sun_path))) {
+        std::memcpy(address.sun_path, endpoint.constData(),
+                    static_cast<size_t>(endpoint.size() + 1));
+        if (connect(handle, reinterpret_cast<sockaddr *>(&address),
+                    sizeof(address)) == 0) {
+          return handle;
+        }
+      }
+      closeNativeIpcHandle(handle);
+    }
+    sleepMilliseconds(10);
+  }
+  return kInvalidNativeIpcHandle;
+#endif
 }
 
-bool clientWrite(HANDLE handle, const QJsonObject &object) {
+bool clientWrite(NativeIpcHandle handle, const QJsonObject &object) {
   const QByteArray frame = encodeFrame(object);
-  DWORD offset = 0;
-  while (offset < static_cast<DWORD>(frame.size())) {
+  qsizetype offset = 0;
+  while (offset < frame.size()) {
+#ifdef Q_OS_WIN
     DWORD wrote = 0;
-    if (WriteFile(handle, frame.constData() + offset, frame.size() - offset,
-                  &wrote, nullptr) == FALSE ||
+    if (WriteFile(handle, frame.constData() + offset,
+                  static_cast<DWORD>(frame.size() - offset), &wrote,
+                  nullptr) == FALSE ||
         wrote == 0) {
       return false;
     }
     offset += wrote;
+#else
+    const ssize_t wrote = write(handle, frame.constData() + offset,
+                                static_cast<size_t>(frame.size() - offset));
+    if (wrote <= 0) {
+      return false;
+    }
+    offset += wrote;
+#endif
   }
   return true;
 }
 
-bool clientReadExact(HANDLE handle, char *buffer, DWORD size) {
-  DWORD offset = 0;
+bool clientReadExact(NativeIpcHandle handle, char *buffer, qsizetype size) {
+  qsizetype offset = 0;
   while (offset < size) {
+#ifdef Q_OS_WIN
     DWORD got = 0;
-    if (ReadFile(handle, buffer + offset, size - offset, &got, nullptr) ==
-            FALSE ||
+    if (ReadFile(handle, buffer + offset, static_cast<DWORD>(size - offset),
+                 &got, nullptr) == FALSE ||
         got == 0) {
       return false;
     }
     offset += got;
+#else
+    const ssize_t got =
+        read(handle, buffer + offset, static_cast<size_t>(size - offset));
+    if (got <= 0) {
+      return false;
+    }
+    offset += got;
+#endif
   }
   return true;
 }
 
-bool clientRead(HANDLE handle, QJsonObject *out) {
+bool clientRead(NativeIpcHandle handle, QJsonObject *out) {
   char header[4];
   if (!clientReadExact(handle, header, 4)) {
     return false;
@@ -92,10 +156,10 @@ bool clientRead(HANDLE handle, QJsonObject *out) {
 }
 
 // Connect + complete the hello/welcome handshake. Returns the connected handle,
-// or INVALID_HANDLE_VALUE on any failure.
-HANDLE connectAndHandshake(const QString &name, const QString &token) {
-  const HANDLE handle = clientConnect(name);
-  if (handle == INVALID_HANDLE_VALUE) {
+// or kInvalidNativeIpcHandle on any failure.
+NativeIpcHandle connectAndHandshake(const QString &name, const QString &token) {
+  const NativeIpcHandle handle = clientConnect(name);
+  if (handle == kInvalidNativeIpcHandle) {
     return handle;
   }
   const bool sent = clientWrite(
@@ -106,8 +170,8 @@ HANDLE connectAndHandshake(const QString &name, const QString &token) {
   if (!sent || !clientRead(handle, &welcome) ||
       welcome.value(QStringLiteral("type")).toString() !=
           QLatin1String("welcome")) {
-    CloseHandle(handle);
-    return INVALID_HANDLE_VALUE;
+    closeNativeIpcHandle(handle);
+    return kInvalidNativeIpcHandle;
   }
   return handle;
 }
@@ -125,8 +189,8 @@ struct HandshakeAttempt {
 HandshakeAttempt attemptHandshake(const QString &name,
                                   const QJsonObject &hello) {
   HandshakeAttempt out;
-  const HANDLE handle = clientConnect(name);
-  if (handle == INVALID_HANDLE_VALUE) {
+  const NativeIpcHandle handle = clientConnect(name);
+  if (handle == kInvalidNativeIpcHandle) {
     return out;
   }
   out.connected = true;
@@ -137,12 +201,12 @@ HandshakeAttempt attemptHandshake(const QString &name,
       out.reply = frame;
     }
   }
-  CloseHandle(handle);
+  closeNativeIpcHandle(handle);
   return out;
 }
 
 BrowserBridgePipeServer::Options testOptions(const QString &rendezvous,
-                                             DWORD timeout_ms) {
+                                             int timeout_ms) {
   BrowserBridgePipeServer::Options options;
   options.require_chrome_ancestor =
       false; // the test client is not a Chrome child
@@ -236,8 +300,8 @@ void BrowserBridgePipeTests::handshake_refusesForgedTokenAndUnknownType() {
   // elsewhere) accepts this connection.
   std::atomic<bool> good_ok{false};
   std::thread good_client([&] {
-    const HANDLE handle = connectAndHandshake(name, real_token);
-    if (handle == INVALID_HANDLE_VALUE) {
+    const NativeIpcHandle handle = connectAndHandshake(name, real_token);
+    if (handle == kInvalidNativeIpcHandle) {
       return;
     }
     QJsonObject command;
@@ -248,10 +312,10 @@ void BrowserBridgePipeTests::handshake_refusesForgedTokenAndUnknownType() {
               {QStringLiteral("type"), QStringLiteral("result")},
               {QStringLiteral("id"), command.value(QStringLiteral("id"))},
               {QStringLiteral("payload"), QJsonObject{}}});
-      FlushFileBuffers(handle);
+      flushClient(handle);
       good_ok = true;
     }
-    CloseHandle(handle);
+    closeNativeIpcHandle(handle);
   });
   QTRY_VERIFY_WITH_TIMEOUT(server.clientConnected(), 5000);
   const auto served = server.sendCommandAwaitReply(
@@ -309,11 +373,11 @@ void BrowserBridgePipeTests::ancestorChain_boundsDepthAndMatchesImage() {
   // chrome.exe within a depth cap. Model a tree: leaf 100 -> 90 -> 80 ->
   // 70(chrome.exe) -> 0(root), so chrome is three ancestors above the leaf.
   // Images are stored LOWERCASED (as the live walk does).
-  const QHash<DWORD, DWORD> parent{{100, 90}, {90, 80}, {80, 70}, {70, 0}};
-  const QHash<DWORD, QString> image{{100, QStringLiteral("tab.exe")},
-                                    {90, QStringLiteral("renderer.exe")},
-                                    {80, QStringLiteral("gpu.exe")},
-                                    {70, QStringLiteral("chrome.exe")}};
+  const QHash<quint64, quint64> parent{{100, 90}, {90, 80}, {80, 70}, {70, 0}};
+  const QHash<quint64, QString> image{{100, QStringLiteral("tab.exe")},
+                                      {90, QStringLiteral("renderer.exe")},
+                                      {80, QStringLiteral("gpu.exe")},
+                                      {70, QStringLiteral("chrome.exe")}};
 
   // Authorized: a generous depth budget reaches the chrome ancestor.
   QVERIFY(Server::ancestorChainContainsImageForTesting(
@@ -328,10 +392,10 @@ void BrowserBridgePipeTests::ancestorChain_boundsDepthAndMatchesImage() {
       100, parent, image, QStringLiteral("chrome.exe"), 2));
 
   // No chrome anywhere in the chain -> refused (a non-Chrome-launched peer).
-  const QHash<DWORD, QString> noChrome{{100, QStringLiteral("tab.exe")},
-                                       {90, QStringLiteral("renderer.exe")},
-                                       {80, QStringLiteral("gpu.exe")},
-                                       {70, QStringLiteral("explorer.exe")}};
+  const QHash<quint64, QString> noChrome{{100, QStringLiteral("tab.exe")},
+                                         {90, QStringLiteral("renderer.exe")},
+                                         {80, QStringLiteral("gpu.exe")},
+                                         {70, QStringLiteral("explorer.exe")}};
   QVERIFY(!Server::ancestorChainContainsImageForTesting(
       100, parent, noChrome, QStringLiteral("chrome.exe"), 12));
 
@@ -339,9 +403,9 @@ void BrowserBridgePipeTests::ancestorChain_boundsDepthAndMatchesImage() {
   // bound rather than loop forever, and with no chrome ancestor it fails
   // closed. A stale/reused Toolhelp parent pid can produce exactly such a
   // cycle.
-  const QHash<DWORD, DWORD> cyclic{{100, 90}, {90, 100}};
-  const QHash<DWORD, QString> cyclicImage{{100, QStringLiteral("tab.exe")},
-                                          {90, QStringLiteral("renderer.exe")}};
+  const QHash<quint64, quint64> cyclic{{100, 90}, {90, 100}};
+  const QHash<quint64, QString> cyclicImage{
+      {100, QStringLiteral("tab.exe")}, {90, QStringLiteral("renderer.exe")}};
   QVERIFY(!Server::ancestorChainContainsImageForTesting(
       100, cyclic, cyclicImage, QStringLiteral("chrome.exe"), 12));
 }
@@ -357,8 +421,8 @@ void BrowserBridgePipeTests::handshake_thenCommandReplyRoundTrips() {
   const QString token = server.token();
   std::atomic<bool> client_ok{false};
   std::thread client([&] {
-    const HANDLE handle = connectAndHandshake(name, token);
-    if (handle == INVALID_HANDLE_VALUE) {
+    const NativeIpcHandle handle = connectAndHandshake(name, token);
+    if (handle == kInvalidNativeIpcHandle) {
       return;
     }
     QJsonObject command;
@@ -371,11 +435,10 @@ void BrowserBridgePipeTests::handshake_thenCommandReplyRoundTrips() {
               {QStringLiteral("cmd"), command.value(QStringLiteral("cmd"))},
               {QStringLiteral("payload"),
                QJsonObject{{QStringLiteral("echoed"), true}}}});
-      FlushFileBuffers(
-          handle); // ensure the server reads the reply before we close
+      flushClient(handle); // ensure the server reads the reply before we close
       client_ok = true;
     }
-    CloseHandle(handle);
+    closeNativeIpcHandle(handle);
   });
 
   QTRY_VERIFY_WITH_TIMEOUT(server.clientConnected(), 5000);
@@ -409,14 +472,14 @@ void BrowserBridgePipeTests::silentPeer_deadlineResetsConnection() {
   const QString name = server.pipeName();
   const QString token = server.token();
   std::thread client([&] {
-    const HANDLE handle = connectAndHandshake(name, token);
-    if (handle == INVALID_HANDLE_VALUE) {
+    const NativeIpcHandle handle = connectAndHandshake(name, token);
+    if (handle == kInvalidNativeIpcHandle) {
       return;
     }
     QJsonObject command;
     clientRead(handle, &command); // read the command but never reply
-    Sleep(600); // stay connected past the server's 300 ms deadline
-    CloseHandle(handle);
+    sleepMilliseconds(600); // stay connected past the server's 300 ms deadline
+    closeNativeIpcHandle(handle);
   });
 
   QTRY_VERIFY_WITH_TIMEOUT(server.clientConnected(), 5000);
@@ -446,13 +509,13 @@ void BrowserBridgePipeTests::reconnect_secondClientServedWithNewGeneration() {
 
   // Relay A: connect, read the command, then vanish without replying (a reset).
   std::thread client_a([&] {
-    const HANDLE handle = connectAndHandshake(name, token);
-    if (handle == INVALID_HANDLE_VALUE) {
+    const NativeIpcHandle handle = connectAndHandshake(name, token);
+    if (handle == kInvalidNativeIpcHandle) {
       return;
     }
     QJsonObject command;
     clientRead(handle, &command);
-    CloseHandle(handle); // die mid-command
+    closeNativeIpcHandle(handle); // die mid-command
   });
   QTRY_VERIFY_WITH_TIMEOUT(server.clientConnected(), 5000);
   const auto reset = server.sendCommandAwaitReply(
@@ -471,8 +534,8 @@ void BrowserBridgePipeTests::reconnect_secondClientServedWithNewGeneration() {
   // advances).
   std::atomic<bool> client_ok{false};
   std::thread client_b([&] {
-    const HANDLE handle = connectAndHandshake(name, token);
-    if (handle == INVALID_HANDLE_VALUE) {
+    const NativeIpcHandle handle = connectAndHandshake(name, token);
+    if (handle == kInvalidNativeIpcHandle) {
       return;
     }
     QJsonObject command;
@@ -483,10 +546,10 @@ void BrowserBridgePipeTests::reconnect_secondClientServedWithNewGeneration() {
               {QStringLiteral("type"), QStringLiteral("result")},
               {QStringLiteral("id"), command.value(QStringLiteral("id"))},
               {QStringLiteral("payload"), QJsonObject{}}});
-      FlushFileBuffers(handle);
+      flushClient(handle);
       client_ok = true;
     }
-    CloseHandle(handle);
+    closeNativeIpcHandle(handle);
   });
   QTRY_VERIFY_WITH_TIMEOUT(server.clientConnected(), 5000);
   QCOMPARE(server.connectionGeneration(), quint64{2});
@@ -539,7 +602,7 @@ void BrowserBridgePipeTests::restartAfterStopWorksAndDoubleStartRefused() {
   // A second start while running is refused (not a crash).
   QString busy;
   QVERIFY(!server.start(&busy));
-  QCOMPARE(busy, QStringLiteral("Bridge pipe server is already running"));
+  QCOMPARE(busy, QStringLiteral("Bridge IPC server is already running"));
 
   server.stop();
   QVERIFY(!QFile::exists(rendezvous)); // cycle 1 really tore down

@@ -224,7 +224,14 @@ async function main() {
   const scriptDir = path.dirname(fileURLToPath(import.meta.url));
   const repoRoot = path.resolve(scriptDir, "..", "..");
   const executable = path.resolve(
-    process.argv[2] || path.join(repoRoot, "dist", "chrome_control_mcp.exe"),
+    process.argv[2] ||
+      path.join(
+        repoRoot,
+        "dist",
+        process.platform === "win32"
+          ? "chrome_control_mcp.exe"
+          : "chrome_control_mcp",
+      ),
   );
   const showcaseDir = process.env.CHROME_CONTROL_MCP_SHOWCASE_DIR
     ? path.resolve(process.env.CHROME_CONTROL_MCP_SHOWCASE_DIR)

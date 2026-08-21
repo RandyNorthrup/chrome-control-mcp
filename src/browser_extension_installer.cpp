@@ -11,6 +11,7 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QSaveFile>
+#include <QStandardPaths>
 
 #ifdef Q_OS_WIN
 #include <windows.h>
@@ -38,9 +39,34 @@ QString currentExecutablePath() {
 }
 
 QString defaultDataDirectory() {
-  const QString local = qEnvironmentVariable("LOCALAPPDATA");
-  return QDir::cleanPath(QDir(local.isEmpty() ? QDir::homePath() : local)
-                             .filePath(QStringLiteral("ChromeControlMCP")));
+  QString base =
+      QStandardPaths::writableLocation(QStandardPaths::GenericDataLocation);
+  if (base.isEmpty()) {
+    base = QDir::homePath();
+  }
+  return QDir::cleanPath(
+      QDir(base).filePath(QStringLiteral("ChromeControlMCP")));
+}
+
+QString defaultNativeHostManifestDirectory() {
+  const QString configured =
+      qEnvironmentVariable("CHROME_CONTROL_MCP_NATIVE_HOST_DIR");
+  if (!configured.isEmpty()) {
+    return QDir::cleanPath(QFileInfo(configured).absoluteFilePath());
+  }
+#ifdef Q_OS_MACOS
+  const QString base =
+      QStandardPaths::writableLocation(QStandardPaths::GenericDataLocation);
+  return QDir(base).filePath(
+      QStringLiteral("Google/Chrome/NativeMessagingHosts"));
+#elif defined(Q_OS_LINUX)
+  const QString base =
+      QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation);
+  return QDir(base).filePath(
+      QStringLiteral("google-chrome/NativeMessagingHosts"));
+#else
+  return {};
+#endif
 }
 
 QString resolveExtensionPath(const QString &configured,
@@ -59,8 +85,13 @@ QString resolveExtensionPath(const QString &configured,
 }
 
 QString hostManifestPath(const ExtensionInstallConfig &config) {
+#ifdef Q_OS_WIN
   return QDir(config.data_dir)
       .filePath(QString::fromLatin1(kNativeHostName) + QStringLiteral(".json"));
+#else
+  return QDir(config.native_host_manifest_dir)
+      .filePath(QString::fromLatin1(kNativeHostName) + QStringLiteral(".json"));
+#endif
 }
 
 QByteArray hostManifestBytes(const ExtensionInstallConfig &config) {
@@ -95,7 +126,49 @@ bool writeFileAtomic(const QString &path, const QByteArray &bytes,
     *error = file.errorString();
     return false;
   }
+#ifndef Q_OS_WIN
+  if (!QFile::setPermissions(path, QFileDevice::ReadOwner |
+                                       QFileDevice::WriteOwner)) {
+    *error =
+        QStringLiteral("Could not secure native host manifest: %1").arg(path);
+    return false;
+  }
+#endif
   return true;
+}
+
+bool manifestMatches(const QString &path,
+                     const ExtensionInstallConfig &config) {
+  QFile file(path);
+  if (!file.open(QIODevice::ReadOnly)) {
+    return false;
+  }
+  QJsonParseError parseError;
+  const QJsonDocument document =
+      QJsonDocument::fromJson(file.readAll(), &parseError);
+  if (parseError.error != QJsonParseError::NoError || !document.isObject()) {
+    return false;
+  }
+  const QJsonObject object = document.object();
+  const QString expectedOrigin = QStringLiteral("chrome-extension://") +
+                                 QString::fromLatin1(kBrowserExtensionId) +
+                                 QStringLiteral("/");
+  const QString manifestExe =
+      QDir::cleanPath(object.value(QStringLiteral("path")).toString());
+  const QString expectedExe = QDir::cleanPath(config.host_exe_path);
+#ifdef Q_OS_WIN
+  constexpr Qt::CaseSensitivity pathCase = Qt::CaseInsensitive;
+#else
+  constexpr Qt::CaseSensitivity pathCase = Qt::CaseSensitive;
+#endif
+  return object.value(QStringLiteral("name")).toString() ==
+             QString::fromLatin1(kNativeHostName) &&
+         object.value(QStringLiteral("type")).toString() ==
+             QStringLiteral("stdio") &&
+         manifestExe.compare(expectedExe, pathCase) == 0 &&
+         object.value(QStringLiteral("allowed_origins"))
+             .toArray()
+             .contains(expectedOrigin);
 }
 
 #ifdef Q_OS_WIN
@@ -171,33 +244,7 @@ int nativeHostPresence(const ExtensionInstallConfig &config) {
     return -1;
   }
   const QString path = QString::fromWCharArray(value.data());
-  QFile file(path);
-  if (!file.open(QIODevice::ReadOnly)) {
-    return 2;
-  }
-  QJsonParseError parseError;
-  const QJsonDocument document =
-      QJsonDocument::fromJson(file.readAll(), &parseError);
-  if (parseError.error != QJsonParseError::NoError || !document.isObject()) {
-    return 2;
-  }
-  const QJsonObject object = document.object();
-  const QString expectedOrigin = QStringLiteral("chrome-extension://") +
-                                 QString::fromLatin1(kBrowserExtensionId) +
-                                 QStringLiteral("/");
-  const QString manifestExe =
-      QDir::cleanPath(object.value(QStringLiteral("path")).toString());
-  const QString expectedExe = QDir::cleanPath(config.host_exe_path);
-  return object.value(QStringLiteral("name")).toString() ==
-                     QString::fromLatin1(kNativeHostName) &&
-                 object.value(QStringLiteral("type")).toString() ==
-                     QStringLiteral("stdio") &&
-                 manifestExe.compare(expectedExe, Qt::CaseInsensitive) == 0 &&
-                 object.value(QStringLiteral("allowed_origins"))
-                     .toArray()
-                     .contains(expectedOrigin)
-             ? 1
-             : 2;
+  return manifestMatches(path, config) ? 1 : 2;
 }
 
 bool removeNativeHostKey(const QString &subkey, QString *error) {
@@ -213,6 +260,16 @@ bool removeNativeHostKey(const QString &subkey, QString *error) {
   return false;
 }
 
+#endif
+
+#ifndef Q_OS_WIN
+int nativeHostPresence(const ExtensionInstallConfig &config) {
+  const QString path = hostManifestPath(config);
+  if (!QFileInfo::exists(path)) {
+    return 0;
+  }
+  return manifestMatches(path, config) ? 1 : 2;
+}
 #endif
 
 } // namespace
@@ -239,6 +296,12 @@ BrowserExtensionInstaller::BrowserExtensionInstaller(
         QStringLiteral("Software\\Google\\Chrome\\NativeMessagingHosts\\") +
         QString::fromLatin1(kNativeHostName);
   }
+  if (config_.native_host_manifest_dir.isEmpty()) {
+    config_.native_host_manifest_dir = defaultNativeHostManifestDirectory();
+  } else {
+    config_.native_host_manifest_dir = QDir::cleanPath(
+        QFileInfo(config_.native_host_manifest_dir).absoluteFilePath());
+  }
 }
 
 bool BrowserExtensionInstaller::extensionPresent() const {
@@ -248,7 +311,6 @@ bool BrowserExtensionInstaller::extensionPresent() const {
 }
 
 ExtensionInstallResult BrowserExtensionInstaller::install() {
-#ifdef Q_OS_WIN
   if (!extensionPresent()) {
     return {false, QStringLiteral("Unpacked extension files not found"),
             config_.extension_path};
@@ -257,6 +319,13 @@ ExtensionInstallResult BrowserExtensionInstaller::install() {
     return {false, QStringLiteral("Native host executable not found"),
             config_.host_exe_path};
   }
+#ifndef Q_OS_WIN
+  if (!QFileInfo(config_.host_exe_path).isExecutable()) {
+    return {false, QStringLiteral("Native host is not executable"),
+            config_.host_exe_path};
+  }
+#endif
+#ifdef Q_OS_WIN
   if (!QDir().mkpath(config_.data_dir)) {
     return {false, QStringLiteral("Could not create data directory"),
             config_.data_dir};
@@ -272,16 +341,24 @@ ExtensionInstallResult BrowserExtensionInstaller::install() {
                             &error)) {
     return {false, QStringLiteral("Could not register native host"), error};
   }
+#else
+  if (config_.native_host_manifest_dir.isEmpty() ||
+      !QDir().mkpath(config_.native_host_manifest_dir)) {
+    return {false,
+            QStringLiteral("Could not create Chrome native host directory"),
+            config_.native_host_manifest_dir};
+  }
+  const QString manifestPath = hostManifestPath(config_);
+  QString error;
+  if (!writeFileAtomic(manifestPath, hostManifestBytes(config_), &error)) {
+    return {false, QStringLiteral("Could not register native host"), error};
+  }
+#endif
 
   return {true, QStringLiteral("Browser extension bridge prepared"),
           QStringLiteral("Load unpacked in chrome://extensions from %1, then "
                          "reload or restart Chrome")
               .arg(QDir::toNativeSeparators(config_.extension_path))};
-#else
-  return {false,
-          QStringLiteral("Browser extension preparation is Windows-only"),
-          QString()};
-#endif
 }
 
 ExtensionInstallResult BrowserExtensionInstaller::uninstall() const {
@@ -302,14 +379,18 @@ ExtensionInstallResult BrowserExtensionInstaller::uninstall() const {
           QStringLiteral("Remove Chrome Control MCP manually from "
                          "chrome://extensions if it is loaded")};
 #else
-  return {false,
-          QStringLiteral("Browser extension preparation is Windows-only"),
-          QString()};
+  const QString manifestPath = hostManifestPath(config_);
+  if (QFileInfo(manifestPath).isFile() && !QFile::remove(manifestPath)) {
+    return {false, QStringLiteral("Could not remove native host registration"),
+            manifestPath};
+  }
+  return {true, QStringLiteral("Browser extension bridge unregistered"),
+          QStringLiteral("Remove Chrome Control MCP manually from "
+                         "chrome://extensions if it is loaded")};
 #endif
 }
 
 ExtensionInstallState BrowserExtensionInstaller::state() const {
-#ifdef Q_OS_WIN
   const bool extension = extensionPresent();
   const int host = nativeHostPresence(config_);
   if (host < 0) {
@@ -322,9 +403,6 @@ ExtensionInstallState BrowserExtensionInstaller::state() const {
     return ExtensionInstallState::NotPrepared;
   }
   return ExtensionInstallState::Partial;
-#else
-  return ExtensionInstallState::Error;
-#endif
 }
 
 QString BrowserExtensionInstaller::stateString() const {

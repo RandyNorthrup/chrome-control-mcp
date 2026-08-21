@@ -103,7 +103,7 @@ void BrowserMcpServerTests::fullCatalogContainsEveryBrowserAndInstallerTool() {
 
 void BrowserMcpServerTests::readOnlyCatalogFiltersMutatingTools() {
   BrowserControl browser;
-  Win32McpServerPolicy policy;
+  McpServerPolicy policy;
   policy.read_only_profile = true;
   const auto response =
       handleRequest(request(QStringLiteral("tools/list"), 2), &browser, policy);

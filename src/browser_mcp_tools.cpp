@@ -17,14 +17,18 @@ constexpr char kServerVersion[] = "1.0.0";
 ToolResult jsonResult(const QJsonObject &object) {
   return {.text = QString::fromUtf8(
               QJsonDocument(object).toJson(QJsonDocument::Compact)),
-          .is_error = false};
+          .is_error = false,
+          .image_base64 = {},
+          .image_mime = {}};
 }
 
 ToolResult errorResult(const QString &message) {
   return {.text = QString::fromUtf8(
               QJsonDocument(QJsonObject{{QStringLiteral("error"), message}})
                   .toJson(QJsonDocument::Compact)),
-          .is_error = true};
+          .is_error = true,
+          .image_base64 = {},
+          .image_mime = {}};
 }
 
 QString installerError(const ExtensionInstallResult &result) {
@@ -47,7 +51,7 @@ ToolResult installExtension() {
 }
 
 ToolResult uninstallExtension() {
-  BrowserExtensionInstaller installer;
+  const BrowserExtensionInstaller installer;
   const ExtensionInstallResult result = installer.uninstall();
   if (!result.ok) {
     return errorResult(installerError(result));
@@ -106,7 +110,8 @@ QJsonArray toolCatalog() {
   };
 }
 
-ToolResult invokeTool(const QString &name, const QJsonObject &) {
+ToolResult invokeTool(const QString &name, const QJsonObject &arguments) {
+  (void)arguments;
   if (name == QLatin1String("browser_extension_install")) {
     return installExtension();
   }

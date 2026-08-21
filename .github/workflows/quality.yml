@@ -42,23 +42,72 @@ jobs:
       - name: Run quality gates
         run: pre-commit run --all-files --show-diff-on-failure
 
-  windows-build:
-    name: Windows build and tests
-    runs-on: windows-latest
+  native-build:
+    name: ${{ matrix.name }} build and tests
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Windows
+            os: windows-latest
+            qt-arch: win64_msvc2022_64
+            cmake-args: -A x64
+          - name: Linux
+            os: ubuntu-latest
+            qt-arch: linux_gcc_64
+            cmake-args: -G Ninja -DCMAKE_BUILD_TYPE=Release
+          - name: macOS
+            os: macos-latest
+            qt-arch: clang_64
+            cmake-args: -G Ninja -DCMAKE_BUILD_TYPE=Release
     steps:
       - uses: actions/checkout@v4
 
       - uses: jurplel/install-qt-action@v4
         with:
           version: "6.10.0"
-          arch: win64_msvc2022_64
+          arch: ${{ matrix.qt-arch }}
           cache: true
 
       - name: Configure
-        run: cmake -S . -B build -A x64 -DBUILD_TESTING=ON
+        run: cmake -S . -B build ${{ matrix.cmake-args }} -DBUILD_TESTING=ON
 
       - name: Build
         run: cmake --build build --config Release --parallel
 
       - name: Test
         run: ctest --test-dir build -C Release --output-on-failure
+
+  sanitizers:
+    name: ${{ matrix.name }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: ASan + UBSan
+            cmake-option: -DENABLE_ASAN_UBSAN=ON
+          - name: TSan
+            cmake-option: -DENABLE_TSAN=ON
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: jurplel/install-qt-action@v4
+        with:
+          version: "6.10.0"
+          arch: linux_gcc_64
+          cache: true
+
+      - name: Configure
+        run: >-
+          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug
+          -DBUILD_TESTING=ON ${{ matrix.cmake-option }}
+
+      - name: Build
+        run: cmake --build build --parallel
+
+      - name: Test
+        env:
+          TSAN_OPTIONS: suppressions=${{ github.workspace }}/tests/tsan.supp
+        run: ctest --test-dir build --output-on-failure

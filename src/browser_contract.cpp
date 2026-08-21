@@ -196,7 +196,8 @@ QString buildNodeLine(const QJsonObject &node, const QString &name,
   if (role.isEmpty()) {
     role = QStringLiteral("generic");
   }
-  QString line = QString(depth * kSpacesPerIndentLevel, QLatin1Char(' ')) +
+  QString line = QString(static_cast<qsizetype>(depth) * kSpacesPerIndentLevel,
+                         QLatin1Char(' ')) +
                  QStringLiteral("- ") + role;
   if (!name.isEmpty()) {
     line += QStringLiteral(" \"") + name + QLatin1Char('"');
@@ -629,11 +630,11 @@ QString copyArg(const QJsonObject &args, const ArgSpec &spec,
                            : QString();
   }
   const QJsonValue value = args.value(spec.m_key);
-  const QString mismatch = argTypeMismatch(spec.m_key, spec.m_type, value);
+  QString mismatch = argTypeMismatch(spec.m_key, spec.m_type, value);
   if (!mismatch.isEmpty()) {
     return mismatch;
   }
-  const QString semantic = argSemanticError(spec.m_key, value);
+  QString semantic = argSemanticError(spec.m_key, value);
   if (!semantic.isEmpty()) {
     return semantic;
   }
@@ -1613,7 +1614,7 @@ void appendOmittedFramesNote(const QJsonObject &capture, QString &outline) {
                        "browser_navigate to a frame URL to read it):\n");
     bool cut = capture.value(QStringLiteral("omittedFramesTruncated")).toBool();
     int listed = 0;
-    for (const QJsonValue &value : frames) {
+    for (const QJsonValue value : frames) {
       if (listed >= kMaxOmittedFramesListed) {
         cut = true;
         break;
@@ -1657,7 +1658,7 @@ SnapshotView renderSnapshot(const QJsonObject &capture) {
   bool truncated = capture.value(QStringLiteral("truncated")).toBool();
   const QJsonArray nodes = capture.value(QStringLiteral("nodes")).toArray();
   int scanned = 0;
-  for (const QJsonValue &value : nodes) {
+  for (const QJsonValue value : nodes) {
     if (scanned >= kMaxScanNodes) {
       // A capture padded past the scan bound: stop and tell the model the
       // outline is partial rather than iterate an attacker-chosen node count.

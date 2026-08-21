@@ -7,10 +7,13 @@
 #include <QTemporaryDir>
 #include <QtTest/QtTest>
 
+#ifdef Q_OS_WIN
 #include <sddl.h>
+#else
+#include <unistd.h>
+#endif
 
 using chrome_control_mcp::browserBridgePipeName;
-using chrome_control_mcp::buildBridgePipeSecurity;
 using chrome_control_mcp::currentUserSidString;
 using chrome_control_mcp::generateBridgeToken;
 using chrome_control_mcp::readRendezvousRecord;
@@ -19,6 +22,7 @@ using chrome_control_mcp::writeRendezvousRecord;
 
 namespace {
 
+#ifdef Q_OS_WIN
 // Round-trip the built descriptor back to SDDL so the test can assert on the
 // DACL/SACL.
 QString descriptorToSddl(PSECURITY_DESCRIPTOR descriptor) {
@@ -33,6 +37,7 @@ QString descriptorToSddl(PSECURITY_DESCRIPTOR descriptor) {
   LocalFree(sddl);
   return result;
 }
+#endif
 
 } // namespace
 
@@ -55,7 +60,11 @@ void BrowserBridgeSecurityTests::currentUserSid_isAWellFormedUserSid() {
   QString error;
   const QString sid = currentUserSidString(&error);
   QVERIFY2(!sid.isEmpty(), qPrintable(error));
+#ifdef Q_OS_WIN
   QVERIFY(sid.startsWith(QStringLiteral("S-1-")));
+#else
+  QCOMPARE(sid, QString::number(geteuid()));
+#endif
 }
 
 void BrowserBridgeSecurityTests::pipeName_isScopedNoncedAndUnique() {
@@ -64,8 +73,13 @@ void BrowserBridgeSecurityTests::pipeName_isScopedNoncedAndUnique() {
   const QString a = browserBridgePipeName(&error);
   const QString b = browserBridgePipeName(&error);
   QVERIFY2(!a.isEmpty(), qPrintable(error));
+#ifdef Q_OS_WIN
   QVERIFY(a.startsWith(
       QStringLiteral("\\\\.\\pipe\\ChromeControlMCP_BrowserBridge_")));
+#else
+  QVERIFY(QFileInfo(a).fileName().startsWith(QStringLiteral("bridge-")));
+  QVERIFY(a.endsWith(QStringLiteral(".sock")));
+#endif
   QVERIFY(a.contains(sid)); // scoped to this user
   QVERIFY(a != b);          // nonce makes each name unique
 }
@@ -100,14 +114,15 @@ void BrowserBridgeSecurityTests::rendezvous_roundTripsAllFields() {
 }
 
 void BrowserBridgeSecurityTests::rendezvous_readMissingFileFails() {
+  QTemporaryDir dir;
+  const QString missing = dir.filePath(QStringLiteral("does_not_exist.json"));
   RendezvousRecord out;
   QString error;
-  QVERIFY(!readRendezvousRecord(QStringLiteral("Z:/nope/does_not_exist.json"),
-                                &out, &error));
+  QVERIFY(!readRendezvousRecord(missing, &out, &error));
   // Pin the file-open guard specifically (the errorString() tail is
   // OS/locale-variant).
-  QVERIFY(error.startsWith(
-      QStringLiteral("Cannot open Z:/nope/does_not_exist.json: ")));
+  QVERIFY(error.startsWith(QStringLiteral("Cannot open ")));
+  QVERIFY(error.contains(QStringLiteral("does_not_exist.json")));
 }
 
 void BrowserBridgeSecurityTests::rendezvous_invalidAppPidFailsClosed() {
@@ -181,6 +196,8 @@ void BrowserBridgeSecurityTests::rendezvous_malformedJsonFailsClosed() {
 
 void BrowserBridgeSecurityTests::
     security_daclIsCurrentUserOnlyWithMediumLabel() {
+#ifdef Q_OS_WIN
+  using chrome_control_mcp::buildBridgePipeSecurity;
   SECURITY_ATTRIBUTES attributes{};
   PSECURITY_DESCRIPTOR descriptor = nullptr;
   QString error;
@@ -220,6 +237,21 @@ void BrowserBridgeSecurityTests::
                           .arg(GetLastError())));
   CloseHandle(pipe);
   LocalFree(descriptor);
+#else
+  QString error;
+  const QString endpoint = browserBridgePipeName(&error);
+  QVERIFY2(!endpoint.isEmpty(), qPrintable(error));
+  const QFileInfo directory(QFileInfo(endpoint).absolutePath());
+  QCOMPARE(directory.ownerId(), static_cast<uint>(geteuid()));
+  const QFileDevice::Permissions permissions = directory.permissions();
+  QVERIFY((permissions & QFileDevice::ReadOwner) != 0);
+  QVERIFY((permissions & QFileDevice::WriteOwner) != 0);
+  QVERIFY((permissions & QFileDevice::ExeOwner) != 0);
+  QVERIFY((permissions & (QFileDevice::ReadGroup | QFileDevice::WriteGroup |
+                          QFileDevice::ExeGroup | QFileDevice::ReadOther |
+                          QFileDevice::WriteOther | QFileDevice::ExeOther)) ==
+          0);
+#endif
 }
 
 QTEST_MAIN(BrowserBridgeSecurityTests)

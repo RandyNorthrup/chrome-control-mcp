@@ -54,13 +54,18 @@ ToolResult BrowserControl::invoke(const QString &name,
     return {
         .text = QStringLiteral(
             "Browser control is unavailable: the bridge pipe failed to start."),
-        .is_error = true};
+        .is_error = true,
+        .image_base64 = {},
+        .image_mime = {}};
   }
   syncSessionToConnection();
   const browser::BrowserBridgeSession::Outgoing outgoing =
       session_.beginCommand(name, arguments);
   if (!outgoing.ok) {
-    return {.text = outgoing.error, .is_error = true};
+    return {.text = outgoing.error,
+            .is_error = true,
+            .image_base64 = {},
+            .image_mime = {}};
   }
   const BrowserBridgePipeServer::Exchange exchange =
       pipe_.sendCommandAwaitReply(outgoing.frame);
@@ -69,17 +74,25 @@ ToolResult BrowserControl::invoke(const QString &name,
     // outstanding op so a late-arriving reply for it can never be mis-paired to
     // the next call.
     session_.retireOutstanding();
-    return {.text = exchange.error, .is_error = true};
+    return {.text = exchange.error,
+            .is_error = true,
+            .image_base64 = {},
+            .image_mime = {}};
   }
   const browser::BrowserBridgeSession::Incoming incoming =
       session_.onReply(exchange.reply);
   if (!incoming.matched) {
     return {.text = QStringLiteral(
                 "The browser reply did not correlate to the request."),
-            .is_error = true};
+            .is_error = true,
+            .image_base64 = {},
+            .image_mime = {}};
   }
   if (incoming.is_error) {
-    return {.text = incoming.error, .is_error = true};
+    return {.text = incoming.error,
+            .is_error = true,
+            .image_base64 = {},
+            .image_mime = {}};
   }
   return {.text = incoming.text,
           .is_error = false,

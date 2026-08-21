@@ -224,11 +224,12 @@ QString clientImagePath(DWORD pid) {
 // cyclic or malformed parent map (Toolhelp parent pids can be stale/reused).
 // Separated from the live snapshot below so the authorization decision is
 // unit-testable with a hand-built process tree.
-bool ancestorChainContainsImage(DWORD pid, const QHash<DWORD, DWORD> &parent,
-                                const QHash<DWORD, QString> &image,
+bool ancestorChainContainsImage(quint64 pid,
+                                const QHash<quint64, quint64> &parent,
+                                const QHash<quint64, QString> &image,
                                 const QString &target_basename_lower,
                                 int max_depth) {
-  DWORD current = pid;
+  quint64 current = pid;
   for (int depth = 0; depth < max_depth && current != 0; ++depth) {
     const auto it = parent.constFind(current);
     if (it == parent.constEnd()) {
@@ -251,8 +252,8 @@ bool hasAncestorImage(DWORD pid, const QString &target_basename_lower,
   if (snapshot == INVALID_HANDLE_VALUE) {
     return false;
   }
-  QHash<DWORD, DWORD> parent;
-  QHash<DWORD, QString> image;
+  QHash<quint64, quint64> parent;
+  QHash<quint64, QString> image;
   PROCESSENTRY32W entry{};
   entry.dwSize = sizeof(entry);
   if (Process32FirstW(snapshot, &entry) != FALSE) {
@@ -271,12 +272,15 @@ bool hasAncestorImage(DWORD pid, const QString &target_basename_lower,
 } // namespace
 
 bool BrowserBridgePipeServer::ancestorChainContainsImageForTesting(
-    DWORD pid, const QHash<DWORD, DWORD> &parent,
-    const QHash<DWORD, QString> &image, const QString &target_basename_lower,
+    quint64 pid, const QHash<quint64, quint64> &parent,
+    const QHash<quint64, QString> &image, const QString &target_basename_lower,
     int max_depth) {
   return ancestorChainContainsImage(pid, parent, image, target_basename_lower,
                                     max_depth);
 }
+
+BrowserBridgePipeServer::BrowserBridgePipeServer()
+    : BrowserBridgePipeServer(Options{}) {}
 
 BrowserBridgePipeServer::BrowserBridgePipeServer(Options options)
     : options_(std::move(options)) {
@@ -345,7 +349,7 @@ bool BrowserBridgePipeServer::start(QString *error) {
   // before it is reassigned below.
   if (running_) {
     if (error != nullptr) {
-      *error = QStringLiteral("Bridge pipe server is already running");
+      *error = QStringLiteral("Bridge IPC server is already running");
     }
     return false;
   }

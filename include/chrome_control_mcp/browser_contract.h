@@ -23,7 +23,7 @@
 /// Everything here is deliberately transport-free and free of any Windows / CDP
 /// / Chrome dependency so the contract can be locked and unit-tested with JSON
 /// fixtures before the extension and native-messaging bridge exist. The
-/// extension side and the live win32 MCP wiring build against this contract.
+/// extension side and the live MCP wiring build against this contract.
 namespace chrome_control_mcp::browser {
 
 /// The rendered view of one DOM capture, ready for the model.

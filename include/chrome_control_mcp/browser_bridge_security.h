@@ -5,6 +5,7 @@
 
 #include <QString>
 
+#ifdef Q_OS_WIN
 #ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
 #endif
@@ -12,6 +13,7 @@
 #define NOMINMAX
 #endif
 #include <windows.h>
+#endif
 
 /// @file browser_bridge_security.h
 /// @brief Security + discovery primitives for the browser-control bridge pipe.
@@ -44,16 +46,13 @@ struct RendezvousRecord {
   qint64 app_pid{0};
 };
 
-/// The current process user's SID as a string (e.g. "S-1-5-21-..."). Empty on
-/// failure with @p error set.
+/// Current process user identity. Windows returns its SID; POSIX returns its
+/// numeric effective uid. Empty on failure with @p error set.
 [[nodiscard]] QString currentUserSidString(QString *error = nullptr);
 
-/// A fresh, unguessable bridge pipe name scoped to the current user AND
-/// session:
-/// \\.\pipe\ChromeControlMCP_BrowserBridge_<userSID>_<sessionId>_<nonce>. The
-/// session id prevents two sessions of the same user (dual RDP /
-/// fast-user-switch) from colliding; the nonce is anti-squat defense in depth
-/// (the DACL is the real control). Empty on failure with @p error set.
+/// A fresh, unguessable local IPC endpoint. Windows uses a session-scoped named
+/// pipe; Linux and macOS use a Unix-domain socket inside a private runtime
+/// directory. Empty on failure with @p error set.
 [[nodiscard]] QString browserBridgePipeName(QString *error = nullptr);
 
 /// A cryptographically-random 128-bit hex token for the rendezvous handshake.
@@ -74,7 +73,8 @@ struct RendezvousRecord {
                                         RendezvousRecord *out,
                                         QString *error = nullptr);
 
-/// Build a hardened SECURITY_ATTRIBUTES for the bridge pipe. The DACL is
+#ifdef Q_OS_WIN
+/// Build hardened SECURITY_ATTRIBUTES for the Windows bridge pipe. The DACL is
 /// PROTECTED (no inherited ACEs) and grants GENERIC_ALL to the current user SID
 /// and local SYSTEM only -- no BUILTIN\Users, no Everyone, no NETWORK -- plus a
 /// Medium mandatory-integrity label with NO_READ_UP | NO_WRITE_UP, so a
@@ -84,5 +84,6 @@ struct RendezvousRecord {
 [[nodiscard]] bool buildBridgePipeSecurity(SECURITY_ATTRIBUTES *attributes,
                                            PSECURITY_DESCRIPTOR *descriptor,
                                            QString *error = nullptr);
+#endif
 
 } // namespace chrome_control_mcp

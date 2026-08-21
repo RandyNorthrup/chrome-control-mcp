@@ -8,7 +8,16 @@ param(
 $ErrorActionPreference = 'Stop'
 $repoRoot = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..')).Path
 if (-not $Executable) {
-    $Executable = Join-Path $repoRoot 'build\Release\chrome_control_mcp.exe'
+    $isWindowsPlatform = [Runtime.InteropServices.RuntimeInformation]::IsOSPlatform(
+        [Runtime.InteropServices.OSPlatform]::Windows
+    )
+    $relativeExecutable = if ($isWindowsPlatform) {
+        'build\Release\chrome_control_mcp.exe'
+    }
+    else {
+        'build/chrome_control_mcp'
+    }
+    $Executable = Join-Path $repoRoot $relativeExecutable
 }
 $Executable = (Resolve-Path -LiteralPath $Executable).Path
 

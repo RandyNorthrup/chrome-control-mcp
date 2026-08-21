@@ -7,14 +7,11 @@
 #include <QJsonObject>
 #include <QString>
 
-/// @file win32_mcp_tools.h
-/// @brief Native, in-tree implementation of the win32 MCP tool surface.
+/// @file mcp_tools.h
+/// @brief Native, in-tree implementation of the desktop MCP tool surface.
 ///
-/// This replaces the external, frozen win32-inspector server (a ~40 MB
-/// PyInstaller bundle of Python + Tesseract). By owning the tools natively in
-/// C++ we ship no additional third-party runtime: every tool here is backed
-/// only by Windows system APIs (Win32/GDI/UI Automation) and Qt, which Chrome
-/// Control MCP already bundles.
+/// Platform-specific desktop tools are backed by native operating-system APIs;
+/// browser tools remain portable through Chrome's DevTools Protocol.
 namespace chrome_control_mcp {
 
 /// One tool invocation result. `text` is the (usually JSON) payload surfaced to

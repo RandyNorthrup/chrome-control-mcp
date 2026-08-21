@@ -6,8 +6,8 @@
 #include <QJsonObject>
 #include <QString>
 
-/// @file win32_mcp_native_host.h
-/// @brief Native-messaging host mode for the win32 MCP executable.
+/// @file native_host.h
+/// @brief Native-messaging host protocol helpers for the MCP executable.
 ///
 /// When the same executable is launched by Chrome as a native messaging host
 /// (the Chrome-passed `chrome-extension://<id>/` origin argument selects this
@@ -27,13 +27,5 @@ namespace chrome_control_mcp {
 [[nodiscard]] QJsonObject handleNativeMessage(const QJsonObject &request,
                                               const QString &server_name,
                                               const QString &server_version);
-
-/// Run the blocking native-messaging host loop over stdio until the peer closes
-/// the pipe. Returns 0 on a clean end-of-stream, non-zero if the framing
-/// desyncs (an out-of-range length or a truncated body), which Chrome recovers
-/// from by relaunching the host on the next connection. Assumes stdin/stdout
-/// are already in binary mode.
-[[nodiscard]] int runNativeHostLoop(const QString &server_name,
-                                    const QString &server_version);
 
 } // namespace chrome_control_mcp

@@ -9,15 +9,11 @@
 #include <QJsonParseError>
 #include <QString>
 
-/// @file ai_mcp_jsonrpc.h
-/// @brief Single source of truth for the Model Context Protocol JSON-RPC 2.0
-/// framing used by both the one-shot stdio client and the persistent stdio
-/// session. Keeping the protocol version, client identity, and message shapes
-/// in one place stops the two transports from drifting apart.
+/// @file mcp_jsonrpc.h
+/// @brief Model Context Protocol JSON-RPC 2.0 framing and validation.
 namespace chrome_control_mcp::mcp {
 
-/// MCP protocol revision this client speaks. Bump in lock-step with server
-/// support; both transports must advertise the same value.
+/// MCP protocol revision this server speaks.
 inline constexpr char kProtocolVersion[] = "2024-11-05";
 
 /// Hard ceiling on a single newline-delimited JSON-RPC message. The stdio
@@ -26,51 +22,6 @@ inline constexpr char kProtocolVersion[] = "2024-11-05";
 /// allocates a DOM for it, so a hostile/oversized message cannot exhaust memory
 /// here.
 inline constexpr int kMaxJsonRpcMessageBytes = 16 * 1024 * 1024;
-
-[[nodiscard]] inline QJsonObject initializePayload(int id) {
-  return QJsonObject{
-      {QStringLiteral("jsonrpc"), QStringLiteral("2.0")},
-      {QStringLiteral("id"), id},
-      {QStringLiteral("method"), QStringLiteral("initialize")},
-      {QStringLiteral("params"),
-       QJsonObject{
-           {QStringLiteral("protocolVersion"),
-            QString::fromLatin1(kProtocolVersion)},
-           {QStringLiteral("capabilities"), QJsonObject{}},
-           {QStringLiteral("clientInfo"),
-            QJsonObject{
-                {QStringLiteral("name"), QStringLiteral("chrome-control-mcp")},
-                {QStringLiteral("version"), QStringLiteral("1")}}},
-       }},
-  };
-}
-
-[[nodiscard]] inline QJsonObject initializedNotification() {
-  return QJsonObject{
-      {QStringLiteral("jsonrpc"), QStringLiteral("2.0")},
-      {QStringLiteral("method"), QStringLiteral("notifications/initialized")},
-      {QStringLiteral("params"), QJsonObject{}}};
-}
-
-[[nodiscard]] inline QJsonObject toolsListPayload(int id) {
-  return QJsonObject{{QStringLiteral("jsonrpc"), QStringLiteral("2.0")},
-                     {QStringLiteral("id"), id},
-                     {QStringLiteral("method"), QStringLiteral("tools/list")},
-                     {QStringLiteral("params"), QJsonObject{}}};
-}
-
-[[nodiscard]] inline QJsonObject toolCallPayload(int id,
-                                                 const QString &tool_name,
-                                                 const QJsonObject &arguments) {
-  return QJsonObject{
-      {QStringLiteral("jsonrpc"), QStringLiteral("2.0")},
-      {QStringLiteral("id"), id},
-      {QStringLiteral("method"), QStringLiteral("tools/call")},
-      {QStringLiteral("params"),
-       QJsonObject{{QStringLiteral("name"), tool_name},
-                   {QStringLiteral("arguments"), arguments}}},
-  };
-}
 
 /// Serialize one JSON-RPC object as a single newline-delimited line (the stdio
 /// transport frames one message per line).

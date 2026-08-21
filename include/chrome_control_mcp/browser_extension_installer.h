@@ -29,8 +29,10 @@ struct ExtensionInstallConfig {
   QString data_dir;       // generated host manifest; default
                           // %LOCALAPPDATA%\ChromeControlMCP
   QString host_exe_path;  // native host executable; default current executable
-  QString native_host_key_path; // HKCU subkey; default Chrome
-                                // NativeMessagingHosts\<host>
+  QString native_host_key_path;     // HKCU subkey; default Chrome
+                                    // NativeMessagingHosts\<host>
+  QString native_host_manifest_dir; // Linux/macOS Chrome NativeMessagingHosts
+                                    // directory; ignored on Windows.
 };
 
 struct ExtensionInstallResult {

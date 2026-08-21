@@ -15,7 +15,16 @@ Set-StrictMode -Version Latest
 
 $repoRoot = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..')).Path
 if (-not $Executable) {
-    $Executable = Join-Path $repoRoot 'dist\chrome_control_mcp.exe'
+    $isWindowsPlatform = [Runtime.InteropServices.RuntimeInformation]::IsOSPlatform(
+        [Runtime.InteropServices.OSPlatform]::Windows
+    )
+    $relativeExecutable = if ($isWindowsPlatform) {
+        'dist\chrome_control_mcp.exe'
+    }
+    else {
+        'dist/chrome_control_mcp'
+    }
+    $Executable = Join-Path $repoRoot $relativeExecutable
 }
 $Executable = (Resolve-Path -LiteralPath $Executable).Path
 

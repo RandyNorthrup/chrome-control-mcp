@@ -3,18 +3,12 @@
 
 #pragma once
 
+#include "chrome_control_mcp/native_ipc.h"
+
 #include <QJsonObject>
 #include <QString>
 
 #include <functional>
-
-#ifndef WIN32_LEAN_AND_MEAN
-#define WIN32_LEAN_AND_MEAN
-#endif
-#ifndef NOMINMAX
-#define NOMINMAX
-#endif
-#include <windows.h>
 
 /// @file browser_bridge_relay.h
 /// @brief The browser-control bridge RELAY, hosted in the Chrome-spawned native
@@ -57,18 +51,18 @@ using BrowserWriteFn = std::function<bool(const QJsonObject &)>;
 /// rewritten record cannot redirect the relay), then open the pipe as an
 /// IDENTIFICATION-level client. On success returns a valid handle and fills @p
 /// token_out / @p protocol_out for the handshake; on failure returns
-/// INVALID_HANDLE_VALUE with @p error set. The caller owns the returned handle
-/// and must CloseHandle it.
-[[nodiscard]] HANDLE relayConnect(const QString &rendezvous_path,
-                                  QString *token_out, int *protocol_out,
-                                  QString *error);
+/// kInvalidNativeIpcHandle with @p error set. The caller owns the returned
+/// handle and must close it with closeNativeIpcHandle().
+[[nodiscard]] NativeIpcHandle relayConnect(const QString &rendezvous_path,
+                                           QString *token_out,
+                                           int *protocol_out, QString *error);
 
 /// Perform the client side of the hello/welcome handshake on an
 /// already-connected pipe @p pipe: send `{type:hello, token, protocol}` and
 /// require a `welcome` reply carrying the matching protocol. Returns false
 /// (with @p error set) if the server rejects the token/protocol or drops the
 /// connection.
-[[nodiscard]] bool relayHandshake(HANDLE pipe, const QString &token,
+[[nodiscard]] bool relayHandshake(NativeIpcHandle pipe, const QString &token,
                                   int protocol, QString *error);
 
 /// Pump exactly one command/reply exchange: block for a command frame from @p
@@ -77,15 +71,17 @@ using BrowserWriteFn = std::function<bool(const QJsonObject &)>;
 /// back to @p pipe. Returns false when either side closes (the caller stops the
 /// relay), true to continue. Id-transparent: frames are moved verbatim, never
 /// parsed or correlated.
-[[nodiscard]] bool relayPumpOnce(HANDLE pipe, const BrowserReadFn &browser_read,
+[[nodiscard]] bool relayPumpOnce(NativeIpcHandle pipe,
+                                 const BrowserReadFn &browser_read,
                                  const BrowserWriteFn &browser_write);
 
 /// Blocking whole-frame read/write helpers for a synchronous (non-overlapped)
 /// client pipe handle. Exposed for the relay pump and its tests; each
 /// reads/writes the 4-byte little-endian length prefix plus body, guarding an
 /// out-of-range prefix.
-[[nodiscard]] bool relayReadPipeFrame(HANDLE pipe, QJsonObject *out);
-[[nodiscard]] bool relayWritePipeFrame(HANDLE pipe, const QJsonObject &message);
+[[nodiscard]] bool relayReadPipeFrame(NativeIpcHandle pipe, QJsonObject *out);
+[[nodiscard]] bool relayWritePipeFrame(NativeIpcHandle pipe,
+                                       const QJsonObject &message);
 
 /// Run the full relay against Chrome's stdio: discover + connect + verify +
 /// handshake, announce readiness to the extension with a single `bridge_ready`
