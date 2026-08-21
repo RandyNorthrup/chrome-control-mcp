@@ -1,0 +1,25 @@
+{
+  "name": "chrome-control-mcp-quality",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Deterministic JavaScript quality tooling for Chrome Control MCP",
+  "license": "MIT",
+  "type": "module",
+  "engines": {
+    "node": ">=20.19"
+  },
+  "scripts": {
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "lint": "eslint --max-warnings=0 .",
+    "lint:powershell": "pwsh -NoProfile -File scripts/run_psscriptanalyzer.ps1",
+    "test:js": "node --test tests/test_browser_extension_pure.mjs",
+    "quality": "npm run format:check && npm run lint && npm run lint:powershell && npm run test:js"
+  },
+  "devDependencies": {
+    "@eslint/js": "10.0.1",
+    "eslint": "10.8.1",
+    "globals": "17.11.0",
+    "prettier": "3.9.6"
+  }
+}

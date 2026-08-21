@@ -1,0 +1,8 @@
+build*/
+dist/
+node_modules/
+coverage/
+docs/assets/
+package-lock.json
+.clang-format
+.clang-tidy

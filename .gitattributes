@@ -1,9 +1,17 @@
 * text=auto
+.* text eol=lf
 *.cpp text eol=lf
 *.h text eol=lf
-*.md text eol=lf
+*.js text eol=lf
 *.mjs text eol=lf
 *.json text eol=lf
+*.md text eol=lf
+*.toml text eol=lf
+*.yaml text eol=lf
+*.yml text eol=lf
 *.ps1 text eol=crlf
+*.psd1 text eol=crlf
+*.bat text eol=crlf
+*.cmd text eol=crlf
 *.crx binary
-
+*.png binary

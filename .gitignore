@@ -1,5 +1,16 @@
 /build*/
 /dist/
+/node_modules/
+/coverage/
+/.cache/
+/.eslintcache
+/.pytest_cache/
+/.mypy_cache/
+/.ruff_cache/
+/.tox/
+/htmlcov/
+/__pycache__/
+/compile_commands.json
 /.vs/
 /.vscode/
 *.user
@@ -7,4 +18,3 @@
 *.VC.db
 *.VC.VC.opendb
 Testing/
-

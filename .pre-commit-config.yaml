@@ -1,0 +1,55 @@
+fail_fast: false
+default_install_hook_types: [pre-commit]
+
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-merge-conflict
+      - id: check-case-conflict
+      - id: check-symlinks
+      - id: destroyed-symlinks
+      - id: mixed-line-ending
+        args: [--fix=auto]
+      - id: check-added-large-files
+        args: [--maxkb=2048]
+        exclude: ^docs/assets/
+      - id: check-json
+      - id: check-yaml
+      - id: check-toml
+      - id: detect-private-key
+
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.30.1
+    hooks:
+      - id: gitleaks
+
+  - repo: https://github.com/pre-commit/mirrors-clang-format
+    rev: v19.1.7
+    hooks:
+      - id: clang-format
+        args: [--dry-run, --Werror]
+        types_or: [c, c++]
+
+  - repo: local
+    hooks:
+      - id: prettier
+        name: Prettier
+        entry: npm exec -- prettier --check
+        language: system
+        types_or: [javascript, json, markdown, yaml]
+
+      - id: eslint
+        name: ESLint
+        entry: npm exec -- eslint --max-warnings=0
+        language: system
+        types_or: [javascript]
+
+      - id: psscriptanalyzer
+        name: PSScriptAnalyzer
+        entry: pwsh -NoProfile -File scripts/run_psscriptanalyzer.ps1
+        language: system
+        files: \.(ps1|psm1|psd1)$
+        pass_filenames: false
