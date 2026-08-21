@@ -12,12 +12,14 @@ if ($LASTEXITCODE -ne 0) {
     throw "Could not enumerate tracked PowerShell files (git exit $LASTEXITCODE)."
 }
 
-$findings = @(
-    foreach ($relativeFile in $relativeFiles) {
-        $path = Join-Path $repoRoot $relativeFile
-        Invoke-ScriptAnalyzer -Path $path -Settings $settingsPath
-    }
-)
+$findings = @()
+foreach ($relativeFile in $relativeFiles) {
+    $path = Join-Path $repoRoot $relativeFile
+    # Materialize each result before appending it. PSScriptAnalyzer 1.25 can throw an internal
+    # null-reference when multiple calls stream directly from a parent array expression.
+    $fileFindings = @(Invoke-ScriptAnalyzer -Path $path -Settings $settingsPath)
+    $findings += $fileFindings
+}
 
 if ($findings.Count -gt 0) {
     $findings |

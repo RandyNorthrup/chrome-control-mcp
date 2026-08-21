@@ -114,10 +114,10 @@ if ($id -cnotmatch "^[a-p]{32}$") {
 # Write the manifest with the concrete path + allowed origin. Native messaging
 # manifests require forward or escaped-backslash paths; ConvertTo-Json escapes them.
 $manifest = [ordered]@{
-    name            = $HostName
-    description     = "Chrome Control MCP browser-control native messaging host"
-    path            = $ExePath
-    type            = "stdio"
+    name = $HostName
+    description = "Chrome Control MCP browser-control native messaging host"
+    path = $ExePath
+    type = "stdio"
     allowed_origins = @("chrome-extension://$id/")
 }
 # Stage to a sibling and rename over the target only after the staged bytes parse:

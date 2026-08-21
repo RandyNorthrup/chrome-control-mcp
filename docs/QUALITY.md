@@ -39,6 +39,12 @@ an unavailable gate was silently skipped.
 - Applied ESLint's machine-safe fixes and then normalized the affected JavaScript with Prettier.
 - Reduced ESLint errors from 103 to 29 without removing calls or changing control-flow outcomes.
 - Rebuilt the Release configuration and passed all 9 automated suites.
+- Resolved the remaining manual findings: ESLint now reports 0 errors and PSScriptAnalyzer reports
+  0 findings across all tracked scripts.
+- Preserved caught errors as JavaScript `Error.cause`, made E2E cleanup failures observable, and
+  removed one helper proven unused by a repository-wide reference search.
+- Disabled PowerShell assignment-column alignment because it conflicts with strict single-space
+  operator formatting; the stricter operator rule remains enabled.
 
 ## Local commands
 

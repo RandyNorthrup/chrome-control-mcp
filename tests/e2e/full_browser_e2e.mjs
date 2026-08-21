@@ -369,9 +369,9 @@ async function main() {
     const checkboxRef = refFor(page, "Fixture checkbox");
     const rangeRef = refFor(page, "Fixture range");
     const normalButtonRef = refFor(page, "Fixture click button");
-    const jsButtonRef = refFor(page, "Fixture JS button");
-    const coordinateButtonRef = refFor(page, "Fixture coordinate button");
-    const promptButtonRef = refFor(page, "Open fixture prompt");
+    refFor(page, "Fixture JS button");
+    refFor(page, "Fixture coordinate button");
+    refFor(page, "Open fixture prompt");
     const hoverRef = refFor(page, "Fixture hover target");
     const dragSourceRef = refFor(page, "Fixture drag source");
     const dragTargetRef = refFor(page, "Fixture drag target");
@@ -1071,7 +1071,9 @@ async function main() {
               name: "browser_window",
               arguments: { action: "close", window_id: createdWindowId },
             });
-          } catch {}
+          } catch (cleanupError) {
+            failure ||= cleanupError;
+          }
         }
         if (cookieName) {
           try {
@@ -1083,11 +1085,15 @@ async function main() {
                 name: cookieName,
               },
             });
-          } catch {}
+          } catch (cleanupError) {
+            failure ||= cleanupError;
+          }
         }
         try {
           await closeFixtureTabs();
-        } catch {}
+        } catch (cleanupError) {
+          failure ||= cleanupError;
+        }
         try {
           const listing = jsonContent(
             await client.request("tools/call", {
@@ -1104,13 +1110,17 @@ async function main() {
               arguments: { index: original.index },
             });
           }
-        } catch {}
+        } catch (cleanupError) {
+          failure ||= cleanupError;
+        }
         try {
           await client.request("tools/call", {
             name: "browser_extension_install",
             arguments: {},
           });
-        } catch {}
+        } catch (cleanupError) {
+          failure ||= cleanupError;
+        }
       }
     } finally {
       await client.close();

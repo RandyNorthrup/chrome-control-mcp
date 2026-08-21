@@ -78,10 +78,10 @@ if ($status.extension_id -ne 'iojehhmnaigcejfcpmilpclmeljhlkaa') {
 if (-not $status.extension_present) { throw 'Unpacked extension files are not staged beside the server.' }
 
 [pscustomobject]@{
-    server            = $initialize.result.serverInfo.name
-    protocol          = $initialize.result.protocolVersion
-    security_profile  = if ($ReadOnly) { 'read_only' } else { 'full' }
-    tool_count        = @($catalog.result.tools).Count
-    extension_state   = $status.state
+    server = $initialize.result.serverInfo.name
+    protocol = $initialize.result.protocolVersion
+    security_profile = if ($ReadOnly) { 'read_only' } else { 'full' }
+    tool_count = @($catalog.result.tools).Count
+    extension_state = $status.state
     extension_present = $status.extension_present
 }

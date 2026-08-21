@@ -37,7 +37,8 @@ export default [
     },
     rules: {
       ...strictRules,
-      "no-console": ["error", { allow: ["error", "warn"] }],
+      // Native-host connection state is useful in chrome://extensions diagnostics.
+      "no-console": ["error", { allow: ["error", "info", "warn"] }],
     },
   },
   {

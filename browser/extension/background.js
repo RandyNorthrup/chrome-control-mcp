@@ -682,14 +682,15 @@ async function ensureAttached(tabId) {
     }
     try {
       await chrome.debugger.attach({ tabId }, "1.3");
-    } catch (e) {
-      const m = String(e && e.message ? e.message : e);
+    } catch (error) {
+      const m = String(error && error.message ? error.message : error);
       if (m.includes("Another debugger")) {
         throw new Error(
           "Cannot inspect the tab: DevTools (or another debugger) is attached.",
+          { cause: error },
         );
       }
-      throw new Error("Cannot attach to the tab: " + m);
+      throw new Error("Cannot attach to the tab: " + m, { cause: error });
     }
     // Claim the tab only once initialization has fully succeeded. Committing attachedTabId first
     // makes a failed enable PERMANENT: every later command finds the tab already attached, skips
@@ -697,11 +698,12 @@ async function ensureAttached(tabId) {
     // auto-answer and its epoch invalidation quietly absent, reporting success throughout.
     try {
       await enableSessionDomains(tabId);
-    } catch (e) {
+    } catch (error) {
       await chrome.debugger.detach({ tabId }).catch(() => {});
       throw new Error(
         "Cannot prepare the tab for control: " +
-          String(e && e.message ? e.message : e),
+          String(error && error.message ? error.message : error),
+        { cause: error },
       );
     }
     attachedTabId = tabId;
@@ -1382,7 +1384,7 @@ async function captureSnapshot(tabId) {
   // not reach, so their content is absent. Detect that (more frames exist than
   // same-process documents) and flag it, so the model is told the capture is partial
   // instead of concluding those elements do not exist.
-  let iframesOmitted = false;
+  let iframesOmitted;
   let omittedFrames = [];
   let omittedFramesTruncated = false;
   try {
@@ -1395,7 +1397,7 @@ async function captureSnapshot(tabId) {
     // Flag omission from either signal: the named http(s) frames, or a frame-count excess
     // (covers non-http frames the URL list intentionally skips).
     iframesOmitted = omittedFrames.length > 0 || totalFrames > sameProcessDocs;
-  } catch (_e) {
+  } catch (_error) {
     // If the frame tree is unavailable, do not claim completeness we cannot verify.
     iframesOmitted = true;
   }
@@ -1719,9 +1721,10 @@ async function resolveActionPoint(tabId, backendNodeId) {
   let model;
   try {
     model = await sendCdp(tabId, "DOM.getBoxModel", { backendNodeId });
-  } catch (_e) {
+  } catch (error) {
     throw new Error(
       "The element is not laid out (hidden or gone); take a fresh snapshot.",
+      { cause: error },
     );
   }
   const quad = model && model.model && model.model.content;
@@ -2006,10 +2009,6 @@ async function clickAt(tabId, x, y, opts) {
       modifiers,
     });
   }
-}
-
-async function leftClickAt(tabId, x, y) {
-  await clickAt(tabId, x, y, {});
 }
 
 // Hit-test the point a ref click will land on: is the topmost element there the target (or a
@@ -2316,10 +2315,11 @@ async function handleType(tabId, args) {
   await moveAgentCursor(tabId, point.x, point.y);
   try {
     await sendCdp(tabId, "DOM.focus", { backendNodeId: args.backendNodeId });
-  } catch (_e) {
+  } catch (error) {
     throw new Error(
       "Could not focus the target element (it may not be focusable); take a " +
         "fresh snapshot and target an input.",
+      { cause: error },
     );
   }
   // Input.insertText lands wherever focus IS, and the focus/focusin handler the DOM.focus above
@@ -2361,7 +2361,8 @@ const selectOptionFn = function (mode, value, label, index, values) {
     // any call. Match against the requested list itself: only what was asked for can hit.
     const want = [];
     const hit = [];
-    for (var k = 0; k < values.length; k++) {
+    let k;
+    for (k = 0; k < values.length; k++) {
       want[k] = String(values[k]);
       hit[k] = false;
     }
@@ -2369,7 +2370,8 @@ const selectOptionFn = function (mode, value, label, index, values) {
     // <select> does not have was not honored, and half-applying the request would leave a
     // selection the caller never asked for while reporting a clean success.
     const take = [];
-    for (var j = 0; j < el.options.length; j++) {
+    let j;
+    for (j = 0; j < el.options.length; j++) {
       const o = el.options[j];
       let at = -1;
       for (let w = 0; w < want.length; w++) {
@@ -2633,7 +2635,7 @@ async function handleMedia(tabId, args) {
     throw new Error("browser_media volume must be between 0 and 1.");
   }
   const objectId = await resolveNodeObjectId(tabId, args.backendNodeId);
-  const mediaFn = async function (action, num) {
+  const mediaFn = async function (requestedAction, numericValue) {
     const el = this;
     if (!el || (el.tagName !== "VIDEO" && el.tagName !== "AUDIO")) {
       return {
@@ -2645,22 +2647,25 @@ async function handleMedia(tabId, args) {
       // play() is asynchronous and REJECTS when the browser refuses it (autoplay policy, no user
       // gesture). Sampling el.paused right after the call reads the state before the refusal has
       // landed, so a blocked play reports paused:false -- playing -- for silence.
-      if (action === "play") {
+      if (requestedAction === "play") {
         await el.play();
-      } else if (action === "pause") {
+      } else if (requestedAction === "pause") {
         el.pause();
-      } else if (action === "mute") {
+      } else if (requestedAction === "mute") {
         el.muted = true;
-      } else if (action === "unmute") {
+      } else if (requestedAction === "unmute") {
         el.muted = false;
-      } else if (action === "seek") {
-        el.currentTime = num;
-      } else if (action === "volume") {
-        el.volume = num;
-      } else if (action === "rate") {
-        el.playbackRate = num;
+      } else if (requestedAction === "seek") {
+        el.currentTime = numericValue;
+      } else if (requestedAction === "volume") {
+        el.volume = numericValue;
+      } else if (requestedAction === "rate") {
+        el.playbackRate = numericValue;
       } else {
-        return { ok: false, error: "unknown media action: " + action };
+        return {
+          ok: false,
+          error: "unknown media action: " + requestedAction,
+        };
       }
     } catch (e) {
       return { ok: false, error: String(e && e.message ? e.message : e) };
@@ -2962,7 +2967,7 @@ async function handleGetAttribute(tabId, args) {
   requireSnapshotTab(tabId);
   const objectId = await resolveNodeObjectId(tabId, args.backendNodeId);
   const name = typeof args.name === "string" ? args.name : "";
-  const attrFn = function (name) {
+  const attrFn = function (attributeName) {
     const el = this;
     if (!el || !el.getAttribute) {
       return { ok: false, error: "element has no attributes" };
@@ -2973,12 +2978,12 @@ async function handleGetAttribute(tabId, args) {
     const bit = function (v) {
       return String(v).length > 2048;
     };
-    if (name) {
-      const one = el.getAttribute(name);
+    if (attributeName) {
+      const one = el.getAttribute(attributeName);
       if (one === null) {
-        return { ok: true, name, value: null };
+        return { ok: true, name: attributeName, value: null };
       }
-      const out = { ok: true, name, value: cap(one) };
+      const out = { ok: true, name: attributeName, value: cap(one) };
       if (bit(one)) {
         out.value_truncated = true;
       }
@@ -3028,13 +3033,14 @@ async function boxModelQuad(tabId, backendNodeId) {
   let model;
   try {
     model = await sendCdp(tabId, "DOM.getBoxModel", { backendNodeId });
-  } catch (e) {
-    const m = String(e && e.message ? e.message : e);
+  } catch (error) {
+    const m = String(error && error.message ? error.message : error);
     if (/could not compute box model/i.test(m)) {
       return null;
     }
     throw new Error(
       "The element's box could not be read (" + m + "); take a fresh snapshot.",
+      { cause: error },
     );
   }
   const quad = model && model.model && model.model.content;
@@ -3131,9 +3137,10 @@ async function handleFocus(tabId, args) {
   }
   try {
     await sendCdp(tabId, "DOM.focus", { backendNodeId: args.backendNodeId });
-  } catch (_e) {
+  } catch (error) {
     throw new Error(
       "Could not focus the element (it may not be focusable); take a fresh snapshot.",
+      { cause: error },
     );
   }
   // DOM.focus resolving is not the element HAVING focus: the focus/focusin handler it just ran
@@ -3163,9 +3170,10 @@ async function handleReveal(tabId, args) {
     await sendCdp(tabId, "DOM.scrollIntoViewIfNeeded", {
       backendNodeId: args.backendNodeId,
     });
-  } catch (_e) {
+  } catch (error) {
     throw new Error(
       "The element is not laid out (hidden or gone); take a fresh snapshot.",
+      { cause: error },
     );
   }
   const point = await resolveActionPoint(tabId, args.backendNodeId).catch(
@@ -4228,7 +4236,7 @@ function originPattern(origin) {
   let parsed;
   try {
     parsed = new URL(origin);
-  } catch (e) {
+  } catch (_error) {
     return null;
   }
   if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
@@ -4345,10 +4353,10 @@ async function storageOperation(tabId, storageId, area, action, key, value) {
     throw new Error("Could not create an isolated storage context.");
   }
   const operation = function (
-    area,
-    action,
-    key,
-    value,
+    storageArea,
+    storageAction,
+    storageKey,
+    storageValue,
     expectedOrigin,
     maxValue,
     maxKeys,
@@ -4362,7 +4370,7 @@ async function storageOperation(tabId, storageId, area, action, key, value) {
         };
       }
       const store =
-        area === "session"
+        storageArea === "session"
           ? globalThis.sessionStorage
           : globalThis.localStorage;
       const proto = globalThis.Storage.prototype;
@@ -4372,8 +4380,8 @@ async function storageOperation(tabId, storageId, area, action, key, value) {
       const length = function () {
         return Object.getOwnPropertyDescriptor(proto, "length").get.call(store);
       };
-      if (action === "get") {
-        const got = get(key);
+      if (storageAction === "get") {
+        const got = get(storageKey);
         if (got === null) {
           return { ok: true, present: false, value: null };
         }
@@ -4387,7 +4395,7 @@ async function storageOperation(tabId, storageId, area, action, key, value) {
             }
           : { ok: true, present: true, value: text };
       }
-      if (action === "keys") {
+      if (storageAction === "keys") {
         const total = length();
         const count = Math.min(total, maxKeys);
         const names = [];
@@ -4408,9 +4416,9 @@ async function storageOperation(tabId, storageId, area, action, key, value) {
           keys_truncated: cut,
         };
       }
-      if (action === "set") {
-        proto.setItem.call(store, key, value);
-        if (get(key) !== value) {
+      if (storageAction === "set") {
+        proto.setItem.call(store, storageKey, storageValue);
+        if (get(storageKey) !== storageValue) {
           return {
             ok: false,
             error:
@@ -4419,10 +4427,10 @@ async function storageOperation(tabId, storageId, area, action, key, value) {
         }
         return { ok: true, stored: true };
       }
-      if (action === "remove") {
-        const existed = get(key) !== null;
-        proto.removeItem.call(store, key);
-        if (get(key) !== null) {
+      if (storageAction === "remove") {
+        const existed = get(storageKey) !== null;
+        proto.removeItem.call(store, storageKey);
+        if (get(storageKey) !== null) {
           return {
             ok: false,
             error: "The key is still present after the remove.",
