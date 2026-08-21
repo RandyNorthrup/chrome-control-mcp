@@ -5,6 +5,8 @@
 param()
 
 $ErrorActionPreference = 'Stop'
+$analyzerVersion = '1.24.0'
+Import-Module PSScriptAnalyzer -RequiredVersion $analyzerVersion -Force
 $repoRoot = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..')).Path
 $settingsPath = Join-Path $repoRoot 'PSScriptAnalyzerSettings.psd1'
 $relativeFiles = @(& git -C $repoRoot ls-files -- '*.ps1' '*.psm1' '*.psd1')
@@ -15,8 +17,8 @@ if ($LASTEXITCODE -ne 0) {
 $findings = @()
 foreach ($relativeFile in $relativeFiles) {
     $path = Join-Path $repoRoot $relativeFile
-    # Materialize each result before appending it. PSScriptAnalyzer 1.25 can throw an internal
-    # null-reference when multiple calls stream directly from a parent array expression.
+    # Materialize each result before appending it. PSScriptAnalyzer 1.25 has a nondeterministic
+    # null-reference regression in this multi-file pattern, so tooling is pinned to 1.24.0.
     $fileFindings = @(Invoke-ScriptAnalyzer -Path $path -Settings $settingsPath)
     $findings += $fileFindings
 }

@@ -2,8 +2,8 @@
 
 ## Decision
 
-Browser control is an MCP server, not a skill. MCP provides callable tools, image content,
-persistent state, and native transport. An optional skill can add workflows without owning
+Browser control is an MCP server, not a skill. MCP supplies callable tools, image content,
+persistent state, and native transport. Optional skills can add workflows without owning browser
 execution.
 
 ## Process topology
@@ -12,11 +12,12 @@ execution.
 AI assistant
     | MCP JSON-RPC over stdio
     v
-chrome_control_mcp.exe (long-lived MCP process)
+chrome_control_mcp[.exe] (long-lived MCP process)
     | BrowserControl + session/ref state
-    | hardened per-user named pipe
+    | Windows: protected named pipe
+    | Linux/macOS: protected Unix-domain socket
     v
-chrome_control_mcp.exe (short-lived Chrome native-host relay)
+chrome_control_mcp[.exe] (short-lived Chrome native-host relay)
     | Chrome native messaging, length-prefixed JSON
     v
 Chrome Control MCP unpacked extension service worker
@@ -25,52 +26,73 @@ Chrome Control MCP unpacked extension service worker
 active Chrome tab
 ```
 
-One executable serves both roles. Normal launch serves MCP. Chrome supplies the pinned extension
-origin when launching the native host, which switches the executable into relay mode.
+One executable serves both roles. Normal launch serves MCP. Chrome supplies pinned extension origin
+when launching native host, which selects relay mode.
+
+## Platform backends
+
+| Concern             | Windows                                                   | Linux / macOS                                      |
+| ------------------- | --------------------------------------------------------- | -------------------------------------------------- |
+| Bridge transport    | Named pipe                                                | Unix-domain socket                                 |
+| Endpoint protection | Current-user DACL + Medium-integrity no-write-up label    | Private runtime directory + mode `0600` socket     |
+| Peer identity       | Process token, session, image path, Chrome ancestor       | Peer UID/PID, image path, optional Chrome ancestor |
+| Rendezvous          | `%LOCALAPPDATA%/ChromeControlMCP/browser_bridge.json`     | Private runtime directory                          |
+| Native-host install | HKCU Chrome NativeMessagingHosts key + generated manifest | Chrome `NativeMessagingHosts` manifest directory   |
+
+Linux uses `SO_PEERCRED`. macOS uses `getpeereid` plus `LOCAL_PEERPID`. Both sides require same
+effective user, recorded process, same executable image, nonce token, and protocol version.
 
 ## Extension preparation
 
-`browser_extension_install` verifies the staged extension files, writes a native-messaging host
-manifest under `%LOCALAPPDATA%\ChromeControlMCP`, and registers that manifest under the current
-user. It returns the extension directory the user loads once from `chrome://extensions`.
+`browser_extension_install` verifies staged extension files and executable, then installs only
+current-user Chrome native-host registration:
 
-The committed manifest contains public identity material so unpacked loads keep the same extension
-ID. There is no private key, packaged browser artifact, browser-store dependency, or Chrome
-enterprise-policy write.
+- Windows: generated manifest plus HKCU registration
+- Linux: `${XDG_CONFIG_HOME:-~/.config}/google-chrome/NativeMessagingHosts`
+- macOS: `~/Library/Application Support/Google/Chrome/NativeMessagingHosts`
+
+`CHROME_CONTROL_MCP_NATIVE_HOST_DIR` overrides Unix manifest directory for isolated tests.
+
+Committed extension manifest contains public identity material so unpacked loads keep stable ID.
+There is no private key, package signing, browser-store dependency, or enterprise-policy write.
 
 ## Request path
 
-1. Assistant sends `tools/call` to MCP stdio.
-2. MCP dispatch validates JSON-RPC, security profile, argument object, and schema.
-3. `BrowserBridgeSession` translates the tool call. Element refs resolve only against the latest
-   snapshot.
-4. `BrowserBridgePipeServer` sends one correlated command through the named pipe.
-5. Relay forwards the command over Chrome native messaging.
+1. Assistant sends `tools/call` over MCP stdio.
+2. MCP dispatch validates JSON-RPC envelope, security profile, arguments, and schema.
+3. `BrowserBridgeSession` translates tool call. Element refs resolve only against latest snapshot.
+4. Platform bridge sends one correlated command to authenticated relay.
+5. Relay forwards command through Chrome native messaging.
 6. Extension acts through CDP and returns exactly one result or error.
-7. Bridge correlates the reply, updates snapshot/ref state, and returns MCP text or image content.
+7. Bridge correlates reply, updates snapshot/ref state, and returns MCP text or image content.
 
 ## Browser model
 
-- `browser_snapshot` joins accessibility-tree and DOM geometry into filtered roles, names, values,
+- `browser_snapshot` joins accessibility tree and DOM geometry into filtered roles, names, values,
   and stable `[ref=eN]` handles.
-- Ref actions use CDP `Input`; the user's OS mouse and keyboard remain free.
-- `browser_screenshot` returns a native MCP image block. Control presence is hidden by default and
-  can be included explicitly for user-facing documentation.
-- `browser_click_at` binds coordinates to the latest screenshot tab, URL, DPR, scroll, and viewport
+- Ref actions use CDP `Input`; user's operating-system mouse and keyboard remain free.
+- `browser_screenshot` returns native MCP image block. Control presence is hidden by default and can
+  be included for user-facing documentation.
+- `browser_click_at` binds coordinates to latest screenshot tab, URL, DPR, scroll, and viewport
   fingerprint; stale geometry fails closed.
-- The same transport handles tabs, windows, emulation, permissions, storage, cookies, downloads,
-  print, HTTP auth, media, and dialogs.
-- Local/session storage runs in an isolated world bound to the active frame's verified origin,
-  using the isolated world's pristine Storage methods. This avoids page-script tampering and the
-  `DOMStorage` debugger domain that Chrome extensions do not expose.
+- Local/session storage runs inside isolated world bound to verified active-frame origin using
+  pristine Storage methods.
+- Same transport handles tabs, windows, emulation, permissions, cookies, downloads, print, HTTP
+  auth, media, and dialogs.
+
+## Control presence and accessibility
+
+Visible frame, badge, and agent cursor use `pointer-events: none`, so they do not intercept page
+input or hit testing. Overlay subtree is `aria-hidden` so it does not contaminate assistant-facing
+accessibility snapshot. Fixed-position sizing keeps presence usable across viewport sizes.
 
 ## Repository layout
 
 ```text
-browser/  unpacked extension source and native-host registration resources
+browser/  unpacked extension and native-host resources
 include/  public C++ headers under chrome_control_mcp namespace
-src/      browser engine, MCP dispatch, native relay, preparation flow, entrypoint
-tests/    C++ and extension-worker suites
-scripts/  build, smoke, and extension lifecycle helpers
-docs/     architecture, security, tools, and verification
+src/      browser engine, MCP dispatch, platform bridges, entrypoint
+tests/    C++, service-worker, sanitizer, and live E2E suites
+scripts/  cross-platform build, smoke, and extension lifecycle helpers
+docs/     architecture, security, tools, quality, and verification
 ```

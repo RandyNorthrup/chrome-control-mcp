@@ -1,58 +1,105 @@
 # Quality status
 
-This document records measured quality gates while Chrome Control MCP is brought to a clean,
-cross-platform release state. A passing row means the command ran successfully; it does not mean
-an unavailable gate was silently skipped.
+Measured retrofit record. Passing means command ran successfully; unavailable or scoped gates are
+called out explicitly.
 
-## Baseline
+## Before and after
 
-| Gate                               | Result                   |
-| ---------------------------------- | ------------------------ |
-| Release build                      | Passed                   |
-| Automated tests                    | 9/9 passed               |
-| JavaScript syntax                  | 4/4 files passed         |
-| PSScriptAnalyzer before formatting | 66 findings in 5 scripts |
+```text
+BASELINE  build passed · tests 9/9 · ESLint 103 · PSScriptAnalyzer 66
+AFTER     build passed · tests 9/9 · ESLint 0 · PSScriptAnalyzer 0
+```
 
 ## Completed phases
 
-### Phase 1: formatting
+### Phase 1 — formatting
 
-- Formatted 34 C++ files with clang-format 19.1.5 while preserving include order.
-- Formatted JavaScript, JSON, Markdown, and PowerShell sources.
-- Verified the Release build, all 9 automated suites, both MCP smoke modes, all 43 live tools,
-  and the public UI Testing Playground workflow.
-- Recorded formatting commit `420912d13829d946ce42809f0ac0415f862dc66e` in
-  `.git-blame-ignore-revs`.
+- Formatted 34 C++ files plus JavaScript, JSON, Markdown, YAML, and PowerShell.
+- Rebuilt and reran all 9 automated suites.
+- Recorded formatting commit `420912d` in `.git-blame-ignore-revs`.
 
-### Phase 2: quality configuration
+### Phase 2 — configuration and gates
 
-- Added deterministic formatting, ESLint, PSScriptAnalyzer, clang-tidy, pre-commit, and secret-scan
-  configuration.
-- Added locked JavaScript quality dependencies. `npm audit` reports 0 vulnerabilities.
-- Installed the pre-commit hook in the development checkout.
-- Added CI for quality gates and the existing Windows build.
-- Initial strict-gate work list: 103 ESLint errors in 2 files and 67 PSScriptAnalyzer findings in
-  4 files. These are fixed in the following phases, not suppressed here.
+- Added EditorConfig, Prettier, ESLint, PSScriptAnalyzer, clang-format, clang-tidy, pre-commit,
+  Gitleaks, locked npm tools, and CI.
+- Pinned PSScriptAnalyzer 1.24.0 because 1.25.0 has a reproduced nondeterministic null-reference
+  crash when scanning this multi-file tree; no analyzer rule is disabled.
+- Extended existing ignore/attribute configuration.
+- Installed pre-commit hook in development checkout.
 
-### Phase 3: autofixable lint
+### Phase 3 — lint
 
-- Applied ESLint's machine-safe fixes and then normalized the affected JavaScript with Prettier.
-- Reduced ESLint errors from 103 to 29 without removing calls or changing control-flow outcomes.
-- Rebuilt the Release configuration and passed all 9 automated suites.
-- Resolved the remaining manual findings: ESLint now reports 0 errors and PSScriptAnalyzer reports
-  0 findings across all tracked scripts.
-- Preserved caught errors as JavaScript `Error.cause`, made E2E cleanup failures observable, and
-  removed one helper proven unused by a repository-wide reference search.
-- Disabled PowerShell assignment-column alignment because it conflicts with strict single-space
-  operator formatting; the stricter operator rule remains enabled.
+- Applied machine-safe ESLint fixes, then resolved remaining findings manually.
+- Preserved caught errors as JavaScript `Error.cause` and made E2E cleanup failures visible.
+- ESLint: 103 → 0. PSScriptAnalyzer: 66 → 0.
+
+### Phase 4 — native types and portability
+
+- Enabled C++20 strict builds with warnings-as-errors under MSVC, GCC, and Clang.
+- Added platform-neutral native IPC handle and Unix-domain bridge implementations.
+- Verified Windows and Linux builds; macOS is mandatory CI matrix target.
+
+### Phase 5 — dead code and static analysis
+
+- Removed unused JSON-RPC client builders, obsolete helper-mode detector, and test-only duplicate
+  native-host loop.
+- Verified `cppcheck` dead-code detection using a deliberate unused probe before trusting clean run.
+- `clang-tidy` and exhaustive production `cppcheck` pass.
+- `cppcheck` unused-public-function reports are excluded because public/test inspection helpers are
+  referenced from separate test translation units; repository-wide symbol search verified them.
+
+### Phase 6 — literals
+
+- Named framing, deadline, nonce, payload, depth, and protocol limits where names add meaning.
+- Kept idiomatic indexes, empty values, and protocol literals inline.
+
+### Phase 7 — security and sanitizers
+
+- Full-history Gitleaks: 0 findings.
+- npm audit: 0 vulnerabilities.
+- ASan+UBSan: 9/9.
+- TSan: 9/9 with exact third-party QtTest watchdog/logger suppressions only.
+- Added fail-closed platform peer verification and owner-only Unix runtime state.
+
+### Phase 8 — documentation
+
+- Reconciled README, architecture, security, verification, tool, build, and lifecycle commands.
+- Added changelog and plan.
+- Preserved live overlay screenshots and credited UI Test Automation Playground with site and source
+  links.
+
+## Compliance checklist
+
+| Gate                                        | Status | Evidence / boundary                                 |
+| ------------------------------------------- | ------ | --------------------------------------------------- |
+| Formatter clean, whole tree                 | Pass   | clang-format + Prettier + pre-commit                |
+| Linter clean, warnings-as-errors            | Pass   | ESLint, PSScriptAnalyzer, MSVC/GCC/Clang            |
+| Strict native analysis                      | Pass   | clang-tidy high-signal families                     |
+| No dead code                                | Pass   | verified cppcheck + repository reference audit      |
+| No unused dependencies                      | Pass   | npm audit/install graph                             |
+| No unjustified magic literals               | Pass   | module review; idiomatic literals retained          |
+| No commented-out legacy code                | Pass   | source review                                       |
+| No silent production fallbacks/placeholders | Pass   | fail-closed transport and schema paths              |
+| No unjustified ignores/suppressions         | Pass   | one analyzer path note + exact QtTest TSan boundary |
+| Secret scan clean over full history         | Pass   | Gitleaks 8.30.1                                     |
+| Dependency audit clean                      | Pass   | npm audit                                           |
+| ASan+UBSan and TSan wired separately        | Pass   | CI + local Linux 9/9 each                           |
+| Tests pass                                  | Pass   | Windows/Linux 9/9; macOS mandatory CI               |
+| Build succeeds                              | Pass   | MSVC, GCC, Clang                                    |
+| Pre-commit installed                        | Pass   | local checkout                                      |
+| CI mirrors local gates                      | Pass   | quality + 3-OS builds + sanitizers                  |
+| README commands verified                    | Pass   | build, smoke, lifecycle, live E2E                   |
+| CHANGELOG updated                           | Pass   | `CHANGELOG.md`                                      |
 
 ## Local commands
 
-```powershell
+```shell
 npm ci
 npm run quality
+npm run build
+npm run smoke
+npm run smoke:read-only
 python -m pre_commit run --all-files
 ```
 
-Native build and platform-specific verification commands remain documented in
-[VERIFICATION.md](VERIFICATION.md).
+See [VERIFICATION.md](VERIFICATION.md) for platform-specific and live-browser evidence.

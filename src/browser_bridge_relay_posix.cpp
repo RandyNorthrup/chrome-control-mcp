@@ -14,6 +14,7 @@
 
 #include <atomic>
 #include <cerrno>
+#include <cstdint>
 #include <cstdio>
 #include <cstring>
 #include <iostream>
@@ -52,7 +53,8 @@ QString processImage(pid_t pid) {
   return QFileInfo(QStringLiteral("/proc/%1/exe").arg(pid)).symLinkTarget();
 #elif defined(Q_OS_MACOS)
   QByteArray path(PROC_PIDPATHINFO_MAXSIZE, Qt::Uninitialized);
-  const int length = proc_pidpath(pid, path.data(), path.size());
+  const int length =
+      proc_pidpath(pid, path.data(), static_cast<uint32_t>(path.size()));
   return length > 0 ? QString::fromUtf8(path.constData(), length) : QString();
 #else
   (void)pid;

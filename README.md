@@ -2,28 +2,31 @@
 
 # Chrome Control MCP
 
-**Native Chrome control for AI assistants—observable, precise, and local.**
+**Visible, precise Chrome control for AI assistants. Local by design.**
 
+[![Quality](https://github.com/RandyNorthrup/chrome-control-mcp/actions/workflows/quality.yml/badge.svg)](https://github.com/RandyNorthrup/chrome-control-mcp/actions/workflows/quality.yml)
 [![MIT License](https://img.shields.io/badge/license-MIT-7c3aed.svg)](LICENSE)
-![Windows x64](https://img.shields.io/badge/platform-Windows%20x64-0078d4.svg)
+![Platforms](https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20%7C%20macOS-2563eb.svg)
 ![C++20](https://img.shields.io/badge/C%2B%2B-20-00599c.svg)
 ![Chrome 116+](https://img.shields.io/badge/Chrome-116%2B-4285f4.svg)
 ![MCP tools](https://img.shields.io/badge/MCP%20tools-43-ff1493.svg)
 
 <p>
-  A standalone Model Context Protocol server that gives assistants full Chrome control through
-  native messaging and the Chrome DevTools Protocol.
+  Standalone Model Context Protocol server connecting an AI assistant to your existing Chrome
+  through native messaging and Chrome DevTools Protocol.
 </p>
+
+[Quick start](#quick-start) · [Tool catalog](docs/TOOLS.md) · [Architecture](docs/ARCHITECTURE.md) · [Security](docs/SECURITY.md) · [Verification](docs/VERIFICATION.md)
 
 </div>
 
-![Chrome Control MCP driving the UI Test Automation Playground with its visible pink control frame, AI CONTROL badge, and agent cursor](docs/assets/chrome-control-overlay-playground.png)
+![Chrome Control MCP driving UI Test Automation Playground with its visible pink control frame, AI CONTROL badge, and agent cursor](docs/assets/chrome-control-overlay-playground.png)
 
-The pink frame, **AI CONTROL** badge, and pulsing agent cursor make active automation visible to the
-person using Chrome. Model-facing screenshots hide this overlay by default; documentation captures
-can include it explicitly.
+Active automation stays visible: pink frame, **AI CONTROL** badge, and pulsing agent cursor show
+when an assistant controls Chrome. Model-facing screenshots hide this overlay by default;
+documentation captures can opt in.
 
-## What it gives you
+## Why this project
 
 | Capability          | Included                                                                     |
 | ------------------- | ---------------------------------------------------------------------------- |
@@ -32,148 +35,158 @@ can include it explicitly.
 | Visual reasoning    | Viewport/full-page PNG capture and guarded coordinate clicks                 |
 | Browser management  | Navigation, tabs, tab groups, windows, emulation, and waits                  |
 | Browser state       | Cookies, local/session storage, permissions, downloads, print, and HTTP auth |
-| Extension lifecycle | Prepare, inspect, and unregister the per-user native host                    |
+| Extension lifecycle | Prepare, inspect, and unregister current-user native-host integration        |
 
-All **43 MCP tools** are exposed through strict JSON Schemas. The long-lived MCP process preserves
-session and element-ref state while Chrome remains an ordinary user-controlled browser.
+All **43 MCP tools** use strict JSON Schemas. Long-lived MCP process preserves session and
+element-ref state while Chrome remains an ordinary user-controlled browser.
 
 ## See it work
 
 | Public UI test site                                                                                         | Responsive E2E fixture                                                                                                                        |
 | ----------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
 | ![Text Input test controlled through Chrome Control MCP](docs/assets/chrome-control-overlay-playground.png) | ![Chrome Control MCP exercising form, pointer, and dialog controls in its local test fixture](docs/assets/chrome-control-overlay-fixture.png) |
-| Typed value, read-back, ref click, and screenshot                                                           | Form state, coordinate click, hover, drag, and visible control presence                                                                       |
+| Navigation, snapshot, typing, read-back, ref click, and screenshot                                          | Form state, coordinate click, hover, drag, dialog handling, and control presence                                                              |
 
-Both images are direct `browser_screenshot` results from the live extension—not mockups.
+Both images are direct `browser_screenshot` results from live extension, not mockups.
 
 > **Testing shout-out:** Inflectra's [UI Test Automation Playground](http://uitestingplayground.com/)
-> and its [open-source repository](https://github.com/inflectra/ui-test-automation-playground) have
-> been exceptionally useful real-world resources for this project. Its focused browser interaction
-> scenarios helped us verify the complete path from MCP calls to visible Chrome behavior.
+> and [open-source repository](https://github.com/inflectra/ui-test-automation-playground) provide
+> focused, practical browser interaction scenarios. They have been invaluable for testing this
+> project's full MCP-to-Chrome path.
 
 ## Quick start
 
-### 1. Build and test
+### 1. Install build requirements
 
-Requirements: Windows x64, Chrome 116+, Visual Studio 2022 C++ tools, CMake 3.25+, Qt 6.5+ for
-MSVC 2022 x64, and Node.js 20+.
+- Windows 10/11 x64, Linux x64, or macOS
+- Google Chrome 116+
+- CMake 3.25+
+- Qt 6.5+ with Core and Test components
+- C++20 compiler: Visual Studio 2022, GCC, or Clang
+- Node.js 20.19+
 
-```powershell
-.\scripts\build.ps1 -Configuration Release
+### 2. Build and test
+
+```shell
+npm ci
+npm run build
 ```
 
-The build runs the automated test suites and stages:
+Default output:
 
-```text
-build\Release\chrome_control_mcp.exe
-build\Release\Qt6Core.dll
-build\Release\extension\
+| Platform      | Executable                             | Staged extension           |
+| ------------- | -------------------------------------- | -------------------------- |
+| Windows       | `build/Release/chrome_control_mcp.exe` | `build/Release/extension/` |
+| Linux / macOS | `build/chrome_control_mcp`             | `build/extension/`         |
+
+PowerShell users may run `./scripts/build.ps1 -Configuration Release` instead. Both paths build
+with warnings-as-errors and run all native plus extension unit suites.
+
+### 3. Prepare Chrome
+
+```shell
+npm run extension -- install
 ```
 
-### 2. Prepare Chrome
-
-```powershell
-.\scripts\extension.ps1 -Operation install
-```
-
-Open `chrome://extensions`, enable **Developer mode**, choose **Load unpacked**, and select the
-folder printed by the command. Chrome requires this one manual step for an unpacked extension.
+Open `chrome://extensions`, enable **Developer mode**, choose **Load unpacked**, then select folder
+printed by command. Chrome requires this one manual step for an unpacked extension.
 
 No signing key, packaged extension, store account, administrator access, or enterprise policy is
-needed. The public `key` value in `manifest.json` only keeps the unpacked extension ID stable; it
-cannot sign software.
+needed. Public `key` in `manifest.json` only pins unpacked extension ID; it cannot sign software.
 
-### 3. Connect an assistant
+### 4. Connect an assistant
 
-Codex CLI:
+Use absolute executable path.
 
-```powershell
-codex mcp add chrome-control -- "C:\absolute\path\to\chrome_control_mcp.exe"
+```shell
+# Windows
+codex mcp add chrome-control -- "C:\absolute\path\chrome_control_mcp.exe"
+
+# Linux / macOS
+codex mcp add chrome-control -- /absolute/path/chrome_control_mcp
 ```
 
-Claude Code:
+Claude Code uses same executable:
 
-```powershell
-claude mcp add --scope local chrome-control -- "C:\absolute\path\to\chrome_control_mcp.exe"
+```shell
+claude mcp add --scope local chrome-control -- /absolute/path/chrome_control_mcp
 ```
 
-Use an absolute executable path. Transport is newline-delimited JSON-RPC over stdio; the server
-does not open a TCP listener.
+Transport is newline-delimited JSON-RPC over stdio. Server opens no TCP listener.
 
 ## Architecture
 
 ```mermaid
 flowchart LR
-    A[AI assistant] -->|MCP over stdio| B[chrome_control_mcp.exe]
-    B -->|per-user named pipe| C[Native-host relay]
-    C -->|Chrome native messaging| D[Unpacked extension]
+    A[AI assistant] -->|MCP over stdio| B[chrome_control_mcp]
+    B -->|Windows named pipe<br/>Linux/macOS Unix socket| C[Native-host relay]
+    C -->|Chrome native messaging| D[Unpacked MV3 extension]
     D -->|Chrome DevTools Protocol| E[Active Chrome tab]
 ```
 
-One executable serves the MCP server and native-host relay roles. Browser control belongs in MCP
-because it needs callable tools, image results, hardened IPC, and persistent session state; a skill
-can add workflows but does not replace the server.
-
-[Read the architecture](docs/ARCHITECTURE.md) · [Browse all tools](docs/TOOLS.md)
+One executable serves MCP server and native-host relay roles. Browser control belongs in MCP
+because it needs callable tools, image results, hardened IPC, and persistent session state. A skill
+may add workflows, but does not replace server.
 
 ## Security model
 
-Full control is powerful. Chrome Control MCP pins the extension origin, limits and validates IPC,
-uses a per-user named pipe, rejects stale element refs and screenshot coordinates, bounds major
-payloads, and exposes strict tool schemas.
+Full control is powerful. Chrome Control MCP pins extension origin, limits and validates IPC,
+authenticates same-user/same-executable relay, rejects stale element refs and screenshot
+coordinates, bounds major payloads, and exposes strict schemas.
 
-For inspection-only use, start the MCP with:
+Windows uses current-user ACL-protected named pipe. Linux and macOS use mode-`0600` Unix socket
+inside private runtime directory plus operating-system peer credentials.
+
+For inspection-only use:
 
 ```text
 CHROME_CONTROL_MCP_SECURITY_PROFILE=read_only
 CHROME_CONTROL_MCP_REDACT_SENSITIVE_OUTPUT=true
 ```
 
-The read-only profile exposes 10 tools and independently refuses hidden mutating calls.
-
-[Review the security model](docs/SECURITY.md)
+Read-only profile exposes 10 tools and independently rejects hidden mutating calls.
 
 ## Verification
 
-The current Windows release has passed:
+Local Windows and Linux gates currently cover:
 
-- **9/9 automated suites** across contracts, IPC, security, relay, MCP, installer, and extension logic
-- **43/43 live MCP tools** across **98 reversible E2E cases** in Chrome
-- Real UI Playground navigation, snapshot, typing, read-back, ref click, and PNG capture
-- Download/PDF cleanup, fixture-state cleanup, bridge restoration, and original Chrome-state restore
+- 9/9 native and extension suites with MSVC, GCC, and Clang
+- Warnings-as-errors plus `clang-tidy` and exhaustive `cppcheck`
+- Separate ASan+UBSan and TSan runs
+- Full-history Gitleaks scan and npm dependency audit
+- 43/43 live MCP tools through real Chrome on Windows
+- Public UI Playground navigation, snapshot, typing, click, and PNG capture
+- Reversible native-host install/status/uninstall lifecycle
 
-Run the same checks locally:
+GitHub Actions builds and tests Windows, Linux, and macOS on every direct push.
 
-```powershell
-.\scripts\mcp_smoke.ps1
-.\scripts\mcp_smoke.ps1 -ReadOnly
-node .\tests\e2e\full_browser_e2e.mjs .\dist\chrome_control_mcp.exe
-.\scripts\live_browser_verify.ps1
+```shell
+npm run smoke
+npm run smoke:read-only
+node tests/e2e/full_browser_e2e.mjs
 ```
 
-To save a real overlay screenshot:
+PowerShell live public-site check:
 
 ```powershell
-.\scripts\live_browser_verify.ps1 -IncludeControlOverlay `
-  -ScreenshotPath docs\assets\chrome-control-overlay-playground.png
+./scripts/live_browser_verify.ps1 -Site http://uitestingplayground.com/
 ```
 
-[See versions, hashes, and claim boundaries](docs/VERIFICATION.md)
+[See exact evidence and claim boundaries](docs/VERIFICATION.md).
 
 ## Project identity
 
 | Item         | Value                              |
 | ------------ | ---------------------------------- |
 | MCP server   | `chrome-control-mcp`               |
-| Executable   | `chrome_control_mcp.exe`           |
+| Executable   | `chrome_control_mcp[.exe]`         |
 | Extension    | `Chrome Control MCP`               |
 | Extension ID | `iojehhmnaigcejfcpmilpclmeljhlkaa` |
 | Native host  | `com.chromecontrolmcp.browser`     |
-| Local data   | `%LOCALAPPDATA%\ChromeControlMCP`  |
 
-Unregister the native host with `.\scripts\extension.ps1 -Operation uninstall`, then remove the
-unpacked extension manually from `chrome://extensions` when retiring it.
+Unregister current-user native host with `npm run extension -- uninstall`, then remove unpacked
+extension manually from `chrome://extensions` when retiring it.
 
 ## License
 
-Released under the [MIT License](LICENSE). Copyright © 2026 Randy Northrup.
+Released under [MIT License](LICENSE). Copyright © 2026 Randy Northrup.

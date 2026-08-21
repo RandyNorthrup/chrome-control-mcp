@@ -77,9 +77,10 @@ void setCloseOnExec(int fd) {
   // NOLINTNEXTLINE(cppcoreguidelines-pro-type-vararg) -- POSIX API is variadic.
   const int flags = fcntl(fd, F_GETFD);
   if (flags >= 0) {
-    // NOLINTNEXTLINE(cppcoreguidelines-pro-type-vararg) -- POSIX API is
-    // variadic.
+    // POSIX fcntl is variadic.
+    // NOLINTBEGIN(cppcoreguidelines-pro-type-vararg)
     (void)fcntl(fd, F_SETFD, flags | FD_CLOEXEC);
+    // NOLINTEND(cppcoreguidelines-pro-type-vararg)
   }
 }
 
@@ -256,7 +257,8 @@ QString processImage(pid_t pid) {
   return QFileInfo(QStringLiteral("/proc/%1/exe").arg(pid)).symLinkTarget();
 #elif defined(Q_OS_MACOS)
   QByteArray path(PROC_PIDPATHINFO_MAXSIZE, Qt::Uninitialized);
-  const int length = proc_pidpath(pid, path.data(), path.size());
+  const int length =
+      proc_pidpath(pid, path.data(), static_cast<uint32_t>(path.size()));
   return length > 0 ? QString::fromUtf8(path.constData(), length) : QString();
 #else
   (void)pid;
@@ -452,7 +454,13 @@ void BrowserBridgePipeServer::stop() {
   }
   if (shutdown_pipe_[1] >= 0) {
     const char wake = 1;
-    (void)::write(shutdown_pipe_[1], &wake, 1);
+    ssize_t wake_result = ::write(shutdown_pipe_[1], &wake, 1);
+    while (wake_result < 0 && errno == EINTR) {
+      wake_result = ::write(shutdown_pipe_[1], &wake, 1);
+    }
+    // The pipe is only a best-effort wakeup. stop() closes it after joining,
+    // so a full or already-closed descriptor requires no recovery here.
+    (void)wake_result;
   }
   cv_.notify_all();
   if (thread_.joinable()) {
@@ -647,17 +655,19 @@ BrowserBridgePipeServer::sendCommandAwaitReply(const QJsonObject &frame) {
             .error =
                 QStringLiteral("A browser action is already in progress.")};
   }
-  const quint64 myGeneration = generation_;
+  const quint64 my_generation = generation_;
   request_frame_ = frame;
   has_request_ = true;
   has_response_ = false;
   cv_.notify_all();
-  cv_.wait(lock, [this, myGeneration] {
-    return has_response_ || !running_ || generation_ != myGeneration;
+  cv_.wait(lock, [this, my_generation] {
+    return has_response_ || !running_ || generation_ != my_generation;
   });
-  const bool gotResponse = has_response_;
+  const bool got_response = has_response_;
   Exchange result{};
-  if (gotResponse) {
+  // The I/O worker sets this; cppcheck cannot model that cross-thread write.
+  // cppcheck-suppress knownConditionTrueFalse
+  if (got_response) {
     result = response_;
   } else {
     result = Exchange{.ok = false,

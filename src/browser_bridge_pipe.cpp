@@ -613,8 +613,8 @@ BrowserBridgePipeServer::sendCommandAwaitReply(const QJsonObject &frame) {
   Exchange result{};
   // has_response_ is set true by the I/O worker thread in serveConnected();
   // cppcheck's single-threaded flow cannot see that cross-thread write and
-  // wrongly deems got_response always-false here. cppcheck-suppress
-  // knownConditionTrueFalse
+  // wrongly deems got_response always-false here.
+  // cppcheck-suppress knownConditionTrueFalse
   if (got_response) {
     result = response_;
   } else {

@@ -6,6 +6,7 @@
 #include "chrome_control_mcp/browser_bridge_security.h"
 #include "chrome_control_mcp/browser_control.h"
 
+#include <QElapsedTimer>
 #include <QJsonArray>
 #include <QJsonObject>
 #include <QTemporaryDir>
@@ -28,6 +29,16 @@ using chrome_control_mcp::ToolResult;
 using chrome_control_mcp::writeRendezvousRecord;
 
 namespace {
+
+template <typename Predicate>
+bool waitUntil(Predicate predicate, int timeout_ms) {
+  QElapsedTimer timer;
+  timer.start();
+  while (!predicate() && timer.elapsed() < timeout_ms) {
+    QTest::qWait(10);
+  }
+  return predicate();
+}
 
 BrowserBridgePipeServer::Options serverOptions(const QString &rendezvous) {
   BrowserBridgePipeServer::Options options;
@@ -198,7 +209,7 @@ void BrowserBridgeRelayTests::relay_forwardsCommandAndReplyOverRealPipe() {
       dir.filePath(QStringLiteral("r.json")), &token, &protocol, &error);
   QVERIFY(pipe != kInvalidNativeIpcHandle);
   QVERIFY2(relayHandshake(pipe, token, protocol, &error), qPrintable(error));
-  QTRY_VERIFY_WITH_TIMEOUT(server.clientConnected(), 5000);
+  QVERIFY(waitUntil([&server] { return server.clientConnected(); }, 5000));
 
   FakeExtension extension;
   extension.reply_payload = QJsonObject{{QStringLiteral("echoed"), true}};
@@ -244,7 +255,7 @@ void BrowserBridgeRelayTests::
       dir.filePath(QStringLiteral("r.json")), &token, &protocol, &error);
   QVERIFY(pipe != kInvalidNativeIpcHandle);
   QVERIFY2(relayHandshake(pipe, token, protocol, &error), qPrintable(error));
-  QTRY_VERIFY_WITH_TIMEOUT(server.clientConnected(), 5000);
+  QVERIFY(waitUntil([&server] { return server.clientConnected(); }, 5000));
 
   SlowFakeExtension extension;
   std::thread relay([&] {
@@ -337,7 +348,7 @@ void BrowserBridgeRelayTests::control_snapshotRoundTripsThroughRelay() {
     }
   });
 
-  QTRY_VERIFY_WITH_TIMEOUT(control.clientConnected(), 5000);
+  QVERIFY(waitUntil([&control] { return control.clientConnected(); }, 5000));
   const ToolResult result =
       control.invoke(QStringLiteral("browser_snapshot"), {});
   QVERIFY2(!result.is_error, qPrintable(result.text));

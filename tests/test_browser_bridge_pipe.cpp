@@ -4,6 +4,7 @@
 #include "chrome_control_mcp/browser_bridge_pipe.h"
 #include "chrome_control_mcp/native_messaging.h"
 
+#include <QElapsedTimer>
 #include <QFile>
 #include <QJsonObject>
 #include <QTemporaryDir>
@@ -29,6 +30,16 @@ using chrome_control_mcp::NativeIpcHandle;
 using chrome_control_mcp::parseFrame;
 
 namespace {
+
+template <typename Predicate>
+bool waitUntil(Predicate predicate, int timeout_ms) {
+  QElapsedTimer timer;
+  timer.start();
+  while (!predicate() && timer.elapsed() < timeout_ms) {
+    QTest::qWait(10);
+  }
+  return predicate();
+}
 
 // -- Minimal synchronous test client (stands in for the Chrome-spawned relay)
 // ------
@@ -317,7 +328,7 @@ void BrowserBridgePipeTests::handshake_refusesForgedTokenAndUnknownType() {
     }
     closeNativeIpcHandle(handle);
   });
-  QTRY_VERIFY_WITH_TIMEOUT(server.clientConnected(), 5000);
+  QVERIFY(waitUntil([&server] { return server.clientConnected(); }, 5000));
   const auto served = server.sendCommandAwaitReply(
       QJsonObject{{QStringLiteral("type"), QStringLiteral("command")},
                   {QStringLiteral("id"), QStringLiteral("ok-1")},
@@ -441,7 +452,7 @@ void BrowserBridgePipeTests::handshake_thenCommandReplyRoundTrips() {
     closeNativeIpcHandle(handle);
   });
 
-  QTRY_VERIFY_WITH_TIMEOUT(server.clientConnected(), 5000);
+  QVERIFY(waitUntil([&server] { return server.clientConnected(); }, 5000));
   QCOMPARE(server.connectionGeneration(), quint64{1});
 
   const auto exchange = server.sendCommandAwaitReply(
@@ -482,7 +493,7 @@ void BrowserBridgePipeTests::silentPeer_deadlineResetsConnection() {
     closeNativeIpcHandle(handle);
   });
 
-  QTRY_VERIFY_WITH_TIMEOUT(server.clientConnected(), 5000);
+  QVERIFY(waitUntil([&server] { return server.clientConnected(); }, 5000));
   const auto exchange = server.sendCommandAwaitReply(
       QJsonObject{{QStringLiteral("type"), QStringLiteral("command")},
                   {QStringLiteral("id"), QStringLiteral("b-1")},
@@ -491,8 +502,8 @@ void BrowserBridgePipeTests::silentPeer_deadlineResetsConnection() {
   QCOMPARE(
       exchange.error,
       QStringLiteral("browser did not reply within 300 ms (connection reset)"));
-  QTRY_VERIFY_WITH_TIMEOUT(!server.clientConnected(),
-                           5000); // connection torn down
+  QVERIFY(waitUntil([&server] { return !server.clientConnected(); },
+                    5000)); // connection torn down
 
   client.join();
   server.stop();
@@ -517,7 +528,7 @@ void BrowserBridgePipeTests::reconnect_secondClientServedWithNewGeneration() {
     clientRead(handle, &command);
     closeNativeIpcHandle(handle); // die mid-command
   });
-  QTRY_VERIFY_WITH_TIMEOUT(server.clientConnected(), 5000);
+  QVERIFY(waitUntil([&server] { return server.clientConnected(); }, 5000));
   const auto reset = server.sendCommandAwaitReply(
       QJsonObject{{QStringLiteral("type"), QStringLiteral("command")},
                   {QStringLiteral("id"), QStringLiteral("b-1")},
@@ -527,8 +538,8 @@ void BrowserBridgePipeTests::reconnect_secondClientServedWithNewGeneration() {
       reset.error,
       QStringLiteral("browser did not reply within 500 ms (connection reset)"));
   client_a.join();
-  QTRY_VERIFY_WITH_TIMEOUT(!server.clientConnected(),
-                           5000); // the accept loop re-armed
+  QVERIFY(waitUntil([&server] { return !server.clientConnected(); },
+                    5000)); // the accept loop re-armed
 
   // Relay B: a fresh connection must be accepted and served (generation
   // advances).
@@ -551,7 +562,7 @@ void BrowserBridgePipeTests::reconnect_secondClientServedWithNewGeneration() {
     }
     closeNativeIpcHandle(handle);
   });
-  QTRY_VERIFY_WITH_TIMEOUT(server.clientConnected(), 5000);
+  QVERIFY(waitUntil([&server] { return server.clientConnected(); }, 5000));
   QCOMPARE(server.connectionGeneration(), quint64{2});
   const auto served = server.sendCommandAwaitReply(
       QJsonObject{{QStringLiteral("type"), QStringLiteral("command")},

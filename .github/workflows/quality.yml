@@ -2,7 +2,6 @@ name: Quality
 
 on:
   push:
-  pull_request:
 
 permissions:
   contents: read
@@ -37,7 +36,12 @@ jobs:
 
       - name: Install PSScriptAnalyzer
         shell: pwsh
-        run: Install-Module PSScriptAnalyzer -Scope CurrentUser -Force
+        run: >-
+          Install-Module PSScriptAnalyzer -RequiredVersion 1.24.0
+          -Scope CurrentUser -Force
+
+      - name: Audit JavaScript dependencies
+        run: npm audit --audit-level=low
 
       - name: Run quality gates
         run: pre-commit run --all-files --show-diff-on-failure
@@ -77,7 +81,7 @@ jobs:
         run: cmake --build build --config Release --parallel
 
       - name: Test
-        run: ctest --test-dir build -C Release --output-on-failure
+        run: ctest --test-dir build -C Release --output-on-failure --verbose
 
   sanitizers:
     name: ${{ matrix.name }}
