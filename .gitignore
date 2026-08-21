@@ -1,0 +1,10 @@
+/build*/
+/dist/
+/.vs/
+/.vscode/
+*.user
+*.suo
+*.VC.db
+*.VC.VC.opendb
+Testing/
+
