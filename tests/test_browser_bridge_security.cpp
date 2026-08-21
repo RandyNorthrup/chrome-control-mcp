@@ -23,19 +23,31 @@ using chrome_control_mcp::writeRendezvousRecord;
 namespace {
 
 #ifdef Q_OS_WIN
-// Round-trip the built descriptor back to SDDL so the test can assert on the
-// DACL/SACL.
-QString descriptorToSddl(PSECURITY_DESCRIPTOR descriptor) {
-  LPWSTR sddl = nullptr;
-  const SECURITY_INFORMATION info =
-      DACL_SECURITY_INFORMATION | LABEL_SECURITY_INFORMATION;
-  if (ConvertSecurityDescriptorToStringSecurityDescriptorW(
-          descriptor, SDDL_REVISION_1, info, &sddl, nullptr) == FALSE) {
-    return {};
+bool aclContainsSidWithMask(PACL acl, BYTE ace_type, PSID expected_sid,
+                            ACCESS_MASK required_mask) {
+  if (acl == nullptr || expected_sid == nullptr) {
+    return false;
   }
-  const QString result = QString::fromWCharArray(sddl);
-  LocalFree(sddl);
-  return result;
+  for (DWORD index = 0; index < acl->AceCount; ++index) {
+    void *raw_ace = nullptr;
+    if (GetAce(acl, index, &raw_ace) == FALSE || raw_ace == nullptr) {
+      return false;
+    }
+    const auto *header = static_cast<const ACE_HEADER *>(raw_ace);
+    if (header->AceType != ace_type) {
+      continue;
+    }
+    // ACCESS_ALLOWED_ACE and SYSTEM_MANDATORY_LABEL_ACE share the same
+    // Header/Mask/SidStart layout.
+    const auto *ace = static_cast<const ACCESS_ALLOWED_ACE *>(raw_ace);
+    auto *ace_sid = reinterpret_cast<PSID>(const_cast<DWORD *>(
+        &ace->SidStart)); // Windows API is not const-correct.
+    if (EqualSid(ace_sid, expected_sid) != FALSE &&
+        (ace->Mask & required_mask) == required_mask) {
+      return true;
+    }
+  }
+  return false;
 }
 #endif
 
@@ -206,20 +218,45 @@ void BrowserBridgeSecurityTests::
   QVERIFY(descriptor != nullptr);
   QCOMPARE(attributes.bInheritHandle, FALSE);
 
+  SECURITY_DESCRIPTOR_CONTROL control = 0;
+  DWORD revision = 0;
+  QVERIFY(GetSecurityDescriptorControl(descriptor, &control, &revision) !=
+          FALSE);
+  QVERIFY((control & SE_DACL_PROTECTED) != 0);
+
+  BOOL dacl_present = FALSE;
+  BOOL dacl_defaulted = FALSE;
+  PACL dacl = nullptr;
+  QVERIFY(GetSecurityDescriptorDacl(descriptor, &dacl_present, &dacl,
+                                    &dacl_defaulted) != FALSE);
+  QVERIFY(dacl_present != FALSE);
+  QVERIFY(dacl != nullptr);
+
   const QString sid = currentUserSidString(&error);
-  const QString sddl = descriptorToSddl(descriptor);
-  QVERIFY(!sddl.isEmpty());
-  QVERIFY(sddl.contains(QStringLiteral("D:P"))); // DACL is protected
-  QVERIFY(sddl.contains(sid));                   // current user is granted
-  QVERIFY(
-      sddl.contains(QStringLiteral("NR"))); // NO_READ_UP mandatory-label bit
-  QVERIFY(
-      sddl.contains(QStringLiteral("NW"))); // NO_WRITE_UP mandatory-label bit
-  // No BUILTIN\Users, Everyone, or Authenticated Users (well-knowns render as
-  // SDDL abbreviations BU / WD / AU, not raw SIDs).
-  QVERIFY(!sddl.contains(QStringLiteral(";BU)")));
-  QVERIFY(!sddl.contains(QStringLiteral(";WD)")));
-  QVERIFY(!sddl.contains(QStringLiteral(";AU)")));
+  PSID user_sid = nullptr;
+  QVERIFY(ConvertStringSidToSidW(reinterpret_cast<LPCWSTR>(sid.utf16()),
+                                 &user_sid) != FALSE);
+  QVERIFY(aclContainsSidWithMask(dacl, ACCESS_ALLOWED_ACE_TYPE, user_sid,
+                                 GENERIC_ALL));
+
+  PSID system_sid = nullptr;
+  QVERIFY(ConvertStringSidToSidW(L"S-1-5-18", &system_sid) != FALSE);
+  QVERIFY(aclContainsSidWithMask(dacl, ACCESS_ALLOWED_ACE_TYPE, system_sid,
+                                 GENERIC_ALL));
+
+  BOOL sacl_present = FALSE;
+  BOOL sacl_defaulted = FALSE;
+  PACL sacl = nullptr;
+  QVERIFY(GetSecurityDescriptorSacl(descriptor, &sacl_present, &sacl,
+                                    &sacl_defaulted) != FALSE);
+  QVERIFY(sacl_present != FALSE);
+  QVERIFY(sacl != nullptr);
+  PSID medium_sid = nullptr;
+  QVERIFY(ConvertStringSidToSidW(L"S-1-16-8192", &medium_sid) != FALSE);
+  constexpr ACCESS_MASK required_label_mask =
+      SYSTEM_MANDATORY_LABEL_NO_READ_UP | SYSTEM_MANDATORY_LABEL_NO_WRITE_UP;
+  QVERIFY(aclContainsSidWithMask(sacl, SYSTEM_MANDATORY_LABEL_ACE_TYPE,
+                                 medium_sid, required_label_mask));
 
   // The descriptor must be one the OS actually accepts on a first-instance,
   // remote-rejecting pipe (a convertible SDDL is not proof CreateNamedPipe
@@ -236,6 +273,9 @@ void BrowserBridgeSecurityTests::
                           "CreateNamedPipe rejected the descriptor (err=%1)")
                           .arg(GetLastError())));
   CloseHandle(pipe);
+  LocalFree(medium_sid);
+  LocalFree(system_sid);
+  LocalFree(user_sid);
   LocalFree(descriptor);
 #else
   QString error;

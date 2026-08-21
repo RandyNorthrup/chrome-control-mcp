@@ -46,6 +46,57 @@ jobs:
       - name: Run quality gates
         run: pre-commit run --all-files --show-diff-on-failure
 
+  static-analysis:
+    name: Native and semantic static analysis
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - uses: jurplel/install-qt-action@v4
+        with:
+          version: "6.10.0"
+          arch: linux_gcc_64
+          cache: true
+
+      - name: Install analyzers
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes clang-tidy cppcheck ninja-build
+          python -m pip install semgrep==1.174.0
+
+      - name: Configure compilation database
+        env:
+          CC: clang
+          CXX: clang++
+        run: >-
+          cmake -S . -B build-analysis -G Ninja -DCMAKE_BUILD_TYPE=Release
+          -DBUILD_TESTING=ON -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
+
+      - name: Build strict native target
+        run: cmake --build build-analysis --parallel
+
+      - name: Run clang-tidy
+        run: >-
+          run-clang-tidy -p build-analysis -quiet
+          "^${{ github.workspace }}/src/.*\\.cpp$"
+
+      - name: Run exhaustive cppcheck
+        run: >-
+          cppcheck --project=build-analysis/compile_commands.json
+          --file-filter="*/src/*.cpp" --enable=all --inconclusive
+          --check-level=exhaustive --std=c++20 --inline-suppr
+          --suppress=missingIncludeSystem --suppress=unusedFunction
+          --error-exitcode=1 --quiet
+
+      - name: Run Semgrep
+        run: >-
+          semgrep scan --config auto --error --metrics=on
+          src include browser/extension scripts tests
+
   native-build:
     name: ${{ matrix.name }} build and tests
     runs-on: ${{ matrix.os }}
@@ -81,7 +132,16 @@ jobs:
         run: cmake --build build --config Release --parallel
 
       - name: Test
-        run: ctest --test-dir build -C Release --output-on-failure --verbose
+        shell: pwsh
+        run: |
+          ctest --test-dir build -C Release --output-on-failure --verbose
+          if ($LASTEXITCODE -ne 0) {
+            Get-ChildItem build -Filter 'test_*.txt' | ForEach-Object {
+              Write-Output "--- $($_.Name) ---"
+              Get-Content $_.FullName
+            }
+            exit $LASTEXITCODE
+          }
 
   sanitizers:
     name: ${{ matrix.name }}

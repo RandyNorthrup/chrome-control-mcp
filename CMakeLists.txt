@@ -141,7 +141,7 @@ if(BUILD_TESTING)
                         "$<TARGET_FILE:Qt6::Test>" "$<TARGET_FILE_DIR:${target}>"
             )
         endif()
-        add_test(NAME ${target} COMMAND ${target})
+        add_test(NAME ${target} COMMAND ${target} -o "${target}.txt,txt")
     endfunction()
 
     add_executable(test_browser_contract
