@@ -25,24 +25,24 @@ can include it explicitly.
 
 ## What it gives you
 
-| Capability | Included |
-|---|---|
-| Semantic control | Accessibility-tree snapshots with stable element refs |
-| Real input | Click, type, keys, hover, drag, select, scroll, dialogs, and media |
-| Visual reasoning | Viewport/full-page PNG capture and guarded coordinate clicks |
-| Browser management | Navigation, tabs, tab groups, windows, emulation, and waits |
-| Browser state | Cookies, local/session storage, permissions, downloads, print, and HTTP auth |
-| Extension lifecycle | Prepare, inspect, and unregister the per-user native host |
+| Capability          | Included                                                                     |
+| ------------------- | ---------------------------------------------------------------------------- |
+| Semantic control    | Accessibility-tree snapshots with stable element refs                        |
+| Real input          | Click, type, keys, hover, drag, select, scroll, dialogs, and media           |
+| Visual reasoning    | Viewport/full-page PNG capture and guarded coordinate clicks                 |
+| Browser management  | Navigation, tabs, tab groups, windows, emulation, and waits                  |
+| Browser state       | Cookies, local/session storage, permissions, downloads, print, and HTTP auth |
+| Extension lifecycle | Prepare, inspect, and unregister the per-user native host                    |
 
 All **43 MCP tools** are exposed through strict JSON Schemas. The long-lived MCP process preserves
 session and element-ref state while Chrome remains an ordinary user-controlled browser.
 
 ## See it work
 
-| Public UI test site | Responsive E2E fixture |
-|---|---|
+| Public UI test site                                                                                         | Responsive E2E fixture                                                                                                                        |
+| ----------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
 | ![Text Input test controlled through Chrome Control MCP](docs/assets/chrome-control-overlay-playground.png) | ![Chrome Control MCP exercising form, pointer, and dialog controls in its local test fixture](docs/assets/chrome-control-overlay-fixture.png) |
-| Typed value, read-back, ref click, and screenshot | Form state, coordinate click, hover, drag, and visible control presence |
+| Typed value, read-back, ref click, and screenshot                                                           | Form state, coordinate click, hover, drag, and visible control presence                                                                       |
 
 Both images are direct `browser_screenshot` results from the live extension—not mockups.
 
@@ -162,14 +162,14 @@ To save a real overlay screenshot:
 
 ## Project identity
 
-| Item | Value |
-|---|---|
-| MCP server | `chrome-control-mcp` |
-| Executable | `chrome_control_mcp.exe` |
-| Extension | `Chrome Control MCP` |
+| Item         | Value                              |
+| ------------ | ---------------------------------- |
+| MCP server   | `chrome-control-mcp`               |
+| Executable   | `chrome_control_mcp.exe`           |
+| Extension    | `Chrome Control MCP`               |
 | Extension ID | `iojehhmnaigcejfcpmilpclmeljhlkaa` |
-| Native host | `com.chromecontrolmcp.browser` |
-| Local data | `%LOCALAPPDATA%\ChromeControlMCP` |
+| Native host  | `com.chromecontrolmcp.browser`     |
+| Local data   | `%LOCALAPPDATA%\ChromeControlMCP`  |
 
 Unregister the native host with `.\scripts\extension.ps1 -Operation uninstall`, then remove the
 unpacked extension manually from `chrome://extensions` when retiring it.

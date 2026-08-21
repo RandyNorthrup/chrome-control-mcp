@@ -14,7 +14,8 @@ $buildPath = Join-Path $repoRoot $BuildDirectory
 if (-not $QtRoot) {
     if ($env:QTDIR) {
         $QtRoot = $env:QTDIR
-    } else {
+    }
+    else {
         $candidates = Get-ChildItem -LiteralPath 'C:\Qt' -Directory -ErrorAction SilentlyContinue |
             Sort-Object Name -Descending |
             ForEach-Object { Join-Path $_.FullName 'msvc2022_64' } |

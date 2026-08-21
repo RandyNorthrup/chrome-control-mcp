@@ -58,9 +58,9 @@ function Invoke-BrowserTool {
 
     $result = Send-McpRequest @{
         jsonrpc = '2.0'
-        id = $Id
-        method = 'tools/call'
-        params = @{ name = $Name; arguments = $Arguments }
+        id      = $Id
+        method  = 'tools/call'
+        params  = @{ name = $Name; arguments = $Arguments }
     }
     if ($result.isError) {
         throw "$Name failed: $($result.content[0].text)"
@@ -86,12 +86,12 @@ $temporaryTabOpen = $false
 try {
     $null = Send-McpRequest @{
         jsonrpc = '2.0'
-        id = 1
-        method = 'initialize'
-        params = @{
+        id      = 1
+        method  = 'initialize'
+        params  = @{
             protocolVersion = '2024-11-05'
-            capabilities = @{}
-            clientInfo = @{ name = 'chrome-control-mcp-live-verifier'; version = '1' }
+            capabilities    = @{}
+            clientInfo      = @{ name = 'chrome-control-mcp-live-verifier'; version = '1' }
         }
     }
 
@@ -136,10 +136,10 @@ try {
     }
 
     $screenshot = Invoke-BrowserTool 10 'browser_screenshot' @{
-        full_page = $false
+        full_page               = $false
         include_control_overlay = [bool]$IncludeControlOverlay
     }
-    $image = @($screenshot.content | Where-Object type -eq 'image')[0]
+    $image = @($screenshot.content | Where-Object type -EQ 'image')[0]
     if (-not $image -or $image.mimeType -ne 'image/png' -or $image.data.Length -lt 100) {
         throw 'Screenshot did not return valid PNG image content.'
     }
@@ -147,7 +147,8 @@ try {
     if ($ScreenshotPath) {
         $savedScreenshot = if ([IO.Path]::IsPathRooted($ScreenshotPath)) {
             [IO.Path]::GetFullPath($ScreenshotPath)
-        } else {
+        }
+        else {
             [IO.Path]::GetFullPath((Join-Path $repoRoot $ScreenshotPath))
         }
         $screenshotDirectory = Split-Path -Parent $savedScreenshot
@@ -165,23 +166,25 @@ try {
     $temporaryTabOpen = $false
 
     [pscustomobject]@{
-        site = $Site.AbsoluteUri
-        navigation = 'passed'
-        snapshot = 'passed'
-        typed_value_readback = 'passed'
-        click_result = 'passed'
-        screenshot_mime = $image.mimeType
-        screenshot_base64_length = $image.data.Length
-        screenshot_path = $savedScreenshot
-        control_overlay_included = [bool]$IncludeControlOverlay
+        site                         = $Site.AbsoluteUri
+        navigation                   = 'passed'
+        snapshot                     = 'passed'
+        typed_value_readback         = 'passed'
+        click_result                 = 'passed'
+        screenshot_mime              = $image.mimeType
+        screenshot_base64_length     = $image.data.Length
+        screenshot_path              = $savedScreenshot
+        control_overlay_included     = [bool]$IncludeControlOverlay
         visible_control_hold_seconds = $HoldSeconds
-        temporary_tab_closed = $true
+        temporary_tab_closed         = $true
     }
-} finally {
+}
+finally {
     if ($temporaryTabOpen -and -not $process.HasExited) {
         try {
             $null = Invoke-BrowserTool 99 'browser_close_tab' @{}
-        } catch {
+        }
+        catch {
             Write-Warning "Could not close temporary verification tab: $($_.Exception.Message)"
         }
     }

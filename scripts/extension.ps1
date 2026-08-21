@@ -15,7 +15,8 @@ $Executable = (Resolve-Path -LiteralPath $Executable).Path
 if ($Operation -ne 'status') {
     $detail = if ($Operation -eq 'install') {
         'register the Chrome Control MCP native messaging host for this user'
-    } else {
+    }
+    else {
         'remove the Chrome Control MCP native messaging host registration from this user'
     }
     if (-not $PSCmdlet.ShouldProcess('Current user Chrome configuration', $detail)) { return }

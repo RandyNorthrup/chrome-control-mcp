@@ -26,300 +26,319 @@ namespace {
 
 QString currentExecutablePath() {
 #ifdef Q_OS_WIN
-    std::vector<wchar_t> buffer(32768);
-    const DWORD length = GetModuleFileNameW(nullptr, buffer.data(), static_cast<DWORD>(buffer.size()));
-    if (length > 0 && length < static_cast<DWORD>(buffer.size())) {
-        return QDir::cleanPath(QString::fromWCharArray(buffer.data(), static_cast<qsizetype>(length)));
-    }
+  std::vector<wchar_t> buffer(32768);
+  const DWORD length = GetModuleFileNameW(nullptr, buffer.data(),
+                                          static_cast<DWORD>(buffer.size()));
+  if (length > 0 && length < static_cast<DWORD>(buffer.size())) {
+    return QDir::cleanPath(
+        QString::fromWCharArray(buffer.data(), static_cast<qsizetype>(length)));
+  }
 #endif
-    return QDir::cleanPath(QCoreApplication::applicationFilePath());
+  return QDir::cleanPath(QCoreApplication::applicationFilePath());
 }
 
 QString defaultDataDirectory() {
-    const QString local = qEnvironmentVariable("LOCALAPPDATA");
-    return QDir::cleanPath(QDir(local.isEmpty() ? QDir::homePath() : local)
-                               .filePath(QStringLiteral("ChromeControlMCP")));
+  const QString local = qEnvironmentVariable("LOCALAPPDATA");
+  return QDir::cleanPath(QDir(local.isEmpty() ? QDir::homePath() : local)
+                             .filePath(QStringLiteral("ChromeControlMCP")));
 }
 
-QString resolveExtensionPath(const QString& configured, const QString& executable) {
-    if (!configured.isEmpty()) {
-        return QDir::cleanPath(QFileInfo(configured).absoluteFilePath());
-    }
-    const QDir appDir(QFileInfo(executable).absolutePath());
-    const QString staged = appDir.filePath(QString::fromLatin1(kBrowserExtensionDirectoryName));
-    if (QFileInfo(staged).isDir()) {
-        return QDir::cleanPath(staged);
-    }
-    const QString source = appDir.filePath(QStringLiteral("browser/extension"));
-    return QDir::cleanPath(source);
+QString resolveExtensionPath(const QString &configured,
+                             const QString &executable) {
+  if (!configured.isEmpty()) {
+    return QDir::cleanPath(QFileInfo(configured).absoluteFilePath());
+  }
+  const QDir appDir(QFileInfo(executable).absolutePath());
+  const QString staged =
+      appDir.filePath(QString::fromLatin1(kBrowserExtensionDirectoryName));
+  if (QFileInfo(staged).isDir()) {
+    return QDir::cleanPath(staged);
+  }
+  const QString source = appDir.filePath(QStringLiteral("browser/extension"));
+  return QDir::cleanPath(source);
 }
 
-QString hostManifestPath(const ExtensionInstallConfig& config) {
-    return QDir(config.data_dir).filePath(QString::fromLatin1(kNativeHostName) +
-                                           QStringLiteral(".json"));
+QString hostManifestPath(const ExtensionInstallConfig &config) {
+  return QDir(config.data_dir)
+      .filePath(QString::fromLatin1(kNativeHostName) + QStringLiteral(".json"));
 }
 
-QByteArray hostManifestBytes(const ExtensionInstallConfig& config) {
-    const QJsonObject manifest{
-        {QStringLiteral("name"), QString::fromLatin1(kNativeHostName)},
-        {QStringLiteral("description"),
-         QStringLiteral("Chrome Control MCP browser-control native messaging host")},
-        {QStringLiteral("path"), QDir::toNativeSeparators(config.host_exe_path)},
-        {QStringLiteral("type"), QStringLiteral("stdio")},
-        {QStringLiteral("allowed_origins"),
-         QJsonArray{QStringLiteral("chrome-extension://") +
-                    QString::fromLatin1(kBrowserExtensionId) + QStringLiteral("/")}},
-    };
-    return QJsonDocument(manifest).toJson(QJsonDocument::Indented);
+QByteArray hostManifestBytes(const ExtensionInstallConfig &config) {
+  const QJsonObject manifest{
+      {QStringLiteral("name"), QString::fromLatin1(kNativeHostName)},
+      {QStringLiteral("description"),
+       QStringLiteral(
+           "Chrome Control MCP browser-control native messaging host")},
+      {QStringLiteral("path"), QDir::toNativeSeparators(config.host_exe_path)},
+      {QStringLiteral("type"), QStringLiteral("stdio")},
+      {QStringLiteral("allowed_origins"),
+       QJsonArray{QStringLiteral("chrome-extension://") +
+                  QString::fromLatin1(kBrowserExtensionId) +
+                  QStringLiteral("/")}},
+  };
+  return QJsonDocument(manifest).toJson(QJsonDocument::Indented);
 }
 
-bool writeFileAtomic(const QString& path, const QByteArray& bytes, QString* error) {
-    QSaveFile file(path);
-    if (!file.open(QIODevice::WriteOnly)) {
-        *error = file.errorString();
-        return false;
-    }
-    if (file.write(bytes) != bytes.size()) {
-        *error = file.errorString();
-        file.cancelWriting();
-        return false;
-    }
-    if (!file.commit()) {
-        *error = file.errorString();
-        return false;
-    }
-    return true;
+bool writeFileAtomic(const QString &path, const QByteArray &bytes,
+                     QString *error) {
+  QSaveFile file(path);
+  if (!file.open(QIODevice::WriteOnly)) {
+    *error = file.errorString();
+    return false;
+  }
+  if (file.write(bytes) != bytes.size()) {
+    *error = file.errorString();
+    file.cancelWriting();
+    return false;
+  }
+  if (!file.commit()) {
+    *error = file.errorString();
+    return false;
+  }
+  return true;
 }
 
 #ifdef Q_OS_WIN
 
-std::wstring wide(const QString& value) {
-    return value.toStdWString();
-}
+std::wstring wide(const QString &value) { return value.toStdWString(); }
 
 struct RegCloser {
-    void operator()(HKEY key) const {
-        if (key != nullptr) {
-            RegCloseKey(key);
-        }
+  void operator()(HKEY key) const {
+    if (key != nullptr) {
+      RegCloseKey(key);
     }
+  }
 };
 using UniqueRegKey = std::unique_ptr<std::remove_pointer_t<HKEY>, RegCloser>;
 
-bool writeRegistryDefault(const QString& subkey, const QString& value, QString* error) {
-    HKEY raw = nullptr;
-    DWORD disposition = 0;
-    const std::wstring keyName = wide(subkey);
-    LSTATUS status = RegCreateKeyExW(HKEY_CURRENT_USER,
-                                     keyName.c_str(),
-                                     0,
-                                     nullptr,
-                                     REG_OPTION_NON_VOLATILE,
-                                     KEY_SET_VALUE,
-                                     nullptr,
-                                     &raw,
-                                     &disposition);
-    Q_UNUSED(disposition);
-    UniqueRegKey key(raw);
-    if (status != ERROR_SUCCESS) {
-        *error = QStringLiteral("registry create failed (%1): %2").arg(status).arg(subkey);
-        return false;
-    }
-    const std::wstring data = wide(value);
-    status = RegSetValueExW(key.get(),
-                            nullptr,
-                            0,
-                            REG_SZ,
-                            reinterpret_cast<const BYTE*>(data.c_str()),
-                            static_cast<DWORD>((data.size() + 1) * sizeof(wchar_t)));
-    if (status != ERROR_SUCCESS) {
-        *error = QStringLiteral("registry write failed (%1): %2").arg(status).arg(subkey);
-        return false;
-    }
-    return true;
-}
-
-// 0 = absent, 1 = present and valid, 2 = present but invalid, -1 = registry read error.
-int nativeHostPresence(const ExtensionInstallConfig& config) {
-    HKEY raw = nullptr;
-    const std::wstring keyName = wide(config.native_host_key_path);
-    const LSTATUS opened = RegOpenKeyExW(
-        HKEY_CURRENT_USER, keyName.c_str(), 0, KEY_QUERY_VALUE, &raw);
-    UniqueRegKey key(raw);
-    if (opened == ERROR_FILE_NOT_FOUND || opened == ERROR_PATH_NOT_FOUND) {
-        return 0;
-    }
-    if (opened != ERROR_SUCCESS) {
-        return -1;
-    }
-
-    DWORD type = 0;
-    DWORD bytes = 0;
-    LSTATUS status = RegQueryValueExW(key.get(), nullptr, nullptr, &type, nullptr, &bytes);
-    if (status != ERROR_SUCCESS || (type != REG_SZ && type != REG_EXPAND_SZ) || bytes < sizeof(wchar_t)) {
-        return 2;
-    }
-    std::vector<wchar_t> value(bytes / sizeof(wchar_t) + 1, L'\0');
-    status = RegQueryValueExW(key.get(),
-                              nullptr,
-                              nullptr,
-                              &type,
-                              reinterpret_cast<BYTE*>(value.data()),
-                              &bytes);
-    if (status != ERROR_SUCCESS) {
-        return -1;
-    }
-    const QString path = QString::fromWCharArray(value.data());
-    QFile file(path);
-    if (!file.open(QIODevice::ReadOnly)) {
-        return 2;
-    }
-    QJsonParseError parseError;
-    const QJsonDocument document = QJsonDocument::fromJson(file.readAll(), &parseError);
-    if (parseError.error != QJsonParseError::NoError || !document.isObject()) {
-        return 2;
-    }
-    const QJsonObject object = document.object();
-    const QString expectedOrigin = QStringLiteral("chrome-extension://") +
-                                   QString::fromLatin1(kBrowserExtensionId) + QStringLiteral("/");
-    const QString manifestExe = QDir::cleanPath(object.value(QStringLiteral("path")).toString());
-    const QString expectedExe = QDir::cleanPath(config.host_exe_path);
-    return object.value(QStringLiteral("name")).toString() == QString::fromLatin1(kNativeHostName) &&
-                   object.value(QStringLiteral("type")).toString() == QStringLiteral("stdio") &&
-                   manifestExe.compare(expectedExe, Qt::CaseInsensitive) == 0 &&
-                   object.value(QStringLiteral("allowed_origins")).toArray().contains(expectedOrigin)
-               ? 1
-               : 2;
-}
-
-bool removeNativeHostKey(const QString& subkey, QString* error) {
-    const std::wstring keyName = wide(subkey);
-    const LSTATUS status = RegDeleteTreeW(HKEY_CURRENT_USER, keyName.c_str());
-    if (status == ERROR_SUCCESS || status == ERROR_FILE_NOT_FOUND || status == ERROR_PATH_NOT_FOUND) {
-        return true;
-    }
-    *error = QStringLiteral("registry removal failed (%1): %2").arg(status).arg(subkey);
+bool writeRegistryDefault(const QString &subkey, const QString &value,
+                          QString *error) {
+  HKEY raw = nullptr;
+  DWORD disposition = 0;
+  const std::wstring keyName = wide(subkey);
+  LSTATUS status = RegCreateKeyExW(HKEY_CURRENT_USER, keyName.c_str(), 0,
+                                   nullptr, REG_OPTION_NON_VOLATILE,
+                                   KEY_SET_VALUE, nullptr, &raw, &disposition);
+  Q_UNUSED(disposition);
+  UniqueRegKey key(raw);
+  if (status != ERROR_SUCCESS) {
+    *error = QStringLiteral("registry create failed (%1): %2")
+                 .arg(status)
+                 .arg(subkey);
     return false;
+  }
+  const std::wstring data = wide(value);
+  status =
+      RegSetValueExW(key.get(), nullptr, 0, REG_SZ,
+                     reinterpret_cast<const BYTE *>(data.c_str()),
+                     static_cast<DWORD>((data.size() + 1) * sizeof(wchar_t)));
+  if (status != ERROR_SUCCESS) {
+    *error = QStringLiteral("registry write failed (%1): %2")
+                 .arg(status)
+                 .arg(subkey);
+    return false;
+  }
+  return true;
+}
+
+// 0 = absent, 1 = present and valid, 2 = present but invalid, -1 = registry
+// read error.
+int nativeHostPresence(const ExtensionInstallConfig &config) {
+  HKEY raw = nullptr;
+  const std::wstring keyName = wide(config.native_host_key_path);
+  const LSTATUS opened = RegOpenKeyExW(HKEY_CURRENT_USER, keyName.c_str(), 0,
+                                       KEY_QUERY_VALUE, &raw);
+  UniqueRegKey key(raw);
+  if (opened == ERROR_FILE_NOT_FOUND || opened == ERROR_PATH_NOT_FOUND) {
+    return 0;
+  }
+  if (opened != ERROR_SUCCESS) {
+    return -1;
+  }
+
+  DWORD type = 0;
+  DWORD bytes = 0;
+  LSTATUS status =
+      RegQueryValueExW(key.get(), nullptr, nullptr, &type, nullptr, &bytes);
+  if (status != ERROR_SUCCESS || (type != REG_SZ && type != REG_EXPAND_SZ) ||
+      bytes < sizeof(wchar_t)) {
+    return 2;
+  }
+  std::vector<wchar_t> value(bytes / sizeof(wchar_t) + 1, L'\0');
+  status = RegQueryValueExW(key.get(), nullptr, nullptr, &type,
+                            reinterpret_cast<BYTE *>(value.data()), &bytes);
+  if (status != ERROR_SUCCESS) {
+    return -1;
+  }
+  const QString path = QString::fromWCharArray(value.data());
+  QFile file(path);
+  if (!file.open(QIODevice::ReadOnly)) {
+    return 2;
+  }
+  QJsonParseError parseError;
+  const QJsonDocument document =
+      QJsonDocument::fromJson(file.readAll(), &parseError);
+  if (parseError.error != QJsonParseError::NoError || !document.isObject()) {
+    return 2;
+  }
+  const QJsonObject object = document.object();
+  const QString expectedOrigin = QStringLiteral("chrome-extension://") +
+                                 QString::fromLatin1(kBrowserExtensionId) +
+                                 QStringLiteral("/");
+  const QString manifestExe =
+      QDir::cleanPath(object.value(QStringLiteral("path")).toString());
+  const QString expectedExe = QDir::cleanPath(config.host_exe_path);
+  return object.value(QStringLiteral("name")).toString() ==
+                     QString::fromLatin1(kNativeHostName) &&
+                 object.value(QStringLiteral("type")).toString() ==
+                     QStringLiteral("stdio") &&
+                 manifestExe.compare(expectedExe, Qt::CaseInsensitive) == 0 &&
+                 object.value(QStringLiteral("allowed_origins"))
+                     .toArray()
+                     .contains(expectedOrigin)
+             ? 1
+             : 2;
+}
+
+bool removeNativeHostKey(const QString &subkey, QString *error) {
+  const std::wstring keyName = wide(subkey);
+  const LSTATUS status = RegDeleteTreeW(HKEY_CURRENT_USER, keyName.c_str());
+  if (status == ERROR_SUCCESS || status == ERROR_FILE_NOT_FOUND ||
+      status == ERROR_PATH_NOT_FOUND) {
+    return true;
+  }
+  *error = QStringLiteral("registry removal failed (%1): %2")
+               .arg(status)
+               .arg(subkey);
+  return false;
 }
 
 #endif
 
-}  // namespace
+} // namespace
 
-BrowserExtensionInstaller::BrowserExtensionInstaller(ExtensionInstallConfig config)
+BrowserExtensionInstaller::BrowserExtensionInstaller(
+    ExtensionInstallConfig config)
     : config_(std::move(config)) {
-    if (config_.host_exe_path.isEmpty()) {
-        config_.host_exe_path = currentExecutablePath();
-    } else {
-        config_.host_exe_path = QDir::cleanPath(QFileInfo(config_.host_exe_path).absoluteFilePath());
-    }
-    config_.extension_path = resolveExtensionPath(config_.extension_path, config_.host_exe_path);
-    if (config_.data_dir.isEmpty()) {
-        config_.data_dir = defaultDataDirectory();
-    } else {
-        config_.data_dir = QDir::cleanPath(QFileInfo(config_.data_dir).absoluteFilePath());
-    }
-    if (config_.native_host_key_path.isEmpty()) {
-        config_.native_host_key_path = QStringLiteral("Software\\Google\\Chrome\\NativeMessagingHosts\\") +
-                                       QString::fromLatin1(kNativeHostName);
-    }
+  if (config_.host_exe_path.isEmpty()) {
+    config_.host_exe_path = currentExecutablePath();
+  } else {
+    config_.host_exe_path =
+        QDir::cleanPath(QFileInfo(config_.host_exe_path).absoluteFilePath());
+  }
+  config_.extension_path =
+      resolveExtensionPath(config_.extension_path, config_.host_exe_path);
+  if (config_.data_dir.isEmpty()) {
+    config_.data_dir = defaultDataDirectory();
+  } else {
+    config_.data_dir =
+        QDir::cleanPath(QFileInfo(config_.data_dir).absoluteFilePath());
+  }
+  if (config_.native_host_key_path.isEmpty()) {
+    config_.native_host_key_path =
+        QStringLiteral("Software\\Google\\Chrome\\NativeMessagingHosts\\") +
+        QString::fromLatin1(kNativeHostName);
+  }
 }
 
 bool BrowserExtensionInstaller::extensionPresent() const {
-    const QDir dir(config_.extension_path);
-    return QFileInfo(dir.filePath(QStringLiteral("manifest.json"))).isFile() &&
-           QFileInfo(dir.filePath(QStringLiteral("background.js"))).isFile();
+  const QDir dir(config_.extension_path);
+  return QFileInfo(dir.filePath(QStringLiteral("manifest.json"))).isFile() &&
+         QFileInfo(dir.filePath(QStringLiteral("background.js"))).isFile();
 }
 
 ExtensionInstallResult BrowserExtensionInstaller::install() {
 #ifdef Q_OS_WIN
-    if (!extensionPresent()) {
-        return {false,
-                QStringLiteral("Unpacked extension files not found"),
-                config_.extension_path};
-    }
-    if (!QFileInfo(config_.host_exe_path).isFile()) {
-        return {false,
-                QStringLiteral("Native host executable not found"),
-                config_.host_exe_path};
-    }
-    if (!QDir().mkpath(config_.data_dir)) {
-        return {false, QStringLiteral("Could not create data directory"), config_.data_dir};
-    }
+  if (!extensionPresent()) {
+    return {false, QStringLiteral("Unpacked extension files not found"),
+            config_.extension_path};
+  }
+  if (!QFileInfo(config_.host_exe_path).isFile()) {
+    return {false, QStringLiteral("Native host executable not found"),
+            config_.host_exe_path};
+  }
+  if (!QDir().mkpath(config_.data_dir)) {
+    return {false, QStringLiteral("Could not create data directory"),
+            config_.data_dir};
+  }
 
-    const QString manifestPath = hostManifestPath(config_);
-    QString error;
-    if (!writeFileAtomic(manifestPath, hostManifestBytes(config_), &error)) {
-        return {false, QStringLiteral("Could not write native host manifest"), error};
-    }
-    if (!writeRegistryDefault(config_.native_host_key_path, manifestPath, &error)) {
-        return {false, QStringLiteral("Could not register native host"), error};
-    }
+  const QString manifestPath = hostManifestPath(config_);
+  QString error;
+  if (!writeFileAtomic(manifestPath, hostManifestBytes(config_), &error)) {
+    return {false, QStringLiteral("Could not write native host manifest"),
+            error};
+  }
+  if (!writeRegistryDefault(config_.native_host_key_path, manifestPath,
+                            &error)) {
+    return {false, QStringLiteral("Could not register native host"), error};
+  }
 
-    return {true,
-            QStringLiteral("Browser extension bridge prepared"),
-            QStringLiteral("Load unpacked in chrome://extensions from %1, then reload or restart Chrome")
-                .arg(QDir::toNativeSeparators(config_.extension_path))};
+  return {true, QStringLiteral("Browser extension bridge prepared"),
+          QStringLiteral("Load unpacked in chrome://extensions from %1, then "
+                         "reload or restart Chrome")
+              .arg(QDir::toNativeSeparators(config_.extension_path))};
 #else
-    return {false,
-            QStringLiteral("Browser extension preparation is Windows-only"),
-            QString()};
+  return {false,
+          QStringLiteral("Browser extension preparation is Windows-only"),
+          QString()};
 #endif
 }
 
 ExtensionInstallResult BrowserExtensionInstaller::uninstall() const {
 #ifdef Q_OS_WIN
-    QString error;
-    if (!removeNativeHostKey(config_.native_host_key_path, &error)) {
-        return {false, QStringLiteral("Could not remove native host registration"), error};
-    }
-    const QString manifestPath = hostManifestPath(config_);
-    if (QFileInfo(manifestPath).isFile() && !QFile::remove(manifestPath)) {
-        return {false,
-                QStringLiteral("Native host registration removed; manifest cleanup failed"),
-                manifestPath};
-    }
-    return {true,
-            QStringLiteral("Browser extension bridge unregistered"),
-            QStringLiteral("Remove Chrome Control MCP manually from chrome://extensions if it is loaded")};
-#else
+  QString error;
+  if (!removeNativeHostKey(config_.native_host_key_path, &error)) {
+    return {false, QStringLiteral("Could not remove native host registration"),
+            error};
+  }
+  const QString manifestPath = hostManifestPath(config_);
+  if (QFileInfo(manifestPath).isFile() && !QFile::remove(manifestPath)) {
     return {false,
-            QStringLiteral("Browser extension preparation is Windows-only"),
-            QString()};
+            QStringLiteral(
+                "Native host registration removed; manifest cleanup failed"),
+            manifestPath};
+  }
+  return {true, QStringLiteral("Browser extension bridge unregistered"),
+          QStringLiteral("Remove Chrome Control MCP manually from "
+                         "chrome://extensions if it is loaded")};
+#else
+  return {false,
+          QStringLiteral("Browser extension preparation is Windows-only"),
+          QString()};
 #endif
 }
 
 ExtensionInstallState BrowserExtensionInstaller::state() const {
 #ifdef Q_OS_WIN
-    const bool extension = extensionPresent();
-    const int host = nativeHostPresence(config_);
-    if (host < 0) {
-        return ExtensionInstallState::Error;
-    }
-    if (extension && host == 1) {
-        return ExtensionInstallState::Prepared;
-    }
-    if (!extension && host == 0) {
-        return ExtensionInstallState::NotPrepared;
-    }
-    return ExtensionInstallState::Partial;
-#else
+  const bool extension = extensionPresent();
+  const int host = nativeHostPresence(config_);
+  if (host < 0) {
     return ExtensionInstallState::Error;
+  }
+  if (extension && host == 1) {
+    return ExtensionInstallState::Prepared;
+  }
+  if (!extension && host == 0) {
+    return ExtensionInstallState::NotPrepared;
+  }
+  return ExtensionInstallState::Partial;
+#else
+  return ExtensionInstallState::Error;
 #endif
 }
 
 QString BrowserExtensionInstaller::stateString() const {
-    switch (state()) {
-        case ExtensionInstallState::NotPrepared:
-            return QStringLiteral("not_prepared");
-        case ExtensionInstallState::Prepared:
-            return QStringLiteral("prepared");
-        case ExtensionInstallState::Partial:
-            return QStringLiteral("partial");
-        case ExtensionInstallState::Error:
-            return QStringLiteral("error");
-    }
+  switch (state()) {
+  case ExtensionInstallState::NotPrepared:
+    return QStringLiteral("not_prepared");
+  case ExtensionInstallState::Prepared:
+    return QStringLiteral("prepared");
+  case ExtensionInstallState::Partial:
+    return QStringLiteral("partial");
+  case ExtensionInstallState::Error:
     return QStringLiteral("error");
+  }
+  return QStringLiteral("error");
 }
 
-}  // namespace chrome_control_mcp
+} // namespace chrome_control_mcp

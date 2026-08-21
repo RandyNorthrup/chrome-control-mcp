@@ -5,7 +5,15 @@
   "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA1YZ3HSt/m9yIPgP6OX6Ctvp5L6pHiyfOmVbw02Lx36MtsEhlg1nZYpjXXHHSHzRLSwQSmAAyFVS9ksjXVWUROmrjOW4NqFrfSjGzr4hxbxpJq79eWTV7uynRGEHgkwQBEbKBl5ZwFoNja0BJ1xjcUiRdf4+nYBFSHAPFXc5VXXLJ0JYVKZKwZ5bWJt5xVuzRBHDdvG4nCWPZ3HytAc2chKvDwDKmiXkUG+k61TXdbogYx5CKg3mAZZ5S0XjZFKoGekPVkDoHpgjZDtSoBPEbb2M2hG9iHPoGKdd+P4g72kU2EjYZdl+VayhCkHxBvZgRiEyooq9ysVe4R7BhD5hsDQIDAQAB",
   "description": "Lets an AI assistant view and control the active Chrome tab through the DevTools Protocol, with a visible agent cursor. Your own mouse and keyboard stay yours.",
   "minimum_chrome_version": "116",
-  "permissions": ["nativeMessaging", "debugger", "tabs", "tabGroups", "contentSettings", "cookies", "downloads"],
+  "permissions": [
+    "nativeMessaging",
+    "debugger",
+    "tabs",
+    "tabGroups",
+    "contentSettings",
+    "cookies",
+    "downloads"
+  ],
   "host_permissions": ["<all_urls>"],
   "background": {
     "service_worker": "background.js"

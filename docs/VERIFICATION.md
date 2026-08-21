@@ -36,13 +36,13 @@ cmake --install build --config Release --prefix dist
 
 Bundle contents:
 
-| File | SHA-256 |
-|---|---|
-| `chrome_control_mcp.exe` | `DC6164DACABC5267A05B350D9021C5B3585D998F4CF46863C0A31E1729D64AF9` |
+| File                      | SHA-256                                                            |
+| ------------------------- | ------------------------------------------------------------------ |
+| `chrome_control_mcp.exe`  | `DC6164DACABC5267A05B350D9021C5B3585D998F4CF46863C0A31E1729D64AF9` |
 | `extension/background.js` | `F89BBF6409E928F33647C8E6D9CE78F3B3D414C893D48D6C8F438437EA57AB0C` |
 | `extension/manifest.json` | `3E319B32E064C125699CC74F0E2759E6FC800604974A726478175F8ACB6683A5` |
-| `Qt6Core.dll` | `B712B4754588E89F855DC0AA087D6304B2FD21B0E0639D1CDEB9CB969BD5FB72` |
-| `LICENSE` | `33C1DE52600AA788C54CC819E905E20A62B37D4EA4B33FFFB71D389E5198D752` |
+| `Qt6Core.dll`             | `B712B4754588E89F855DC0AA087D6304B2FD21B0E0639D1CDEB9CB969BD5FB72` |
+| `LICENSE`                 | `33C1DE52600AA788C54CC819E905E20A62B37D4EA4B33FFFB71D389E5198D752` |
 
 ## Tests
 
@@ -52,17 +52,17 @@ ctest --test-dir build -C Release --output-on-failure
 
 Result: 9/9 passed.
 
-| Test | Coverage |
-|---|---|
-| `test_browser_contract` | 40-tool schemas, translation, refs, screenshot overlay option, bounds, validation |
-| `test_native_messaging` | Native frame codec and host handshake |
-| `test_browser_bridge` | Session, reply correlation, snapshots, stale refs |
-| `test_browser_extension_installer` | Public identity and isolated native-host lifecycle |
-| `test_browser_bridge_security` | Project pipe prefix, DACL, label, nonce, rendezvous |
-| `test_browser_bridge_pipe` | Pipe handshake, verification, timeout, framing |
-| `test_browser_bridge_relay` | End-to-end relay/pipe/session with fake extension |
-| `test_browser_mcp_server` | Identity, 43 tools, profiles, MCP envelopes/content |
-| `test_browser_extension_pure` | 33 service-worker guard, storage-domain, geometry, and decision cases |
+| Test                               | Coverage                                                                          |
+| ---------------------------------- | --------------------------------------------------------------------------------- |
+| `test_browser_contract`            | 40-tool schemas, translation, refs, screenshot overlay option, bounds, validation |
+| `test_native_messaging`            | Native frame codec and host handshake                                             |
+| `test_browser_bridge`              | Session, reply correlation, snapshots, stale refs                                 |
+| `test_browser_extension_installer` | Public identity and isolated native-host lifecycle                                |
+| `test_browser_bridge_security`     | Project pipe prefix, DACL, label, nonce, rendezvous                               |
+| `test_browser_bridge_pipe`         | Pipe handshake, verification, timeout, framing                                    |
+| `test_browser_bridge_relay`        | End-to-end relay/pipe/session with fake extension                                 |
+| `test_browser_mcp_server`          | Identity, 43 tools, profiles, MCP envelopes/content                               |
+| `test_browser_extension_pure`      | 33 service-worker guard, storage-domain, geometry, and decision cases             |
 
 ## MCP process smoke
 

@@ -41,40 +41,74 @@ function makeChromeStub() {
   const target = function () {};
   return new Proxy(target, {
     get(_t, prop) {
-      if (prop === "then") { return undefined; }  // must not look like a thenable
+      if (prop === "then") {
+        return undefined;
+      } // must not look like a thenable
       return makeChromeStub();
     },
-    apply() { return makeChromeStub(); },
-    construct() { return makeChromeStub(); },
+    apply() {
+      return makeChromeStub();
+    },
+    construct() {
+      return makeChromeStub();
+    },
   });
 }
 
 // The names pulled out of the worker's scope. Anything not listed here stays private to the
 // worker, which keeps this file from quietly becoming a second copy of its API.
 const EXPORTED = [
-  "normalizeUrl", "tabSettledAt", "stripFragment", "sameProcessUrls", "capFrameUrls",
-  "collectFrameUrls", "countFrames", "parseModifiers", "mouseButton", "clickCountOf",
+  "normalizeUrl",
+  "tabSettledAt",
+  "stripFragment",
+  "sameProcessUrls",
+  "capFrameUrls",
+  "collectFrameUrls",
+  "countFrames",
+  "parseModifiers",
+  "mouseButton",
+  "clickCountOf",
   "documentHitPoint",
-  "scrollAmountPx", "selectCallArgs", "originsMatch", "defaultDialogAccept",
-  "transientReadError", "isEditableRole", "axValue", "MAX_OMITTED_FRAMES",
-  "COMMAND_TABLE", "dispatchCommand", "axNodeToCapture", "indexProps",
-  "AX_VALUE_MAX_CHARS", "printPageOptions", "buildBoundsMap",
-  "buildNodes", "MAX_CAPTURE_NODES",
+  "scrollAmountPx",
+  "selectCallArgs",
+  "originsMatch",
+  "defaultDialogAccept",
+  "transientReadError",
+  "isEditableRole",
+  "axValue",
+  "MAX_OMITTED_FRAMES",
+  "COMMAND_TABLE",
+  "dispatchCommand",
+  "axNodeToCapture",
+  "indexProps",
+  "AX_VALUE_MAX_CHARS",
+  "printPageOptions",
+  "buildBoundsMap",
+  "buildNodes",
+  "MAX_CAPTURE_NODES",
 ];
 
 function loadWorker() {
   const context = vm.createContext({
     chrome: makeChromeStub(),
     console: { log() {}, warn() {}, error() {}, debug() {} },
-    setTimeout, clearTimeout, setInterval, clearInterval,
-    URL, TextEncoder, TextDecoder, structuredClone,
+    setTimeout,
+    clearTimeout,
+    setInterval,
+    clearInterval,
+    URL,
+    TextEncoder,
+    TextDecoder,
+    structuredClone,
   });
   const epilogue = `\n;globalThis.__chrome_control_mcp_exports = { ${EXPORTED.join(", ")} };\n`;
   vm.runInContext(workerSource + epilogue, context, { filename: workerPath });
   const exported = context.__chrome_control_mcp_exports;
   for (const name of EXPORTED) {
     if (exported[name] === undefined) {
-      throw new Error(`background.js no longer defines ${name}; the harness is stale`);
+      throw new Error(
+        `background.js no longer defines ${name}; the harness is stale`,
+      );
     }
   }
   return exported;
@@ -114,7 +148,10 @@ test("normalizeUrl refuses every scheme that is not http(s)", () => {
 });
 
 test("normalizeUrl accepts http(s) and upgrades a bare host", () => {
-  assert.equal(w.normalizeUrl("https://example.com/a"), "https://example.com/a");
+  assert.equal(
+    w.normalizeUrl("https://example.com/a"),
+    "https://example.com/a",
+  );
   assert.equal(w.normalizeUrl("HTTP://example.com"), "HTTP://example.com");
   assert.equal(w.normalizeUrl("example.com"), "https://example.com");
   assert.equal(w.normalizeUrl("example.com/path"), "https://example.com/path");
@@ -128,25 +165,54 @@ test("tabSettledAt does not mistake the PREVIOUS document for the new one", () =
   // may not have started it, and the old document is "complete" too. Settling on that
   // reports the page the caller navigated AWAY from as the freshly loaded one.
   const prior = "https://old.example/page";
-  assert.equal(w.tabSettledAt({ status: "complete", url: prior }, prior), false);
-  assert.equal(w.tabSettledAt({ status: "complete", url: "https://new.example/" }, prior), true);
+  assert.equal(
+    w.tabSettledAt({ status: "complete", url: prior }, prior),
+    false,
+  );
+  assert.equal(
+    w.tabSettledAt({ status: "complete", url: "https://new.example/" }, prior),
+    true,
+  );
   // A pending navigation disqualifies the read regardless of status.
   assert.equal(
-    w.tabSettledAt({ status: "complete", url: "https://new.example/", pendingUrl: "https://x/" }, prior),
-    false);
-  assert.equal(w.tabSettledAt({ status: "loading", url: "https://new.example/" }, prior), false);
+    w.tabSettledAt(
+      {
+        status: "complete",
+        url: "https://new.example/",
+        pendingUrl: "https://x/",
+      },
+      prior,
+    ),
+    false,
+  );
+  assert.equal(
+    w.tabSettledAt({ status: "loading", url: "https://new.example/" }, prior),
+    false,
+  );
   assert.equal(w.tabSettledAt(null, prior), false);
 });
 
 test("tabSettledAt treats an unreadable prior url as unresolved, not as settled", () => {
   // priorUrl null means a tab created for this navigation: no previous document exists to
   // be confused with, so any non-empty url is the navigation having landed.
-  assert.equal(w.tabSettledAt({ status: "complete", url: "https://new.example/" }, null), true);
+  assert.equal(
+    w.tabSettledAt({ status: "complete", url: "https://new.example/" }, null),
+    true,
+  );
   assert.equal(w.tabSettledAt({ status: "complete", url: "" }, null), false);
   // A prior url that is neither a string nor null cannot establish "this is no longer it",
   // so the shortcut is withheld rather than guessed at.
-  assert.equal(w.tabSettledAt({ status: "complete", url: "https://new.example/" }, undefined), false);
-  assert.equal(w.tabSettledAt({ status: "complete", url: "https://new.example/" }, 42), false);
+  assert.equal(
+    w.tabSettledAt(
+      { status: "complete", url: "https://new.example/" },
+      undefined,
+    ),
+    false,
+  );
+  assert.equal(
+    w.tabSettledAt({ status: "complete", url: "https://new.example/" }, 42),
+    false,
+  );
 });
 
 test("mouseButton refuses an unrecognized button instead of defaulting to left", () => {
@@ -171,15 +237,25 @@ test("clickCountOf refuses a count that is not a real click gesture", () => {
 
 test("documentHitPoint converts viewport coordinates through page scroll", () => {
   assert.deepEqual(
-    crossRealm(w.documentHitPoint(1075, 380, { ok: true, scrollX: 9, scrollY: 142 })),
+    crossRealm(
+      w.documentHitPoint(1075, 380, { ok: true, scrollX: 9, scrollY: 142 }),
+    ),
     { x: 1084, y: 522 },
   );
   assert.deepEqual(
-    crossRealm(w.documentHitPoint(10.6, 20.4, { ok: true, scrollX: 0, scrollY: 0 })),
+    crossRealm(
+      w.documentHitPoint(10.6, 20.4, { ok: true, scrollX: 0, scrollY: 0 }),
+    ),
     { x: 11, y: 20 },
   );
-  assert.equal(w.documentHitPoint(1, 2, { ok: false, scrollX: 0, scrollY: 0 }), null);
-  assert.equal(w.documentHitPoint(NaN, 2, { ok: true, scrollX: 0, scrollY: 0 }), null);
+  assert.equal(
+    w.documentHitPoint(1, 2, { ok: false, scrollX: 0, scrollY: 0 }),
+    null,
+  );
+  assert.equal(
+    w.documentHitPoint(NaN, 2, { ok: true, scrollX: 0, scrollY: 0 }),
+    null,
+  );
 });
 
 test("parseModifiers refuses an unknown modifier rather than dropping it", () => {
@@ -207,16 +283,48 @@ test("scrollAmountPx refuses a non-positive or non-finite distance", () => {
 
 test("selectCallArgs requires exactly one selection criterion", () => {
   assert.throws(() => w.selectCallArgs({}), /needs one of/);
-  assert.throws(() => w.selectCallArgs({ value: "", label: "" }), /needs one of/);
-  assert.throws(() => w.selectCallArgs({ value: "a", index: 2 }), /exactly one/);
-  assert.throws(() => w.selectCallArgs({ label: "a", values: ["b"] }), /exactly one/);
+  assert.throws(
+    () => w.selectCallArgs({ value: "", label: "" }),
+    /needs one of/,
+  );
+  assert.throws(
+    () => w.selectCallArgs({ value: "a", index: 2 }),
+    /exactly one/,
+  );
+  assert.throws(
+    () => w.selectCallArgs({ label: "a", values: ["b"] }),
+    /exactly one/,
+  );
 
-  assert.deepEqual(crossRealm(w.selectCallArgs({ value: "a" })), ["value", "a", "", -1, []]);
-  assert.deepEqual(crossRealm(w.selectCallArgs({ label: "L" })), ["label", "", "L", -1, []]);
+  assert.deepEqual(crossRealm(w.selectCallArgs({ value: "a" })), [
+    "value",
+    "a",
+    "",
+    -1,
+    [],
+  ]);
+  assert.deepEqual(crossRealm(w.selectCallArgs({ label: "L" })), [
+    "label",
+    "",
+    "L",
+    -1,
+    [],
+  ]);
   // index 0 is a real choice and must not be read as "absent".
-  assert.deepEqual(crossRealm(w.selectCallArgs({ index: 0 })), ["index", "", "", 0, []]);
-  assert.deepEqual(crossRealm(w.selectCallArgs({ values: ["x", 2] })),
-                   ["values", "", "", -1, ["x", "2"]]);
+  assert.deepEqual(crossRealm(w.selectCallArgs({ index: 0 })), [
+    "index",
+    "",
+    "",
+    0,
+    [],
+  ]);
+  assert.deepEqual(crossRealm(w.selectCallArgs({ values: ["x", 2] })), [
+    "values",
+    "",
+    "",
+    -1,
+    ["x", "2"],
+  ]);
 });
 
 test("capFrameUrls reports truncation explicitly instead of just returning fewer frames", () => {
@@ -224,27 +332,35 @@ test("capFrameUrls reports truncation explicitly instead of just returning fewer
   // frames" and "these are some of the frames" as the same answer.
   const cap = w.MAX_OMITTED_FRAMES;
   const many = [];
-  for (let i = 0; i < cap + 5; i++) { many.push(`https://f${i}.example/`); }
+  for (let i = 0; i < cap + 5; i++) {
+    many.push(`https://f${i}.example/`);
+  }
 
   const capped = w.capFrameUrls(many, null);
   assert.equal(capped.frames.length, cap);
   assert.equal(capped.truncated, true);
 
-  const few = w.capFrameUrls(["https://a.example/", "https://b.example/"], null);
+  const few = w.capFrameUrls(
+    ["https://a.example/", "https://b.example/"],
+    null,
+  );
   assert.equal(few.frames.length, 2);
   assert.equal(few.truncated, false);
 });
 
 test("capFrameUrls drops non-http, already-covered and duplicate frames", () => {
   const covered = new Set(["https://covered.example/"]);
-  const out = w.capFrameUrls([
-    "https://covered.example/",          // already captured
-    "https://covered.example/#anchor",   // same document, fragment only
-    "about:blank",                       // not http(s)
-    "data:text/html,x",                  // not http(s)
-    "https://kept.example/",
-    "https://kept.example/",             // duplicate
-  ], covered);
+  const out = w.capFrameUrls(
+    [
+      "https://covered.example/", // already captured
+      "https://covered.example/#anchor", // same document, fragment only
+      "about:blank", // not http(s)
+      "data:text/html,x", // not http(s)
+      "https://kept.example/",
+      "https://kept.example/", // duplicate
+    ],
+    covered,
+  );
   assert.deepEqual(crossRealm(out.frames), ["https://kept.example/"]);
   assert.equal(out.truncated, false);
 });
@@ -253,19 +369,23 @@ test("frame tree walking counts and collects every nested frame", () => {
   const tree = {
     frame: { url: "https://root.example/" },
     childFrames: [
-      { frame: { url: "https://a.example/" }, childFrames: [
-        { frame: { url: "https://a1.example/" } },
-      ] },
+      {
+        frame: { url: "https://a.example/" },
+        childFrames: [{ frame: { url: "https://a1.example/" } }],
+      },
       { frame: { url: "https://b.example/" } },
     ],
   };
   assert.equal(w.countFrames(tree), 4);
   assert.equal(w.countFrames(null), 0);
 
-  const urls = [];  // built here, so this one is already same-realm
+  const urls = []; // built here, so this one is already same-realm
   w.collectFrameUrls(tree, urls);
   assert.deepEqual(urls, [
-    "https://root.example/", "https://a.example/", "https://a1.example/", "https://b.example/",
+    "https://root.example/",
+    "https://a.example/",
+    "https://a1.example/",
+    "https://b.example/",
   ]);
 });
 
@@ -273,19 +393,33 @@ test("sameProcessUrls resolves documentURL through the shared string table", () 
   // DOMSnapshot stores documentURL as an INDEX into snapshot.strings, not as a string.
   const snapshot = {
     strings: ["https://one.example/page#frag", "https://two.example/"],
-    documents: [{ documentURL: 0 }, { documentURL: 1 }, { documentURL: 99 }, {}],
+    documents: [
+      { documentURL: 0 },
+      { documentURL: 1 },
+      { documentURL: 99 },
+      {},
+    ],
   };
   const urls = w.sameProcessUrls(snapshot);
-  assert.ok(urls.has("https://one.example/page"));  // fragment stripped
+  assert.ok(urls.has("https://one.example/page")); // fragment stripped
   assert.ok(urls.has("https://two.example/"));
-  assert.equal(urls.size, 2);  // out-of-range index and missing key contribute nothing
+  assert.equal(urls.size, 2); // out-of-range index and missing key contribute nothing
   assert.equal(w.sameProcessUrls(null).size, 0);
 });
 
 test("originsMatch compares origins, and falls back to equality only when unparseable", () => {
-  assert.equal(w.originsMatch("https://x.example/a", "https://x.example/b"), true);
-  assert.equal(w.originsMatch("https://x.example/", "http://x.example/"), false);
-  assert.equal(w.originsMatch("https://x.example/", "https://y.example/"), false);
+  assert.equal(
+    w.originsMatch("https://x.example/a", "https://x.example/b"),
+    true,
+  );
+  assert.equal(
+    w.originsMatch("https://x.example/", "http://x.example/"),
+    false,
+  );
+  assert.equal(
+    w.originsMatch("https://x.example/", "https://y.example/"),
+    false,
+  );
   assert.equal(w.originsMatch("", "https://x.example/"), false);
   assert.equal(w.originsMatch(null, null), false);
   assert.equal(w.originsMatch("not-a-url", "not-a-url"), true);
@@ -321,8 +455,16 @@ test("indexProps cannot have its prototype set by a property name", () => {
     { name: "focusable", value: { value: true } },
   ];
   const props = indexPropsOf(evil);
-  assert.equal(Object.getPrototypeOf(props), null, "props must have no prototype");
-  assert.equal(props.disabled, undefined, "a state the page never set must not resolve");
+  assert.equal(
+    Object.getPrototypeOf(props),
+    null,
+    "props must have no prototype",
+  );
+  assert.equal(
+    props.disabled,
+    undefined,
+    "a state the page never set must not resolve",
+  );
   assert.equal(props.focusable, true);
 });
 
@@ -333,16 +475,31 @@ function indexPropsOf(properties) {
 test("axNodeToCapture reports ARIA mixed as its own state, never as a boolean", () => {
   // "mixed" is a partially-checked control. Collapsing it to true or false states something
   // about the control that is not true.
-  const mixed = w.axNodeToCapture(axNode("checkbox", "Select all", [["checked", "mixed"]]),
-                                  0, new Map());
+  const mixed = w.axNodeToCapture(
+    axNode("checkbox", "Select all", [["checked", "mixed"]]),
+    0,
+    new Map(),
+  );
   assert.equal(mixed.mixed, true);
-  assert.equal("checked" in mixed, false, "mixed must not also claim a checked boolean");
+  assert.equal(
+    "checked" in mixed,
+    false,
+    "mixed must not also claim a checked boolean",
+  );
 
-  const checked = w.axNodeToCapture(axNode("checkbox", "A", [["checked", true]]), 0, new Map());
+  const checked = w.axNodeToCapture(
+    axNode("checkbox", "A", [["checked", true]]),
+    0,
+    new Map(),
+  );
   assert.equal(checked.checked, true);
   assert.equal("mixed" in checked, false);
 
-  const unchecked = w.axNodeToCapture(axNode("checkbox", "B", [["checked", false]]), 0, new Map());
+  const unchecked = w.axNodeToCapture(
+    axNode("checkbox", "B", [["checked", false]]),
+    0,
+    new Map(),
+  );
   assert.equal(unchecked.checked, false);
 
   // A control with no checked property must claim neither.
@@ -354,12 +511,18 @@ test("axNodeToCapture reports ARIA mixed as its own state, never as a boolean", 
 test("axNodeToCapture flags a truncated value instead of silently shortening it", () => {
   const long = "x".repeat(w.AX_VALUE_MAX_CHARS + 25);
   const rec = w.axNodeToCapture(
-    axNode("textbox", "Notes", [], { value: { value: long } }), 0, new Map());
+    axNode("textbox", "Notes", [], { value: { value: long } }),
+    0,
+    new Map(),
+  );
   assert.equal(rec.value.length, w.AX_VALUE_MAX_CHARS);
   assert.equal(rec.value_truncated, true);
 
   const short = w.axNodeToCapture(
-    axNode("textbox", "Notes", [], { value: { value: "abc" } }), 0, new Map());
+    axNode("textbox", "Notes", [], { value: { value: "abc" } }),
+    0,
+    new Map(),
+  );
   assert.equal(short.value, "abc");
   assert.equal("value_truncated" in short, false);
 });
@@ -367,10 +530,27 @@ test("axNodeToCapture flags a truncated value instead of silently shortening it"
 test("axNodeToCapture omits a state the page never reported", () => {
   // Absent and false are different facts. A fabricated false would tell the model the page
   // said something it did not.
-  const rec = w.axNodeToCapture(axNode("button", "Go", [["focusable", true]]), 3, new Map());
-  for (const never of ["disabled", "readonly", "required", "busy", "selected", "pressed",
-                       "invalid", "expanded", "editable"]) {
-    assert.equal(never in rec, false, `${never} must be absent when unreported`);
+  const rec = w.axNodeToCapture(
+    axNode("button", "Go", [["focusable", true]]),
+    3,
+    new Map(),
+  );
+  for (const never of [
+    "disabled",
+    "readonly",
+    "required",
+    "busy",
+    "selected",
+    "pressed",
+    "invalid",
+    "expanded",
+    "editable",
+  ]) {
+    assert.equal(
+      never in rec,
+      false,
+      `${never} must be absent when unreported`,
+    );
   }
   assert.equal(rec.depth, 3);
   assert.equal(rec.interactable, true);
@@ -378,15 +558,31 @@ test("axNodeToCapture omits a state the page never reported", () => {
 });
 
 test("axNodeToCapture applies the state table and drops ignored nodes", () => {
-  const rec = w.axNodeToCapture(axNode("textbox", "Email", [
-    ["disabled", true], ["required", true], ["invalid", "spelling"],
-    ["selected", "true"], ["expanded", false], ["busy", false],
-  ]), 0, new Map());
+  const rec = w.axNodeToCapture(
+    axNode("textbox", "Email", [
+      ["disabled", true],
+      ["required", true],
+      ["invalid", "spelling"],
+      ["selected", "true"],
+      ["expanded", false],
+      ["busy", false],
+    ]),
+    0,
+    new Map(),
+  );
   assert.equal(rec.disabled, true);
   assert.equal(rec.required, true);
-  assert.equal(rec.invalid, true, "invalid carries a reason string, not just true");
+  assert.equal(
+    rec.invalid,
+    true,
+    "invalid carries a reason string, not just true",
+  );
   assert.equal(rec.selected, true);
-  assert.equal(rec.expanded, false, "a collapsed control is not the same as no state");
+  assert.equal(
+    rec.expanded,
+    false,
+    "a collapsed control is not the same as no state",
+  );
   assert.equal("busy" in rec, false, "an explicit false must not set the flag");
   assert.equal(rec.editable, true, "textbox is editable by role");
 
@@ -396,13 +592,19 @@ test("axNodeToCapture applies the state table and drops ignored nodes", () => {
 test("axNodeToCapture attaches geometry only for a real backend node id", () => {
   const bounds = { x: 1, y: 2, w: 3, h: 4 };
   const withId = w.axNodeToCapture(
-    axNode("button", "Go", [], { backendDOMNodeId: 7 }), 0, new Map([[7, bounds]]));
+    axNode("button", "Go", [], { backendDOMNodeId: 7 }),
+    0,
+    new Map([[7, bounds]]),
+  );
   assert.equal(withId.backendNodeId, 7);
   assert.deepEqual(crossRealm(withId.bounds), bounds);
 
   // Known id, no bounds recorded: the id is still reported, bounds are simply absent.
   const noBounds = w.axNodeToCapture(
-    axNode("button", "Go", [], { backendDOMNodeId: 9 }), 0, new Map());
+    axNode("button", "Go", [], { backendDOMNodeId: 9 }),
+    0,
+    new Map(),
+  );
   assert.equal(noBounds.backendNodeId, 9);
   assert.equal("bounds" in noBounds, false);
 
@@ -416,15 +618,30 @@ test("the command table cannot be reached through the prototype chain", async ()
   // every one of these names would resolve to an inherited value, pass the "known command?"
   // test, and then be invoked.
   for (const inherited of [
-    "constructor", "toString", "valueOf", "hasOwnProperty", "__proto__",
-    "isPrototypeOf", "propertyIsEnumerable", "toLocaleString",
+    "constructor",
+    "toString",
+    "valueOf",
+    "hasOwnProperty",
+    "__proto__",
+    "isPrototypeOf",
+    "propertyIsEnumerable",
+    "toLocaleString",
   ]) {
-    assert.equal(w.COMMAND_TABLE.get(inherited), undefined,
-                 `${inherited} must not resolve to a command`);
-    await assert.rejects(() => w.dispatchCommand(inherited, {}), /Unknown command/,
-                         `${inherited} must be refused`);
+    assert.equal(
+      w.COMMAND_TABLE.get(inherited),
+      undefined,
+      `${inherited} must not resolve to a command`,
+    );
+    await assert.rejects(
+      () => w.dispatchCommand(inherited, {}),
+      /Unknown command/,
+      `${inherited} must be refused`,
+    );
   }
-  await assert.rejects(() => w.dispatchCommand("nosuchcommand", {}), /Unknown command/);
+  await assert.rejects(
+    () => w.dispatchCommand("nosuchcommand", {}),
+    /Unknown command/,
+  );
 });
 
 test("every command table entry declares a callable handler", () => {
@@ -437,7 +654,10 @@ test("every command table entry declares a callable handler", () => {
 });
 
 test("small pure helpers behave at their edges", () => {
-  assert.equal(w.stripFragment("https://x.example/a#b#c"), "https://x.example/a");
+  assert.equal(
+    w.stripFragment("https://x.example/a#b#c"),
+    "https://x.example/a",
+  );
   assert.equal(w.stripFragment("https://x.example/a"), "https://x.example/a");
 
   assert.equal(w.isEditableRole("textbox"), true);
@@ -456,12 +676,23 @@ test("small pure helpers behave at their edges", () => {
 
 test("printPageOptions maps only recognized fields and pins the safe defaults", () => {
   // An empty request prints with the fixed transfer mode and backgrounds on; nothing else leaks.
-  assert.deepEqual(crossRealm(w.printPageOptions({})),
-                   { transferMode: "ReturnAsBase64", printBackground: true });
+  assert.deepEqual(crossRealm(w.printPageOptions({})), {
+    transferMode: "ReturnAsBase64",
+    printBackground: true,
+  });
   // print_background is on unless EXACTLY false (a missing/true/truthy value stays on).
-  assert.equal(w.printPageOptions({ print_background: false }).printBackground, false);
-  assert.equal(w.printPageOptions({ print_background: true }).printBackground, true);
-  assert.equal(w.printPageOptions({ print_background: "no" }).printBackground, true);
+  assert.equal(
+    w.printPageOptions({ print_background: false }).printBackground,
+    false,
+  );
+  assert.equal(
+    w.printPageOptions({ print_background: true }).printBackground,
+    true,
+  );
+  assert.equal(
+    w.printPageOptions({ print_background: "no" }).printBackground,
+    true,
+  );
   // landscape is copied only when it is a real boolean.
   assert.equal(w.printPageOptions({ landscape: true }).landscape, true);
   assert.equal("landscape" in w.printPageOptions({ landscape: "yes" }), false);
@@ -469,20 +700,28 @@ test("printPageOptions maps only recognized fields and pins the safe defaults", 
 
 test("printPageOptions enforces the scale and paper-size bounds", () => {
   assert.equal(w.printPageOptions({ scale: 1.5 }).scale, 1.5);
-  assert.equal(w.printPageOptions({ scale: 0.1 }).scale, 0.1);  // inclusive lower bound
-  assert.equal(w.printPageOptions({ scale: 2 }).scale, 2);      // inclusive upper bound
+  assert.equal(w.printPageOptions({ scale: 0.1 }).scale, 0.1); // inclusive lower bound
+  assert.equal(w.printPageOptions({ scale: 2 }).scale, 2); // inclusive upper bound
   assert.equal("scale" in w.printPageOptions({ scale: null }), false);
   for (const bad of [0.05, 2.5, "abc", NaN, Infinity]) {
-    assert.throws(() => w.printPageOptions({ scale: bad }), /scale must be between 0.1 and 2/);
+    assert.throws(
+      () => w.printPageOptions({ scale: bad }),
+      /scale must be between 0.1 and 2/,
+    );
   }
   // Paper dimensions must be a finite positive number of inches.
   const opts = w.printPageOptions({ paper_width: 8.5, paper_height: 11 });
   assert.equal(opts.paperWidth, 8.5);
   assert.equal(opts.paperHeight, 11);
-  assert.equal("paperWidth" in w.printPageOptions({ paper_width: null }), false);
+  assert.equal(
+    "paperWidth" in w.printPageOptions({ paper_width: null }),
+    false,
+  );
   for (const bad of [0, -1, "x", NaN]) {
-    assert.throws(() => w.printPageOptions({ paper_width: bad }),
-                  /paper_width must be a positive number of inches/);
+    assert.throws(
+      () => w.printPageOptions({ paper_width: bad }),
+      /paper_width must be a positive number of inches/,
+    );
   }
 });
 
@@ -496,15 +735,25 @@ test("buildBoundsMap rounds each node's layout box and skips unusable entries", 
           bounds: [[1.4, 2.6, 3.5, 4.5], [10, 20, 30, 40], null],
         },
       },
-      null,                              // a null document is skipped
-      { nodes: { backendNodeId: [9] } },  // no layout -> skipped
+      null, // a null document is skipped
+      { nodes: { backendNodeId: [9] } }, // no layout -> skipped
     ],
   };
   const map = w.buildBoundsMap(snapshot);
   // 100 and 200 carve out; 300's bounds were null, so it is dropped, not defaulted to zeros.
   assert.equal(map.size, 2);
-  assert.deepEqual(crossRealm(map.get(100)), { x: 1, y: 3, width: 4, height: 5 });
-  assert.deepEqual(crossRealm(map.get(200)), { x: 10, y: 20, width: 30, height: 40 });
+  assert.deepEqual(crossRealm(map.get(100)), {
+    x: 1,
+    y: 3,
+    width: 4,
+    height: 5,
+  });
+  assert.deepEqual(crossRealm(map.get(200)), {
+    x: 10,
+    y: 20,
+    width: 30,
+    height: 40,
+  });
   assert.equal(map.get(300), undefined);
   // A missing/empty snapshot yields an empty map, never a throw.
   assert.equal(w.buildBoundsMap(null).size, 0);
@@ -518,13 +767,24 @@ test("buildBoundsMap drops a node whose backend id is undefined", () => {
     documents: [
       {
         nodes: { backendNodeId: [42] },
-        layout: { nodeIndex: [0, 7], bounds: [[0, 0, 1, 1], [5, 5, 5, 5]] },
+        layout: {
+          nodeIndex: [0, 7],
+          bounds: [
+            [0, 0, 1, 1],
+            [5, 5, 5, 5],
+          ],
+        },
       },
     ],
   };
   const map = w.buildBoundsMap(snapshot);
   assert.equal(map.size, 1);
-  assert.deepEqual(crossRealm(map.get(42)), { x: 0, y: 0, width: 1, height: 1 });
+  assert.deepEqual(crossRealm(map.get(42)), {
+    x: 0,
+    y: 0,
+    width: 1,
+    height: 1,
+  });
 });
 
 // A named node always survives axNodeToCapture (only unnamed structural filler is dropped), so a
@@ -544,8 +804,12 @@ test("buildNodes walks the AX tree in pre-order with correct depth", () => {
   };
   const { nodes, truncated } = w.buildNodes(axTree, new Map());
   // Depth-first, document order: the whole of a's subtree comes before sibling b.
-  assert.deepEqual(crossRealm(nodes.map((n) => [n.name, n.depth])),
-                   [["R", 0], ["A", 1], ["A1", 2], ["B", 1]]);
+  assert.deepEqual(crossRealm(nodes.map((n) => [n.name, n.depth])), [
+    ["R", 0],
+    ["A", 1],
+    ["A1", 2],
+    ["B", 1],
+  ]);
   assert.equal(truncated, false);
 });
 
@@ -563,9 +827,14 @@ test("buildNodes emits a shared descendant once and never loops", () => {
   const { nodes } = w.buildNodes(axTree, new Map());
   assert.equal(nodes.filter((n) => n.name === "S").length, 1);
   assert.deepEqual(crossRealm(nodes.map((n) => n.name)), ["R", "X", "S", "Y"]);
-  assert.deepEqual(crossRealm(w.buildNodes({ nodes: [] }, new Map())),
-                   { nodes: [], truncated: false });
-  assert.deepEqual(crossRealm(w.buildNodes(null, new Map())), { nodes: [], truncated: false });
+  assert.deepEqual(crossRealm(w.buildNodes({ nodes: [] }, new Map())), {
+    nodes: [],
+    truncated: false,
+  });
+  assert.deepEqual(crossRealm(w.buildNodes(null, new Map())), {
+    nodes: [],
+    truncated: false,
+  });
 });
 
 test("buildNodes caps the emitted set at MAX_CAPTURE_NODES and reports truncation", () => {

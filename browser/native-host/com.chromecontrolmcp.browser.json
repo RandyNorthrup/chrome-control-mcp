@@ -3,7 +3,5 @@
   "description": "Chrome Control MCP browser-control native messaging host",
   "path": "REPLACE_WITH_ABSOLUTE_PATH_TO_chrome_control_mcp.exe",
   "type": "stdio",
-  "allowed_origins": [
-    "chrome-extension://iojehhmnaigcejfcpmilpclmeljhlkaa/"
-  ]
+  "allowed_origins": ["chrome-extension://iojehhmnaigcejfcpmilpclmeljhlkaa/"]
 }

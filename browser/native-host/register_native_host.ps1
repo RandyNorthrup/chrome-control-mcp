@@ -59,7 +59,8 @@ if ($Unregister) {
     if (Test-Path $RegKey) {
         Remove-Item -Path $RegKey -Force
         Write-Host "Removed registry key $RegKey"
-    } else {
+    }
+    else {
         Write-Host "Registry key $RegKey not present; nothing to remove."
     }
     return
@@ -83,13 +84,14 @@ $ExeRoot = [System.IO.Path]::GetPathRoot($ExePath)
 $ExeDriveType = [System.IO.DriveType]::Unknown
 try {
     $ExeDriveType = (New-Object System.IO.DriveInfo($ExeRoot)).DriveType
-} catch {
+}
+catch {
     $ExeDriveType = [System.IO.DriveType]::Unknown
 }
 if ($ExeDriveType -ne [System.IO.DriveType]::Fixed -and
     $ExeDriveType -ne [System.IO.DriveType]::Removable) {
     throw ("Host executable must live on a local volume; '$ExeRoot' is a $ExeDriveType drive: " +
-           $ExePath)
+        $ExePath)
 }
 # -LiteralPath so a wildcard cannot satisfy the guard while the unexpanded literal
 # is what gets written, and -PathType Leaf so a directory is not accepted as the
@@ -126,7 +128,8 @@ try {
     $manifest | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath $ManifestTemp -Encoding UTF8
     $null = Get-Content -Raw -LiteralPath $ManifestTemp | ConvertFrom-Json
     Move-Item -LiteralPath $ManifestTemp -Destination $ManifestPath -Force
-} finally {
+}
+finally {
     # Cleanup must never replace the failure that brought us here. With $ErrorActionPreference
     # "Stop" a staging file that cannot be removed (still locked, denied) would throw from the
     # finally block and become the error the operator sees -- hiding the real one, which is the
@@ -135,7 +138,8 @@ try {
         if (Test-Path -LiteralPath $ManifestTemp) {
             Remove-Item -LiteralPath $ManifestTemp -Force
         }
-    } catch {
+    }
+    catch {
         Write-Warning "Could not remove staging file ${ManifestTemp}: $($_.Exception.Message)"
     }
 }

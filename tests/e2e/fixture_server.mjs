@@ -165,7 +165,9 @@ function toneWav() {
   buffer.write("data", 36);
   buffer.writeUInt32LE(dataBytes, 40);
   for (let i = 0; i < samples; i += 1) {
-    const value = Math.round(Math.sin((2 * Math.PI * 440 * i) / sampleRate) * 5000);
+    const value = Math.round(
+      Math.sin((2 * Math.PI * 440 * i) / sampleRate) * 5000,
+    );
     buffer.writeInt16LE(value, 44 + i * 2);
   }
   return buffer;
@@ -194,13 +196,21 @@ export async function startFixtureServer() {
       return;
     }
     if (url.pathname === "/api/delay") {
-      setTimeout(() => send(200, "text/plain; charset=utf-8", "Network fixture ready"), 300);
+      setTimeout(
+        () => send(200, "text/plain; charset=utf-8", "Network fixture ready"),
+        300,
+      );
       return;
     }
     if (url.pathname === "/download.txt") {
-      send(200, "text/plain; charset=utf-8", "chrome-control-mcp-e2e-download\n", {
-        "content-disposition": "attachment; filename=fixture-download.txt",
-      });
+      send(
+        200,
+        "text/plain; charset=utf-8",
+        "chrome-control-mcp-e2e-download\n",
+        {
+          "content-disposition": "attachment; filename=fixture-download.txt",
+        },
+      );
       return;
     }
     if (url.pathname === "/tone.wav") {
@@ -229,6 +239,9 @@ export async function startFixtureServer() {
   const origin = `http://127.0.0.1:${address.port}`;
   return {
     origin,
-    close: () => new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve())),
+    close: () =>
+      new Promise((resolve, reject) =>
+        server.close((error) => (error ? reject(error) : resolve())),
+      ),
   };
 }
