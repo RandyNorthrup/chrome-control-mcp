@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "chrome_control_mcp/browser_bridge_pipe.h"
+#include "chrome_control_mcp/browser_bridge_security.h"
 #include "chrome_control_mcp/native_messaging.h"
 
 #include <QElapsedTimer>
@@ -241,6 +242,8 @@ private slots:
   void reconnect_secondClientServedWithNewGeneration();
   void doubleStop_isSafe();
   void restartAfterStopWorksAndDoubleStartRefused();
+  void stop_keepsRendezvousOwnedByAnotherProcess();
+  void start_takesOverStaleRendezvousRecord();
 };
 
 void BrowserBridgePipeTests::send_beforeAnyClientReturnsNotConnected() {
@@ -633,6 +636,60 @@ void BrowserBridgePipeTests::restartAfterStopWorksAndDoubleStartRefused() {
                   {QStringLiteral("id"), QStringLiteral("b-1")}});
   QVERIFY(!exchange.ok);
   QCOMPARE(exchange.error, QStringLiteral("Browser not connected."));
+}
+
+// A dead pid far above any live process, used to forge "another server" and
+// "a server that has exited" records without a second process.
+constexpr qint64 kAbsentPid = 0x7FFF'FFF0;
+
+void BrowserBridgePipeTests::stop_keepsRendezvousOwnedByAnotherProcess() {
+  QTemporaryDir dir;
+  const QString rendezvous = dir.filePath(QStringLiteral("r.json"));
+  BrowserBridgePipeServer server(testOptions(rendezvous, 30'000));
+  QString error;
+  QVERIFY2(server.start(&error), qPrintable(error));
+
+  // A peer server (re)claims the shared rendezvous by overwriting the record to
+  // advertise a different pid. stop() must leave that record in place: deleting
+  // another instance's record would orphan the pipe its relay is bound to.
+  const chrome_control_mcp::RendezvousRecord foreign{
+      server.pipeName(), server.token(), 0, kAbsentPid};
+  QVERIFY2(chrome_control_mcp::writeRendezvousRecord(rendezvous, foreign,
+                                                     &error),
+           qPrintable(error));
+
+  server.stop();
+
+  QVERIFY(QFile::exists(rendezvous));
+  chrome_control_mcp::RendezvousRecord after;
+  QVERIFY2(chrome_control_mcp::readRendezvousRecord(rendezvous, &after, &error),
+           qPrintable(error));
+  QCOMPARE(after.app_pid, kAbsentPid);
+}
+
+void BrowserBridgePipeTests::start_takesOverStaleRendezvousRecord() {
+  QTemporaryDir dir;
+  const QString rendezvous = dir.filePath(QStringLiteral("r.json"));
+  QString error;
+
+  // A record left behind by a server that has since exited: its pid resolves to
+  // no live process, so a fresh server is free to claim the bridge rather than
+  // stand down.
+  const chrome_control_mcp::RendezvousRecord stale{
+      QStringLiteral("stale-endpoint"), QStringLiteral("t"), 0, kAbsentPid};
+  QVERIFY2(
+      chrome_control_mcp::writeRendezvousRecord(rendezvous, stale, &error),
+      qPrintable(error));
+
+  BrowserBridgePipeServer server(testOptions(rendezvous, 30'000));
+  QVERIFY2(server.start(&error), qPrintable(error));
+
+  chrome_control_mcp::RendezvousRecord after;
+  QVERIFY2(chrome_control_mcp::readRendezvousRecord(rendezvous, &after, &error),
+           qPrintable(error));
+  QVERIFY(after.pipe_name != QLatin1String("stale-endpoint"));
+  QCOMPARE(after.pipe_name, server.pipeName());
+  server.stop();
 }
 
 QTEST_MAIN(BrowserBridgePipeTests)

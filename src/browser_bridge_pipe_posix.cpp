@@ -340,6 +340,26 @@ bool ancestorChainContainsImage(quint64 pid,
   return false;
 }
 
+// True iff the shared rendezvous record already advertises a DIFFERENT, live
+// server that is our own executable image. The rendezvous path is fixed but the
+// socket name is per-process random, so every non-relay invocation -- including
+// short-lived `mcp list`/`get` and health probes -- would otherwise overwrite
+// and, on exit, delete that record, orphaning the socket the extension's relay
+// is bound to. A second instance that sees a live owner must stand down (serve
+// native tools with browser control off) rather than clobber it. A record whose
+// pid is gone, or resolves to a foreign image (a stale/forged record after pid
+// reuse), is not a live owner and may be taken over.
+bool liveBridgeOwnerExists(const QString &rendezvous_path) {
+  RendezvousRecord record;
+  if (!readRendezvousRecord(rendezvous_path, &record, nullptr)) {
+    return false;
+  }
+  if (record.app_pid == static_cast<qint64>(getpid())) {
+    return false;
+  }
+  return sameExecutable(static_cast<pid_t>(record.app_pid));
+}
+
 } // namespace
 
 bool BrowserBridgePipeServer::ancestorChainContainsImageForTesting(
@@ -363,6 +383,17 @@ BrowserBridgePipeServer::BrowserBridgePipeServer(Options options)
 BrowserBridgePipeServer::~BrowserBridgePipeServer() { stop(); }
 
 bool BrowserBridgePipeServer::createPipeResources(QString *error) {
+  // Stand down if a live server instance already owns the browser bridge, so a
+  // concurrent short-lived process cannot clobber the shared rendezvous record
+  // the persistent server (and thus the extension relay) depends on.
+  if (liveBridgeOwnerExists(rendezvous_path_)) {
+    if (error != nullptr) {
+      *error = QStringLiteral(
+          "Another Chrome Control MCP server already owns the browser bridge; "
+          "serving native tools with browser control off.");
+    }
+    return false;
+  }
   pipe_name_ = browserBridgePipeName(error);
   if (pipe_name_.isEmpty()) {
     return false;
@@ -480,7 +511,16 @@ void BrowserBridgePipeServer::stop() {
       fd = -1;
     }
   }
-  QFile::remove(rendezvous_path_);
+  // Only remove the rendezvous record if it still advertises THIS process. A
+  // second instance that stood down never owned it, and a peer server may have
+  // (re)claimed it; deleting another instance's record would orphan the socket
+  // the relay is bound to. Our own listener socket (pipe_name_, empty when we
+  // stood down) is always ours to clean up.
+  RendezvousRecord current;
+  if (readRendezvousRecord(rendezvous_path_, &current, nullptr) &&
+      current.app_pid == static_cast<qint64>(getpid())) {
+    QFile::remove(rendezvous_path_);
+  }
   QFile::remove(pipe_name_);
 }
 

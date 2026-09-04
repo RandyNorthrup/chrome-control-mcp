@@ -4,6 +4,19 @@ All notable changes are documented here. Project follows [Semantic Versioning](h
 
 ## [Unreleased]
 
+### Fixed
+
+- Browser bridge no longer orphaned by a concurrent short-lived server. The
+  rendezvous record lives at a fixed path while the pipe/socket name is
+  per-process random, so a second, transient invocation (`mcp list`/`get`, a
+  health probe, or any non-relay process) used to overwrite that record and, on
+  exit, delete it — leaving the persistent server's pipe alive but undiscoverable
+  and the extension reporting "not attached." A late instance now stands down
+  (serving native tools with browser control off) when a live server of the same
+  image already owns the bridge, and `stop()` only removes the rendezvous record
+  when it still advertises the exiting process. Windows and POSIX backends both
+  covered, with pipe-server unit tests.
+
 ## [1.0.0] - 2026-08-20
 
 ### Added

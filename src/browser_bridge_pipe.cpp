@@ -269,6 +269,28 @@ bool hasAncestorImage(DWORD pid, const QString &target_basename_lower,
                                     max_depth);
 }
 
+// True iff the shared rendezvous record already advertises a DIFFERENT, live
+// server that is our own executable image. The rendezvous path is fixed but the
+// pipe name is per-process random, so every non-relay invocation -- including
+// short-lived `mcp list`/`get` and health probes -- would otherwise overwrite
+// and, on exit, delete that record, orphaning the pipe the extension's relay is
+// bound to. A second instance that sees a live owner must stand down (serve
+// native tools with browser control off) rather than clobber it. A record whose
+// pid is gone, or resolves to a foreign image (a stale/forged record after pid
+// reuse), is not a live owner and may be taken over.
+bool liveBridgeOwnerExists(const QString &rendezvous_path) {
+  RendezvousRecord record;
+  if (!readRendezvousRecord(rendezvous_path, &record, nullptr)) {
+    return false;
+  }
+  if (record.app_pid == static_cast<qint64>(GetCurrentProcessId())) {
+    return false;
+  }
+  const QString owner = clientImagePath(static_cast<DWORD>(record.app_pid));
+  const QString self = ownModulePath();
+  return !owner.isEmpty() && !self.isEmpty() && owner == self;
+}
+
 } // namespace
 
 bool BrowserBridgePipeServer::ancestorChainContainsImageForTesting(
@@ -292,6 +314,17 @@ BrowserBridgePipeServer::BrowserBridgePipeServer(Options options)
 BrowserBridgePipeServer::~BrowserBridgePipeServer() { stop(); }
 
 bool BrowserBridgePipeServer::createPipeResources(QString *error) {
+  // Stand down if a live server instance already owns the browser bridge, so a
+  // concurrent short-lived process cannot clobber the shared rendezvous record
+  // the persistent server (and thus the extension relay) depends on.
+  if (liveBridgeOwnerExists(rendezvous_path_)) {
+    if (error != nullptr) {
+      *error = QStringLiteral(
+          "Another Chrome Control MCP server already owns the browser bridge; "
+          "serving native tools with browser control off.");
+    }
+    return false;
+  }
   pipe_name_ = browserBridgePipeName(error);
   if (pipe_name_.isEmpty()) {
     return false;
@@ -395,7 +428,15 @@ void BrowserBridgePipeServer::stop() {
     CloseHandle(shutdown_event_);
     shutdown_event_ = nullptr;
   }
-  QFile::remove(rendezvous_path_);
+  // Only remove the rendezvous record if it still advertises THIS process. A
+  // second instance that stood down never owned it, and a peer server may have
+  // (re)claimed it; deleting another instance's record would orphan the pipe
+  // the relay is bound to.
+  RendezvousRecord current;
+  if (readRendezvousRecord(rendezvous_path_, &current, nullptr) &&
+      current.app_pid == static_cast<qint64>(GetCurrentProcessId())) {
+    QFile::remove(rendezvous_path_);
+  }
 }
 
 bool BrowserBridgePipeServer::clientConnected() const {
