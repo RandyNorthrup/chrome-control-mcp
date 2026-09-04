@@ -654,9 +654,9 @@ void BrowserBridgePipeTests::stop_keepsRendezvousOwnedByAnotherProcess() {
   // another instance's record would orphan the pipe its relay is bound to.
   const chrome_control_mcp::RendezvousRecord foreign{
       server.pipeName(), server.token(), 0, kAbsentPid};
-  QVERIFY2(chrome_control_mcp::writeRendezvousRecord(rendezvous, foreign,
-                                                     &error),
-           qPrintable(error));
+  QVERIFY2(
+      chrome_control_mcp::writeRendezvousRecord(rendezvous, foreign, &error),
+      qPrintable(error));
 
   server.stop();
 
@@ -677,9 +677,8 @@ void BrowserBridgePipeTests::start_takesOverStaleRendezvousRecord() {
   // stand down.
   const chrome_control_mcp::RendezvousRecord stale{
       QStringLiteral("stale-endpoint"), QStringLiteral("t"), 0, kAbsentPid};
-  QVERIFY2(
-      chrome_control_mcp::writeRendezvousRecord(rendezvous, stale, &error),
-      qPrintable(error));
+  QVERIFY2(chrome_control_mcp::writeRendezvousRecord(rendezvous, stale, &error),
+           qPrintable(error));
 
   BrowserBridgePipeServer server(testOptions(rendezvous, 30'000));
   QVERIFY2(server.start(&error), qPrintable(error));
