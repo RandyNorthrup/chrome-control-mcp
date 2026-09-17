@@ -22,7 +22,13 @@ const strictRules = {
 
 export default [
   {
-    ignores: ["build*/**", "coverage/**", "dist/**", "node_modules/**"],
+    ignores: [
+      "build*/**",
+      "coverage/**",
+      "dist/**",
+      "node_modules/**",
+      "release/**",
+    ],
   },
   js.configs.recommended,
   {

@@ -21,12 +21,12 @@ checksum before extracting it.
 
 ```powershell
 # Windows PowerShell
-(Get-FileHash .\chrome-control-mcp-v1.0.0-windows-x64.zip -Algorithm SHA256).Hash
+(Get-FileHash .\chrome-control-mcp-v1.0.1-windows-x64.zip -Algorithm SHA256).Hash
 ```
 
 ```shell
 # Linux or macOS
-sha256sum chrome-control-mcp-v1.0.0-linux-x64.tar.gz
+sha256sum chrome-control-mcp-v1.0.1-linux-x64.tar.gz
 ```
 
 After extracting, register the executable with the assistant using an absolute path:

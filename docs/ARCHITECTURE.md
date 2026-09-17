@@ -42,6 +42,19 @@ when launching native host, which selects relay mode.
 Linux uses `SO_PEERCRED`. macOS uses `getpeereid` plus `LOCAL_PEERPID`. Both sides require same
 effective user, recorded process, same executable image, nonce token, and protocol version.
 
+## Rendezvous ownership
+
+One server per user owns the browser: the rendezvous record names its pid and endpoint, and the
+Chrome-launched relay binds to whatever the record names. A server that finds a live owner of the
+same image at start stands down (native tools only) rather than overwrite it; `stop()` removes the
+record only while it still names the exiting process. Because two servers can start within the same
+instant and both pass that check, the long-lived server also re-checks before every browser tool
+call while no relay is connected (`ensurePublished`): a record that is missing, or names a process
+that has exited, is re-published; a record naming another live owner is left alone and the call
+reports which pid holds the bridge. The extension retries the native connection every 2 s while
+its service worker is alive and from a 30 s alarm otherwise, so it lands on the published server
+without a browser restart.
+
 ## Extension preparation
 
 `browser_extension_install` verifies staged extension files and executable, then installs only

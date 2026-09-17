@@ -6,3 +6,4 @@ docs/assets/
 package-lock.json
 .clang-format
 .clang-tidy
+release/

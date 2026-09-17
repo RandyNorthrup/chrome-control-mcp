@@ -171,17 +171,18 @@ int runMcpProcess(int argc, char **argv) {
 
   // MCP server mode: own the browser authority (pipe server + session) so a
   // browser_* tool call drives the live extension through the relay. If the
-  // bridge fails to start (e.g. squatted), keep serving built-in native tools
-  // with browser control off.
+  // bridge fails to start here (squatted, or another instance owned it at this
+  // instant), the browser tools stay listed and each call tries the start
+  // again -- the owner may have been a short-lived listing that has since
+  // exited -- so a session never has to be restarted to get its browser back.
   chrome_control_mcp::BrowserControl browser;
   QString browser_error;
-  const bool browser_ready = browser.start(&browser_error);
-  if (!browser_ready) {
-    std::cerr << "browser control unavailable: " << browser_error.toStdString()
-              << '\n';
+  if (!browser.start(&browser_error)) {
+    std::cerr << "browser control unavailable for now: "
+              << browser_error.toStdString()
+              << " (retried on the next browser tool call)\n";
   }
-  chrome_control_mcp::BrowserControl *const browser_ptr =
-      browser_ready ? &browser : nullptr;
+  chrome_control_mcp::BrowserControl *const browser_ptr = &browser;
 
   // Enforce the security profile / output redaction the provider gateway set in
   // this process's environment. The gateway pools a distinct process per

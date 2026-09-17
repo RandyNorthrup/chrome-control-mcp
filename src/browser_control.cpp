@@ -50,13 +50,35 @@ void BrowserControl::syncSessionToConnection() {
 
 ToolResult BrowserControl::invoke(const QString &name,
                                   const QJsonObject &arguments) {
+  // A server that stood down at launch (another instance owned the bridge at
+  // that instant) tries again on demand: the owner may have been a short-lived
+  // tool listing that has long since exited, and a browser tool call is the
+  // moment the bridge is wanted.
   if (!started_) {
-    return {
-        .text = QStringLiteral(
-            "Browser control is unavailable: the bridge pipe failed to start."),
-        .is_error = true,
-        .image_base64 = {},
-        .image_mime = {}};
+    QString why;
+    if (!start(&why)) {
+      return {.text = QStringLiteral("Browser control is unavailable: %1")
+                          .arg(why.isEmpty()
+                                   ? QStringLiteral(
+                                         "the bridge pipe failed to start.")
+                                   : why),
+              .is_error = true,
+              .image_base64 = {},
+              .image_mime = {}};
+    }
+  }
+  // No relay yet: make sure the extension can still find this server. The
+  // rendezvous record can be lost to a concurrent short-lived instance that
+  // wrote it last and removed it on exit; re-publishing it here means the
+  // extension's next reconnect lands on this session without a restart.
+  if (!pipe_.clientConnected()) {
+    QString why;
+    if (!pipe_.ensurePublished(&why)) {
+      return {.text = QStringLiteral("Browser not connected: %1").arg(why),
+              .is_error = true,
+              .image_base64 = {},
+              .image_mime = {}};
+    }
   }
   syncSessionToConnection();
   const browser::BrowserBridgeSession::Outgoing outgoing =

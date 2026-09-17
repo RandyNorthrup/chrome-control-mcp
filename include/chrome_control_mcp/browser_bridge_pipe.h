@@ -70,6 +70,18 @@ public:
   /// and remove the rendezvous record. Safe to call more than once.
   void stop();
 
+  /// Make sure the shared rendezvous record still advertises THIS server's
+  /// endpoint, re-publishing it when it is missing or names a server that has
+  /// exited. Two servers that start within the same instant can both pass the
+  /// live-owner check in start(); the one that writes last owns the record,
+  /// and when that one is short-lived (a tool listing, a health probe) it takes
+  /// the record with it on exit, leaving the long-lived server listening on a
+  /// pipe nothing can discover. Called before each browser tool call while no
+  /// relay is connected, so the record heals without a restart. Returns false
+  /// with @p error set when the server is not running or when another live
+  /// server of our own image owns the record (that one keeps the browser).
+  [[nodiscard]] bool ensurePublished(QString *error);
+
   /// True while a verified relay is connected.
   [[nodiscard]] bool clientConnected() const;
 

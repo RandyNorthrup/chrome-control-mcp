@@ -244,6 +244,9 @@ private slots:
   void restartAfterStopWorksAndDoubleStartRefused();
   void stop_keepsRendezvousOwnedByAnotherProcess();
   void start_takesOverStaleRendezvousRecord();
+  void ensurePublished_republishesALostRecord();
+  void ensurePublished_takesOverARecordLeftByAnExitedServer();
+  void ensurePublished_refusesWhileNotRunning();
 };
 
 void BrowserBridgePipeTests::send_beforeAnyClientReturnsNotConnected() {
@@ -689,6 +692,70 @@ void BrowserBridgePipeTests::start_takesOverStaleRendezvousRecord() {
   QVERIFY(after.pipe_name != QLatin1String("stale-endpoint"));
   QCOMPARE(after.pipe_name, server.pipeName());
   server.stop();
+}
+
+// The race the fix is for: a concurrent short-lived instance wrote the record
+// last and removed it on exit, so the long-lived server is listening on an
+// endpoint nothing can discover. Before a browser tool call the server puts
+// its record back.
+void BrowserBridgePipeTests::ensurePublished_republishesALostRecord() {
+  QTemporaryDir dir;
+  const QString rendezvous = dir.filePath(QStringLiteral("r.json"));
+  BrowserBridgePipeServer server(testOptions(rendezvous, 30'000));
+  QString error;
+  QVERIFY2(server.start(&error), qPrintable(error));
+  QVERIFY(QFile::remove(rendezvous));
+  QVERIFY(!QFile::exists(rendezvous));
+
+  QVERIFY2(server.ensurePublished(&error), qPrintable(error));
+
+  chrome_control_mcp::RendezvousRecord after;
+  QVERIFY2(chrome_control_mcp::readRendezvousRecord(rendezvous, &after, &error),
+           qPrintable(error));
+  QCOMPARE(after.pipe_name, server.pipeName());
+  QCOMPARE(after.token, server.token());
+  // Already ours: a second call changes nothing and still says so.
+  QVERIFY2(server.ensurePublished(&error), qPrintable(error));
+  server.stop();
+  QVERIFY(!QFile::exists(rendezvous)); // stop() removed what was ours
+}
+
+// A record naming a server that has exited is nobody's: it is taken over,
+// the way start() takes over a stale record.
+void BrowserBridgePipeTests::
+    ensurePublished_takesOverARecordLeftByAnExitedServer() {
+  QTemporaryDir dir;
+  const QString rendezvous = dir.filePath(QStringLiteral("r.json"));
+  BrowserBridgePipeServer server(testOptions(rendezvous, 30'000));
+  QString error;
+  QVERIFY2(server.start(&error), qPrintable(error));
+
+  const chrome_control_mcp::RendezvousRecord foreign{
+      QStringLiteral("gone-endpoint"), QStringLiteral("t"), 0, kAbsentPid};
+  QVERIFY2(
+      chrome_control_mcp::writeRendezvousRecord(rendezvous, foreign, &error),
+      qPrintable(error));
+
+  QVERIFY2(server.ensurePublished(&error), qPrintable(error));
+
+  chrome_control_mcp::RendezvousRecord after;
+  QVERIFY2(chrome_control_mcp::readRendezvousRecord(rendezvous, &after, &error),
+           qPrintable(error));
+  QCOMPARE(after.pipe_name, server.pipeName());
+  QVERIFY(after.app_pid != kAbsentPid);
+  server.stop();
+}
+
+// Nothing to publish for a server that is not listening: it says so rather
+// than advertising an endpoint that would refuse every relay.
+void BrowserBridgePipeTests::ensurePublished_refusesWhileNotRunning() {
+  QTemporaryDir dir;
+  const QString rendezvous = dir.filePath(QStringLiteral("r.json"));
+  BrowserBridgePipeServer server(testOptions(rendezvous, 30'000));
+  QString error;
+  QVERIFY(!server.ensurePublished(&error));
+  QVERIFY(!error.isEmpty());
+  QVERIFY(!QFile::exists(rendezvous));
 }
 
 QTEST_MAIN(BrowserBridgePipeTests)

@@ -4848,6 +4848,24 @@ chrome.runtime.onInstalled.addListener(connect);
 chrome.runtime.onStartup.addListener(connect);
 chrome.action.onClicked.addListener(connect);
 
+// A standing alarm re-arms the bridge when nothing else does. The 2 s reconnect
+// timer above only lives as long as this service worker, and Chrome retires an
+// MV3 worker after ~30 s idle: a host that was not there at startup (no MCP
+// server yet, or one that had lost its rendezvous record) would otherwise stay
+// unreachable until the browser restarted or the toolbar button was pressed.
+// An alarm fires whether or not the worker is alive, so the bridge comes up
+// within a minute of the server publishing its record. Guarded: the pure unit
+// harness stubs `chrome` without alarms.
+const RECONNECT_ALARM = "chrome_control_mcp.reconnect";
+if (chrome.alarms) {
+  chrome.alarms.create(RECONNECT_ALARM, { periodInMinutes: 0.5 });
+  chrome.alarms.onAlarm.addListener((alarm) => {
+    if (alarm.name === RECONNECT_ALARM && !port) {
+      connect();
+    }
+  });
+}
+
 // Expose the last health snapshot to a popup / options page later.
 chrome.runtime.onMessage.addListener((request, _sender, sendResponse) => {
   if (request && request.type === "chrome_control_mcp.getHealth") {

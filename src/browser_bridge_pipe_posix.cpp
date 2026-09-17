@@ -524,6 +524,42 @@ void BrowserBridgePipeServer::stop() {
   QFile::remove(pipe_name_);
 }
 
+bool BrowserBridgePipeServer::ensurePublished(QString *error) {
+  const std::lock_guard<std::mutex> lifecycle(lifecycle_mutex_);
+  {
+    const std::lock_guard<std::mutex> lock(mutex_);
+    if (!running_) {
+      if (error != nullptr) {
+        *error = QStringLiteral("Bridge IPC server is not running");
+      }
+      return false;
+    }
+  }
+  const qint64 self = static_cast<qint64>(getpid());
+  RendezvousRecord current;
+  const bool present =
+      readRendezvousRecord(rendezvous_path_, &current, nullptr);
+  if (present && current.app_pid == self && current.pipe_name == pipe_name_ &&
+      current.token == token_) {
+    return true; // still ours, word for word
+  }
+  // A record naming another LIVE server of our own image is that server's to
+  // keep: overwriting it would steal the relay from the session using it.
+  if (present && liveBridgeOwnerExists(rendezvous_path_)) {
+    if (error != nullptr) {
+      *error = QStringLiteral("Another Chrome Control MCP server (pid %1) owns "
+                              "the browser bridge; close that session, or wait "
+                              "for it to exit, and try again.")
+                   .arg(current.app_pid);
+    }
+    return false;
+  }
+  // Missing, ours but rewritten, or left by a server that has exited: publish
+  // this server's endpoint so the extension's next relay can find it.
+  const RendezvousRecord record{pipe_name_, token_, options_.protocol, self};
+  return writeRendezvousRecord(rendezvous_path_, record, error);
+}
+
 bool BrowserBridgePipeServer::clientConnected() const {
   const std::lock_guard<std::mutex> lock(mutex_);
   return connected_;

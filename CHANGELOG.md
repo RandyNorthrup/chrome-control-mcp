@@ -4,8 +4,29 @@ All notable changes are documented here. Project follows [Semantic Versioning](h
 
 ## [Unreleased]
 
+Nothing yet.
+
+## [1.0.1] - 2026-09-16
+
 ### Fixed
 
+- Browser bridge heals a lost rendezvous record without a restart. The stand-down
+  below closed the case where the transient instance started _after_ the
+  persistent server, but not the race where both start within the same instant:
+  each passed the live-owner check before either had written the record, the
+  transient one wrote last and — naming its own pid — removed the record on exit,
+  and the persistent server was left listening on a pipe nothing could find, with
+  no retry, for the life of the session. `BrowserBridgePipeServer::ensurePublished`
+  now re-publishes the record when it is missing or names a server that has
+  exited, and refuses when another live server of the same image owns it;
+  `BrowserControl::invoke` retries the bridge start when the server stood down
+  at launch and calls `ensurePublished` before each browser tool call while no
+  relay is connected; the browser tools stay listed when the bridge could not
+  start, and each call reports the reason (including the owning pid). The
+  extension re-arms the native bridge from a 30-second `chrome.alarms` alarm so a
+  service worker Chrome has retired still reconnects once a server publishes its
+  record (`alarms` permission added). Three pipe-server tests cover the lost
+  record, a record left by an exited server, and a server that is not running.
 - Browser bridge no longer orphaned by a concurrent short-lived server. The
   rendezvous record lives at a fixed path while the pipe/socket name is
   per-process random, so a second, transient invocation (`mcp list`/`get`, a

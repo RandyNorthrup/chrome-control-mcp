@@ -18,3 +18,6 @@
 *.VC.db
 *.VC.VC.opendb
 Testing/
+
+# Local unpacked release archives (extracted beside the repo for use as the MCP path)
+release/
