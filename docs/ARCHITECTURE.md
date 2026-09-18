@@ -84,10 +84,18 @@ There is no private key, package signing, browser-store dependency, or enterpris
 - `browser_snapshot` joins accessibility tree and DOM geometry into filtered roles, names, values,
   and stable `[ref=eN]` handles.
 - Ref actions use CDP `Input`; user's operating-system mouse and keyboard remain free.
+- Session pins its own tab. First command adopts active tab of last focused window; afterwards
+  only session's own actions (select/new tab, window new/focus, tab its page opens) move it. User
+  switching tabs or windows never redirects next click or keystroke.
+- Control never raises window or takes OS focus: tab selection activates tab inside its window,
+  new windows request `focused: false`, and window `focus` only retargets session. CDP focus
+  emulation keeps focus-gated pages working in background. A compositor that focuses new windows
+  anyway (Hyprland) is observed and reported as `took_os_focus`.
 - `browser_screenshot` returns native MCP image block. Control presence is hidden by default and can
   be included for user-facing documentation.
 - `browser_click_at` binds coordinates to latest screenshot tab, URL, DPR, scroll, and viewport
-  fingerprint; stale geometry fails closed.
+  fingerprint; stale geometry fails closed. Screenshot pixels are CSS px × DPR; `browser_box`
+  reports CSS geometry plus `screenshot_center` so coordinate clicks land at any display scale.
 - Local/session storage runs inside isolated world bound to verified active-frame origin using
   pristine Storage methods.
 - Same transport handles tabs, windows, emulation, permissions, cookies, downloads, print, HTTP

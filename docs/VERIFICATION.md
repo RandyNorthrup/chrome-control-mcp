@@ -4,11 +4,11 @@ Evidence recorded 2026-08-20. Commands below ran against repository checkout, no
 
 ## Environments
 
-| Platform | Toolchain                                | Result                                |
-| -------- | ---------------------------------------- | ------------------------------------- |
-| Windows  | MSVC 19.44, CMake 3.31, Qt 6.10, Node 22 | Build + 9/9 suites + live Chrome pass |
-| Linux    | GCC 16 and Clang 22, Qt 6.11, Node 24    | Both builds + 9/9 suites              |
-| macOS    | Clang + Qt 6.10 GitHub Actions runner    | Build + 9/9 suites                    |
+| Platform | Toolchain                                | Result                                 |
+| -------- | ---------------------------------------- | -------------------------------------- |
+| Windows  | MSVC 19.44, CMake 3.31, Qt 6.10, Node 22 | Build + 9/9 suites + live Chrome pass  |
+| Linux    | GCC 16 and Clang 22, Qt 6.11, Node 24    | Both builds + 9/9 suites + live Chrome |
+| macOS    | Clang + Qt 6.10 GitHub Actions runner    | Build + 9/9 suites                     |
 
 Live Windows browser: Chrome 151.0.7922.138. Minimum supported manifest version is Chrome 116.
 
@@ -130,10 +130,31 @@ Latest completed run: **43/43 advertised MCP tools passed across 97 reversible l
   restored original active tab
 - Captured and visually inspected responsive overlay screenshot
 
+## Linux live Chrome
+
+Evidence recorded 2026-09-18 on Arch Linux, Hyprland (Wayland), 1920×1080 panel at 150% scale,
+Chrome 146 (native Wayland), GCC 16.2, Qt 6.11.2, Node 24.
+
+```shell
+node tests/e2e/full_browser_e2e.mjs build/chrome_control_mcp
+node tests/e2e/user_interference_e2e.mjs build/chrome_control_mcp
+```
+
+- Full E2E: **43/43 tools, 146 reversible live cases**, Chrome state restored.
+- Coordinate clicks land from `screenshot_center` at real 150% scale and emulated 1×, 1.25×, 1.5×,
+  2×, and 3× across 1280×800 to 360×640 viewports; PNG width checked as viewport × scale.
+- OS focus unchanged after tab selection and window retarget. Hyprland focuses every newly mapped
+  window despite `focused: false`; tool reported it as `took_os_focus` and E2E recorded it.
+- User interference: **7/7 checks**. User opened a foreground tab and then a new window from outside
+  Chrome; snapshots, typing, screenshots, and tab listing stayed on session tab.
+- Red drills: box CSS center fed to `browser_click_at` missed at 150% scale; integer-only
+  `device_scale_factor` refused 1.25×; restoring last-focused-window targeting made interference
+  E2E read user's page. Each failed as intended and passed after restoration.
+
 ## Claim boundary
 
 Source build, automated suites, static analysis, sanitizers, public identity, isolated native-host
-lifecycle, stdio MCP, and Windows live Chrome are verified. Linux transport and installer have real
-local runtime proof. macOS has source/CI compile-test coverage; live Chrome proof on physical macOS
+lifecycle, stdio MCP, and Windows and Linux (Wayland) live Chrome are verified. Linux transport and
+installer have real local runtime proof. macOS has source/CI compile-test coverage; live Chrome proof on physical macOS
 remains planned. This is strong software evidence, not a claim about every website, Chrome release,
 desktop environment, or machine configuration.

@@ -398,7 +398,8 @@ QHash<QString, CmdSpec> renderingCommandSpecs() {
         QStringLiteral("none"),
         {{QStringLiteral("width"), QStringLiteral("int"), false},
          {QStringLiteral("height"), QStringLiteral("int"), false},
-         {QStringLiteral("device_scale_factor"), QStringLiteral("int"), false},
+         {QStringLiteral("device_scale_factor"), QStringLiteral("number"),
+          false},
          {QStringLiteral("mobile"), QStringLiteral("bool"), false},
          {QStringLiteral("user_agent"), QStringLiteral("string"), false},
          {QStringLiteral("touch"), QStringLiteral("bool"), false},
@@ -1125,12 +1126,15 @@ void appendFormControlTools(QJsonArray &tools) {
 void appendTabTools(QJsonArray &tools) {
   tools.append(toolEntry(
       QStringLiteral("browser_tabs"),
-      QStringLiteral("List the open tabs with index, title, and URL."),
+      QStringLiteral("List the tabs in the session's window with index, title, "
+                     "and URL."),
       toolSchema({}, {})));
   tools.append(toolEntry(
       QStringLiteral("browser_select_tab"),
       QStringLiteral(
-          "Make the tab at the given index active. Call browser_tabs first: "
+          "Make the tab at the given index the session's tab (active within "
+          "its window; the window is never raised, so the user keeps OS "
+          "focus). Call browser_tabs first: "
           "an index is only meaningful against a listing, and the call is "
           "refused if the tabs moved since that listing so the index cannot "
           "land on a tab you did not choose."),
@@ -1143,7 +1147,8 @@ void appendTabTools(QJsonArray &tools) {
           QJsonArray{QStringLiteral("index")})));
   tools.append(toolEntry(
       QStringLiteral("browser_new_tab"),
-      QStringLiteral("Open a new tab, optionally navigating to a URL."),
+      QStringLiteral("Open a new tab in the session's window, optionally "
+                     "navigating to a URL. It becomes the session's tab."),
       toolSchema(
           QJsonObject{{QStringLiteral("url"), stringProperty(QStringLiteral(
                                                   "URL to open (optional)."))}},
@@ -1151,7 +1156,8 @@ void appendTabTools(QJsonArray &tools) {
   tools.append(toolEntry(
       QStringLiteral("browser_close_tab"),
       QStringLiteral(
-          "Close the tab at index, or the active tab if omitted. When you pass "
+          "Close the tab at index, or the session's tab if omitted. When you "
+          "pass "
           "an "
           "index, call browser_tabs first: closing is not undoable, so the "
           "index is "
@@ -1270,7 +1276,9 @@ void appendInspectionTools(QJsonArray &tools) {
   tools.append(toolEntry(
       QStringLiteral("browser_box"),
       QStringLiteral(
-          "Report an element's geometry by [ref]: position/size, whether it is "
+          "Report an element's geometry by [ref]: position/size in CSS px, "
+          "screenshot_center (the center in browser_screenshot pixels, ready "
+          "for browser_click_at at any display scale), whether it is "
           "in "
           "the viewport, and whether an overlay covers its center (occlusion). "
           "Read-only."),
@@ -1308,10 +1316,13 @@ void appendWindowTools(QJsonArray &tools) {
       toolSchema({}, {})));
   tools.append(toolEntry(
       QStringLiteral("browser_window"),
-      QStringLiteral("Manage a browser window. action is new (open a window, "
-                     "optionally at a "
-                     "URL), focus (bring window_id to front), or close (close "
-                     "window_id). Get "
+      QStringLiteral("Manage a browser window. action is new (open a window "
+                     "without taking OS focus, optionally at a URL; it becomes "
+                     "the session's window; took_os_focus reports a compositor "
+                     "that focused it anyway, so prefer browser_new_tab), "
+                     "focus (make window_id the "
+                     "session's working window; it is not raised and the user "
+                     "keeps OS focus), or close (close window_id). Get "
                      "window_id from browser_windows."),
       toolSchema(
           QJsonObject{{QStringLiteral("action"),
@@ -1349,9 +1360,9 @@ void appendInfraTools(QJsonArray &tools) {
                                             "px (with width)."))},
               {QStringLiteral("device_scale_factor"),
                typedProperty(
-                   QStringLiteral("integer"),
-                   QStringLiteral(
-                       "Device pixel ratio, e.g. 2 (optional, default 1)."))},
+                   QStringLiteral("number"),
+                   QStringLiteral("Device pixel ratio, e.g. 1.25, 1.5, 2 "
+                                  "(optional, default 1)."))},
               {QStringLiteral("mobile"),
                typedProperty(
                    QStringLiteral("boolean"),

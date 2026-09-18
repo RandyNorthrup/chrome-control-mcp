@@ -248,6 +248,7 @@ async function main() {
   let createdWindowId = null;
   let cookieName = null;
   let failure = null;
+  const platformNotes = [];
 
   const runTool = async (name, args, label = name, timeoutMs = 45000) => {
     const started = Date.now();
@@ -352,6 +353,24 @@ async function main() {
       )[0];
     assert.ok(baselineWindow, "No baseline browser window");
     originalWindowId = baselineWindow.window_id;
+    // Which Chrome window (if any) holds OS focus right now. Nothing the session does may change
+    // it: the user keeps typing wherever they were.
+    const osFocus = (listing) =>
+      listing.windows
+        .filter((window) => window.focused)
+        .map((window) => window.window_id);
+    let baselineOsFocus = osFocus(baselineWindows);
+    // Focus changes land asynchronously (a compositor grants them a frame or two later), so let
+    // them settle before reading: an immediate read would pass a steal that is still in flight.
+    const assertOsFocusUnchanged = async (label) => {
+      await sleep(1000);
+      const now = jsonContent(await runTool("browser_windows", {}, label));
+      assert.deepEqual(
+        osFocus(now),
+        baselineOsFocus,
+        `OS focus moved (${label})`,
+      );
+    };
 
     const opened = jsonContent(
       await runTool(
@@ -654,9 +673,12 @@ async function main() {
         "measure coordinate target",
       ),
     );
+    // browser_box geometry is CSS px; browser_click_at takes screenshot px. screenshot_center
+    // is the bridge between them, and only it lands on a display scaled away from 100%.
+    assert.ok(coordinateBox.screenshot_center, "box reports screenshot_center");
     await runTool(
       "browser_click_at",
-      { x: coordinateBox.center.x, y: coordinateBox.center.y },
+      coordinateBox.screenshot_center,
       "coordinate click from screenshot geometry",
     );
     const coordinateWait = jsonContent(
@@ -667,6 +689,90 @@ async function main() {
       ),
     );
     assert.equal(coordinateWait.satisfied, true);
+
+    // The same screenshot -> box -> click_at path across display scales and viewport sizes:
+    // 100%/125%/150% desktops, Retina, and dense phones. Each step first resets the result text
+    // (JS click) so only a click that lands on the coordinate button at THIS scale satisfies the
+    // wait, and checks the PNG header independently: a screenshot is viewport x scale pixels.
+    const scaleMatrix = [
+      { device_scale_factor: 1, width: 1280, height: 800 },
+      { device_scale_factor: 1.25, width: 1024, height: 768 },
+      { device_scale_factor: 1.5, width: 800, height: 600 },
+      { device_scale_factor: 2, width: 390, height: 844 },
+      { device_scale_factor: 3, width: 360, height: 640 },
+    ];
+    for (const metrics of scaleMatrix) {
+      const tag = `${metrics.device_scale_factor}x ${metrics.width}x${metrics.height}`;
+      await runTool("browser_emulate", metrics, `emulate ${tag}`);
+      page = await snapshot(`refresh refs at ${tag}`);
+      const jsRefAtScale = refFor(page, "Fixture JS button");
+      const coordinateRefAtScale = refFor(page, "Fixture coordinate button");
+      await runTool(
+        "browser_js_click",
+        { ref: jsRefAtScale },
+        `reset at ${tag}`,
+      );
+      assert.equal(
+        jsonContent(
+          await runTool(
+            "browser_wait_for",
+            { text: "js-clicked", timeout_ms: 3000 },
+            `reset observed at ${tag}`,
+          ),
+        ).satisfied,
+        true,
+      );
+      await runTool(
+        "browser_reveal",
+        { ref: coordinateRefAtScale },
+        `reveal at ${tag}`,
+      );
+      const shotAtScale = await runTool(
+        "browser_screenshot",
+        { full_page: false },
+        `screenshot at ${tag}`,
+      );
+      const png = Buffer.from(
+        shotAtScale.content.find((item) => item.type === "image").data,
+        "base64",
+      );
+      assert.ok(
+        Math.abs(
+          png.readUInt32BE(16) -
+            Math.round(metrics.width * metrics.device_scale_factor),
+        ) <= 1,
+        `PNG width ${png.readUInt32BE(16)} at ${tag}`,
+      );
+      const boxAtScale = jsonContent(
+        await runTool(
+          "browser_box",
+          { ref: coordinateRefAtScale },
+          `measure at ${tag}`,
+        ),
+      );
+      // Chrome carries the scale as a float32, so 1 reads back as 1.0000000298.
+      assert.ok(
+        Math.abs(boxAtScale.dpr - metrics.device_scale_factor) < 1e-3,
+        `dpr ${boxAtScale.dpr} at ${tag}`,
+      );
+      await runTool(
+        "browser_click_at",
+        boxAtScale.screenshot_center,
+        `coordinate click at ${tag}`,
+      );
+      assert.equal(
+        jsonContent(
+          await runTool(
+            "browser_wait_for",
+            { text: "coordinate-clicked", timeout_ms: 3000 },
+            `coordinate click landed at ${tag}`,
+          ),
+        ).satisfied,
+        true,
+        `coordinate click missed at ${tag}`,
+      );
+    }
+    await runTool("browser_emulate", { reset: true }, "reset scale matrix");
 
     const shadowWait = jsonContent(
       await runTool(
@@ -962,6 +1068,7 @@ async function main() {
       ),
     );
     assert.equal(selectedTab.index, primaryFixture.index);
+    await assertOsFocusUnchanged("OS focus after selecting a tab");
 
     for (const query of ["group=one", "group=two"]) {
       const listing = await tabs(`list tabs before closing ${query}`);
@@ -1004,14 +1111,33 @@ async function main() {
         (window) => window.window_id === createdWindowId,
       ),
     );
-    const windowFocused = jsonContent(
+    // A new OS window is the one action a compositor may focus against Chrome's request
+    // (Hyprland focuses every newly mapped window). The tool must say so rather than take focus
+    // silently; on Windows, macOS, X11, and focus-stealing-prevention compositors it never does.
+    if (newWindow.took_os_focus) {
+      process.stderr.write(
+        "NOTE compositor focused the new window despite focused:false (reported by the tool)\n",
+      );
+      baselineOsFocus = [createdWindowId];
+      platformNotes.push(
+        "compositor focused new window; reported as took_os_focus",
+      );
+    }
+    await assertOsFocusUnchanged("OS focus after opening a window");
+    const retargeted = jsonContent(
       await runTool(
         "browser_window",
         { action: "focus", window_id: originalWindowId },
-        "focus original window",
+        "retarget session to original window",
       ),
     );
-    assert.equal(windowFocused.focused, true);
+    assert.equal(retargeted.session_window, true);
+    const retargetedTabs = await tabs("list tabs after window retarget");
+    assert.ok(
+      retargetedTabs.tabs.some((tab) => tab.id === originalActiveTabId),
+      "Session did not move to the original window",
+    );
+    await assertOsFocusUnchanged("OS focus after window retarget");
     await runTool(
       "browser_window",
       { action: "close", window_id: createdWindowId },
@@ -1157,6 +1283,7 @@ async function main() {
     cases,
     generated_files_cleaned: [...generatedFiles],
     chrome_state_restored: true,
+    platform_notes: platformNotes,
     error: failure ? String(failure.stack || failure) : null,
   };
   process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);

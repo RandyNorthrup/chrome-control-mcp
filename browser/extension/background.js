@@ -265,6 +265,15 @@ const health = { connected: false, bridge: null, error: null };
 // bridge_unavailable and on port loss.
 let bridgeReady = false;
 let attachedTabId = null;
+// The tab this assistant session controls, and the window it was last seen in. Resolving the
+// target from "the active tab of the last focused window" on every command lets the USER steer
+// the session: switching to another Chrome window or tab while the assistant works would land its
+// next click or keystroke on the user's page. The session therefore adopts a tab once and keeps
+// it; only its own actions (select/new tab, window new/focus, a tab its page opened) move it.
+// Neither id is ever used to raise a window: control stays inside the browser while the user keeps
+// OS focus. Both reset when the bridge goes away, so the next session starts from the user's tab.
+let sessionTabId = null;
+let sessionWindowId = null;
 // A monotonic DOM-generation counter stamped on every reply (domEpoch). It increments whenever
 // the DOM the bridge's ref_index was captured against goes away out from under us -- a top-frame
 // navigation, an in-document (SPA) route change, or a CDP detach (tab close / DevTools). The
@@ -341,6 +350,7 @@ function onDisconnect() {
   health.error = err ? err.message : "port closed";
   bridgeReady = false; // the next host must handshake again before it can command us
   port = null;
+  releaseSessionTarget(); // the session is over; the next one adopts the user's tab afresh
   console.warn("[ChromeControlMCP] host disconnected:", health.error);
   // The bridge (and thus any CDP session it drove) is gone; drop our attachment.
   detachAll("bridge disconnected");
@@ -425,6 +435,7 @@ function onHostMessage(msg) {
     health.bridge = "unavailable";
     health.error = msg.error || "bridge unavailable";
     bridgeReady = false;
+    releaseSessionTarget();
     console.warn("[ChromeControlMCP] bridge unavailable:", health.error);
     return;
   }
@@ -595,20 +606,68 @@ async function dispatchCommand(cmd, args) {
 
 // -- Active tab helpers ------------------------------------------------------
 
+function pinSessionTarget(tab) {
+  sessionTabId = tab.id;
+  sessionWindowId = tab.windowId;
+}
+
+function releaseSessionTarget() {
+  sessionTabId = null;
+  sessionWindowId = null;
+}
+
+// The tab the session controls. The first command adopts the active tab of the last focused
+// window -- the page the user was looking at when they handed over -- and every later command
+// stays on that tab whatever the user focuses next. If the tab has closed, the session falls back
+// to the active tab of its OWN window (the neighbour Chrome activated), never to a window the user
+// is working in; only when that window is gone too does it adopt afresh.
 async function activeTab() {
-  const tabs = await chrome.tabs.query({
-    active: true,
-    lastFocusedWindow: true,
-  });
+  if (sessionTabId !== null) {
+    const pinned = await chrome.tabs.get(sessionTabId).catch(() => null);
+    if (pinned) {
+      sessionWindowId = pinned.windowId; // the user may have dragged it to another window
+      return pinned;
+    }
+    sessionTabId = null;
+  }
+  let tabs = [];
+  if (sessionWindowId !== null) {
+    tabs = await chrome.tabs
+      .query({ active: true, windowId: sessionWindowId })
+      .catch(() => []);
+  }
+  if (!tabs || !tabs.length) {
+    tabs = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
+  }
   if (!tabs || !tabs.length) {
     throw new Error("No active tab.");
   }
+  pinSessionTarget(tabs[0]);
   return tabs[0];
 }
 
 async function activeTabId() {
   return (await activeTab()).id;
 }
+
+// The window the session works in: where tab listings, tab indices, and new tabs resolve.
+async function sessionWindow() {
+  return (await activeTab()).windowId;
+}
+
+// A foreground tab opened BY the session's page (a target=_blank link, window.open) is where the
+// session's own action led, so the session follows it -- as it did when targeting tracked the
+// active tab. A tab the user opens elsewhere has no such opener and never moves the session.
+chrome.tabs.onCreated.addListener((tab) => {
+  if (
+    sessionTabId !== null &&
+    tab.active &&
+    typeof tab.id === "number" &&
+    tab.openerTabId === sessionTabId
+  ) {
+    pinSessionTarget(tab);
+  }
+});
 
 // The url/title nearly every reply in this file names its target by. A url the browser did not
 // give us is an unidentified page, and reporting it as "" would put that page's snapshot, read,
@@ -673,6 +732,17 @@ async function enableSessionDomains(tabId) {
   networkInstrumented = true;
   inflightRequests.clear();
   lastNetworkActivityMs = Date.now();
+  // The controlled window is normally NOT the OS-focused one: the user keeps working in other
+  // applications while the session drives this tab, and the session never raises the window to
+  // change that. Focus emulation lets the page behave as focused regardless -- focus/blur events,
+  // :focus styles, document.hasFocus() -- so typing into focus-gated widgets works in the
+  // background. It is an experimental CDP method, so a browser without it keeps control with
+  // real focus semantics rather than refusing to attach at all.
+  await sendCdp(tabId, "Emulation.setFocusEmulationEnabled", {
+    enabled: true,
+  }).catch((e) => {
+    console.warn("[ChromeControlMCP] focus emulation unavailable:", e);
+  });
 }
 
 async function ensureAttached(tabId) {
@@ -3085,6 +3155,10 @@ async function handleBox(tabId, args) {
   const right = Math.max.apply(null, xs),
     bottom = Math.max.apply(null, ys);
   const center = quadCenter(quad);
+  // Geometry is in CSS px, but browser_click_at takes SCREENSHOT px (device px = CSS px x dpr).
+  // They coincide only at dpr 1; on a 125%/150% desktop, a Retina Mac, or a zoomed page, feeding
+  // the CSS center to click_at lands the click short of the target. screenshot_center (below)
+  // carries the conversion so a caller never has to do it.
   const out = {
     ok: true,
     laid_out: true,
@@ -3111,6 +3185,11 @@ async function handleBox(tabId, args) {
   // page never reported, which a caller converting device pixels would act on.
   if (vp.ok) {
     out.dpr = vp.dpr;
+    // Where the center falls in a viewport browser_screenshot taken at this scroll position.
+    out.screenshot_center = {
+      x: Math.round(center.x * vp.dpr),
+      y: Math.round(center.y * vp.dpr),
+    };
   } else {
     out.dpr_unknown = true;
   }
@@ -3626,9 +3705,9 @@ function capField(entry, key, raw, cap) {
 }
 
 async function handleListTabs() {
-  const tabs = (await chrome.tabs.query({ lastFocusedWindow: true })).sort(
-    (a, b) => a.index - b.index,
-  );
+  const tabs = (
+    await chrome.tabs.query({ windowId: await sessionWindow() })
+  ).sort((a, b) => a.index - b.index);
   const groupTitles = new Map();
   const list = [];
   for (const t of tabs.slice(0, MAX_LIST_TABS)) {
@@ -3699,7 +3778,7 @@ const GROUP_COLORS = new Set([
 
 // Resolve a comma-separated zero-based tab-index spec to tab ids; default to the active tab.
 async function tabIdsFromIndices(spec) {
-  const tabs = await chrome.tabs.query({ lastFocusedWindow: true });
+  const tabs = await chrome.tabs.query({ windowId: await sessionWindow() });
   if (spec === undefined || spec === null || String(spec).trim() === "") {
     const active = tabs.find((t) => t.active);
     if (!active) {
@@ -3780,7 +3859,7 @@ async function handleUngroupTabs(args) {
 }
 
 async function tabByIndex(index) {
-  const tabs = await chrome.tabs.query({ lastFocusedWindow: true });
+  const tabs = await chrome.tabs.query({ windowId: await sessionWindow() });
   const tab = tabs.find((t) => t.index === index);
   if (!tab) {
     throw new Error("No tab at index " + index + ".");
@@ -3792,10 +3871,11 @@ async function tabByIndex(index) {
 async function handleSelectTab(args) {
   const index = Number(args && args.index);
   const tab = await tabByIndex(index);
+  // Activate the tab INSIDE its window (a background tab does not render, so screenshots and
+  // input need it foremost there) and retarget the session. The window itself is never raised:
+  // the user keeps OS focus and can go on typing elsewhere.
   await chrome.tabs.update(tab.id, { active: true });
-  if (typeof tab.windowId === "number") {
-    await chrome.windows.update(tab.windowId, { focused: true });
-  }
+  pinSessionTarget(tab);
   const info = await tabInfo(tab.id);
   return { ok: true, index, url: info.url, title: info.title };
 }
@@ -3810,7 +3890,15 @@ async function handleNewTab(args) {
   if (args && args.url && !url) {
     throw new Error("newTab url must be http(s).");
   }
-  const tab = await chrome.tabs.create(url ? { url } : {});
+  // Open it in the session's window and make it the session's tab. Creating it without a window
+  // would put it in whichever window the user focused last.
+  const tab = await chrome.tabs.create(
+    Object.assign(
+      { windowId: await sessionWindow(), active: true },
+      url ? { url } : {},
+    ),
+  );
+  pinSessionTarget(tab);
   lastTabListing = null; // a new tab shifts what an index names
   // chrome.tabs.create resolves the moment the tab EXISTS -- the target is still in pendingUrl
   // and url is empty. Reporting the requested url here would state that the tab is at a page no
@@ -3878,6 +3966,51 @@ async function handleListWindows() {
   return { windows: list };
 }
 
+// How long a new window is watched for a compositor-granted focus. The window maps and the
+// compositor answers within roughly a frame or two; a focus that lands after this is attributed to
+// the user rather than to the window being opened.
+const NEW_WINDOW_FOCUS_SETTLE_MS = 750;
+
+// The Chrome window holding OS focus, or null when the user is working in another application.
+async function osFocusedWindowId() {
+  const wins = await chrome.windows.getAll().catch(() => []);
+  const focused = wins.find((w) => w.focused);
+  return focused ? focused.id : null;
+}
+
+// Whether windowId takes OS focus within timeoutMs. Focus arrives asynchronously on Wayland and
+// macOS, so a single read straight after create() would miss it.
+function windowGainsOsFocus(windowId, timeoutMs) {
+  return new Promise((resolve) => {
+    let settled = false;
+    const finish = (value) => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      clearTimeout(timer);
+      chrome.windows.onFocusChanged.removeListener(listener);
+      resolve(value);
+    };
+    const listener = (focusedId) => {
+      if (focusedId === windowId) {
+        finish(true);
+      }
+    };
+    const timer = setTimeout(() => finish(false), timeoutMs);
+    chrome.windows.onFocusChanged.addListener(listener);
+    // It may already hold focus by the time the listener is attached.
+    chrome.windows
+      .get(windowId)
+      .then((w) => {
+        if (w && w.focused) {
+          finish(true);
+        }
+      })
+      .catch(() => {});
+  });
+}
+
 // A window action is meaningful only against a window the caller has been shown. Chrome window
 // ids are small sequential integers, so an invented or stale one readily names somebody's live
 // window -- and "close" takes it and its tabs down.
@@ -3918,8 +4051,21 @@ async function handleWindow(args) {
     if (args && args.url && !url) {
       throw new Error("browser_window new url must be http(s).");
     }
-    const win = await chrome.windows.create(url ? { url } : {});
+    // focused:false -- the window opens without taking OS focus from whatever the user is
+    // working in. It becomes the session's window all the same. Windows, macOS, and X11 honor
+    // that; a Wayland compositor decides focus itself, and some (Hyprland by default) focus every
+    // newly mapped window regardless, so the outcome is observed and reported, never assumed.
+    const osFocusBefore = await osFocusedWindowId();
+    const win = await chrome.windows.create(
+      Object.assign({ focused: false }, url ? { url } : {}),
+    );
+    const tookOsFocus =
+      osFocusBefore !== win.id &&
+      (await windowGainsOsFocus(win.id, NEW_WINDOW_FOCUS_SETTLE_MS));
     const firstTab = (win.tabs && win.tabs[0]) || null;
+    if (firstTab) {
+      pinSessionTarget(firstTab);
+    }
     // A window this session just opened is one the caller has been told about, so it can be
     // named next without a re-listing.
     if (!lastWindowListing) {
@@ -3930,6 +4076,7 @@ async function handleWindow(args) {
       ok: true,
       window_id: win.id,
       tab_index: firstTab ? firstTab.index : null,
+      took_os_focus: tookOsFocus,
     };
     if (typeof win.type === "string") {
       created.type = win.type;
@@ -3945,19 +4092,20 @@ async function handleWindow(args) {
   requireListedWindow(windowId);
   const facts = await windowFacts(windowId);
   if (action === "focus") {
-    // Windows can refuse a foreground activation (the OS foreground lock), and the promise still
-    // resolves. Every ambient-tab command in this file resolves its target through
-    // lastFocusedWindow, so reporting a focus that did not happen silently points the rest of the
-    // session at the OLD window: take the answer from the Window the API hands back.
-    const win = await chrome.windows.update(windowId, { focused: true });
-    if (!win || win.focused !== true) {
-      throw new Error(
-        "The browser did not bring window " +
-          windowId +
-          " to the foreground (the OS may have blocked the activation).",
-      );
+    // Make this window the session's working window: its active tab becomes the target of every
+    // later command. It is deliberately NOT raised or given OS focus -- that would pull the user's
+    // keyboard away from whatever they are doing -- and none is needed: the session drives the tab
+    // over the debugger protocol, with focus emulated for the page (enableSessionDomains).
+    const [tab] = await chrome.tabs.query({ active: true, windowId });
+    if (!tab || typeof tab.id !== "number") {
+      throw new Error("Window " + windowId + " has no active tab to control.");
     }
-    return Object.assign({ ok: true, window_id: win.id, focused: true }, facts);
+    pinSessionTarget(tab);
+    lastTabListing = null; // indices from another window's listing name nothing here
+    return Object.assign(
+      { ok: true, window_id: windowId, session_window: true },
+      facts,
+    );
   }
   await chrome.windows.remove(windowId); // action === "close"
   lastWindowListing.delete(windowId); // that window is gone; it can never be named again
