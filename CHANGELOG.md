@@ -4,7 +4,35 @@ All notable changes are documented here. Project follows [Semantic Versioning](h
 
 ## [Unreleased]
 
-Nothing yet.
+### Changed
+
+- Control stays inside the browser. Session pins its own tab instead of re-resolving "active tab
+  of last focused window" on every command, so a user switching Chrome tabs or windows mid-session
+  no longer redirects the assistant's next click, keystroke, or snapshot onto the user's page. A
+  foreground tab opened by the session's own page is followed; a closed session tab falls back to
+  its own window. `browser_tabs`, tab indices, and `browser_new_tab` resolve in session's window.
+- Control never takes OS focus. `browser_select_tab` no longer raises its window, `browser_window`
+  `new` opens with `focused: false`, and `focus` retargets session without raising window. CDP
+  focus emulation keeps focus-gated pages working while Chrome is in background. When a compositor
+  focuses a new window anyway (Hyprland), reply reports `took_os_focus: true`.
+
+### Fixed
+
+- Coordinate clicks at non-100% display scale. `browser_box` reports CSS px while
+  `browser_click_at` takes screenshot px; they differ on 125%/150% desktops, Retina, and zoomed
+  pages. `browser_box` now adds `screenshot_center`, and tool descriptions name each unit.
+- `browser_emulate` accepts fractional `device_scale_factor` (1.25, 1.5, 1.75); integer-only
+  schema refused most common Windows scales.
+- `browser_window` `focus` reported failure on Wayland/macOS when activation landed after
+  `windows.update` resolved; focus no longer depends on OS activation.
+
+### Tests
+
+- Full E2E adds display-scale matrix (1×–3×, 360–1280 px viewports) with independent PNG-size
+  check, and asserts OS focus never moves.
+- New `tests/e2e/user_interference_e2e.mjs` drives user tab/window changes from outside Chrome on
+  Linux, macOS, and Windows and requires session to stay on its own tab.
+- First live Linux certification (Hyprland/Wayland, 150% scale).
 
 ## [1.0.1] - 2026-09-16
 

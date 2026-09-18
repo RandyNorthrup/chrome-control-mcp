@@ -21,8 +21,9 @@ Windows, Linux, and macOS.
 
 ## Remaining proof and release work
 
-- [ ] Run live Chrome E2E on physical Linux and macOS desktops; automated native tests cover both
-      backends, but current live-browser certification evidence is Windows-only.
+- [x] Run live Chrome E2E on physical Linux desktop (Arch, Hyprland/Wayland, 150% scale)
+- [ ] Run live Chrome E2E on physical macOS desktop; automated native tests cover its backend, but
+      live-browser certification evidence is Windows and Linux only.
 - [ ] Add Windows and Linux ARM64 build matrices when their Qt runner combinations are verified;
       macOS ARM64 builds and packages on a standard GitHub-hosted runner.
 

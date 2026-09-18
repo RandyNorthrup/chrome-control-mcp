@@ -31,6 +31,7 @@ documentation captures can opt in.
 
 | Capability          | Included                                                                     |
 | ------------------- | ---------------------------------------------------------------------------- |
+| Background control  | Session pins its own tab; never raises windows or takes your OS focus        |
 | Semantic control    | Accessibility-tree snapshots with stable element refs                        |
 | Real input          | Click, type, keys, hover, drag, select, scroll, dialogs, and media           |
 | Visual reasoning    | Viewport/full-page PNG capture and guarded coordinate clicks                 |

@@ -897,6 +897,27 @@ void BrowserContractTests::buildCommand_emulateToolBuilds() {
                             QJsonObject{{QStringLiteral("reset"), true}}, {});
   QVERIFY(rst.ok);
   QCOMPARE(rst.command.value(QStringLiteral("reset")).toBool(), true);
+
+  // Common desktop scales are fractional (125%, 150%, 175%): an "int" type
+  // would refuse them, leaving only Retina-style whole ratios testable.
+  for (const double scale : {1.25, 1.5, 1.75, 2.0}) {
+    const ExtensionCommand scaled = buildExtensionCommand(
+        QStringLiteral("browser_emulate"),
+        QJsonObject{{QStringLiteral("width"), 1024},
+                    {QStringLiteral("height"), 768},
+                    {QStringLiteral("device_scale_factor"), scale}},
+        {});
+    QVERIFY2(scaled.ok, qPrintable(scaled.error));
+    QCOMPARE(
+        scaled.command.value(QStringLiteral("device_scale_factor")).toDouble(),
+        scale);
+  }
+  QVERIFY(
+      !buildExtensionCommand(QStringLiteral("browser_emulate"),
+                             QJsonObject{{QStringLiteral("device_scale_factor"),
+                                          QStringLiteral("1.5")}},
+                             {})
+           .ok);
 }
 
 void BrowserContractTests::buildCommand_printToolBuilds() {
