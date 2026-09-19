@@ -165,7 +165,16 @@ export const GEOMETRY_TARGETS = [
   { id: "turned", rgb: [0, 90, 160] },
 ];
 
-function geometryPage() {
+// A scrollbar that takes layout space, as Windows and Linux draw by default and macOS does when
+// "show scroll bars" is set to always -- the CI runner's setting. It changes what the page measures
+// and what a capture covers, so the geometry fixture can be asked for one.
+const CLASSIC_SCROLLBAR_CSS = `
+    html { scrollbar-gutter: stable; }
+    ::-webkit-scrollbar { width: 15px; height: 15px; }
+    ::-webkit-scrollbar-thumb { background: #888; }
+    ::-webkit-scrollbar-track { background: #eee; }`;
+
+function geometryPage(classicScrollbar) {
   const buttons = GEOMETRY_TARGETS.map(
     ({ id, rgb }) =>
       `<button class="t" id="${id}" aria-label="Geometry target ${id}" style="background:rgb(${rgb.join(",")})"></button>`,
@@ -190,7 +199,7 @@ function geometryPage() {
        a time: without this a still page leaves the gesture waiting for a frame that never comes. */
     #ticker { position: absolute; left: 0; top: 230vh; width: 4px; height: 4px; background: #eee;
       animation: tick 1s linear infinite; }
-    @keyframes tick { to { transform: rotate(360deg); } }
+    @keyframes tick { to { transform: rotate(360deg); } }${classicScrollbar ? CLASSIC_SCROLLBAR_CSS : ""}
   </style>
 </head>
 <body>
@@ -229,9 +238,7 @@ function geometryPage() {
         ' vvs=' + vv.scale + ' vvl=' + vv.offsetLeft + ' vvt=' + vv.offsetTop +
         ' vvw=' + vv.width + ' vvh=' + vv.height +
         ' sx=' + window.scrollX + ' sy=' + window.scrollY +
-        ' dw=' + document.documentElement.scrollWidth + ' dh=' + document.documentElement.scrollHeight +
-        ' dwx=' + document.documentElement.getBoundingClientRect().width +
-        ' dhx=' + document.documentElement.getBoundingClientRect().height + ' end';
+        ' dw=' + document.documentElement.scrollWidth + ' dh=' + document.documentElement.scrollHeight + ' end';
       document.getElementById('scrolls').textContent = 'scrolls ' + scrollLog.join(' ') + ' end';
       document.getElementById('rects').textContent = 'rects ' + [...document.querySelectorAll('.t')].map((e) => {
         const r = e.getBoundingClientRect();
@@ -338,7 +345,11 @@ export async function startFixtureServer() {
       return;
     }
     if (url.pathname === "/geometry") {
-      send(200, "text/html; charset=utf-8", geometryPage());
+      send(
+        200,
+        "text/html; charset=utf-8",
+        geometryPage(url.searchParams.get("scrollbar") === "classic"),
+      );
       return;
     }
     if (url.pathname === "/page2") {

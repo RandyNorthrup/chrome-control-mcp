@@ -7,7 +7,7 @@
 //
 // Usage: node tests/e2e/isolated_run.mjs --chrome=<Chrome for Testing binary>
 //          [--executable=<chrome_control_mcp>] [--scale=1] [--window=1280x800] [--zoom=100]
-//          <suite.mjs>
+//          [--chrome-arg=<flag>]... <suite.mjs>
 // The suite's own report is passed through on stdout, and its exit code is this runner's.
 
 import assert from "node:assert/strict";
@@ -44,6 +44,9 @@ const browser = await prepareIsolatedChrome({
   scaleFactor: Number(option("scale") || 1),
   windowSize: [width, height],
   zoomPercent: Number(option("zoom") || 100),
+  extraArgs: process.argv
+    .filter((arg) => arg.startsWith("--chrome-arg="))
+    .map((arg) => arg.slice("--chrome-arg=".length)),
 });
 let exitCode;
 try {

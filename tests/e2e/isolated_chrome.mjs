@@ -78,6 +78,7 @@ export async function prepareIsolatedChrome({
   scaleFactor = 1,
   windowSize = [1280, 800],
   zoomPercent = 100,
+  extraArgs = [],
 }) {
   if (process.platform === "win32") {
     // Chrome for Windows finds native-messaging hosts in the registry, one key per browser
@@ -157,6 +158,9 @@ export async function prepareIsolatedChrome({
       `--force-device-scale-factor=${scaleFactor}`,
       "--headless=new",
       "--remote-debugging-port=0",
+      // A CI image whose kernel forbids unprivileged user namespaces leaves Chrome with no usable
+      // sandbox, and it refuses to start; --no-sandbox is passed there and nowhere else.
+      ...extraArgs,
       "about:blank",
     ];
     browser = spawn(chrome, args, {

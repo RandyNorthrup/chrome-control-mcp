@@ -9,6 +9,7 @@
 //
 // Usage: node tests/e2e/display_matrix_e2e.mjs --chrome=<Chrome for Testing binary>
 //          [--executable=<chrome_control_mcp>] [--parallel=3] [--only=<config name>]
+//          [--chrome-arg=<flag>]...
 // Chrome for Testing is required: branded Chrome ignores --load-extension.
 //
 // Display scale is Chrome's --force-device-scale-factor, the display's device scale factor that a
@@ -59,6 +60,10 @@ const ZOOMS = [
   25, 33, 50, 67, 75, 80, 90, 110, 125, 150, 175, 200, 250, 300, 400, 500,
 ];
 const PINCHES = [1.5, 2, 3];
+// A scrollbar that takes layout space (the Windows and Linux default, and macOS set to show scroll
+// bars always) against one drawn over the page (the macOS default): it changes what the page
+// measures and what a capture covers.
+const SCROLLBARS = ["overlay", "classic"];
 
 // The fixture needs room: nine 24px targets placed by fractions of the viewport stay apart only
 // in a CSS viewport at least this big.
@@ -91,11 +96,12 @@ function plan() {
     }
     for (const zoom of zooms) {
       configs.push({
-        name: `${display.scale}x-${width}x${height}-zoom${zoom}`,
+        name: `${display.scale}x-${width}x${height}-zoom${zoom}-${SCROLLBARS[pinch % SCROLLBARS.length]}`,
         scaleFactor: display.scale,
         windowSize: display.window,
         zoomPercent: zoom,
         pinch: PINCHES[pinch % PINCHES.length],
+        scrollbar: SCROLLBARS[pinch % SCROLLBARS.length],
       });
       pinch += 1;
     }
@@ -176,7 +182,7 @@ async function devtoolsPage(devtools, urlPart) {
   return { send, close: () => socket.close() };
 }
 
-async function runConfig(config, { chrome, executable, fixture }) {
+async function runConfig(config, { chrome, executable, fixture, extraArgs }) {
   const checks = [];
   const measured = {};
   const check = (label, ok, detail = "") => {
@@ -190,7 +196,12 @@ async function runConfig(config, { chrome, executable, fixture }) {
   let client = null;
   let pinchPage = null;
   try {
-    browser = await prepareIsolatedChrome({ chrome, executable, ...config });
+    browser = await prepareIsolatedChrome({
+      chrome,
+      executable,
+      extraArgs,
+      ...config,
+    });
     client = new McpClient(executable, browser.env);
     await client.request("initialize", {
       protocolVersion: "2024-11-05",
@@ -227,7 +238,9 @@ async function runConfig(config, { chrome, executable, fixture }) {
         : { out: (await state()).out };
     };
 
-    await client.json("browser_new_tab", { url: `${fixture.origin}/geometry` });
+    await client.json("browser_new_tab", {
+      url: `${fixture.origin}/geometry${config.scrollbar === "classic" ? "?scrollbar=classic" : ""}`,
+    });
     let page = await state();
     const m = page.metrics;
     const dpr = m.dpr;
@@ -261,11 +274,16 @@ async function runConfig(config, { chrome, executable, fixture }) {
     );
     let shot = await screenshot();
     measured.screenshot = [shot.png.width, shot.png.height];
+    // innerWidth/innerHeight, not the visual viewport's size: both they and the image include the
+    // gutter a scrollbar that takes layout space reserves (measured: an 800px window photographs
+    // 800px wide while its visual viewport is 785). The page reports them in whole CSS pixels, so
+    // a fractional viewport can differ by half a pixel -- 1.75 device pixels at 3.5x.
+    const roundingSlack = dpr / 2 + 1;
     check(
       "the screenshot is the viewport in device pixels",
-      Math.abs(shot.png.width - m.vvw * dpr) <= 1 &&
-        Math.abs(shot.png.height - m.vvh * dpr) <= 1,
-      `${shot.png.width}x${shot.png.height} for a ${m.vvw}x${m.vvh} CSS viewport at ${dpr}`,
+      Math.abs(shot.png.width - m.iw * dpr) <= roundingSlack &&
+        Math.abs(shot.png.height - m.ih * dpr) <= roundingSlack,
+      `${shot.png.width}x${shot.png.height} for a ${m.iw}x${m.ih} CSS viewport at ${dpr}`,
     );
     // Where a CSS rect must be in an image of the page taken with the given transform.
     const expectBox = (id, image, transform, label) => {
@@ -422,22 +440,23 @@ async function runConfig(config, { chrome, executable, fixture }) {
     );
     measured.full_page = [full.png.width, full.png.height];
     const clipped = /clipped/i.test(full.text);
-    // The whole document, from its exact size (scrollWidth/Height round it to whole CSS pixels)
-    // to less than one DIP -- the display's scale in device pixels -- past its end: Chrome clips
-    // in whole DIPs.
+    // The scrollable content the page reports -- which excludes the gutter a layout-taking
+    // scrollbar reserves, while documentElement's own box spans under it -- rounded to whole CSS
+    // pixels by scrollWidth/Height, and up to less than one DIP (the display's scale in device
+    // pixels) past its end, because Chrome clips in whole DIPs.
     const holdsDocument = (image, metrics) =>
       [
-        [image.width, metrics.dwx],
-        [image.height, metrics.dhx],
+        [image.width, metrics.dw],
+        [image.height, metrics.dh],
       ].every(
         ([pixels, css]) =>
-          pixels >= css * dpr - 1 &&
-          pixels <= css * dpr + config.scaleFactor + 1,
+          pixels >= (css - 0.5) * dpr - 1 &&
+          pixels <= (css + 0.5) * dpr + config.scaleFactor + 1,
       );
     check(
       "the full-page screenshot is the whole document in device pixels",
       clipped || holdsDocument(full.png, page.metrics),
-      `${full.png.width}x${full.png.height} for a ${page.metrics.dwx}x${page.metrics.dhx} document at ${dpr}`,
+      `${full.png.width}x${full.png.height} for a ${page.metrics.dw}x${page.metrics.dh} document at ${dpr}`,
     );
     if (!clipped) {
       expectBox(
@@ -688,6 +707,9 @@ async function main() {
   );
   assert.ok(existsSync(executable), `MCP executable not found: ${executable}`);
   const parallel = Math.max(1, Number(option("parallel") || 3));
+  const extraArgs = process.argv
+    .filter((arg) => arg.startsWith("--chrome-arg="))
+    .map((arg) => arg.slice("--chrome-arg=".length));
   const only = option("only");
   const configs = plan().filter((config) => !only || config.name === only);
   assert.ok(configs.length > 0, `No configuration named ${only}`);
@@ -699,7 +721,12 @@ async function main() {
     while (cursor < configs.length) {
       const config = configs[cursor];
       cursor += 1;
-      const result = await runConfig(config, { chrome, executable, fixture });
+      const result = await runConfig(config, {
+        chrome,
+        executable,
+        fixture,
+        extraArgs,
+      });
       const failed = result.checks.filter((entry) => !entry.ok);
       process.stderr.write(
         `${result.ok ? "PASS" : "FAIL"} ${config.name} pinch ${config.pinch}: ` +
