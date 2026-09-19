@@ -63,6 +63,13 @@ try {
   const exited = new Promise((resolve) => child.once("close", resolve));
   await browser.launch();
   exitCode = await exited;
+  if (exitCode !== 0) {
+    // What the browser itself said. A suite that fails because Chrome died reads as a tool that
+    // did not answer, and the reason is only in the browser's output.
+    process.stderr.write(
+      `--- dedicated browser stderr (tail) ---\n${browser.stderr().slice(-4000)}\n`,
+    );
+  }
 } finally {
   await browser.close();
 }

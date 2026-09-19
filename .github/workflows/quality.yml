@@ -164,9 +164,10 @@ jobs:
             os: ubuntu-latest
             qt-arch: linux_gcc_64
             # This image's kernel forbids unprivileged user namespaces, which leaves Chrome with
-            # no usable sandbox and it refuses to start. Only the dedicated test browser is
-            # affected; nothing here changes how the product runs.
-            chrome-args: --chrome-arg=--no-sandbox
+            # no usable sandbox and it refuses to start, and it has no GPU to rasterize with.
+            # Only the dedicated test browser is affected; nothing here changes how the product
+            # runs.
+            chrome-args: --chrome-arg=--no-sandbox --chrome-arg=--disable-gpu
           - name: macOS
             os: macos-latest
             qt-arch: clang_64
