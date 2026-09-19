@@ -147,6 +147,134 @@ function protectedPage() {
   );
 }
 
+// Geometry: solid-colour targets whose pixels the suite finds in a screenshot and whose clicks the
+// page reports, so a coordinate is proven by where the click LANDED -- never by the arithmetic that
+// produced it. The targets sit at the viewport's corners and centre, one is 6 CSS px at a
+// fractional offset, one is below the fold, one is inside a CSS-zoomed box and one is rotated.
+// The readout is what the page itself measures: devicePixelRatio, the layout viewport, and the
+// visual viewport a pinch moves.
+export const GEOMETRY_TARGETS = [
+  { id: "tl", rgb: [255, 0, 0] },
+  { id: "tr", rgb: [0, 160, 0] },
+  { id: "bl", rgb: [0, 0, 255] },
+  { id: "br", rgb: [255, 140, 0] },
+  { id: "mid", rgb: [160, 0, 160] },
+  { id: "tiny", rgb: [0, 170, 170] },
+  { id: "below", rgb: [200, 200, 0] },
+  { id: "zoomed", rgb: [120, 60, 0] },
+  { id: "turned", rgb: [0, 90, 160] },
+];
+
+function geometryPage() {
+  const buttons = GEOMETRY_TARGETS.map(
+    ({ id, rgb }) =>
+      `<button class="t" id="${id}" aria-label="Geometry target ${id}" style="background:rgb(${rgb.join(",")})"></button>`,
+  );
+  const inZoom = buttons.find((b) => b.includes('id="zoomed"'));
+  const outside = buttons.filter((b) => b !== inZoom).join("\n  ");
+  return `<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Geometry fixture</title>
+  <style>
+    html, body { margin: 0; padding: 0; background: #fff; color: #000; }
+    body { width: 100%; min-height: 300vh; position: relative; font: 12px/1.3 monospace; }
+    .t { all: unset; position: absolute; display: block; width: 24px; height: 24px; }
+    #tiny { width: 6px; height: 6px; }
+    #turned { transform: rotate(30deg); }
+    #zoombox { position: absolute; zoom: 1.5; width: 60px; height: 60px; }
+    #zoomed { left: 10px; top: 10px; }
+    #readout { position: absolute; left: 0; top: 220vh; pointer-events: none; }
+    /* Frames keep coming while something animates, and a synthesized pinch advances one frame at
+       a time: without this a still page leaves the gesture waiting for a frame that never comes. */
+    #ticker { position: absolute; left: 0; top: 230vh; width: 4px; height: 4px; background: #eee;
+      animation: tick 1s linear infinite; }
+    @keyframes tick { to { transform: rotate(360deg); } }
+  </style>
+</head>
+<body>
+  ${outside}
+  <div id="zoombox">${inZoom}</div>
+  <div id="ticker"></div>
+  <div id="readout"><div id="out">none</div><div id="metrics"></div><div id="rects"></div><div id="scrolls"></div></div>
+  <script>
+    const out = document.getElementById('out');
+    const place = () => {
+      const w = document.documentElement.clientWidth, h = window.innerHeight;
+      const at = (id, x, y) => { const e = document.getElementById(id); e.style.left = x + 'px'; e.style.top = y + 'px'; };
+      at('tl', 4, 4); at('tr', w - 28, 4); at('bl', 4, h - 28); at('br', w - 28, h - 28);
+      at('mid', Math.round(w / 2) - 12, Math.round(h / 2) - 12);
+      at('tiny', Math.round(w * 0.3) + 0.5, Math.round(h * 0.3) + 0.5);
+      at('below', Math.round(w / 3), Math.round(h * 1.6));
+      at('turned', Math.round(w * 0.7), Math.round(h * 0.6));
+      const box = document.getElementById('zoombox');
+      // CSS zoom scales the box's own offsets too: 0.4 of the viewport lands at 0.6 of it.
+      box.style.left = Math.round(w * 0.1) + 'px'; box.style.top = Math.round(h * 0.4) + 'px';
+      measure();
+    };
+    // Every scroll the page sees, with the page's own clock: a scroll is animated, and in a
+    // background tab the animation advances only as fast as that tab gets frames.
+    const scrollLog = [];
+    addEventListener('scroll', () => {
+      if (scrollLog.length < 300) {
+        scrollLog.push(Math.round(performance.now()) + ':' + Math.round(window.scrollY));
+      }
+    }, { capture: true });
+    const measure = () => {
+      const vv = window.visualViewport;
+      document.getElementById('metrics').textContent = 'metrics' +
+        ' dpr=' + window.devicePixelRatio + ' iw=' + window.innerWidth + ' ih=' + window.innerHeight +
+        ' cw=' + document.documentElement.clientWidth +
+        ' vvs=' + vv.scale + ' vvl=' + vv.offsetLeft + ' vvt=' + vv.offsetTop +
+        ' vvw=' + vv.width + ' vvh=' + vv.height +
+        ' sx=' + window.scrollX + ' sy=' + window.scrollY +
+        ' dw=' + document.documentElement.scrollWidth + ' dh=' + document.documentElement.scrollHeight +
+        ' dwx=' + document.documentElement.getBoundingClientRect().width +
+        ' dhx=' + document.documentElement.getBoundingClientRect().height + ' end';
+      document.getElementById('scrolls').textContent = 'scrolls ' + scrollLog.join(' ') + ' end';
+      document.getElementById('rects').textContent = 'rects ' + [...document.querySelectorAll('.t')].map((e) => {
+        const r = e.getBoundingClientRect();
+        return e.id + '=' + [r.left, r.top, r.width, r.height].map((v) => v.toFixed(2)).join(',');
+      }).join(' ') + ' end';
+    };
+    for (const e of document.querySelectorAll('.t')) {
+      e.addEventListener('click', (ev) => { out.textContent = 'hit:' + e.id + '@' + ev.clientX + ',' + ev.clientY; });
+      e.addEventListener('mouseenter', () => { out.textContent = 'over:' + e.id; });
+    }
+    // A press released over another element is a drop. Chrome then fires click on the two
+    // elements' common ancestor, which is not a click anyone aimed.
+    let pressed = null;
+    let dropped = false;
+    document.addEventListener('mousedown', (ev) => { pressed = ev.target.id || 'page'; dropped = false; });
+    document.addEventListener('mouseup', (ev) => {
+      const under = document.elementFromPoint(ev.clientX, ev.clientY);
+      if (pressed && under && pressed !== (under.id || 'page')) {
+        out.textContent = 'drop:' + pressed + '>' + (under.id || 'page');
+        dropped = true;
+      }
+      pressed = null;
+    });
+    // A click that reaches no target says so, so it can never read as the previous target's hit.
+    document.addEventListener('click', (ev) => {
+      if (dropped) {
+        dropped = false;
+      } else if (!ev.target.classList || !ev.target.classList.contains('t')) {
+        out.textContent = 'miss@' + ev.clientX + ',' + ev.clientY;
+      }
+    });
+    // Placed once: a full-page screenshot lays the page out at the document's height for the
+    // capture, and a re-placement on that resize would move the targets under the next check.
+    window.addEventListener('resize', measure);
+    window.addEventListener('scroll', measure);
+    visualViewport.addEventListener('resize', measure);
+    visualViewport.addEventListener('scroll', measure);
+    place();
+  </script>
+</body>
+</html>`;
+}
+
 function toneWav() {
   const sampleRate = 8000;
   const samples = 2000;
@@ -189,6 +317,28 @@ export async function startFixtureServer() {
 
     if (url.pathname === "/") {
       send(200, "text/html; charset=utf-8", fixtureHome());
+      return;
+    }
+    if (url.pathname === "/timers") {
+      // The page times its own setTimeout delays: what a page can rely on while it is not the
+      // tab in front, which is where every wait this tool makes has to work.
+      send(
+        200,
+        "text/html; charset=utf-8",
+        `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Timers</title></head>
+<body><div id="log">timers end</div><script>
+  const delays = [];
+  const render = () => { document.getElementById('log').textContent = 'timers ' + delays.join(' ') + ' end'; };
+  for (const ms of [50, 100, 250, 1000]) {
+    const start = performance.now();
+    setTimeout(() => { delays.push('timer:' + ms + '=' + Math.round(performance.now() - start)); render(); }, ms);
+  }
+</script></body></html>`,
+      );
+      return;
+    }
+    if (url.pathname === "/geometry") {
+      send(200, "text/html; charset=utf-8", geometryPage());
       return;
     }
     if (url.pathname === "/page2") {

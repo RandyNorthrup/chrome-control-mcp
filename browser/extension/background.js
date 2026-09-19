@@ -181,6 +181,136 @@ const SHIFTED_KEYS = Object.assign(Object.create(null), {
   "]": "}",
   "'": '"',
 });
+// macOS: the editing command each key chord means there. On Windows and Linux Chrome's own
+// renderer turns Control+A into Select All; on macOS those bindings live in the operating
+// system's key-binding table (Cocoa's NSStandardKeyBindingResponding), which a DevTools
+// Input.dispatchKeyEvent never passes through -- so a synthetic Command+A, Backspace or
+// Option+ArrowLeft reaches the page and edits nothing. The keyDown must carry the command
+// itself, in Input.dispatchKeyEvent's `commands` field.
+//
+// Keyed by the modifiers in the fixed order Shift, Control, Alt, Meta, then the DOM `code`.
+// Ported entry for entry from Playwright's macEditingCommands.ts (microsoft/playwright,
+// packages/playwright-core/src/server/macEditingCommands.ts; Copyright 2017 Google Inc.,
+// modifications copyright Microsoft Corporation; Apache License 2.0 -- see
+// THIRD_PARTY_NOTICES.md), which transcribes Chromium's default macOS key bindings. Values keep
+// the Cocoa selector spelling (trailing ':'); macEditingCommands() turns them into Chromium
+// command names.
+const MAC_EDITING_COMMANDS = Object.assign(Object.create(null), {
+  Backspace: "deleteBackward:",
+  Enter: "insertNewline:",
+  NumpadEnter: "insertNewline:",
+  Escape: "cancelOperation:",
+  ArrowUp: "moveUp:",
+  ArrowDown: "moveDown:",
+  ArrowLeft: "moveLeft:",
+  ArrowRight: "moveRight:",
+  F5: "complete:",
+  Delete: "deleteForward:",
+  Home: "scrollToBeginningOfDocument:",
+  End: "scrollToEndOfDocument:",
+  PageUp: "scrollPageUp:",
+  PageDown: "scrollPageDown:",
+  "Shift+Backspace": "deleteBackward:",
+  "Shift+Enter": "insertNewline:",
+  "Shift+NumpadEnter": "insertNewline:",
+  "Shift+Escape": "cancelOperation:",
+  "Shift+ArrowUp": "moveUpAndModifySelection:",
+  "Shift+ArrowDown": "moveDownAndModifySelection:",
+  "Shift+ArrowLeft": "moveLeftAndModifySelection:",
+  "Shift+ArrowRight": "moveRightAndModifySelection:",
+  "Shift+F5": "complete:",
+  "Shift+Delete": "deleteForward:",
+  "Shift+Home": "moveToBeginningOfDocumentAndModifySelection:",
+  "Shift+End": "moveToEndOfDocumentAndModifySelection:",
+  "Shift+PageUp": "pageUpAndModifySelection:",
+  "Shift+PageDown": "pageDownAndModifySelection:",
+  "Shift+Numpad5": "delete:",
+  "Control+Tab": "selectNextKeyView:",
+  "Control+Enter": "insertLineBreak:",
+  "Control+NumpadEnter": "insertLineBreak:",
+  "Control+Quote": "insertSingleQuoteIgnoringSubstitution:",
+  "Control+KeyA": "moveToBeginningOfParagraph:",
+  "Control+KeyB": "moveBackward:",
+  "Control+KeyD": "deleteForward:",
+  "Control+KeyE": "moveToEndOfParagraph:",
+  "Control+KeyF": "moveForward:",
+  "Control+KeyH": "deleteBackward:",
+  "Control+KeyK": "deleteToEndOfParagraph:",
+  "Control+KeyL": "centerSelectionInVisibleArea:",
+  "Control+KeyN": "moveDown:",
+  "Control+KeyO": ["insertNewlineIgnoringFieldEditor:", "moveBackward:"],
+  "Control+KeyP": "moveUp:",
+  "Control+KeyT": "transpose:",
+  "Control+KeyV": "pageDown:",
+  "Control+KeyY": "yank:",
+  "Control+Backspace": "deleteBackwardByDecomposingPreviousCharacter:",
+  "Control+ArrowUp": "scrollPageUp:",
+  "Control+ArrowDown": "scrollPageDown:",
+  "Control+ArrowLeft": "moveToLeftEndOfLine:",
+  "Control+ArrowRight": "moveToRightEndOfLine:",
+  "Shift+Control+Enter": "insertLineBreak:",
+  "Shift+Control+NumpadEnter": "insertLineBreak:",
+  "Shift+Control+Tab": "selectPreviousKeyView:",
+  "Shift+Control+Quote": "insertDoubleQuoteIgnoringSubstitution:",
+  "Shift+Control+KeyA": "moveToBeginningOfParagraphAndModifySelection:",
+  "Shift+Control+KeyB": "moveBackwardAndModifySelection:",
+  "Shift+Control+KeyE": "moveToEndOfParagraphAndModifySelection:",
+  "Shift+Control+KeyF": "moveForwardAndModifySelection:",
+  "Shift+Control+KeyN": "moveDownAndModifySelection:",
+  "Shift+Control+KeyP": "moveUpAndModifySelection:",
+  "Shift+Control+KeyV": "pageDownAndModifySelection:",
+  "Shift+Control+Backspace": "deleteBackwardByDecomposingPreviousCharacter:",
+  "Shift+Control+ArrowUp": "scrollPageUp:",
+  "Shift+Control+ArrowDown": "scrollPageDown:",
+  "Shift+Control+ArrowLeft": "moveToLeftEndOfLineAndModifySelection:",
+  "Shift+Control+ArrowRight": "moveToRightEndOfLineAndModifySelection:",
+  "Alt+Backspace": "deleteWordBackward:",
+  "Alt+Enter": "insertNewlineIgnoringFieldEditor:",
+  "Alt+NumpadEnter": "insertNewlineIgnoringFieldEditor:",
+  "Alt+Escape": "complete:",
+  "Alt+ArrowUp": ["moveBackward:", "moveToBeginningOfParagraph:"],
+  "Alt+ArrowDown": ["moveForward:", "moveToEndOfParagraph:"],
+  "Alt+ArrowLeft": "moveWordLeft:",
+  "Alt+ArrowRight": "moveWordRight:",
+  "Alt+Delete": "deleteWordForward:",
+  "Alt+PageUp": "pageUp:",
+  "Alt+PageDown": "pageDown:",
+  "Shift+Alt+Backspace": "deleteWordBackward:",
+  "Shift+Alt+Enter": "insertNewlineIgnoringFieldEditor:",
+  "Shift+Alt+NumpadEnter": "insertNewlineIgnoringFieldEditor:",
+  "Shift+Alt+Escape": "complete:",
+  "Shift+Alt+ArrowUp": "moveParagraphBackwardAndModifySelection:",
+  "Shift+Alt+ArrowDown": "moveParagraphForwardAndModifySelection:",
+  "Shift+Alt+ArrowLeft": "moveWordLeftAndModifySelection:",
+  "Shift+Alt+ArrowRight": "moveWordRightAndModifySelection:",
+  "Shift+Alt+Delete": "deleteWordForward:",
+  "Shift+Alt+PageUp": "pageUp:",
+  "Shift+Alt+PageDown": "pageDown:",
+  "Control+Alt+KeyB": "moveWordBackward:",
+  "Control+Alt+KeyF": "moveWordForward:",
+  "Control+Alt+Backspace": "deleteWordBackward:",
+  "Shift+Control+Alt+KeyB": "moveWordBackwardAndModifySelection:",
+  "Shift+Control+Alt+KeyF": "moveWordForwardAndModifySelection:",
+  "Shift+Control+Alt+Backspace": "deleteWordBackward:",
+  "Meta+NumpadSubtract": "cancel:",
+  "Meta+Backspace": "deleteToBeginningOfLine:",
+  "Meta+ArrowUp": "moveToBeginningOfDocument:",
+  "Meta+ArrowDown": "moveToEndOfDocument:",
+  "Meta+ArrowLeft": "moveToLeftEndOfLine:",
+  "Meta+ArrowRight": "moveToRightEndOfLine:",
+  "Shift+Meta+NumpadSubtract": "cancel:",
+  "Shift+Meta+Backspace": "deleteToBeginningOfLine:",
+  "Shift+Meta+ArrowUp": "moveToBeginningOfDocumentAndModifySelection:",
+  "Shift+Meta+ArrowDown": "moveToEndOfDocumentAndModifySelection:",
+  "Shift+Meta+ArrowLeft": "moveToLeftEndOfLineAndModifySelection:",
+  "Shift+Meta+ArrowRight": "moveToRightEndOfLineAndModifySelection:",
+  "Meta+KeyA": "selectAll:",
+  "Meta+KeyC": "copy:",
+  "Meta+KeyX": "cut:",
+  "Meta+KeyV": "paste:",
+  "Meta+KeyZ": "undo:",
+  "Shift+Meta+KeyZ": "redo:",
+});
 // The assistant's on-page CONTROL PRESENCE: a page-injected overlay so the user SEES that the
 // assistant is driving this tab and where its pointer is -- distinct from their untouched OS
 // cursor. It is a prominent neon-pink pointer (with a pulsing halo), a viewport frame, and an
@@ -292,11 +422,12 @@ let lastSnapshotTabId = null;
 // the REPLY, i.e. after the click already landed -- so the generation is pinned here too and
 // checked BEFORE dispatching.
 let lastSnapshotEpoch = null;
-// Fingerprint of the render the most recent screenshot captured: {tabId, fullPage, dpr,
-// scrollX, scrollY, href}. A coordinate click (browser_click_at) is meaningful only against
-// that exact image, so it converts device->CSS with THIS dpr (not a re-read) and refuses if
-// the tab, dpr, scroll, or document changed since -- a full-page shot is document-space, not
-// click-space. null when no valid screenshot is outstanding.
+// Fingerprint of the render the most recent screenshot captured: {tabId, fullPage, dpr, scale,
+// offsetX, offsetY, scrollX, scrollY, href, ...}. A coordinate the model reads off that image
+// (browser_click_at, browser_drag's x/y) is meaningful only against it, so it converts with THIS
+// transform (not a re-read) and refuses if the tab, zoom, pinch, scroll, or document changed
+// since -- a full-page shot is document-space, not click-space. null when no valid screenshot
+// is outstanding.
 let lastShot = null;
 // The tab listing browser_tabs last returned: the window it was taken from and the url/title at
 // each index. A tab index is POSITIONAL -- it shifts whenever a tab opens, closes, or moves, and
@@ -585,7 +716,8 @@ const COMMAND_TABLE = new Map([
   ["permission", { fn: handlePermission, tab: false, args: true }],
   ["storage", { fn: handleStorage, tab: true, args: true }],
   ["cookies", { fn: handleCookies, tab: false, args: true }],
-  ["download", { fn: handleDownload, tab: false, args: true }],
+  // Given the tab so its poll is timed by that page's clock, not this worker's.
+  ["download", { fn: handleDownload, tab: true, args: true }],
   ["httpAuth", { fn: handleHttpAuth, tab: true, args: true }],
 ]);
 
@@ -606,21 +738,95 @@ async function dispatchCommand(cmd, args) {
 
 // -- Active tab helpers ------------------------------------------------------
 
+// The tab strip's own mark for the tab under control: a pink group, the same pink as the frame and
+// badge drawn on the page, so the user can see WHICH tab the assistant is working in without
+// opening it. The session's tab is never hidden from the user -- it sits in their tab strip, never
+// collapsed, and they can switch to it at any time. A tab the user (or the model) already grouped
+// stays in that group: pulling it out would rearrange the user's own tabs.
+const CONTROL_GROUP_TITLE = "AI CONTROL";
+const CONTROL_GROUP_COLOR = "pink";
+let controlGroupId = null;
+let controlGroupTabId = null;
+
+async function markControlledTab(tabId) {
+  if (!chrome.tabGroups) {
+    return; // grouping unavailable: the page overlay and toolbar badge still mark the tab
+  }
+  const tab = await chrome.tabs.get(tabId).catch(() => null);
+  if (!tab) {
+    return;
+  }
+  const grouped = typeof tab.groupId === "number" && tab.groupId >= 0;
+  if (grouped && tab.groupId !== controlGroupId) {
+    return; // somebody else's group; leave the user's tab strip as they arranged it
+  }
+  if (grouped && controlGroupTabId === tabId) {
+    return; // already marked
+  }
+  await unmarkControlledTab();
+  // In the tab's OWN window: a group created without one lands in "the current window", which
+  // MOVES the tab there -- and a window whose only tab left closes with it.
+  const groupId = await chrome.tabs
+    .group({ tabIds: [tabId], createProperties: { windowId: tab.windowId } })
+    .catch((e) => {
+      console.warn("[ChromeControlMCP] could not mark the controlled tab:", e);
+      return null;
+    });
+  if (groupId === null || groupId === undefined) {
+    return;
+  }
+  controlGroupId = groupId;
+  controlGroupTabId = tabId;
+  lastTabListing = null; // grouping can move the tab: every index after it is unproven
+  await chrome.tabGroups
+    .update(groupId, {
+      color: CONTROL_GROUP_COLOR,
+      title: CONTROL_GROUP_TITLE,
+      collapsed: false, // a collapsed group would hide the tab; it never is
+    })
+    .catch((e) => {
+      console.warn("[ChromeControlMCP] could not colour the control group:", e);
+    });
+}
+
+async function unmarkControlledTab() {
+  const tabId = controlGroupTabId;
+  const groupId = controlGroupId;
+  controlGroupTabId = null;
+  controlGroupId = null;
+  if (tabId === null) {
+    return;
+  }
+  const tab = await chrome.tabs.get(tabId).catch(() => null);
+  if (tab && tab.groupId === groupId) {
+    await chrome.tabs.ungroup([tabId]).catch(() => {});
+    lastTabListing = null;
+  }
+}
+
 function pinSessionTarget(tab) {
   sessionTabId = tab.id;
   sessionWindowId = tab.windowId;
+  markControlledTab(tab.id).catch(() => {});
 }
 
 function releaseSessionTarget() {
   sessionTabId = null;
   sessionWindowId = null;
+  unmarkControlledTab().catch(() => {});
 }
 
 // The tab the session controls. The first command adopts the active tab of the last focused
 // window -- the page the user was looking at when they handed over -- and every later command
-// stays on that tab whatever the user focuses next. If the tab has closed, the session falls back
-// to the active tab of its OWN window (the neighbour Chrome activated), never to a window the user
-// is working in; only when that window is gone too does it adopt afresh.
+// stays on that tab whatever the user does next: they may switch to another tab or window and go
+// on working, and the session keeps driving its own tab in the background over the debugger
+// protocol, never bringing it forward.
+//
+// If the session's tab closes, the session does NOT fall back to another tab. Every neighbour in
+// its window is a tab the user may be using -- Chrome activates one of them on close -- and taking
+// it over would be exactly the interference this worker must never commit. The session stays
+// without a tab, and says so, until it is given one: browser_new_tab opens its own in the
+// background, browser_select_tab names one, browser_window new/focus picks a window's.
 async function activeTab() {
   if (sessionTabId !== null) {
     const pinned = await chrome.tabs.get(sessionTabId).catch(() => null);
@@ -628,17 +834,15 @@ async function activeTab() {
       sessionWindowId = pinned.windowId; // the user may have dragged it to another window
       return pinned;
     }
-    sessionTabId = null;
+    throw new Error(
+      "The session's tab has closed. Open a new one with browser_new_tab, or choose one with " +
+        "browser_select_tab; the session never takes over a tab it was not given.",
+    );
   }
-  let tabs = [];
-  if (sessionWindowId !== null) {
-    tabs = await chrome.tabs
-      .query({ active: true, windowId: sessionWindowId })
-      .catch(() => []);
-  }
-  if (!tabs || !tabs.length) {
-    tabs = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
-  }
+  const tabs = await chrome.tabs.query({
+    active: true,
+    lastFocusedWindow: true,
+  });
   if (!tabs || !tabs.length) {
     throw new Error("No active tab.");
   }
@@ -650,8 +854,23 @@ async function activeTabId() {
   return (await activeTab()).id;
 }
 
-// The window the session works in: where tab listings, tab indices, and new tabs resolve.
+// The window the session works in: where tab listings, tab indices, and new tabs resolve. It
+// outlives the session's tab: after that tab closes, a listing or a new tab still belongs in the
+// window the session was working in.
 async function sessionWindow() {
+  if (sessionTabId !== null) {
+    const pinned = await chrome.tabs.get(sessionTabId).catch(() => null);
+    if (pinned) {
+      sessionWindowId = pinned.windowId;
+      return pinned.windowId;
+    }
+    if (sessionWindowId !== null) {
+      const win = await chrome.windows.get(sessionWindowId).catch(() => null);
+      if (win) {
+        return win.id;
+      }
+    }
+  }
   return (await activeTab()).windowId;
 }
 
@@ -1593,11 +1812,14 @@ async function handleRead(tabId, args) {
 // desktop. full_page uses captureBeyondViewport with a clip sized to the document, capped
 // at the Skia edge limit. The base64 PNG rides back in the reply payload; the bridge caps
 // its size and returns it as an MCP image content block.
-// The live tab's render fingerprint in one evaluate: devicePixelRatio (>= 1), scroll offset,
-// document URL, and the layout viewport size. dpr bounds the screenshot clip in the DEVICE
-// pixels Skia rasters, and the whole tuple binds a screenshot to the exact render a later
-// coordinate click must match. The viewport size is part of it because browser_emulate can
-// relay the whole page out at a new width/height without moving href, dpr, or scroll.
+// The live tab's render fingerprint in one evaluate: devicePixelRatio (the display's scale times
+// the browser zoom, so below 1 on a zoomed-out page), the visual viewport's pinch scale and its
+// offset inside the layout viewport, the scroll offset, the document URL, and the layout viewport
+// size. dpr bounds the screenshot clip in the DEVICE pixels Skia rasters, and the whole tuple
+// binds a screenshot to the exact render a later coordinate click must match. The viewport size
+// is part of it because browser_emulate can relay the whole page out at a new width/height
+// without moving href, dpr, or scroll; the pinch is part of it because a trackpad pinch moves
+// every pixel on screen without moving any of those.
 // `ok` is false when the page could not be read: callers must fail closed on it rather than
 // trust the placeholder values, so that two failed reads (shot + click) can never compare
 // equal and wave a blind coordinate click through.
@@ -1605,10 +1827,13 @@ async function viewportState(tabId) {
   const res = await sendCdp(tabId, "Runtime.evaluate", {
     expression:
       "({dpr: window.devicePixelRatio, sx: window.scrollX, sy: window.scrollY, href: location.href," +
-      " iw: window.innerWidth, ih: window.innerHeight})",
+      " iw: window.innerWidth, ih: window.innerHeight, vs: visualViewport.scale," +
+      " vl: visualViewport.offsetLeft, vt: visualViewport.offsetTop})",
     returnByValue: true,
   }).catch(() => null);
   const v = res && res.result && res.result.value ? res.result.value : null;
+  // A scroll offset or pinch the page did not report is not zero: taken as zero, it would move
+  // every hit test and coordinate conversion onto whatever sits at the unscrolled, unpinched spot.
   if (
     !v ||
     typeof v.href !== "string" ||
@@ -1617,11 +1842,20 @@ async function viewportState(tabId) {
     !Number.isFinite(v.iw) ||
     !Number.isFinite(v.ih) ||
     v.iw <= 0 ||
-    v.ih <= 0
+    v.ih <= 0 ||
+    !Number.isFinite(v.sx) ||
+    !Number.isFinite(v.sy) ||
+    !Number.isFinite(v.vs) ||
+    v.vs <= 0 ||
+    !Number.isFinite(v.vl) ||
+    !Number.isFinite(v.vt)
   ) {
     return {
       ok: false,
       dpr: 1,
+      scale: 1,
+      offsetX: 0,
+      offsetY: 0,
       scrollX: 0,
       scrollY: 0,
       href: "",
@@ -1632,8 +1866,11 @@ async function viewportState(tabId) {
   return {
     ok: true,
     dpr: v.dpr,
-    scrollX: Number.isFinite(v.sx) ? Math.round(v.sx) : 0,
-    scrollY: Number.isFinite(v.sy) ? Math.round(v.sy) : 0,
+    scale: v.vs,
+    offsetX: v.vl,
+    offsetY: v.vt,
+    scrollX: v.sx,
+    scrollY: v.sy,
     href: v.href,
     width: Math.round(v.iw),
     height: Math.round(v.ih),
@@ -1641,13 +1878,16 @@ async function viewportState(tabId) {
 }
 
 // Does the live render still match the one a screenshot was taken against? Every field here
-// moves pixels under a coordinate the model measured off that image: a scroll or zoom, a
+// moves pixels under a coordinate the model measured off that image: a scroll, zoom, or pinch, a
 // navigation, a same-URL reload or SPA route change (which href alone cannot see -- hence the
 // DOM generation), and a viewport resize.
 function shotMatchesRender(shot, now) {
   return (
     now.ok &&
     now.dpr === shot.dpr &&
+    now.scale === shot.scale &&
+    now.offsetX === shot.offsetX &&
+    now.offsetY === shot.offsetY &&
     now.href === shot.href &&
     now.scrollX === shot.scrollX &&
     now.scrollY === shot.scrollY &&
@@ -1668,38 +1908,74 @@ async function handleScreenshot(tabId, args) {
     () => null,
   );
   const state = await viewportState(tabId);
-  // Bound the CSS clip so the DEVICE raster (css x dpr) stays within Skia's 16384 cap; a
-  // plain CSS clamp would let a tall page overflow the surface and fail the capture on any
-  // dpr > 1 display (Windows scaling, Retina).
-  const maxCssEdge = Math.max(1, Math.floor(MAX_SHOT_EDGE_PX / state.dpr));
   const clipped = { applied: false };
   if (fullPage) {
-    const content = metrics && (metrics.cssContentSize || metrics.contentSize);
-    // Without the metrics there is no document-sized clip, and the capture would silently fall
-    // back to captureBeyondViewport with no bounds -- a different image than the full page that
-    // was asked for, returned as though it were it.
-    if (!content) {
+    // The document's size in CSS px. cssContentSize is TRUNCATED to whole pixels (Chrome reports
+    // 1876 for a 1876.8px document), which cuts the last device row off a page whose height is
+    // fractional; the device-pixel contentSize over the page's dpr is the exact size (measured
+    // equal to the root element's getBoundingClientRect at 1.25x, 2x at 110%, 1.5x at 67%, and 1x
+    // at 33%). Without the metrics there is no document-sized clip, and the capture would silently
+    // fall back to captureBeyondViewport with no bounds -- a different image than the full page
+    // that was asked for, returned as though it were it.
+    const device = metrics && metrics.contentSize;
+    const zoom =
+      metrics && metrics.cssVisualViewport && metrics.cssVisualViewport.zoom;
+    if (
+      !state.ok ||
+      !device ||
+      !(device.width > 0) ||
+      !(device.height > 0) ||
+      !(zoom > 0)
+    ) {
       throw new Error(
         "Cannot capture the full page: the browser did not report the document's layout metrics.",
       );
     }
-    const rawWidth = Math.round(content.width);
-    const rawHeight = Math.round(content.height);
+    // Capturing beyond the viewport relays the page out at its full size and back, and a pinch
+    // does not survive it: Chrome returns the page at 1x with the pinch's vertical offset folded
+    // into the scroll and its horizontal offset gone (measured: 1.7x at (123.6, 82.2) came back
+    // 1x, scrolled 82px further). Nothing puts the pinch's offset back, so on a tab the user has
+    // pinched this would undo their zoom and move their page. A desktop pinch never goes below
+    // 1x; the thousandth is float noise.
+    if (Math.abs(state.scale - 1) > 0.001) {
+      throw new Error(
+        "The page is pinch-zoomed (" +
+          state.scale.toFixed(2) +
+          "x), and a full-page screenshot would reset that zoom and move the page. Take a " +
+          "viewport screenshot (full_page: false) instead.",
+      );
+    }
+    const contentWidth = device.width / state.dpr;
+    const contentHeight = device.height / state.dpr;
+    // Chrome reads the clip in DIPs -- CSS px times the browser zoom -- not CSS px: a clip of the
+    // document's CSS size captured twice the document at 50% zoom and cut it short at 110%. It
+    // also truncates the clip to whole DIPs before scaling it (a 1876.8 clip captured 1876), so
+    // round UP: the image holds the whole document and less than one DIP of the page's background
+    // past its end. The thousandth absorbs the float noise of a dpr like 2.200000047683716, which
+    // would otherwise round an exact size up a whole pixel.
+    const wholeDips = (css) => Math.ceil(css * zoom - 0.001);
+    // Bound the clip so the DEVICE raster (DIPs x the display's scale) stays within Skia's 16384
+    // cap; a plain clamp would let a tall page overflow the surface and fail the capture on any
+    // scaled display (Windows scaling, Retina).
+    const displayScale = state.dpr / zoom;
+    const maxDipEdge = Math.max(1, Math.floor(MAX_SHOT_EDGE_PX / displayScale));
     params.clip = {
       x: 0,
       y: 0,
-      width: Math.min(rawWidth, maxCssEdge),
-      height: Math.min(rawHeight, maxCssEdge),
+      width: Math.min(wholeDips(contentWidth), maxDipEdge),
+      height: Math.min(wholeDips(contentHeight), maxDipEdge),
       scale: 1,
     };
     // A document taller (or wider) than Skia's raster cap is CLIPPED, and the image then shows
     // the top slice of a long page. Say so: the model otherwise reasons about "the full page"
-    // from a fraction of it.
-    clipped.applied = rawWidth > maxCssEdge || rawHeight > maxCssEdge;
-    clipped.content_width = rawWidth;
-    clipped.content_height = rawHeight;
-    clipped.captured_width = params.clip.width;
-    clipped.captured_height = params.clip.height;
+    // from a fraction of it. The sizes are the document's and the capture's, in CSS px.
+    clipped.applied =
+      wholeDips(contentWidth) > maxDipEdge ||
+      wholeDips(contentHeight) > maxDipEdge;
+    clipped.content_width = Math.round(contentWidth);
+    clipped.content_height = Math.round(contentHeight);
+    clipped.captured_width = Math.round(params.clip.width / zoom);
+    clipped.captured_height = Math.round(params.clip.height / zoom);
   }
   // Model-facing screenshots hide control presence by default so it never obscures page media.
   // Documentation captures can opt in to the exact frame, badge, and cursor the user sees.
@@ -1732,6 +2008,9 @@ async function handleScreenshot(tabId, args) {
         tabId,
         fullPage,
         dpr: state.dpr,
+        scale: state.scale,
+        offsetX: state.offsetX,
+        offsetY: state.offsetY,
         scrollX: state.scrollX,
         scrollY: state.scrollY,
         href: state.href,
@@ -1779,7 +2058,22 @@ function quadCenter(quad) {
   return { x: avg(xs), y: avg(ys) };
 }
 
+// The point at fractions (u, v) across the quad [x0,y0, x1,y1, x2,y2, x3,y3] -- corners clockwise
+// from the top left -- so a sample lands inside a rotated or skewed box too.
+function quadPoint(quad, u, v) {
+  const topX = quad[0] + (quad[2] - quad[0]) * u;
+  const topY = quad[1] + (quad[3] - quad[1]) * u;
+  const bottomX = quad[6] + (quad[4] - quad[6]) * u;
+  const bottomY = quad[7] + (quad[5] - quad[7]) * u;
+  return { x: topX + (bottomX - topX) * v, y: topY + (bottomY - topY) * v };
+}
+
 async function resolveActionPoint(tabId, backendNodeId) {
+  return quadCenter(await resolveActionQuad(tabId, backendNodeId));
+}
+
+// Scroll the element into view and return its content quad in visual-viewport CSS px.
+async function resolveActionQuad(tabId, backendNodeId) {
   if (typeof backendNodeId !== "number") {
     throw new Error(
       "This action needs a valid element ref from the latest snapshot.",
@@ -1801,7 +2095,7 @@ async function resolveActionPoint(tabId, backendNodeId) {
   if (!quad || quad.length < 8) {
     throw new Error("The element has no visible box; take a fresh snapshot.");
   }
-  return quadCenter(quad);
+  return quad;
 }
 
 // Build the control-presence overlay (frame + badge + prominent pulsing cursor) and position the
@@ -1866,11 +2160,14 @@ function controlPresenceScript(x, y) {
     "style='position:relative'>" +
     "<path d='M2 1 L2 19 L7 14 L10.5 21 L13.6 19.6 L10.1 13 L17 13 Z' fill='#ffffff' " +
     "stroke='#12001a' stroke-width='1.3' stroke-linejoin='round'/></svg>\";" +
-    "c.style.transform='translate(" +
+    // The point is in the visual viewport's coordinates and position:fixed in the layout
+    // viewport's; they differ by the pinch's offset.
+    "var v=window.visualViewport;" +
+    "c.style.transform='translate('+(" +
     px +
-    "px," +
+    "+v.offsetLeft)+'px,'+(" +
     py +
-    "px)';})();"
+    "+v.offsetTop)+'px)';})();"
   );
 }
 
@@ -2088,9 +2385,11 @@ async function clickAt(tabId, x, y, opts) {
 // would hit instead. A hit-test that could not be taken returns occluded with unknown:true --
 // it proves nothing, and "not occluded" would assert exactly what was never established.
 // DOM.getNodeForLocation consumes ROOT-DOCUMENT coordinates (Chromium's InspectorDOMAgent builds
-// a document_point from x/y), while DOM.getBoxModel and Input.dispatchMouseEvent use main-frame
-// viewport coordinates. Convert through the live scroll offset or every click after scrolling
-// hit-tests a different element above/left of the target and is falsely refused as occluded.
+// a document_point from x/y), while DOM.getBoxModel and Input.dispatchMouseEvent use the VISUAL
+// viewport's coordinates: the part of the page on screen, which a pinch moves inside the layout
+// viewport. Convert through the visual viewport's offset in the layout viewport and the layout
+// viewport's scroll, or every click after a scroll or a pinch hit-tests a different element
+// above/left of the target and is falsely refused as occluded.
 function documentHitPoint(x, y, state) {
   if (
     !state ||
@@ -2098,13 +2397,15 @@ function documentHitPoint(x, y, state) {
     !Number.isFinite(x) ||
     !Number.isFinite(y) ||
     !Number.isFinite(state.scrollX) ||
-    !Number.isFinite(state.scrollY)
+    !Number.isFinite(state.scrollY) ||
+    !Number.isFinite(state.offsetX) ||
+    !Number.isFinite(state.offsetY)
   ) {
     return null;
   }
   return {
-    x: Math.round(x + state.scrollX),
-    y: Math.round(y + state.scrollY),
+    x: Math.round(x + state.offsetX + state.scrollX),
+    y: Math.round(y + state.offsetY + state.scrollY),
   };
 }
 
@@ -2155,7 +2456,21 @@ async function occlusionAt(tabId, x, y, targetBackendId) {
     }).catch(() => null);
     const node = d && d.node;
     const tag = node ? String(node.nodeName || "").toLowerCase() : "";
-    return { occluded: true, by: { tag, backendNodeId: hitBackend } };
+    // The document's own root on top of a point inside the element: nothing in the page is drawn
+    // there over it, so either the page's scrollbar is (an overlay scrollbar shows over content
+    // while the page scrolls, and a pinch-zoomed page's scrollbars sit over its edges) or the
+    // element takes no pointer events there.
+    let root = false;
+    if (hitObj) {
+      const isRoot = await sendCdp(tabId, "Runtime.callFunctionOn", {
+        objectId: hitObj,
+        functionDeclaration:
+          "function(){return this===document.documentElement||this===document.scrollingElement;}",
+        returnByValue: true,
+      }).catch(() => null);
+      root = Boolean(isRoot && isRoot.result && isRoot.result.value === true);
+    }
+    return { occluded: true, by: { tag, backendNodeId: hitBackend, root } };
   } catch (_e) {
     // The hit-test is the only evidence that the click will land on the intended element.
     // Reporting "not occluded" because the test itself failed asserts exactly what could not
@@ -2168,24 +2483,86 @@ async function occlusionAt(tabId, x, y, targetBackendId) {
   }
 }
 
+// Where in its box a ref click aims: the centre first, then points around it. Something drawn
+// over the centre -- a macOS overlay scrollbar, which appears over the page's right edge whenever
+// the page scrolls (the element's own scroll into view included), a sticky header over its top
+// -- covers only part of the element, and a user clicks the part they can see.
+const CLICK_SAMPLES = [
+  [0.5, 0.5],
+  [0.25, 0.5],
+  [0.5, 0.25],
+  [0.5, 0.75],
+  [0.75, 0.5],
+  [0.25, 0.25],
+  [0.25, 0.75],
+  [0.75, 0.25],
+  [0.75, 0.75],
+];
+
+// A macOS overlay scrollbar shows over the page's edge while the page scrolls -- the element's own
+// scroll into view included -- and fades about 0.75 s after it stops (measured). An element that
+// only the scrollbar covers is given that long to come clear, re-tested every poll.
+const SCROLLBAR_FADE_MS = 1000;
+const SCROLLBAR_POLL_MS = 100;
+
+// The first sample point of the element's box where the element itself (or a descendant) is the
+// topmost thing, or -- when none is -- the centre's occlusion, which says what covers it.
+async function reachablePoint(tabId, backendNodeId) {
+  const quad = await resolveActionQuad(tabId, backendNodeId);
+  const deadline = Date.now() + SCROLLBAR_FADE_MS;
+  for (;;) {
+    let centre = null;
+    let onlyRoot = true;
+    for (const [u, v] of CLICK_SAMPLES) {
+      const point = quadPoint(quad, u, v);
+      const occ = await occlusionAt(tabId, point.x, point.y, backendNodeId);
+      if (!occ.occluded) {
+        return { point };
+      }
+      centre = centre || occ;
+      onlyRoot = onlyRoot && Boolean(occ.by && occ.by.root);
+      if (occ.unknown) {
+        return { occlusion: occ }; // no hit test could be taken: no other point is proven either
+      }
+    }
+    if (!onlyRoot || Date.now() >= deadline) {
+      return { occlusion: centre, onlyRoot };
+    }
+    await pageDelay(tabId, SCROLLBAR_POLL_MS);
+  }
+}
+
 async function handleClick(tabId, args) {
   await ensureAttached(tabId);
   requireSnapshotTab(tabId);
-  const point = await resolveActionPoint(tabId, args.backendNodeId);
   const button = mouseButton(args.button);
   const clickCount = clickCountOf(args.click_count);
   const modifiers = parseModifiers(args.modifiers);
-  const occ = await occlusionAt(tabId, point.x, point.y, args.backendNodeId);
-  if (occ.occluded) {
+  const {
+    point,
+    occlusion: occ,
+    onlyRoot,
+  } = await reachablePoint(tabId, args.backendNodeId);
+  if (occ) {
     // DOM.getNodeForLocation honours pointer-events, so a node it returns over the target is a
     // node a real user click would hit instead. Dispatching anyway would drive a cookie banner
     // or modal the model cannot see and report ok:true for an action on the wrong element.
+    if (occ.unknown) {
+      throw new Error(
+        "Could not verify what is at the element's click point; re-snapshot and try again.",
+      );
+    }
+    if (onlyRoot) {
+      throw new Error(
+        "No point of the element takes a click: the page's scrollbar is over it, or the element " +
+          "does not take pointer events. Scroll it away from the page's edge, or use " +
+          "browser_js_click.",
+      );
+    }
     throw new Error(
-      occ.unknown
-        ? "Could not verify what is at the element's click point; re-snapshot and try again."
-        : "The element is covered by <" +
-            (occ.by && occ.by.tag ? occ.by.tag : "another element") +
-            ">; dismiss the overlay or use browser_js_click.",
+      "The element is covered by <" +
+        (occ.by && occ.by.tag ? occ.by.tag : "another element") +
+        ">; dismiss the overlay or use browser_js_click.",
     );
   }
   await clickAt(tabId, point.x, point.y, { button, clickCount, modifiers });
@@ -2210,7 +2587,7 @@ async function handleHover(tabId, args) {
   });
   const dwell = Math.min(5000, Math.max(0, Number(args.duration_ms) || 0));
   if (dwell > 0) {
-    await new Promise((r) => setTimeout(r, dwell));
+    await pageDelay(tabId, dwell);
   }
   return { ok: true, x: Math.round(point.x), y: Math.round(point.y) };
 }
@@ -2229,18 +2606,45 @@ async function handleDrag(tabId, args) {
   ) {
     requireSnapshotTab(tabId);
   }
-  const from =
-    typeof args.backendNodeId === "number"
-      ? await resolveActionPoint(tabId, args.backendNodeId)
-      : { x: Number(args.from_x), y: Number(args.from_y) };
-  const to =
-    typeof args.to_backendNodeId === "number"
-      ? await resolveActionPoint(tabId, args.to_backendNodeId)
-      : { x: Number(args.to_x), y: Number(args.to_y) };
-  if (![from.x, from.y, to.x, to.y].every(Number.isFinite)) {
+  // A point given as x/y is a pixel of the most recent screenshot -- the only place a model reads
+  // raw coordinates from -- converted exactly as browser_click_at converts it. Taken as CSS
+  // pixels, it lands at the pixel's position times the display scale, zoom, and pinch: off
+  // target everywhere but an unzoomed 100% display.
+  const fromRef = typeof args.backendNodeId === "number";
+  const toRef = typeof args.to_backendNodeId === "number";
+  const pixel = (x, y) => [x, y].every((v) => v !== undefined && v !== null);
+  if (
+    (!fromRef && !pixel(args.from_x, args.from_y)) ||
+    (!toRef && !pixel(args.to_x, args.to_y))
+  ) {
     throw new Error(
       "browser_drag needs a from (ref or from_x/from_y) and a to (to_ref or to_x/to_y).",
     );
+  }
+  const fromPixel = fromRef
+    ? null
+    : await screenshotPoint(
+        tabId,
+        Number(args.from_x),
+        Number(args.from_y),
+        "browser_drag",
+      );
+  const toPixel = toRef
+    ? null
+    : await screenshotPoint(
+        tabId,
+        Number(args.to_x),
+        Number(args.to_y),
+        "browser_drag",
+      );
+  const from =
+    fromPixel || (await resolveActionPoint(tabId, args.backendNodeId));
+  const to =
+    toPixel || (await resolveActionPoint(tabId, args.to_backendNodeId));
+  // Resolving a ref scrolls its element into view, and a scroll moves the page under a pixel
+  // read before it. A drag that mixes the two is proven only if the render held still.
+  if ((fromPixel || toPixel) && (fromRef || toRef)) {
+    await currentShot(tabId, "browser_drag");
   }
   const steps = Math.min(60, Math.max(2, Number(args.steps) || 12));
   const hold = Math.min(5000, Math.max(0, Number(args.hold_ms) || 0));
@@ -2260,19 +2664,28 @@ async function handleDrag(tabId, args) {
   let atY = from.y;
   try {
     if (hold > 0) {
-      await new Promise((r) => setTimeout(r, hold));
+      await pageDelay(tabId, hold);
     }
+    // Sent in order, awaited together. A mouse move is a CONTINUOUS event: Chrome coalesces it
+    // and answers at a frame, and a tab the user is not looking at is drawn rarely -- awaiting
+    // each move in turn cost 8.9 s for one drag there, against 0.23 s in a foreground tab. The
+    // debugger delivers commands in the order they are sent, so the page still sees the path in
+    // order, coalesced exactly as it coalesces a real mouse.
+    const moves = [];
     for (let i = 1; i <= steps; i++) {
       const x = from.x + ((to.x - from.x) * i) / steps;
       const y = from.y + ((to.y - from.y) * i) / steps;
-      await moveAgentCursor(tabId, x, y);
-      await dispatchMouse(tabId, "mouseMoved", x, y, {
-        button: "left",
-        buttons: 1,
-      });
+      moves.push(moveAgentCursor(tabId, x, y));
+      moves.push(
+        dispatchMouse(tabId, "mouseMoved", x, y, {
+          button: "left",
+          buttons: 1,
+        }),
+      );
       atX = x;
       atY = y;
     }
+    await Promise.all(moves);
   } finally {
     await dispatchMouse(tabId, "mouseReleased", atX, atY, {
       button: "left",
@@ -2287,46 +2700,65 @@ async function handleDrag(tabId, args) {
   };
 }
 
-async function handleClickAt(tabId, args) {
-  await ensureAttached(tabId);
+// The viewport point under pixel (sx, sy) of the most recent viewport screenshot, in the CSS
+// pixels Input.dispatchMouseEvent and DOM.getBoxModel share. The screenshot is the VISUAL
+// viewport -- the part of the page on screen, which a pinch magnifies -- in device pixels, so one
+// CSS pixel spans dpr x pinch-scale image pixels and the image's origin is the visual viewport's.
+// The transform is the one captured WITH the screenshot (not a re-read), so the two can never
+// disagree. Fails CLOSED if the render moved since: a zoom or pinch would mis-scale the
+// conversion, a scroll would make the pixel point elsewhere, a navigation (or a same-URL reload,
+// which only the DOM generation shows) would put it on a different document, and a viewport
+// resize would relay the page out under it. A pixel names a point only in the image it was read
+// from.
+async function screenshotPoint(tabId, sx, sy, tool) {
+  if (!Number.isFinite(sx) || !Number.isFinite(sy) || sx < 0 || sy < 0) {
+    throw new Error(tool + " needs non-negative x and y in screenshot pixels.");
+  }
+  const shot = await currentShot(tabId, tool);
+  const perCssPixel = shot.dpr * shot.scale;
+  return { x: sx / perCssPixel, y: sy / perCssPixel };
+}
+
+// The most recent screenshot, if it is a viewport screenshot of this tab and the page still shows
+// what it captured; otherwise the refusal that says which.
+async function currentShot(tabId, tool) {
   const shot = lastShot;
   if (!shot || shot.tabId !== tabId) {
     throw new Error(
       "No current screenshot for the active tab; call browser_screenshot before " +
-        "browser_click_at so the coordinates match what you see.",
+        tool +
+        " so the coordinates match what you see.",
     );
   }
   if (shot.fullPage) {
     throw new Error(
       "The last screenshot was full-page (document coordinates); take a viewport " +
-        "screenshot (full_page:false) before browser_click_at so x/y map to the visible page.",
+        "screenshot (full_page:false) before " +
+        tool +
+        " so x/y map to the visible page.",
     );
   }
-  const sx = Number(args.x);
-  const sy = Number(args.y);
-  if (!Number.isFinite(sx) || !Number.isFinite(sy) || sx < 0 || sy < 0) {
-    throw new Error(
-      "browser_click_at needs non-negative x and y in screenshot pixels.",
-    );
-  }
-  // Fail CLOSED if the render moved since the screenshot: a dpr change would mis-scale the
-  // conversion, a scroll would make viewport coordinates point elsewhere, a navigation (or a
-  // same-URL reload, which only the DOM generation shows) would put them on a different
-  // document, and a viewport resize would relay the page out under them. The coordinates are
-  // only valid against the exact image the model measured.
   const now = await viewportState(tabId);
   if (!shotMatchesRender(shot, now)) {
     lastShot = null;
     throw new Error(
-      "The page moved (scrolled, zoomed, resized, reloaded, or navigated) since the " +
-        "screenshot; take a fresh browser_screenshot before browser_click_at.",
+      "The page moved (scrolled, zoomed, pinched, resized, reloaded, or navigated) since the " +
+        "screenshot; take a fresh browser_screenshot before " +
+        tool +
+        ".",
     );
   }
-  // Screenshot pixels are DEVICE pixels; convert to the CSS pixels CDP Input wants using the
-  // dpr captured WITH the screenshot (not a re-read), so the two can never disagree.
+  return shot;
+}
+
+async function handleClickAt(tabId, args) {
+  await ensureAttached(tabId);
+  const sx = Number(args.x);
+  const sy = Number(args.y);
+  const point = await screenshotPoint(tabId, sx, sy, "browser_click_at");
   const button = mouseButton(args.button);
   const clickCount = clickCountOf(args.click_count);
-  await clickAt(tabId, sx / shot.dpr, sy / shot.dpr, {
+  await clickAt(tabId, point.x, point.y, {
     button,
     clickCount,
     modifiers: parseModifiers(args.modifiers),
@@ -2765,8 +3197,17 @@ async function handleMedia(tabId, args) {
 
 // -- inspection + robustness (mostly read-only) ------------------------------
 
-function delay(ms) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
+// A wait timed by the PAGE, not by this worker. Chrome coalesces a background service worker's
+// timers hard: measured on a tab the user was not looking at, a 100 ms timer answered in 6.3 s, a
+// 150 ms drag hold took 10.2 s, and browser_wait_for overran its own 1.5 s timeout to 10.3 s --
+// while the same page's own timers kept time there to the millisecond (50 ms -> 86, 100 -> 101,
+// 250 -> 281, 1000 -> 1003). Every wait about the page is therefore timed by the page.
+async function pageDelay(tabId, ms) {
+  const wait = Math.max(0, Math.round(Number(ms) || 0));
+  await sendCdp(tabId, "Runtime.evaluate", {
+    expression: `new Promise(function(done){setTimeout(done, ${wait});})`,
+    awaitPromise: true,
+  });
 }
 
 // Does `selector` currently match an element in the tab? Injection-safe: the selector rides as
@@ -2967,7 +3408,9 @@ async function handleWaitFor(tabId, args) {
         waited_ms: Date.now() - started,
       };
     }
-    await delay(250);
+    // A navigation destroys the context this delay is timed in; the next check runs at once and
+    // the loop's own deadline still bounds it.
+    await pageDelay(tabId, 250).catch(() => {});
   }
 }
 
@@ -3185,10 +3628,12 @@ async function handleBox(tabId, args) {
   // page never reported, which a caller converting device pixels would act on.
   if (vp.ok) {
     out.dpr = vp.dpr;
-    // Where the center falls in a viewport browser_screenshot taken at this scroll position.
+    // Where the center falls in a viewport browser_screenshot taken at this scroll position and
+    // pinch: the quad is in visual-viewport CSS px, and the image spans dpr x pinch-scale device
+    // pixels per CSS pixel from the visual viewport's origin.
     out.screenshot_center = {
-      x: Math.round(center.x * vp.dpr),
-      y: Math.round(center.y * vp.dpr),
+      x: Math.round(center.x * vp.dpr * vp.scale),
+      y: Math.round(center.y * vp.dpr * vp.scale),
     };
   } else {
     out.dpr_unknown = true;
@@ -3386,15 +3831,46 @@ function parseChord(keys) {
   return { modifiers, def: keyDefinition(keyToken, modifiers) };
 }
 
-async function dispatchKey(tabId, def, modifiers) {
-  const base = {
+// The Chromium editing commands a chord runs on macOS (see MAC_EDITING_COMMANDS), in the order
+// the binding lists them. Commands that insert text are left out: the key event's own `text`
+// inserts it, and Chromium has no command that takes the character. Returns [] for a chord with
+// no binding -- which is what every chord is off macOS.
+function macEditingCommands(code, modifiers) {
+  const parts = [];
+  for (const [name, bit] of [
+    ["Shift", MODIFIER_BITS.shift],
+    ["Control", MODIFIER_BITS.control],
+    ["Alt", MODIFIER_BITS.alt],
+    ["Meta", MODIFIER_BITS.meta],
+  ]) {
+    if ((modifiers & bit) !== 0) {
+      parts.push(name);
+    }
+  }
+  parts.push(code);
+  const binding = MAC_EDITING_COMMANDS[parts.join("+")];
+  if (binding === undefined) {
+    return [];
+  }
+  return (Array.isArray(binding) ? binding : [binding])
+    .filter((selector) => !selector.startsWith("insert"))
+    .map((selector) => selector.slice(0, -1));
+}
+
+function keyEventBase(def, modifiers) {
+  return {
     modifiers,
     key: def.key,
     code: def.code,
     windowsVirtualKeyCode: def.keyCode,
     nativeVirtualKeyCode: def.keyCode,
   };
-  const down = Object.assign({ type: "keyDown" }, base);
+}
+
+// The keyDown for one chord. On macOS it carries the chord's editing commands, without which
+// Command+A selects nothing and Backspace deletes nothing (see MAC_EDITING_COMMANDS).
+function keyDownEvent(def, modifiers, isMac) {
+  const down = Object.assign({ type: "keyDown" }, keyEventBase(def, modifiers));
   // A keyDown with `text` fires keypress/char: this is what makes Enter's implicit form
   // submit work and makes a printable key actually insert its character. Suppress it under
   // Ctrl/Alt/Meta so chords (Control+A) stay edit commands rather than typing a char.
@@ -3403,11 +3879,36 @@ async function dispatchKey(tabId, def, modifiers) {
   if (def.text && (modifiers & nonShift) === 0) {
     down.text = def.text;
   }
-  await sendCdp(tabId, "Input.dispatchKeyEvent", down);
+  const commands = isMac ? macEditingCommands(def.code, modifiers) : [];
+  if (commands.length > 0) {
+    down.commands = commands;
+  }
+  return down;
+}
+
+// Whether this browser runs on macOS, asked of Chrome once. A failed lookup is not treated as
+// "not macOS": that would quietly send key chords that edit nothing, so the error fails the
+// command instead and the next call asks again.
+let macPlatform = null;
+async function isMacPlatform() {
+  if (macPlatform === null) {
+    const info = await chrome.runtime.getPlatformInfo();
+    macPlatform = info.os === "mac";
+  }
+  return macPlatform;
+}
+
+async function dispatchKey(tabId, def, modifiers) {
+  const isMac = await isMacPlatform();
   await sendCdp(
     tabId,
     "Input.dispatchKeyEvent",
-    Object.assign({ type: "keyUp" }, base),
+    keyDownEvent(def, modifiers, isMac),
+  );
+  await sendCdp(
+    tabId,
+    "Input.dispatchKeyEvent",
+    Object.assign({ type: "keyUp" }, keyEventBase(def, modifiers)),
   );
 }
 
@@ -3476,6 +3977,93 @@ function scrollDirection(raw) {
   return dir;
 }
 
+// A wheel scroll is animated: the page is still moving when the event is acknowledged (measured:
+// 400px still to go on the reply, there 250ms later), so a screenshot or snapshot taken on the
+// reply would catch it mid-flight. The page says when it has stopped: scrollend fires on whichever
+// scroller moved once its offset settles, and a capture listener on the window sees it wherever it
+// fires. Polling instead would answer the question far slower than the scroll itself takes -- a
+// background tab answers this worker's timers and object calls in seconds, while the scroll it is
+// watching is over in a fifth of one.
+// Resolves when a scroll that started AFTER this was armed comes to rest. The scrollend alone is
+// not enough: scrolling the element into view moments earlier ends with one of its own, which
+// arrives late enough to be mistaken for the wheel's (measured: it answered in 1 ms, before the
+// wheel had moved anything). It clears its own listeners, and gives up on its own if the wheel
+// never scrolls anything, so a page is never left carrying them.
+const SCROLL_END_SCRIPT =
+  "new Promise(function(done){" +
+  "var moved=false;" +
+  "function onScroll(){moved=true;}" +
+  "function clear(){removeEventListener('scroll',onScroll,true);" +
+  "removeEventListener('scrollend',onEnd,true);}" +
+  "function onEnd(){if(!moved){return;}clear();done(true);}" +
+  "addEventListener('scroll',onScroll,true);" +
+  "addEventListener('scrollend',onEnd,true);" +
+  "setTimeout(function(){clear();done(false);},5000);})";
+// How long to wait for that scrollend. A scroll that moves nothing -- an edge already reached,
+// nothing scrollable under the pointer -- never fires one, and that is the answer: it moved 0.
+const SCROLL_END_TIMEOUT_MS = 2000;
+
+// The offsets of every scroller a wheel at (x, y) can move, and of the visual viewport a pinched
+// page's wheel pans first, in one call.
+function scrollOffsetsFn(x, y) {
+  const vv = window.visualViewport;
+  const offsets = [[vv.offsetLeft, vv.offsetTop]];
+  let e = document.elementFromPoint(x + vv.offsetLeft, y + vv.offsetTop);
+  while (e) {
+    const style = getComputedStyle(e);
+    if (
+      /(auto|scroll|overlay)/.test(style.overflowX + " " + style.overflowY) &&
+      (e.scrollHeight > e.clientHeight || e.scrollWidth > e.clientWidth)
+    ) {
+      offsets.push([e.scrollLeft, e.scrollTop]);
+    }
+    const root = e.getRootNode();
+    e = e.parentElement || (root && root.host) || null;
+  }
+  const page = document.scrollingElement;
+  if (page) {
+    offsets.push([page.scrollLeft, page.scrollTop]);
+  }
+  return offsets;
+}
+
+// A promise for the page's next scrollend after a scroll of its own; false if none comes.
+function armScrollEnd(tabId) {
+  return sendCdp(tabId, "Runtime.evaluate", {
+    expression: SCROLL_END_SCRIPT,
+    awaitPromise: true,
+    returnByValue: true,
+  }).then(
+    (res) => Boolean(res && res.result && res.result.value),
+    () => false,
+  );
+}
+
+async function scrollOffsets(tabId, x, y) {
+  const read = await sendCdp(tabId, "Runtime.evaluate", {
+    expression: `(${scrollOffsetsFn.toString()})(${Number(x)}, ${Number(y)})`,
+    returnByValue: true,
+  });
+  const offsets = read && read.result && read.result.value;
+  if (!Array.isArray(offsets)) {
+    throw new Error("Could not read the page's scroll position.");
+  }
+  return offsets;
+}
+
+// How far the offsets moved in total: the scroller that took the wheel is the one that changed,
+// and a chain that handed the scroll on (an inner scroller at its end) moved the outer one.
+function scrollDistance(before, after) {
+  let x = 0;
+  let y = 0;
+  const pairs = Math.min(before.length, after.length);
+  for (let i = 0; i < pairs; i++) {
+    x += after[i][0] - before[i][0];
+    y += after[i][1] - before[i][1];
+  }
+  return { x: Math.round(x), y: Math.round(y) };
+}
+
 async function handleScroll(tabId, args) {
   await ensureAttached(tabId);
   const amount = scrollAmountPx(args.amount);
@@ -3497,12 +4085,52 @@ async function handleScroll(tabId, args) {
     }
     point = { x: vp.clientWidth / 2, y: vp.clientHeight / 2 };
   }
+  const before = await scrollOffsets(tabId, point.x, point.y);
   await moveAgentCursor(tabId, point.x, point.y);
+  // Armed before the wheel so the listener is in place when the scroll starts: the debugger
+  // delivers commands in the order they are sent.
+  let ended = armScrollEnd(tabId);
   await dispatchMouse(tabId, "mouseWheel", point.x, point.y, {
     deltaX: 0,
     deltaY,
   });
-  return { ok: true, deltaY };
+  const started = Date.now();
+  let after = before;
+  let settled = false;
+  // Scrolling the element into view moments earlier ends with a scrollend of its own, which can
+  // arrive late enough to answer for the wheel's (measured: in 1 ms, before the wheel had moved
+  // anything). An end that left the offsets where they were is one of those: wait for the next.
+  while (Date.now() - started < SCROLL_END_TIMEOUT_MS) {
+    const reached = await Promise.race([
+      ended,
+      pageDelay(tabId, SCROLL_END_TIMEOUT_MS - (Date.now() - started)).then(
+        () => false,
+        () => false,
+      ),
+    ]);
+    after = await scrollOffsets(tabId, point.x, point.y);
+    const moved = JSON.stringify(after) !== JSON.stringify(before);
+    if (reached && moved) {
+      settled = true;
+      break;
+    }
+    if (!reached) {
+      break; // nothing ended within the deadline
+    }
+    ended = armScrollEnd(tabId);
+  }
+  // A wheel that moved nothing -- an edge already reached, nothing scrollable under the pointer --
+  // has nothing to come to rest: that IS the answer, and scrolled says it.
+  if (!settled && JSON.stringify(after) === JSON.stringify(before)) {
+    settled = true;
+  }
+  return {
+    ok: true,
+    deltaY,
+    scrolled: scrollDistance(before, after),
+    settled,
+    waited_ms: Date.now() - started,
+  };
 }
 
 // -- dialogs -----------------------------------------------------------------
@@ -3626,6 +4254,9 @@ function waitForComplete(tabId, priorUrl) {
       }
     };
     chrome.tabs.onUpdated.addListener(listener);
+    // On this worker's clock, which Chrome coalesces while it is in the background: the page
+    // that would keep better time is the one being replaced by this very navigation, so there is
+    // none to ask. A late deadline only reports a load that never completed later than it could.
     timer = setTimeout(() => finish(false), NAV_TIMEOUT_MS);
     // A load that finished between the caller requesting it and this listener attaching fires no
     // further event, so the listener alone would sit out the whole 15 s window and then report
@@ -3871,10 +4502,9 @@ async function tabByIndex(index) {
 async function handleSelectTab(args) {
   const index = Number(args && args.index);
   const tab = await tabByIndex(index);
-  // Activate the tab INSIDE its window (a background tab does not render, so screenshots and
-  // input need it foremost there) and retarget the session. The window itself is never raised:
-  // the user keeps OS focus and can go on typing elsewhere.
-  await chrome.tabs.update(tab.id, { active: true });
+  // Retarget the session -- and nothing else. The tab is NOT activated: its window shows the tab
+  // the user chose to look at, and the session drives this one in the background over the
+  // debugger protocol. Neither the tab nor its window is brought forward.
   pinSessionTarget(tab);
   const info = await tabInfo(tab.id);
   return { ok: true, index, url: info.url, title: info.title };
@@ -3890,11 +4520,13 @@ async function handleNewTab(args) {
   if (args && args.url && !url) {
     throw new Error("newTab url must be http(s).");
   }
-  // Open it in the session's window and make it the session's tab. Creating it without a window
-  // would put it in whichever window the user focused last.
+  // Open it in the session's window, in the BACKGROUND, and make it the session's tab. The tab
+  // the user is looking at stays in front; the session drives this one over the debugger
+  // protocol without it ever being shown. Creating it without a window would put it in whichever
+  // window the user focused last.
   const tab = await chrome.tabs.create(
     Object.assign(
-      { windowId: await sessionWindow(), active: true },
+      { windowId: await sessionWindow(), active: false },
       url ? { url } : {},
     ),
   );
@@ -3979,8 +4611,10 @@ async function osFocusedWindowId() {
 }
 
 // Whether windowId takes OS focus within timeoutMs. Focus arrives asynchronously on Wayland and
-// macOS, so a single read straight after create() would miss it.
-function windowGainsOsFocus(windowId, timeoutMs) {
+// macOS, so a single read straight after create() would miss it. Timed by the new window's own
+// page where there is one: this worker's clock, coalesced in the background, drew the watch out
+// to eleven seconds on a Mac where the answer is always no.
+function windowGainsOsFocus(windowId, timeoutMs, tabId) {
   return new Promise((resolve) => {
     let settled = false;
     const finish = (value) => {
@@ -3997,7 +4631,15 @@ function windowGainsOsFocus(windowId, timeoutMs) {
         finish(true);
       }
     };
-    const timer = setTimeout(() => finish(false), timeoutMs);
+    let timer = null;
+    if (typeof tabId === "number") {
+      pageDelay(tabId, timeoutMs).then(
+        () => finish(false),
+        () => finish(false), // the page went away; it cannot be watched any longer either
+      );
+    } else {
+      timer = setTimeout(() => finish(false), timeoutMs);
+    }
     chrome.windows.onFocusChanged.addListener(listener);
     // It may already hold focus by the time the listener is attached.
     chrome.windows
@@ -4059,10 +4701,14 @@ async function handleWindow(args) {
     const win = await chrome.windows.create(
       Object.assign({ focused: false }, url ? { url } : {}),
     );
+    const firstTab = (win.tabs && win.tabs[0]) || null;
     const tookOsFocus =
       osFocusBefore !== win.id &&
-      (await windowGainsOsFocus(win.id, NEW_WINDOW_FOCUS_SETTLE_MS));
-    const firstTab = (win.tabs && win.tabs[0]) || null;
+      (await windowGainsOsFocus(
+        win.id,
+        NEW_WINDOW_FOCUS_SETTLE_MS,
+        firstTab ? firstTab.id : null,
+      ));
     if (firstTab) {
       pinSessionTarget(firstTab);
     }
@@ -4844,7 +5490,7 @@ async function handleCookies(args) {
 // is optional and must be RELATIVE with no ".." (chrome.downloads rejects absolute/parent
 // paths anyway; we reject early with a clear message), so a page cannot steer the write
 // outside the browser's download tree. Poll to completion under a bounded timeout.
-async function pollDownload(id, timeoutMs, gen) {
+async function pollDownload(tabId, id, timeoutMs, gen) {
   const deadline = Date.now() + timeoutMs;
   let item = null;
   while (Date.now() < deadline) {
@@ -4859,12 +5505,12 @@ async function pollDownload(id, timeoutMs, gen) {
     if (item && item.state !== "in_progress") {
       return item;
     }
-    await new Promise((r) => setTimeout(r, 250));
+    await pageDelay(tabId, 250).catch(() => {});
   }
   return item;
 }
 
-async function handleDownload(args) {
+async function handleDownload(tabId, args) {
   // The generation this download wait belongs to, captured before anything can supersede it.
   const gen = commandGeneration;
   const url = args && args.url ? String(args.url) : "";
@@ -4890,16 +5536,20 @@ async function handleDownload(args) {
   if (typeof id !== "number") {
     throw new Error("browser_download failed to start.");
   }
-  const item = await pollDownload(id, timeoutMs, gen);
+  const item = await pollDownload(tabId, id, timeoutMs, gen);
   if (!item) {
     throw new Error("browser_download could not track the download.");
   }
   if (item.state !== "complete") {
+    // Say which state, in the error itself: a reply carrying only ok:false reaches the model as
+    // "the browser reported failure", with the one fact that explains it left behind.
     return {
       ok: false,
       id,
       state: item.state,
-      error: item.error || null,
+      error: item.error
+        ? `The download ${item.state} (${item.error}).`
+        : `The download is ${item.state} and did not finish in time.`,
       path: item.filename || null,
     };
   }

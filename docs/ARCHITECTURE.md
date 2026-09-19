@@ -87,15 +87,19 @@ There is no private key, package signing, browser-store dependency, or enterpris
 - Session pins its own tab. First command adopts active tab of last focused window; afterwards
   only session's own actions (select/new tab, window new/focus, tab its page opens) move it. User
   switching tabs or windows never redirects next click or keystroke.
-- Control never raises window or takes OS focus: tab selection activates tab inside its window,
-  new windows request `focused: false`, and window `focus` only retargets session. CDP focus
+- Control never raises a window, takes OS focus, or changes which tab is in front: `browser_new_tab`
+  opens in the background, `browser_select_tab` retargets the session without activating the tab,
+  new windows request `focused: false`, and window `focus` only retargets session. The session
+  drives its own tab over the debugger protocol while the user works in another tab. CDP focus
   emulation keeps focus-gated pages working in background. A compositor that focuses new windows
   anyway (Hyprland) is observed and reported as `took_os_focus`.
 - `browser_screenshot` returns native MCP image block. Control presence is hidden by default and can
   be included for user-facing documentation.
-- `browser_click_at` binds coordinates to latest screenshot tab, URL, DPR, scroll, and viewport
-  fingerprint; stale geometry fails closed. Screenshot pixels are CSS px × DPR; `browser_box`
-  reports CSS geometry plus `screenshot_center` so coordinate clicks land at any display scale.
+- `browser_click_at` and `browser_drag`'s x/y are pixels of the latest screenshot, bound to its
+  tab, URL, DPR, pinch scale and offset, scroll, and viewport fingerprint; stale geometry fails
+  closed. One screenshot pixel is one CSS px × DPR × pinch scale, measured from the visual
+  viewport's origin; `browser_box` reports CSS geometry plus `screenshot_center` so coordinate
+  clicks land at any display scale, browser zoom, and pinch.
 - Local/session storage runs inside isolated world bound to verified active-frame origin using
   pristine Storage methods.
 - Same transport handles tabs, windows, emulation, permissions, cookies, downloads, print, HTTP
@@ -113,7 +117,8 @@ accessibility snapshot. Fixed-position sizing keeps presence usable across viewp
 browser/  unpacked extension and native-host resources
 include/  public C++ headers under chrome_control_mcp namespace
 src/      browser engine, MCP dispatch, platform bridges, entrypoint
-tests/    C++, service-worker, sanitizer, and live E2E suites
+tests/    C++, service-worker, sanitizer, and live E2E suites (including a dedicated-browser
+          harness that never touches the user's own Chrome)
 scripts/  cross-platform build, smoke, and extension lifecycle helpers
 docs/     architecture, security, tools, quality, and verification
 ```

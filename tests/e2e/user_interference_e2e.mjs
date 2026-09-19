@@ -10,21 +10,64 @@
 // Requires the unpacked extension loaded in the running Chrome. CHROME_PATH overrides how the
 // "user" opens pages (default: google-chrome-stable on Linux, `open -a` on macOS, chrome.exe on
 // Windows); the browser hands the URL to its running instance exactly as a clicked link would.
+// Run it through isolated_run.mjs to drive a dedicated browser instead of the user's own.
 
 import assert from "node:assert/strict";
-import { execFileSync, spawn } from "node:child_process";
+import { execFileSync } from "node:child_process";
 import { existsSync } from "node:fs";
+import { readFile } from "node:fs/promises";
 import path from "node:path";
-import readline from "node:readline";
 import { fileURLToPath } from "node:url";
 
+import { waitForExtensionAttached } from "./extension_attach.mjs";
 import { startFixtureServer } from "./fixture_server.mjs";
+import { McpClient, refFor } from "./mcp_client.mjs";
 
 const sleep = (milliseconds) =>
   new Promise((resolve) => setTimeout(resolve, milliseconds));
 
-function userOpens(flag, url) {
-  if (process.env.CHROME_PATH) {
+// A dedicated browser (isolated_run.mjs) is driven through its own DevTools endpoint: its process
+// singleton does not listen in headless mode, so a second process cannot hand it a URL. The tab or
+// window it opens is a real foreground one, exactly what a click in another application produces.
+async function opensInDedicatedBrowser(flag, url) {
+  const port = (
+    await readFile(
+      path.join(process.env.CHROME_USER_DATA_DIR, "DevToolsActivePort"),
+      "utf8",
+    )
+  ).split(/\r?\n/)[0];
+  const version = await (
+    await fetch(`http://127.0.0.1:${port}/json/version`)
+  ).json();
+  const socket = new WebSocket(version.webSocketDebuggerUrl);
+  await new Promise((resolve, reject) => {
+    socket.onopen = resolve;
+    socket.onerror = () => reject(new Error("DevTools socket failed"));
+  });
+  const opened = new Promise((resolve, reject) => {
+    socket.onmessage = (event) => {
+      const message = JSON.parse(event.data);
+      if (message.id === 1) {
+        message.error ? reject(new Error(message.error.message)) : resolve();
+      }
+    };
+    setTimeout(() => reject(new Error("Target.createTarget timed out")), 15000);
+  });
+  socket.send(
+    JSON.stringify({
+      id: 1,
+      method: "Target.createTarget",
+      params: { url, newWindow: flag === "--new-window" },
+    }),
+  );
+  await opened;
+  socket.close();
+}
+
+async function userOpens(flag, url) {
+  if (process.env.CHROME_USER_DATA_DIR) {
+    await opensInDedicatedBrowser(flag, url);
+  } else if (process.env.CHROME_PATH) {
     execFileSync(process.env.CHROME_PATH, [flag, url], { stdio: "ignore" });
   } else if (process.platform === "darwin") {
     // `open` hands a URL to the running Chrome as a new tab; it drops launch flags, so a new
@@ -48,78 +91,6 @@ function userOpens(flag, url) {
     execFileSync(chrome, [flag, url], { stdio: "ignore" });
   } else {
     execFileSync("google-chrome-stable", [flag, url], { stdio: "ignore" });
-  }
-}
-
-function refFor(snapshot, accessibleName) {
-  const line = snapshot
-    .split(/\r?\n/)
-    .find(
-      (candidate) =>
-        candidate.includes(`"${accessibleName}"`) &&
-        candidate.includes("[ref="),
-    );
-  const match = line && line.match(/\[ref=(e\d+)\]/);
-  assert.ok(match, `No ref for "${accessibleName}"`);
-  return match[1];
-}
-
-class McpClient {
-  constructor(executable) {
-    this.child = spawn(executable, [], {
-      stdio: ["pipe", "pipe", "pipe"],
-      windowsHide: true,
-    });
-    this.pending = new Map();
-    this.nextId = 1;
-    this.stderr = "";
-    this.child.stderr.setEncoding("utf8");
-    this.child.stderr.on("data", (chunk) => {
-      this.stderr += chunk;
-    });
-    readline
-      .createInterface({ input: this.child.stdout })
-      .on("line", (line) => {
-        const response = JSON.parse(line);
-        const pending = this.pending.get(response.id);
-        if (pending) {
-          this.pending.delete(response.id);
-          pending(response);
-        }
-      });
-  }
-
-  request(method, params = {}) {
-    const id = this.nextId++;
-    return new Promise((resolve) => {
-      this.pending.set(id, resolve);
-      this.child.stdin.write(
-        `${JSON.stringify({ jsonrpc: "2.0", id, method, params })}\n`,
-      );
-    });
-  }
-
-  async tool(name, args = {}) {
-    const response = await this.request("tools/call", {
-      name,
-      arguments: args,
-    });
-    const text =
-      response.result?.content?.find((item) => item.type === "text")?.text ??
-      JSON.stringify(response.error);
-    return { isError: Boolean(response.result?.isError), text };
-  }
-
-  async json(name, args = {}) {
-    const result = await this.tool(name, args);
-    if (result.isError) {
-      throw new Error(`${name} failed: ${result.text}`);
-    }
-    return JSON.parse(result.text);
-  }
-
-  close() {
-    this.child.stdin.end();
   }
 }
 
@@ -154,12 +125,7 @@ async function main() {
       capabilities: {},
       clientInfo: { name: "chrome-control-mcp-interference-e2e", version: "1" },
     });
-    for (let attempt = 0; attempt < 20; attempt += 1) {
-      if (!(await client.tool("browser_windows")).isError) {
-        break;
-      }
-      await sleep(500);
-    }
+    await waitForExtensionAttached((name, args) => client.tool(name, args));
 
     await client.json("browser_new_tab", { url: `${fixture.origin}/` });
     let snapshot = (await client.tool("browser_snapshot")).text;
@@ -168,13 +134,22 @@ async function main() {
       "session tab shows the fixture home page",
     );
 
-    userOpens("--new-tab", `${fixture.origin}/page2?user=tab`);
+    await userOpens("--new-tab", `${fixture.origin}/page2?user=tab`);
     await sleep(2000);
     snapshot = (await client.tool("browser_snapshot")).text;
     check(
       !snapshot.includes("user=tab") &&
         snapshot.includes('"Fixture text input"'),
       "snapshot reads the session tab after the user opened a tab",
+    );
+    // The tab the user just opened is the one in front. Nothing the session does may change that:
+    // the user goes on reading their own page while the session works in the background.
+    const userTab = (await client.json("browser_tabs")).tabs.find(
+      (tab) => tab.active,
+    );
+    check(
+      String(userTab?.url).includes("user=tab"),
+      "the tab the user opened is the one in front",
     );
     const input = refFor(snapshot, "Fixture text input");
     await client.json("browser_type", { ref: input, text: "session-typed" });
@@ -187,9 +162,24 @@ async function main() {
       !(await client.tool("browser_screenshot", { full_page: false })).isError,
       "screenshot of the session tab while the user's tab is in front",
     );
+    await client.json("browser_scroll", { direction: "down", amount: 200 });
+    await client.json("browser_click", {
+      ref: refFor(
+        (await client.tool("browser_snapshot")).text,
+        "Fixture click button",
+      ),
+    });
+    check(
+      (await client.json("browser_tabs")).tabs.find((tab) => tab.active)?.id ===
+        userTab?.id,
+      "the user's tab is still in front after the session typed, scrolled, and clicked",
+    );
 
-    userOpens("--new-window", `${fixture.origin}/page2?user=window`);
+    await userOpens("--new-window", `${fixture.origin}/page2?user=window`);
     await sleep(2000);
+    const windowsWithUsers = (await client.json("browser_windows")).windows
+      .map((window) => window.window_id)
+      .sort();
     snapshot = (await client.tool("browser_snapshot")).text;
     check(
       !snapshot.includes("user=window") &&
@@ -207,6 +197,13 @@ async function main() {
     check(
       listing.tabs.some((tab) => tab.url === `${fixture.origin}/`),
       "browser_tabs lists the session's window",
+    );
+    const windowsAfter = (await client.json("browser_windows")).windows
+      .map((window) => window.window_id)
+      .sort();
+    check(
+      JSON.stringify(windowsAfter) === JSON.stringify(windowsWithUsers),
+      "the session opened and closed no windows of its own",
     );
   } catch (error) {
     failure = error;
@@ -236,13 +233,13 @@ async function main() {
     } catch (error) {
       failure ??= error;
     }
-    client.close();
+    await client.close();
     await fixture.close();
   }
 
   const failed = checks.filter((entry) => entry.status !== "passed");
   const report = {
-    ok: failure === null && failed.length === 0 && checks.length === 7,
+    ok: failure === null && failed.length === 0 && checks.length === 10,
     checks,
     error: failure ? String(failure.stack || failure) : null,
   };

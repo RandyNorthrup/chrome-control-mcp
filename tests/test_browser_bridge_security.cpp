@@ -14,8 +14,10 @@
 #endif
 
 using chrome_control_mcp::browserBridgePipeName;
+using chrome_control_mcp::browserBridgeRendezvousPath;
 using chrome_control_mcp::currentUserSidString;
 using chrome_control_mcp::generateBridgeToken;
+using chrome_control_mcp::kBrowserBridgeRuntimeDirVariable;
 using chrome_control_mcp::readRendezvousRecord;
 using chrome_control_mcp::RendezvousRecord;
 using chrome_control_mcp::writeRendezvousRecord;
@@ -65,6 +67,8 @@ private slots:
   void rendezvous_invalidAppPidFailsClosed();
   void rendezvous_overCapFileFailsClosed();   // R5-G10-9
   void rendezvous_malformedJsonFailsClosed(); // R5-G10-9
+  void runtimeDir_overrideHoldsTheRecordAndSocket();
+  void runtimeDir_relativeOverrideIsRefusedNotReplaced();
   void security_daclIsCurrentUserOnlyWithMediumLabel();
 };
 
@@ -204,6 +208,46 @@ void BrowserBridgeSecurityTests::rendezvous_malformedJsonFailsClosed() {
     QVERIFY2(error.contains(QStringLiteral("Malformed rendezvous record")),
              qPrintable(error));
   }
+}
+
+// A server and a browser started with the same runtime directory pair with each
+// other: the record -- and, off Windows, the socket -- live in it.
+void BrowserBridgeSecurityTests::runtimeDir_overrideHoldsTheRecordAndSocket() {
+  QTemporaryDir dir;
+  QVERIFY(dir.isValid());
+  const QString root = QDir::cleanPath(dir.path());
+  qputenv(kBrowserBridgeRuntimeDirVariable, root.toLocal8Bit());
+  QString error;
+  const QString record = browserBridgeRendezvousPath(&error);
+  const QString pipe = browserBridgePipeName(&error);
+  qunsetenv(kBrowserBridgeRuntimeDirVariable);
+  QCOMPARE(record, QDir(root).filePath(QStringLiteral("browser_bridge.json")));
+#ifndef Q_OS_WIN
+  QVERIFY2(!pipe.isEmpty(), qPrintable(error));
+  QCOMPARE(QFileInfo(pipe).absolutePath(), root);
+#endif
+  QVERIFY(browserBridgeRendezvousPath() != record);
+}
+
+// An unusable override is refused, never replaced by the shared location: that
+// would pair this process with whichever browser answers there.
+void BrowserBridgeSecurityTests::
+    runtimeDir_relativeOverrideIsRefusedNotReplaced() {
+  qputenv(kBrowserBridgeRuntimeDirVariable, "relative/bridge");
+  QString recordError;
+  QString pipeError;
+  const QString record = browserBridgeRendezvousPath(&recordError);
+  const QString pipe = browserBridgePipeName(&pipeError);
+  qunsetenv(kBrowserBridgeRuntimeDirVariable);
+  QVERIFY(record.isEmpty());
+  QVERIFY(
+      recordError.contains(QLatin1String(kBrowserBridgeRuntimeDirVariable)));
+#ifndef Q_OS_WIN
+  QVERIFY(pipe.isEmpty());
+  QVERIFY(pipeError.contains(QLatin1String(kBrowserBridgeRuntimeDirVariable)));
+#else
+  Q_UNUSED(pipe);
+#endif
 }
 
 void BrowserBridgeSecurityTests::

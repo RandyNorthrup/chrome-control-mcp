@@ -153,6 +153,63 @@ jobs:
             exit $LASTEXITCODE
           }
 
+  live-browser:
+    name: ${{ matrix.name }} live browser suites
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Linux
+            os: ubuntu-latest
+            qt-arch: linux_gcc_64
+          - name: macOS
+            os: macos-latest
+            qt-arch: clang_64
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - uses: jurplel/install-qt-action@v4
+        with:
+          version: "6.10.0"
+          arch: ${{ matrix.qt-arch }}
+          cache: true
+
+      - name: Configure
+        run: >-
+          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+          -DBUILD_TESTING=ON
+
+      - name: Build
+        run: cmake --build build --parallel
+
+      # A dedicated browser for the suites: its own profile, its own bridge, headless. Chrome for
+      # Testing is required -- branded Chrome ignores --load-extension.
+      - name: Install Chrome for Testing
+        id: chrome
+        run: >-
+          echo "path=$(npx -y @puppeteer/browsers@latest install chrome@stable
+          --path "$PWD/.chrome-for-testing" | cut -d' ' -f2-)" >> "$GITHUB_OUTPUT"
+
+      - name: Full browser E2E
+        run: >-
+          node tests/e2e/isolated_run.mjs --chrome="${{ steps.chrome.outputs.path }}"
+          tests/e2e/full_browser_e2e.mjs
+
+      - name: User interference E2E
+        run: >-
+          node tests/e2e/isolated_run.mjs --chrome="${{ steps.chrome.outputs.path }}"
+          tests/e2e/user_interference_e2e.mjs
+
+      - name: Display scale, zoom, and pinch matrix
+        run: >-
+          node tests/e2e/display_matrix_e2e.mjs
+          --chrome="${{ steps.chrome.outputs.path }}" --parallel=2
+
   sanitizers:
     name: ${{ matrix.name }}
     runs-on: ubuntu-latest

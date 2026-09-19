@@ -61,6 +61,34 @@ that should show the exact control presence visible in Chrome.
 - `browser_download`
 - `browser_http_auth`
 
+## Coordinates, display scale, zoom, and pinch
+
+A screenshot is the visual viewport -- the part of the page on screen -- in device pixels. One CSS
+pixel spans `devicePixelRatio × pinch scale` image pixels, where `devicePixelRatio` is the display's
+scale (a Windows 125% setting, a Retina panel, a Linux fractional scale) times the browser's zoom,
+and the image's origin is the visual viewport's.
+
+- `browser_click_at` and `browser_drag`'s `from_x`/`from_y`/`to_x`/`to_y` are pixels of the most
+  recent viewport screenshot. They are bound to that image: if the page scrolls, zooms, pinches,
+  resizes, reloads, or navigates in between, the call is refused rather than converted against a
+  render the pixel no longer names.
+- `browser_box` reports the element's CSS geometry and `screenshot_center`, the same point in
+  screenshot pixels -- ready for `browser_click_at` at any scale, zoom, or pinch.
+- `browser_click` by `[ref]` aims at the centre of the element's box, and when something covers the
+  centre it tries points around it, as a user clicks the part of a button they can see. A macOS
+  overlay scrollbar, which shows over the page's edge while the page scrolls, is given up to a
+  second to fade. If no point of the element takes a click, the call is refused and says so.
+- `browser_scroll` replies once the scroll has come to rest, with `scrolled`, how far the content
+  actually moved (0 at an edge) -- a wheel scroll is animated and is still moving when the event is
+  acknowledged.
+- `browser_screenshot` with `full_page: true` captures the whole document, rounded up to Chrome's
+  whole-DIP clip. On a pinch-zoomed page it is refused: capturing beyond the viewport resets the
+  pinch and moves the page, and nothing can put the pinch's offset back.
+
+An operating-system screen magnifier (macOS Zoom, Windows Magnifier) does not affect any of this:
+it magnifies the composited screen, while every coordinate here is a page coordinate, captured from
+the page's own compositor and dispatched back to it.
+
 ## Extension preparation
 
 - `browser_extension_install`

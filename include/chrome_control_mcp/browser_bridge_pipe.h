@@ -129,6 +129,7 @@ private:
   QString pipe_name_;
   QString token_;
   QString rendezvous_path_;
+  QString rendezvous_error_; ///< Why rendezvous_path_ is empty, when it is.
 
 #ifdef Q_OS_WIN
   NativeIpcHandle pipe_{kInvalidNativeIpcHandle};

@@ -69,6 +69,10 @@ const EXPORTED = [
   "mouseButton",
   "clickCountOf",
   "documentHitPoint",
+  "quadPoint",
+  "quadCenter",
+  "CLICK_SAMPLES",
+  "shotMatchesRender",
   "scrollAmountPx",
   "selectCallArgs",
   "originsMatch",
@@ -86,6 +90,9 @@ const EXPORTED = [
   "buildBoundsMap",
   "buildNodes",
   "MAX_CAPTURE_NODES",
+  "MAC_EDITING_COMMANDS",
+  "macEditingCommands",
+  "keyDownEvent",
 ];
 
 function loadWorker() {
@@ -235,27 +242,88 @@ test("clickCountOf refuses a count that is not a real click gesture", () => {
   assert.throws(() => w.clickCountOf("many"), /click_count/);
 });
 
-test("documentHitPoint converts viewport coordinates through page scroll", () => {
+test("documentHitPoint converts visual-viewport coordinates through pinch and scroll", () => {
+  const at = (scrollX, scrollY, offsetX = 0, offsetY = 0) => ({
+    ok: true,
+    scrollX,
+    scrollY,
+    offsetX,
+    offsetY,
+  });
+  assert.deepEqual(crossRealm(w.documentHitPoint(1075, 380, at(9, 142))), {
+    x: 1084,
+    y: 522,
+  });
+  assert.deepEqual(crossRealm(w.documentHitPoint(10.6, 20.4, at(0, 0))), {
+    x: 11,
+    y: 20,
+  });
+  // Measured in Chrome 153 at a 1.5x pinch: the box-model quad centre of a target at client
+  // (466, 284) was (332.8, 200.8), the visual viewport sitting at (133.18, 83.18) in the layout
+  // viewport -- and DOM.getNodeForLocation named the target only at the client point.
   assert.deepEqual(
-    crossRealm(
-      w.documentHitPoint(1075, 380, { ok: true, scrollX: 9, scrollY: 142 }),
-    ),
-    { x: 1084, y: 522 },
+    crossRealm(w.documentHitPoint(332.8, 200.8, at(0, 0, 133.18, 83.18))),
+    { x: 466, y: 284 },
   );
   assert.deepEqual(
-    crossRealm(
-      w.documentHitPoint(10.6, 20.4, { ok: true, scrollX: 0, scrollY: 0 }),
-    ),
-    { x: 11, y: 20 },
+    crossRealm(w.documentHitPoint(332.8, 200.8, at(10, 200, 133.18, 83.18))),
+    { x: 476, y: 484 },
   );
+  assert.equal(w.documentHitPoint(1, 2, { ...at(0, 0), ok: false }), null);
+  assert.equal(w.documentHitPoint(NaN, 2, at(0, 0)), null);
+  // A pinch offset the page did not report is not zero.
   assert.equal(
-    w.documentHitPoint(1, 2, { ok: false, scrollX: 0, scrollY: 0 }),
+    w.documentHitPoint(1, 2, { ok: true, scrollX: 0, scrollY: 0 }),
     null,
   );
-  assert.equal(
-    w.documentHitPoint(NaN, 2, { ok: true, scrollX: 0, scrollY: 0 }),
-    null,
+});
+
+test("quadPoint samples inside axis-aligned and rotated boxes", () => {
+  const box = [10, 20, 50, 20, 50, 60, 10, 60];
+  assert.deepEqual(
+    crossRealm(w.quadPoint(box, 0.5, 0.5)),
+    crossRealm(w.quadCenter(box)),
   );
+  assert.deepEqual(crossRealm(w.quadPoint(box, 0.25, 0.75)), { x: 20, y: 50 });
+  // A square turned 45 degrees: corners clockwise from the one that was top-left.
+  const diamond = [30, 0, 60, 30, 30, 60, 0, 30];
+  assert.deepEqual(crossRealm(w.quadPoint(diamond, 0.5, 0.5)), {
+    x: 30,
+    y: 30,
+  });
+  assert.deepEqual(crossRealm(w.quadPoint(diamond, 1, 0)), { x: 60, y: 30 });
+  assert.deepEqual(crossRealm(w.quadPoint(diamond, 0, 1)), { x: 0, y: 30 });
+});
+
+test("CLICK_SAMPLES tries the centre first and stays inside the box", () => {
+  assert.deepEqual(crossRealm(w.CLICK_SAMPLES[0]), [0.5, 0.5]);
+  const keys = new Set(w.CLICK_SAMPLES.map(([u, v]) => `${u},${v}`));
+  assert.equal(keys.size, w.CLICK_SAMPLES.length);
+  for (const [u, v] of w.CLICK_SAMPLES) {
+    assert.ok(u > 0 && u < 1 && v > 0 && v < 1, `${u},${v} is on the edge`);
+  }
+});
+
+test("shotMatchesRender sees a pinch, not only a scroll or zoom", () => {
+  const shot = {
+    dpr: 2,
+    scale: 1,
+    offsetX: 0,
+    offsetY: 0,
+    scrollX: 0,
+    scrollY: 10,
+    href: "https://example.test/",
+    width: 800,
+    height: 600,
+    epoch: 0,
+  };
+  const now = { ...shot, ok: true };
+  assert.equal(w.shotMatchesRender(shot, now), true);
+  assert.equal(w.shotMatchesRender(shot, { ...now, scale: 1.5 }), false);
+  assert.equal(w.shotMatchesRender(shot, { ...now, offsetX: 133 }), false);
+  assert.equal(w.shotMatchesRender(shot, { ...now, offsetY: 76 }), false);
+  assert.equal(w.shotMatchesRender(shot, { ...now, dpr: 2.2 }), false);
+  assert.equal(w.shotMatchesRender(shot, { ...now, ok: false }), false);
 });
 
 test("parseModifiers refuses an unknown modifier rather than dropping it", () => {
@@ -850,4 +918,73 @@ test("buildNodes caps the emitted set at MAX_CAPTURE_NODES and reports truncatio
   const { nodes, truncated } = w.buildNodes({ nodes: nodesArr }, new Map());
   assert.equal(nodes.length, w.MAX_CAPTURE_NODES);
   assert.equal(truncated, true);
+});
+
+// -- macOS editing commands ----------------------------------------------------
+// On macOS a synthetic key event never passes through the operating system's key bindings, so
+// Command+A reaches the page and selects nothing unless the keyDown names the command. These
+// tests hold the chord -> command mapping to Chromium's macOS bindings, and keep it OFF the
+// other platforms, where the renderer maps chords itself.
+
+test("macEditingCommands names the macOS command for Command chords", () => {
+  const meta = 4;
+  const shift = 8;
+  assert.deepEqual(crossRealm(w.macEditingCommands("KeyA", meta)), [
+    "selectAll",
+  ]);
+  assert.deepEqual(crossRealm(w.macEditingCommands("KeyC", meta)), ["copy"]);
+  assert.deepEqual(crossRealm(w.macEditingCommands("KeyV", meta)), ["paste"]);
+  assert.deepEqual(crossRealm(w.macEditingCommands("KeyZ", meta)), ["undo"]);
+  assert.deepEqual(crossRealm(w.macEditingCommands("KeyZ", meta | shift)), [
+    "redo",
+  ]);
+  assert.deepEqual(crossRealm(w.macEditingCommands("Backspace", 0)), [
+    "deleteBackward",
+  ]);
+});
+
+test("macEditingCommands gives Control+A its macOS meaning, not Windows' select-all", () => {
+  const control = 2;
+  assert.deepEqual(crossRealm(w.macEditingCommands("KeyA", control)), [
+    "moveToBeginningOfParagraph",
+  ]);
+});
+
+test("macEditingCommands drops text-inserting commands and unbound chords", () => {
+  const control = 2;
+  // insertNewline: the key's own text inserts the newline
+  assert.deepEqual(crossRealm(w.macEditingCommands("Enter", 0)), []);
+  // ['insertNewlineIgnoringFieldEditor:', 'moveBackward:'] keeps only the second
+  assert.deepEqual(crossRealm(w.macEditingCommands("KeyO", control)), [
+    "moveBackward",
+  ]);
+  assert.deepEqual(crossRealm(w.macEditingCommands("KeyA", 0)), []);
+  assert.deepEqual(crossRealm(w.macEditingCommands("KeyQ", 4)), []);
+});
+
+test("keyDownEvent carries editing commands on macOS only", () => {
+  const def = { key: "a", code: "KeyA", keyCode: 65, text: "a" };
+  const onMac = w.keyDownEvent(def, 4, true);
+  assert.deepEqual(crossRealm(onMac.commands), ["selectAll"]);
+  assert.equal(onMac.text, undefined); // a Command chord types nothing
+  const offMac = w.keyDownEvent(def, 2, false);
+  assert.equal(offMac.commands, undefined);
+  assert.equal(offMac.modifiers, 2);
+  assert.equal(offMac.code, "KeyA");
+  const plain = w.keyDownEvent(def, 0, true);
+  assert.equal(plain.commands, undefined);
+  assert.equal(plain.text, "a");
+});
+
+test("MAC_EDITING_COMMANDS is Chromium's macOS table, entry for entry", () => {
+  const table = w.MAC_EDITING_COMMANDS;
+  // Prototype-less, like every other caller-indexed table in the worker
+  assert.equal(Object.getPrototypeOf(table), null);
+  assert.equal(Object.keys(table).length, 114);
+  for (const [chord, binding] of Object.entries(table)) {
+    const selectors = Array.isArray(binding) ? binding : [binding];
+    for (const selector of selectors) {
+      assert.match(selector, /^[a-z][A-Za-z]*:$/, `${chord} -> ${selector}`);
+    }
+  }
 });
