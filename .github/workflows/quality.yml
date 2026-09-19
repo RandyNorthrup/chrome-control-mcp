@@ -168,6 +168,8 @@ jobs:
             # Only the dedicated test browser is affected; nothing here changes how the product
             # runs.
             chrome-args: --chrome-arg=--no-sandbox --chrome-arg=--disable-gpu
+              --chrome-arg=--use-angle=swiftshader
+              --chrome-arg=--enable-unsafe-swiftshader
           - name: macOS
             os: macos-latest
             qt-arch: clang_64
