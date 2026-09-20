@@ -61,7 +61,14 @@ try {
     stdio: ["ignore", "inherit", "inherit"],
   });
   const exited = new Promise((resolve) => child.once("close", resolve));
-  await browser.launch();
+  try {
+    await browser.launch();
+  } catch (error) {
+    // The suite is already running with a server of its own; leaving it alive would orphan both.
+    child.kill("SIGKILL");
+    await exited;
+    throw error;
+  }
   exitCode = await exited;
   if (exitCode !== 0) {
     // What the browser itself said. A suite that fails because Chrome died reads as a tool that

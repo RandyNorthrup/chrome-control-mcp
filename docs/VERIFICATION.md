@@ -169,10 +169,10 @@ node tests/e2e/display_matrix_e2e.mjs --chrome=<CfT> --parallel=3
 - User interference, in a dedicated browser: **10/10 checks**. A tab and then a window opened as the
   user; snapshots, typing, screenshots, scrolling, and clicking stayed on the session's tab, the
   user's tab stayed in front throughout, and the session opened no windows of its own.
-- Display matrix, in dedicated browsers: **38/38 configurations, 3582/3582 checks** across display
-  scales 1×, 1.25×, 1.5×, 1.75×, 2×, 2.5×, 3×; windows from 390×844 to 3840×2160; browser zoom 25%
-  to 500%; trackpad pinch at 1.5×, 2×, and 3×; and both a scrollbar drawn over the page and one
-  that takes layout space. Every coordinate is proven by where its click
+- Display matrix, in dedicated browsers: **35/35 configurations, 3335/3335 checks** across display
+  scales 1×, 1.25×, 1.5×, 1.75×, 2×, 2.5×, 3×; windows from 390×844 to 3840×2160; every one of
+  Chrome's zoom steps from 25% to 500%; trackpad pinch at 1.5×, 2×, and 3×; and both a scrollbar
+  drawn over the page and one that takes layout space. Every coordinate is proven by where its click
   landed on the fixture, and every screenshot by the pixels of its solid-colour targets measured
   against the page's own `getBoundingClientRect`. Eight configurations end in a refusal instead of a
   click -- a target flush with the page's edge under a pinch at 67% zoom or less, where the pinched

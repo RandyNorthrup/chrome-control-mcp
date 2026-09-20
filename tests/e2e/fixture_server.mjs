@@ -230,6 +230,13 @@ function geometryPage(classicScrollbar) {
         scrollLog.push(Math.round(performance.now()) + ':' + Math.round(window.scrollY));
       }
     }, { capture: true });
+    // How far the page's content reaches on one axis, from the root and body (whose own min-height
+    // makes this page tall) down through every element, and never less than the viewport.
+    const extent = (edge, viewport, scrolled) => Math.max(
+      document.documentElement[viewport],
+      ...[document.documentElement, document.body, ...document.querySelectorAll('body *')]
+        .map((e) => Math.round(e.getBoundingClientRect()[edge] + scrolled)),
+    );
     const measure = () => {
       const vv = window.visualViewport;
       document.getElementById('metrics').textContent = 'metrics' +
@@ -239,7 +246,12 @@ function geometryPage(classicScrollbar) {
         ' vvs=' + vv.scale + ' vvl=' + vv.offsetLeft + ' vvt=' + vv.offsetTop +
         ' vvw=' + vv.width + ' vvh=' + vv.height +
         ' sx=' + window.scrollX + ' sy=' + window.scrollY +
-        ' dw=' + document.documentElement.scrollWidth + ' dh=' + document.documentElement.scrollHeight + ' end';
+        ' dw=' + document.documentElement.scrollWidth + ' dh=' + document.documentElement.scrollHeight +
+        // How far the page's own content actually reaches, which is what a full-page capture must
+        // cover: scrollWidth is inflated by the gutter a classic scrollbar reserves on some
+        // machines and reflects real overflow on others, so it cannot stand in for it.
+        ' ew=' + extent('right', 'clientWidth', window.scrollX) +
+        ' eh=' + extent('bottom', 'clientHeight', window.scrollY) + ' end';
       document.getElementById('scrolls').textContent = 'scrolls ' + scrollLog.join(' ') + ' end';
       document.getElementById('rects').textContent = 'rects ' + [...document.querySelectorAll('.t')].map((e) => {
         const r = e.getBoundingClientRect();

@@ -29,6 +29,11 @@ export function decodePng(buffer) {
   while (offset + 8 <= buffer.length) {
     const length = buffer.readUInt32BE(offset);
     const type = buffer.toString("ascii", offset + 4, offset + 8);
+    if (offset + 8 + length > buffer.length) {
+      throw new Error(
+        `Truncated PNG: ${type} chunk claims ${length} bytes with ${buffer.length - offset - 8} left.`,
+      );
+    }
     const body = buffer.subarray(offset + 8, offset + 8 + length);
     if (type === "IHDR") {
       header = {
@@ -54,9 +59,20 @@ export function decodePng(buffer) {
     throw new Error(`Unsupported PNG layout: ${JSON.stringify(header)}`);
   }
   const { width, height } = header;
+  if (width <= 0 || height <= 0) {
+    throw new Error(`PNG has no pixels: ${width}x${height}.`);
+  }
   const channels = header.colorType === 6 ? 4 : 3;
   const raw = inflateSync(Buffer.concat(data));
   const stride = width * channels;
+  // One filter byte and one row of samples per row, exactly. A short stream is a truncated
+  // capture, and unfiltering it would read zeroes off the end as image data.
+  if (raw.length !== (stride + 1) * height) {
+    throw new Error(
+      `Truncated PNG pixels: ${raw.length} bytes for a ${width}x${height} image ` +
+        `(expected ${(stride + 1) * height}).`,
+    );
+  }
   const pixels = Buffer.alloc(stride * height);
   for (let y = 0; y < height; y += 1) {
     const filter = raw[y * (stride + 1)];

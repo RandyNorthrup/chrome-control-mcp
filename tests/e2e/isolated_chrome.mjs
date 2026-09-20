@@ -107,10 +107,21 @@ export async function prepareIsolatedChrome({
   // record: in this browser's runtime directory that record would make the suite's own server
   // stand down (one bridge to a user, by design) and the browser would find a dead endpoint. It
   // gets a runtime directory of its own, which nothing else ever looks in.
-  await installNativeHost(executable, {
-    ...env,
-    CHROME_CONTROL_MCP_RUNTIME_DIR: path.join(root, "installer-run"),
-  });
+  try {
+    await installNativeHost(executable, {
+      ...env,
+      CHROME_CONTROL_MCP_RUNTIME_DIR: path.join(root, "installer-run"),
+    });
+  } catch (error) {
+    // Nothing owns this directory yet: without this it would outlive the run.
+    await rm(root, {
+      recursive: true,
+      force: true,
+      maxRetries: 20,
+      retryDelay: 100,
+    });
+    throw error;
+  }
   if (zoomPercent !== 100) {
     // The default zoom a user picks in Settings > Appearance > Page zoom. "x" is the key Chrome
     // gives the profile's default storage partition (ChromeZoomLevelPrefs).
@@ -190,6 +201,11 @@ export async function prepareIsolatedChrome({
     browser.stderr.setEncoding("utf8");
     browser.stderr.on("data", (chunk) => {
       stderr += chunk;
+    });
+    // An unlistened spawn error is an uncaught event: it would end the run outside any try/catch.
+    browser.on("error", (error) => {
+      exited = true;
+      stderr += `\n${error}`;
     });
     browser.once("exit", () => {
       exited = true;

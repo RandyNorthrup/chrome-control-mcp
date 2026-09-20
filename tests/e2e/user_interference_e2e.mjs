@@ -22,6 +22,7 @@ import { fileURLToPath } from "node:url";
 import { waitForExtensionAttached } from "./extension_attach.mjs";
 import { startFixtureServer } from "./fixture_server.mjs";
 import { McpClient, refFor } from "./mcp_client.mjs";
+import { decodePng } from "./png.mjs";
 
 const sleep = (milliseconds) =>
   new Promise((resolve) => setTimeout(resolve, milliseconds));
@@ -158,8 +159,21 @@ async function main() {
         "session-typed",
       "typing lands in the session tab, not the user's",
     );
+    // The image itself, not merely the absence of an error: a capture of the USER's tab would
+    // pass an isError check identically. The fixture's page is blue-free white with known text,
+    // so the check is that a real PNG of a real viewport came back.
+    const capture = await client.tool("browser_screenshot", {
+      full_page: false,
+    });
+    const image = capture.result?.content?.find(
+      (block) => block.type === "image",
+    );
+    const decoded = image ? decodePng(Buffer.from(image.data, "base64")) : null;
     check(
-      !(await client.tool("browser_screenshot", { full_page: false })).isError,
+      !capture.isError &&
+        decoded !== null &&
+        decoded.width > 100 &&
+        decoded.height > 100,
       "screenshot of the session tab while the user's tab is in front",
     );
     await client.json("browser_scroll", { direction: "down", amount: 200 });

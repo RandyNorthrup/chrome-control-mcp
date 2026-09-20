@@ -1143,9 +1143,10 @@ void appendTabTools(QJsonArray &tools) {
   tools.append(toolEntry(
       QStringLiteral("browser_select_tab"),
       QStringLiteral(
-          "Make the tab at the given index the session's tab (active within "
-          "its window; the window is never raised, so the user keeps OS "
-          "focus). Call browser_tabs first: "
+          "Make the tab at the given index the session's tab. The tab is NOT "
+          "brought to the front and its window is never raised: the browser "
+          "goes on showing whichever tab its user chose, and this session "
+          "drives its own in the background. Call browser_tabs first: "
           "an index is only meaningful against a listing, and the call is "
           "refused if the tabs moved since that listing so the index cannot "
           "land on a tab you did not choose."),
@@ -1158,8 +1159,11 @@ void appendTabTools(QJsonArray &tools) {
           QJsonArray{QStringLiteral("index")})));
   tools.append(toolEntry(
       QStringLiteral("browser_new_tab"),
-      QStringLiteral("Open a new tab in the session's window, optionally "
-                     "navigating to a URL. It becomes the session's tab."),
+      QStringLiteral(
+          "Open a new tab in the session's window, optionally navigating to a "
+          "URL. It opens in the BACKGROUND -- the browser goes on showing "
+          "whichever tab its user chose -- and becomes the session's tab, "
+          "marked in the tab strip while this session drives it."),
       toolSchema(
           QJsonObject{{QStringLiteral("url"), stringProperty(QStringLiteral(
                                                   "URL to open (optional)."))}},

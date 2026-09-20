@@ -114,6 +114,9 @@ async function main() {
   let cookieName = null;
   let failure = null;
   let attachMilliseconds = null;
+  let fixtureTabsClosed = false;
+  // The session starts in the user's window, moves to the one it creates, and is sent back.
+  let sessionIsInUsersWindow = true;
   const platformNotes = [];
 
   // The tab the user had in front when the run began. The session works in tabs it opened in the
@@ -126,7 +129,15 @@ async function main() {
       }),
     );
     const userTab = listing.tabs.find((tab) => tab.id === originalActiveTabId);
-    if (userTab && !userTab.active) {
+    if (!userTab) {
+      // browser_tabs lists the SESSION's window. While the session is working in a window of its
+      // own, the user's tab is simply not in this listing; anywhere else, it is gone.
+      if (sessionIsInUsersWindow) {
+        throw new Error(`${label} closed the user's tab`);
+      }
+      return;
+    }
+    if (!userTab.active) {
       const front = listing.tabs.find((tab) => tab.active);
       throw new Error(
         `${label} changed the user's tab: ${front ? front.url : "no tab"} is in front`,
@@ -165,6 +176,8 @@ async function main() {
     textContent(await runTool("browser_snapshot", {}, label));
   const tabs = async (label) =>
     jsonContent(await runTool("browser_tabs", {}, label));
+  // Closes every fixture tab and answers whether any is left, so the report states what happened
+  // rather than a constant.
   const closeFixtureTabs = async () => {
     for (let attempt = 0; attempt < 12; attempt += 1) {
       const listing = jsonContent(
@@ -185,6 +198,13 @@ async function main() {
         arguments: { index: target.index },
       });
     }
+    const left = jsonContent(
+      await client.request("tools/call", {
+        name: "browser_tabs",
+        arguments: {},
+      }),
+    ).tabs.filter((tab) => String(tab.url || "").startsWith(fixture.origin));
+    return left.length === 0;
   };
 
   try {
@@ -203,7 +223,6 @@ async function main() {
       [...EXPECTED_TOOLS].sort(),
       "Live tool catalog drifted",
     );
-    assert.equal(new Set(names).size, 43);
     attachMilliseconds = await waitForExtensionAttached(async (name, args) => {
       const result = await client.request("tools/call", {
         name,
@@ -255,6 +274,13 @@ async function main() {
         .filter((window) => window.focused)
         .map((window) => window.window_id);
     let baselineOsFocus = osFocus(baselineWindows);
+    if (baselineOsFocus.length === 0) {
+      // Every later comparison is [] against [], which no focus change could fail. Recorded, so
+      // the report does not read as proof that focus stayed put.
+      platformNotes.push(
+        "no window reported OS focus: the focus checks compared nothing",
+      );
+    }
     // Focus changes land asynchronously (a compositor grants them a frame or two later), so let
     // them settle before reading: an immediate read would pass a steal that is still in flight.
     const assertOsFocusUnchanged = async (label) => {
@@ -1040,6 +1066,9 @@ async function main() {
         (window) => window.window_id === originalWindowId,
       ),
     );
+    // The session lands in the window this creates, so the user's tab leaves the listing from
+    // here until it is sent back.
+    sessionIsInUsersWindow = false;
     const newWindow = jsonContent(
       await runTool(
         "browser_window",
@@ -1061,6 +1090,14 @@ async function main() {
     // (Hyprland focuses every newly mapped window). The tool must say so rather than take focus
     // silently; on Windows, macOS, X11, and focus-stealing-prevention compositors it never does.
     if (newWindow.took_os_focus) {
+      // Checked against the browser's own listing rather than taken on the tool's word: a tool
+      // that stole focus could otherwise excuse itself from every check below by saying so.
+      assert.ok(
+        windowsAfterCreate.windows.some(
+          (window) => window.window_id === createdWindowId && window.focused,
+        ),
+        "The tool reported took_os_focus for a window the browser does not list as focused",
+      );
       process.stderr.write(
         "NOTE compositor focused the new window despite focused:false (reported by the tool)\n",
       );
@@ -1078,6 +1115,10 @@ async function main() {
       ),
     );
     assert.equal(retargeted.session_window, true);
+    sessionIsInUsersWindow = true;
+    // Back in the user's window, their tab must be there and in front: the check above stood down
+    // while the session was away, so this is where that gap is closed.
+    await userTabInFront("the session returning to the user's window");
     const retargetedTabs = await tabs("list tabs after window retarget");
     assert.ok(
       retargetedTabs.tabs.some((tab) => tab.id === originalActiveTabId),
@@ -1116,7 +1157,7 @@ async function main() {
     );
     assert.equal(finalExtensionStatus.state, "prepared");
 
-    await closeFixtureTabs();
+    fixtureTabsClosed = await closeFixtureTabs();
     const finalTabs = await tabs("list tabs after the run");
     const original = finalTabs.tabs.find(
       (tab) => tab.id === originalActiveTabId,
@@ -1164,7 +1205,7 @@ async function main() {
           }
         }
         try {
-          await closeFixtureTabs();
+          fixtureTabsClosed = await closeFixtureTabs();
         } catch (cleanupError) {
           failure ||= cleanupError;
         }
@@ -1204,7 +1245,7 @@ async function main() {
     case_count: cases.length,
     cases,
     generated_files_cleaned: [...generatedFiles],
-    chrome_state_restored: true,
+    chrome_state_restored: fixtureTabsClosed,
     platform_notes: platformNotes,
     extension_attach_milliseconds: attachMilliseconds,
     error: failure ? String(failure.stack || failure) : null,

@@ -74,39 +74,72 @@ const MIN_CSS_HEIGHT = 200;
 // plan; the page's own measurements are what every check compares against.
 const BROWSER_UI_HEIGHT = 143;
 
-// Each display at 100% zoom, and again at the next zoom step that leaves the fixture room, so
-// every step is covered across the scales.
+// Every display at 100% zoom, and every one of Chrome's zoom steps on a display it fits -- a step
+// like 500% only fits a large window, so the steps are dealt out to displays that can hold them
+// rather than to whichever display comes next. Pinch and scrollbar vary independently of the zoom:
+// pairing them with it one-for-one meant no classic scrollbar at 100% and no overlay scrollbar
+// anywhere else. planCoverage below states what this produced, and main() asserts it.
 function plan() {
-  const configs = [];
-  let next = 0;
-  let pinch = 0;
-  for (const display of DISPLAYS) {
+  const roomFor = (display, zoom) => {
     const [width, height] = display.window;
-    const fits = (zoom) =>
+    return (
       (width * 100) / zoom >= MIN_CSS_WIDTH &&
-      ((height - BROWSER_UI_HEIGHT) * 100) / zoom >= MIN_CSS_HEIGHT;
-    const zooms = [100];
-    for (let tries = 0; tries < ZOOMS.length; tries += 1) {
-      const zoom = ZOOMS[next % ZOOMS.length];
-      next += 1;
-      if (fits(zoom)) {
-        zooms.push(zoom);
+      ((height - BROWSER_UI_HEIGHT) * 100) / zoom >= MIN_CSS_HEIGHT
+    );
+  };
+  const planned = DISPLAYS.map((display) => ({ display, zoom: 100 }));
+  let next = 0;
+  for (const zoom of ZOOMS) {
+    // Round-robin from where the last step left off, so the load spreads across displays instead
+    // of piling every demanding zoom onto the largest window.
+    for (let tries = 0; tries < DISPLAYS.length; tries += 1) {
+      const display = DISPLAYS[(next + tries) % DISPLAYS.length];
+      if (roomFor(display, zoom)) {
+        planned.push({ display, zoom });
+        next += tries + 1;
         break;
       }
     }
-    for (const zoom of zooms) {
-      configs.push({
-        name: `${display.scale}x-${width}x${height}-zoom${zoom}-${SCROLLBARS[pinch % SCROLLBARS.length]}`,
-        scaleFactor: display.scale,
-        windowSize: display.window,
-        zoomPercent: zoom,
-        pinch: PINCHES[pinch % PINCHES.length],
-        scrollbar: SCROLLBARS[pinch % SCROLLBARS.length],
-      });
-      pinch += 1;
-    }
   }
-  return configs;
+  return planned.map(({ display, zoom }, index) => {
+    const [width, height] = display.window;
+    const scrollbar = SCROLLBARS[Math.floor(index / 2) % SCROLLBARS.length];
+    return {
+      name: `${display.scale}x-${width}x${height}-zoom${zoom}-${scrollbar}`,
+      scaleFactor: display.scale,
+      windowSize: display.window,
+      zoomPercent: zoom,
+      pinch: PINCHES[index % PINCHES.length],
+      scrollbar,
+    };
+  });
+}
+
+// What the plan actually covers, so the claim above is checked rather than believed.
+function planCoverage(configs) {
+  const values = (key) => new Set(configs.map((config) => config[key]));
+  const scrollbarsPerZoom = new Map();
+  for (const config of configs) {
+    const seen = scrollbarsPerZoom.get(config.zoomPercent) || new Set();
+    seen.add(config.scrollbar);
+    scrollbarsPerZoom.set(config.zoomPercent, seen);
+  }
+  return {
+    zooms: [...values("zoomPercent")].sort((a, b) => a - b),
+    missing_zooms: ZOOMS.filter((zoom) => !values("zoomPercent").has(zoom)),
+    scales: [...values("scaleFactor")].sort((a, b) => a - b),
+    pinches: [...values("pinch")].sort((a, b) => a - b),
+    scrollbars: [...values("scrollbar")].sort(),
+    // The two axes must cross: both scrollbar kinds at 100% zoom and both away from it.
+    scrollbars_at_100: [...(scrollbarsPerZoom.get(100) || [])].sort(),
+    scrollbars_when_zoomed: [
+      ...new Set(
+        configs
+          .filter((config) => config.zoomPercent !== 100)
+          .map((config) => config.scrollbar),
+      ),
+    ].sort(),
+  };
 }
 
 function pageState(text) {
@@ -276,13 +309,13 @@ async function runConfig(config, { chrome, executable, fixture, extraArgs }) {
     measured.screenshot = [shot.png.width, shot.png.height];
     // innerWidth/innerHeight, not the visual viewport's size: both they and the image include the
     // gutter a scrollbar that takes layout space reserves (measured: an 800px window photographs
-    // 800px wide while its visual viewport is 785). The page reports them in whole CSS pixels, so
-    // a fractional viewport can differ by half a pixel -- 1.75 device pixels at 3.5x.
-    const roundingSlack = dpr / 2 + 1;
+    // 800px wide while its visual viewport is 785). The page reports them in whole CSS pixels and
+    // a fractional viewport is cut down to one, so the image can stand a whole CSS pixel past
+    // them -- five device pixels at 5x (measured: 1514 against a reported 302 at dpr 5).
     check(
       "the screenshot is the viewport in device pixels",
-      Math.abs(shot.png.width - m.iw * dpr) <= roundingSlack &&
-        Math.abs(shot.png.height - m.ih * dpr) <= roundingSlack,
+      Math.abs(shot.png.width - m.iw * dpr) <= dpr + 1 &&
+        Math.abs(shot.png.height - m.ih * dpr) <= dpr + 1,
       `${shot.png.width}x${shot.png.height} for a ${m.iw}x${m.ih} CSS viewport at ${dpr}`,
     );
     // Where a CSS rect must be in an image of the page taken with the given transform.
@@ -439,27 +472,43 @@ async function runConfig(config, { chrome, executable, fixture, extraArgs }) {
       `scrollY ${scrolledTo} before, ${page.metrics.sy} after`,
     );
     measured.full_page = [full.png.width, full.png.height];
+    measured.document = {
+      content: [page.metrics.ew, page.metrics.eh],
+      scrollable: [page.metrics.dw, page.metrics.dh],
+      viewport: [page.metrics.cw, page.metrics.ch],
+    };
     const clipped = /clipped/i.test(full.text);
-    // What a full-page capture covers on an axis: the scrollable length where the content
-    // overflows, and the content box where it does not -- scrollWidth includes the gutter a
-    // classic scrollbar reserves even when nothing overflows sideways, and the capture does not.
-    // Both come in whole CSS pixels, and Chrome clips in whole DIPs, so the image may run up to
-    // one DIP (the display's scale in device pixels) past the end.
+    measured.full_page_clipped = clipped;
+    // Chrome rasters at most 16384 device pixels an edge. A capture may only excuse itself from
+    // the size check when the document really is past that; otherwise "clipped" would be a way
+    // for a broken capture to skip being measured.
+    const rasterCap = 16384;
+    check(
+      "a full-page capture calls itself clipped only when the document is past the raster cap",
+      clipped ===
+        (page.metrics.ew * dpr > rasterCap ||
+          page.metrics.eh * dpr > rasterCap),
+      `clipped ${clipped} for content ${page.metrics.ew}x${page.metrics.eh} at ${dpr}`,
+    );
+    // How far the page's own content reaches, which is what a full-page capture covers. The page
+    // measures that itself (ew/eh): scrollWidth is inflated by the gutter a classic scrollbar
+    // reserves on one machine and reflects real overflow on another, so it cannot stand in for it.
+    // The numbers come in whole CSS pixels, and Chrome clips in whole DIPs, so the image may run
+    // up to one DIP (the display's scale in device pixels) past the end.
     const holdsDocument = (image, metrics) =>
       [
-        [image.width, metrics.dw, metrics.cw],
-        [image.height, metrics.dh, metrics.ch],
-      ].every(([pixels, scrollable, content]) => {
-        const css = scrollable > content + 1 ? scrollable : content;
-        return (
+        [image.width, metrics.ew],
+        [image.height, metrics.eh],
+      ].every(
+        ([pixels, css]) =>
           pixels >= (css - 0.5) * dpr - 1 &&
-          pixels <= (css + 0.5) * dpr + config.scaleFactor + 1
-        );
-      });
+          pixels <= (css + 0.5) * dpr + config.scaleFactor + 1,
+      );
     check(
       "the full-page screenshot is the whole document in device pixels",
       clipped || holdsDocument(full.png, page.metrics),
-      `${full.png.width}x${full.png.height} for a ${page.metrics.dw}x${page.metrics.dh} document at ${dpr}`,
+      `${full.png.width}x${full.png.height} for content reaching ${page.metrics.ew}x${page.metrics.eh} ` +
+        `at ${dpr} (scrollable ${page.metrics.dw}x${page.metrics.dh}, viewport ${page.metrics.cw}x${page.metrics.ch})`,
     );
     if (!clipped) {
       expectBox(
@@ -627,8 +676,8 @@ async function runConfig(config, { chrome, executable, fixture, extraArgs }) {
     snapshot = (await client.tool("browser_snapshot")).text;
     // Whether the browser's own hit test finds the target on top anywhere in its box -- the same
     // nine points the tool tries.
-    const reachable = async (id) =>
-      (
+    const reachable = async (id) => {
+      const answer = (
         await pinchPage.send("Runtime.evaluate", {
           expression: `(() => {
             const e = document.getElementById(${JSON.stringify(id)});
@@ -639,6 +688,13 @@ async function runConfig(config, { chrome, executable, fixture, extraArgs }) {
           returnByValue: true,
         })
       ).result.value;
+      assert.equal(
+        typeof answer,
+        "boolean",
+        `the browser's own hit test for ${id} answered ${JSON.stringify(answer)}`,
+      );
+      return answer;
+    };
     for (const id of [...inPinch, ...outOfPinch]) {
       const clicked = await client.tool("browser_click", {
         ref: refFor(snapshot, `Geometry target ${id}`),
@@ -714,7 +770,22 @@ async function main() {
     .filter((arg) => arg.startsWith("--chrome-arg="))
     .map((arg) => arg.slice("--chrome-arg=".length));
   const only = option("only");
-  const configs = plan().filter((config) => !only || config.name === only);
+  const planned = plan();
+  const coverage = planCoverage(planned);
+  // The plan's own claims, checked before a browser starts: every zoom step exercised, every
+  // display scale and pinch, and both scrollbar kinds on each side of 100% zoom.
+  assert.deepEqual(coverage.missing_zooms, [], "Zoom steps never exercised");
+  assert.deepEqual(
+    coverage.scales,
+    [...new Set(DISPLAYS.map((d) => d.scale))].sort((a, b) => a - b),
+  );
+  assert.deepEqual(
+    coverage.pinches,
+    [...PINCHES].sort((a, b) => a - b),
+  );
+  assert.deepEqual(coverage.scrollbars_at_100, [...SCROLLBARS].sort());
+  assert.deepEqual(coverage.scrollbars_when_zoomed, [...SCROLLBARS].sort());
+  const configs = planned.filter((config) => !only || config.name === only);
   assert.ok(configs.length > 0, `No configuration named ${only}`);
 
   const fixture = await startFixtureServer();
@@ -741,8 +812,13 @@ async function main() {
       results.push(result);
     }
   };
-  await Promise.all(Array.from({ length: parallel }, worker));
-  await fixture.close();
+  try {
+    await Promise.all(Array.from({ length: parallel }, worker));
+  } finally {
+    // Closed whatever happened, so a worker that threw cannot leave the fixture server holding
+    // the process open with the report unwritten.
+    await fixture.close();
+  }
 
   results.sort((a, b) => configs.indexOf(a.config) - configs.indexOf(b.config));
   const checkCount = results.reduce(
@@ -756,6 +832,7 @@ async function main() {
   const report = {
     ok: results.every((result) => result.ok),
     chrome,
+    coverage,
     configurations: results.length,
     configurations_passed: results.filter((result) => result.ok).length,
     checks: checkCount,

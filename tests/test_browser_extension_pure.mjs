@@ -71,6 +71,9 @@ const EXPORTED = [
   "documentHitPoint",
   "quadPoint",
   "quadCenter",
+  "scrollDistance",
+  "boundedMs",
+  "boundedCount",
   "CLICK_SAMPLES",
   "shotMatchesRender",
   "scrollAmountPx",
@@ -280,6 +283,7 @@ test("documentHitPoint converts visual-viewport coordinates through pinch and sc
 
 test("quadPoint samples inside axis-aligned and rotated boxes", () => {
   const box = [10, 20, 50, 20, 50, 60, 10, 60];
+  assert.deepEqual(crossRealm(w.quadCenter(box)), { x: 30, y: 40 });
   assert.deepEqual(
     crossRealm(w.quadPoint(box, 0.5, 0.5)),
     crossRealm(w.quadCenter(box)),
@@ -324,6 +328,68 @@ test("shotMatchesRender sees a pinch, not only a scroll or zoom", () => {
   assert.equal(w.shotMatchesRender(shot, { ...now, offsetY: 76 }), false);
   assert.equal(w.shotMatchesRender(shot, { ...now, dpr: 2.2 }), false);
   assert.equal(w.shotMatchesRender(shot, { ...now, ok: false }), false);
+});
+
+test("scrollDistance matches scrollers by name, and counts each once", () => {
+  const before = [
+    ["visual-viewport", 0, 0],
+    ["scroller-2:DIV#list", 0, 100],
+    ["page", 0, 500],
+  ];
+  // The page scroller moved 200; the inner one did not.
+  assert.deepEqual(
+    crossRealm(
+      w.scrollDistance(before, [
+        ["visual-viewport", 0, 0],
+        ["scroller-2:DIV#list", 0, 100],
+        ["page", 0, 700],
+      ]),
+    ),
+    { x: 0, y: 200 },
+  );
+  // The chain under the point changed: the inner scroller is gone and another is in its place.
+  // Only what can be matched counts; a stranger's offset is not somebody else's distance.
+  assert.deepEqual(
+    crossRealm(
+      w.scrollDistance(before, [
+        ["visual-viewport", 0, 0],
+        ["scroller-2:DIV#other", 0, 4000],
+        ["page", 0, 700],
+      ]),
+    ),
+    { x: 0, y: 200 },
+  );
+  // A page whose root is its own scroller appears in the chain AND as the page scroller; counting
+  // it twice would report double the distance the content actually moved.
+  assert.deepEqual(
+    crossRealm(
+      w.scrollDistance(
+        [
+          ["visual-viewport", 0, 0],
+          ["page", 0, 0],
+        ],
+        [
+          ["visual-viewport", 0, 0],
+          ["page", 0, 300],
+        ],
+      ),
+    ),
+    { x: 0, y: 300 },
+  );
+});
+
+test("boundedMs and boundedCount refuse what they cannot honour", () => {
+  assert.equal(w.boundedMs(undefined, 40, 5000, "dwell"), 40);
+  assert.equal(w.boundedMs(0, 40, 5000, "dwell"), 0); // a given 0 is not the default
+  assert.equal(w.boundedMs(250, 40, 5000, "dwell"), 250);
+  assert.throws(() => w.boundedMs("soon", 40, 5000, "dwell"), /dwell/);
+  assert.throws(() => w.boundedMs(-1, 40, 5000, "dwell"), /dwell/);
+  assert.throws(() => w.boundedMs(5001, 40, 5000, "dwell"), /dwell/);
+  assert.equal(w.boundedCount(undefined, 12, 2, 60, "steps"), 12);
+  assert.equal(w.boundedCount(2, 12, 2, 60, "steps"), 2);
+  assert.throws(() => w.boundedCount(1, 12, 2, 60, "steps"), /steps/);
+  assert.throws(() => w.boundedCount(2.5, 12, 2, 60, "steps"), /steps/);
+  assert.throws(() => w.boundedCount("lots", 12, 2, 60, "steps"), /steps/);
 });
 
 test("parseModifiers refuses an unknown modifier rather than dropping it", () => {

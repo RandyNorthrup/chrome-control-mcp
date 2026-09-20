@@ -25,6 +25,20 @@ export class McpClient {
     this.child.stderr.on("data", (chunk) => {
       this.stderr += chunk;
     });
+    // Without a listener, a spawn error (an executable that is not there) is an uncaught event
+    // that takes the whole run down where no try/catch can see it.
+    this.child.on("error", (error) => {
+      this.exited = true;
+      for (const pending of this.pending.values()) {
+        clearTimeout(pending.timer);
+        pending.reject(error);
+      }
+      this.pending.clear();
+    });
+    this.child.stdin.on("error", () => {
+      // A server that died mid-write: the exit handler below fails every pending request with
+      // its stderr, which says more than EPIPE does.
+    });
     const lines = readline.createInterface({ input: this.child.stdout });
     lines.on("line", (line) => {
       let response;
@@ -125,6 +139,15 @@ export class McpClient {
     }
     if (!this.exited) {
       this.child.kill();
+      await Promise.race([
+        new Promise((resolve) => this.child.once("exit", resolve)),
+        sleep(5000),
+      ]);
+    }
+    if (!this.exited) {
+      // A server that ignored both is killed outright: this runs in a suite's cleanup, and
+      // waiting on it for ever would hold up every configuration behind it.
+      this.child.kill("SIGKILL");
       await new Promise((resolve) => this.child.once("exit", resolve));
     }
   }
@@ -149,13 +172,21 @@ export function jsonContent(result) {
 }
 
 export function refFor(snapshot, accessibleName) {
-  const line = snapshot
+  const lines = snapshot
     .split(/\r?\n/)
-    .find(
+    .filter(
       (candidate) =>
         candidate.includes(`"${accessibleName}"`) &&
         candidate.includes("[ref="),
     );
+  if (lines.length > 1) {
+    // Two elements answer to this name: whichever came first would bind silently, and the test
+    // would be driving an element nobody chose.
+    throw new Error(
+      `"${accessibleName}" matches ${lines.length} elements in the snapshot; name one of them.`,
+    );
+  }
+  const line = lines[0];
   if (!line) {
     throw new Error(
       `No ref found for accessible name "${accessibleName}". Snapshot: ${snapshot.slice(0, 6000)}`,
