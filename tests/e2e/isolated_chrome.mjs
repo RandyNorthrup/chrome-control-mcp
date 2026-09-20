@@ -138,7 +138,14 @@ export async function prepareIsolatedChrome({
         browser.kill("SIGKILL");
       }
     }
-    await rm(root, { recursive: true, force: true });
+    // Chrome writes to its profile as it shuts down, and a removal that starts in the middle of
+    // that fails with ENOTEMPTY on Linux however long we waited for the process itself.
+    await rm(root, {
+      recursive: true,
+      force: true,
+      maxRetries: 20,
+      retryDelay: 100,
+    });
   };
   const launch = async () => {
     const record = path.join(runtime, "browser_bridge.json");
