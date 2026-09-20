@@ -235,6 +235,7 @@ function geometryPage(classicScrollbar) {
       document.getElementById('metrics').textContent = 'metrics' +
         ' dpr=' + window.devicePixelRatio + ' iw=' + window.innerWidth + ' ih=' + window.innerHeight +
         ' cw=' + document.documentElement.clientWidth +
+        ' ch=' + document.documentElement.clientHeight +
         ' vvs=' + vv.scale + ' vvl=' + vv.offsetLeft + ' vvt=' + vv.offsetTop +
         ' vvw=' + vv.width + ' vvh=' + vv.height +
         ' sx=' + window.scrollX + ' sy=' + window.scrollY +

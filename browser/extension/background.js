@@ -3984,21 +3984,22 @@ function scrollDirection(raw) {
 // fires. Polling instead would answer the question far slower than the scroll itself takes -- a
 // background tab answers this worker's timers and object calls in seconds, while the scroll it is
 // watching is over in a fifth of one.
-// Resolves when a scroll that started AFTER this was armed comes to rest. The scrollend alone is
-// not enough: scrolling the element into view moments earlier ends with one of its own, which
-// arrives late enough to be mistaken for the wheel's (measured: it answered in 1 ms, before the
-// wheel had moved anything). It clears its own listeners, and gives up on its own if the wheel
-// never scrolls anything, so a page is never left carrying them.
-const SCROLL_END_SCRIPT =
-  "new Promise(function(done){" +
-  "var moved=false;" +
-  "function onScroll(){moved=true;}" +
-  "function clear(){removeEventListener('scroll',onScroll,true);" +
-  "removeEventListener('scrollend',onEnd,true);}" +
-  "function onEnd(){if(!moved){return;}clear();done(true);}" +
-  "addEventListener('scroll',onScroll,true);" +
-  "addEventListener('scrollend',onEnd,true);" +
-  "setTimeout(function(){clear();done(false);},5000);})";
+// Resolves with the scroll offsets once a scroll comes to rest somewhere other than where it
+// started. The scrollend event alone is not enough: scrolling the element into view moments earlier
+// ends with one of its own, which arrives late enough to answer for the wheel's (measured: in 1 ms,
+// before the wheel had moved anything). Comparing against the offsets read before the wheel tells
+// them apart in the page, where no end can be missed between one listener and the next -- waiting
+// for the following end instead lost the real one and reported a finished scroll as unsettled. It
+// clears its own listener and gives up on its own, so a page is never left carrying it.
+const scrollEndScript = (x, y, before) =>
+  `new Promise(function(done){` +
+  `var read=${scrollOffsetsFn.toString()};` +
+  `var before=${JSON.stringify(JSON.stringify(before))};` +
+  `function clear(){removeEventListener('scrollend',onEnd,true);}` +
+  `function onEnd(){var now=read(${Number(x)}, ${Number(y)});` +
+  `if(JSON.stringify(now)===before){return;}clear();done(now);}` +
+  `addEventListener('scrollend',onEnd,true);` +
+  `setTimeout(function(){clear();done(null);},5000);})`;
 // How long to wait for that scrollend. A scroll that moves nothing -- an edge already reached,
 // nothing scrollable under the pointer -- never fires one, and that is the answer: it moved 0.
 const SCROLL_END_TIMEOUT_MS = 2000;
@@ -4027,15 +4028,15 @@ function scrollOffsetsFn(x, y) {
   return offsets;
 }
 
-// A promise for the page's next scrollend after a scroll of its own; false if none comes.
-function armScrollEnd(tabId) {
+// A promise for the offsets the page comes to rest at, away from `before`; null if it never does.
+function armScrollEnd(tabId, x, y, before) {
   return sendCdp(tabId, "Runtime.evaluate", {
-    expression: SCROLL_END_SCRIPT,
+    expression: scrollEndScript(x, y, before),
     awaitPromise: true,
     returnByValue: true,
   }).then(
-    (res) => Boolean(res && res.result && res.result.value),
-    () => false,
+    (res) => (res && res.result ? res.result.value : null),
+    () => null,
   );
 }
 
@@ -4089,46 +4090,29 @@ async function handleScroll(tabId, args) {
   await moveAgentCursor(tabId, point.x, point.y);
   // Armed before the wheel so the listener is in place when the scroll starts: the debugger
   // delivers commands in the order they are sent.
-  let ended = armScrollEnd(tabId);
+  const ended = armScrollEnd(tabId, point.x, point.y, before);
   await dispatchMouse(tabId, "mouseWheel", point.x, point.y, {
     deltaX: 0,
     deltaY,
   });
   const started = Date.now();
-  let after = before;
-  let settled = false;
-  // Scrolling the element into view moments earlier ends with a scrollend of its own, which can
-  // arrive late enough to answer for the wheel's (measured: in 1 ms, before the wheel had moved
-  // anything). An end that left the offsets where they were is one of those: wait for the next.
-  while (Date.now() - started < SCROLL_END_TIMEOUT_MS) {
-    const reached = await Promise.race([
-      ended,
-      pageDelay(tabId, SCROLL_END_TIMEOUT_MS - (Date.now() - started)).then(
-        () => false,
-        () => false,
-      ),
-    ]);
-    after = await scrollOffsets(tabId, point.x, point.y);
-    const moved = JSON.stringify(after) !== JSON.stringify(before);
-    if (reached && moved) {
-      settled = true;
-      break;
-    }
-    if (!reached) {
-      break; // nothing ended within the deadline
-    }
-    ended = armScrollEnd(tabId);
-  }
-  // A wheel that moved nothing -- an edge already reached, nothing scrollable under the pointer --
-  // has nothing to come to rest: that IS the answer, and scrolled says it.
-  if (!settled && JSON.stringify(after) === JSON.stringify(before)) {
-    settled = true;
-  }
+  const rested = await Promise.race([
+    ended,
+    pageDelay(tabId, SCROLL_END_TIMEOUT_MS).then(
+      () => null,
+      () => null,
+    ),
+  ]);
+  // Rested where the page said, or wherever it is now if no end came. A wheel that moved nothing --
+  // an edge already reached, nothing scrollable under the pointer -- has nothing to come to rest:
+  // that IS the answer, and scrolled says it.
+  const after = rested || (await scrollOffsets(tabId, point.x, point.y));
+  const moved = JSON.stringify(after) !== JSON.stringify(before);
   return {
     ok: true,
     deltaY,
     scrolled: scrollDistance(before, after),
-    settled,
+    settled: Boolean(rested) || !moved,
     waited_ms: Date.now() - started,
   };
 }
@@ -5645,6 +5629,19 @@ async function handleHttpAuth(tabId, args) {
 chrome.runtime.onInstalled.addListener(connect);
 chrome.runtime.onStartup.addListener(connect);
 chrome.action.onClicked.addListener(connect);
+
+// Ordinary browsing re-arms the bridge too. The 2 s timer below lives only as long as this
+// worker, and Chrome coalesces a background worker's timers into seconds, so a bridge that came up
+// after the browser did would otherwise wait on the alarm -- up to a minute of the user's time.
+// Every tab event is a moment the worker is awake anyway: a connect attempt then costs nothing and
+// is refused in microseconds while the port is already up.
+const reconnectOnActivity = () => {
+  if (!port) {
+    connect();
+  }
+};
+chrome.tabs.onUpdated.addListener(reconnectOnActivity);
+chrome.tabs.onActivated.addListener(reconnectOnActivity);
 
 // A standing alarm re-arms the bridge when nothing else does. The 2 s reconnect
 // timer above only lives as long as this service worker, and Chrome retires an

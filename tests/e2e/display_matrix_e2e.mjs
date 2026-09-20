@@ -440,19 +440,22 @@ async function runConfig(config, { chrome, executable, fixture, extraArgs }) {
     );
     measured.full_page = [full.png.width, full.png.height];
     const clipped = /clipped/i.test(full.text);
-    // The scrollable content the page reports -- which excludes the gutter a layout-taking
-    // scrollbar reserves, while documentElement's own box spans under it -- rounded to whole CSS
-    // pixels by scrollWidth/Height, and up to less than one DIP (the display's scale in device
-    // pixels) past its end, because Chrome clips in whole DIPs.
+    // What a full-page capture covers on an axis: the scrollable length where the content
+    // overflows, and the content box where it does not -- scrollWidth includes the gutter a
+    // classic scrollbar reserves even when nothing overflows sideways, and the capture does not.
+    // Both come in whole CSS pixels, and Chrome clips in whole DIPs, so the image may run up to
+    // one DIP (the display's scale in device pixels) past the end.
     const holdsDocument = (image, metrics) =>
       [
-        [image.width, metrics.dw],
-        [image.height, metrics.dh],
-      ].every(
-        ([pixels, css]) =>
+        [image.width, metrics.dw, metrics.cw],
+        [image.height, metrics.dh, metrics.ch],
+      ].every(([pixels, scrollable, content]) => {
+        const css = scrollable > content + 1 ? scrollable : content;
+        return (
           pixels >= (css - 0.5) * dpr - 1 &&
-          pixels <= (css + 0.5) * dpr + config.scaleFactor + 1,
-      );
+          pixels <= (css + 0.5) * dpr + config.scaleFactor + 1
+        );
+      });
     check(
       "the full-page screenshot is the whole document in device pixels",
       clipped || holdsDocument(full.png, page.metrics),

@@ -93,6 +93,7 @@ export async function prepareIsolatedChrome({
   const profile = path.join(root, "profile");
   const runtime = path.join(root, "run");
   await mkdir(runtime, { mode: 0o700 });
+  await mkdir(path.join(root, "installer-run"), { mode: 0o700 });
   await mkdir(path.join(profile, "Default"), { recursive: true });
   const env = {
     ...process.env,
@@ -102,7 +103,14 @@ export async function prepareIsolatedChrome({
       "NativeMessagingHosts",
     ),
   };
-  await installNativeHost(executable, env);
+  // The installer runs an MCP server of its own for one call, and a server publishes a bridge
+  // record: in this browser's runtime directory that record would make the suite's own server
+  // stand down (one bridge to a user, by design) and the browser would find a dead endpoint. It
+  // gets a runtime directory of its own, which nothing else ever looks in.
+  await installNativeHost(executable, {
+    ...env,
+    CHROME_CONTROL_MCP_RUNTIME_DIR: path.join(root, "installer-run"),
+  });
   if (zoomPercent !== 100) {
     // The default zoom a user picks in Settings > Appearance > Page zoom. "x" is the key Chrome
     // gives the profile's default storage partition (ChromeZoomLevelPrefs).
@@ -155,7 +163,12 @@ export async function prepareIsolatedChrome({
       "--no-default-browser-check",
       "--disable-search-engine-choice-screen",
       `--window-size=${windowSize[0]},${windowSize[1]}`,
-      `--force-device-scale-factor=${scaleFactor}`,
+      // Only when it differs from the display's own scale. A forced 1 alongside an emulated
+      // fractional override is what the GPU-less CI runner never answered a capture under, and a
+      // headless browser's display is 1x already.
+      ...(scaleFactor === 1
+        ? []
+        : [`--force-device-scale-factor=${scaleFactor}`]),
       "--headless=new",
       "--remote-debugging-port=0",
       // A CI image whose kernel forbids unprivileged user namespaces leaves Chrome with no usable
