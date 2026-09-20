@@ -57,8 +57,34 @@ QString randomHex64() {
                                   QLatin1Char('0'));
 }
 
+// The directory kBrowserBridgeRuntimeDirVariable names. Returns false when it
+// is not set. When it is set but unusable, *path is empty and *error says why:
+// it is used as given or not at all, because falling back to the shared
+// location would pair this process with whichever browser answers there. It
+// must be absolute -- Chrome starts the relay in a directory of its choosing.
+bool runtimeDirectoryOverride(QString *path, QString *error) {
+  const QString configured =
+      qEnvironmentVariable(kBrowserBridgeRuntimeDirVariable);
+  if (configured.isEmpty()) {
+    return false;
+  }
+  if (QDir::isRelativePath(configured)) {
+    path->clear();
+    setError(error, QStringLiteral("%1 must be an absolute path, not \"%2\".")
+                        .arg(QLatin1String(kBrowserBridgeRuntimeDirVariable),
+                             configured));
+    return true;
+  }
+  *path = QDir::cleanPath(configured);
+  return true;
+}
+
 #ifndef Q_OS_WIN
-QString bridgeRuntimeDirectory() {
+QString bridgeRuntimeDirectory(QString *error) {
+  QString configured;
+  if (runtimeDirectoryOverride(&configured, error)) {
+    return configured;
+  }
   const QString suffix = QStringLiteral("chrome-control-mcp-%1").arg(geteuid());
   const QString base =
       QStandardPaths::writableLocation(QStandardPaths::RuntimeLocation);
@@ -143,8 +169,8 @@ QString browserBridgePipeName(QString *error) {
       .arg(session)
       .arg(randomHex64());
 #else
-  const QString directory = bridgeRuntimeDirectory();
-  if (!ensurePrivateDirectory(directory, error)) {
+  const QString directory = bridgeRuntimeDirectory(error);
+  if (directory.isEmpty() || !ensurePrivateDirectory(directory, error)) {
     return {};
   }
   return QDir(directory).filePath(
@@ -156,8 +182,15 @@ QString generateBridgeToken() {
   return randomHex64() + randomHex64(); // 128-bit
 }
 
-QString browserBridgeRendezvousPath() {
+QString browserBridgeRendezvousPath(QString *error) {
 #ifdef Q_OS_WIN
+  QString configured;
+  if (runtimeDirectoryOverride(&configured, error)) {
+    return configured.isEmpty()
+               ? QString()
+               : QDir(configured)
+                     .filePath(QStringLiteral("browser_bridge.json"));
+  }
   QString base = qEnvironmentVariable("LOCALAPPDATA");
   if (base.isEmpty()) {
     base =
@@ -166,8 +199,10 @@ QString browserBridgeRendezvousPath() {
   return QDir(base).filePath(
       QStringLiteral("ChromeControlMCP/browser_bridge.json"));
 #else
-  return QDir(bridgeRuntimeDirectory())
-      .filePath(QStringLiteral("browser_bridge.json"));
+  const QString directory = bridgeRuntimeDirectory(error);
+  return directory.isEmpty()
+             ? QString()
+             : QDir(directory).filePath(QStringLiteral("browser_bridge.json"));
 #endif
 }
 

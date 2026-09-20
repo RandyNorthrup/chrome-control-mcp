@@ -925,14 +925,20 @@ void appendActionTools(QJsonArray &tools) {
   tools.append(toolEntry(
       QStringLiteral("browser_press_key"),
       QStringLiteral(
-          "Press a key or chord, e.g. \"Enter\", \"Escape\", \"Control+A\"."),
+          "Press a key or chord, e.g. \"Enter\", \"Escape\", \"Shift+Tab\". "
+          "A chord means what it means on the browser's platform: select all "
+          "is \"Meta+A\" on macOS and \"Control+A\" on Windows and Linux."),
       toolSchema(
           QJsonObject{{QStringLiteral("keys"), stringProperty(QStringLiteral(
                                                    "Key or chord to press."))}},
           QJsonArray{QStringLiteral("keys")})));
   tools.append(toolEntry(
       QStringLiteral("browser_scroll"),
-      QStringLiteral("Scroll the page, or the element with [ref] if given."),
+      QStringLiteral(
+          "Scroll the page, or the element with [ref] if given (brought into "
+          "view first if needed). Replies once the scroll has come to rest, "
+          "with how far that scroll moved the content (scrolled; 0 at an "
+          "edge)."),
       toolSchema(
           QJsonObject{{QStringLiteral("ref"),
                        stringProperty(QStringLiteral(
@@ -1013,7 +1019,8 @@ void appendPointerTools(QJsonArray &tools) {
           "sortable/kanban lists, splitters, canvas, media scrubbers). Give "
           "the "
           "source as [ref] or from_x/from_y and the target as to_ref or "
-          "to_x/to_y. "
+          "to_x/to_y. x/y are pixels of the most recent browser_screenshot, "
+          "as for browser_click_at. "
           "hold_ms pauses after press for long-press pickup."),
       toolSchema(
           QJsonObject{
@@ -1025,16 +1032,20 @@ void appendPointerTools(QJsonArray &tools) {
                    "Target element ref (optional if to_x/to_y)."))},
               {QStringLiteral("from_x"),
                typedProperty(QStringLiteral("integer"),
-                             QStringLiteral("Source X (optional)."))},
+                             QStringLiteral(
+                                 "Source X in screenshot pixels (optional)."))},
               {QStringLiteral("from_y"),
                typedProperty(QStringLiteral("integer"),
-                             QStringLiteral("Source Y (optional)."))},
+                             QStringLiteral(
+                                 "Source Y in screenshot pixels (optional)."))},
               {QStringLiteral("to_x"),
                typedProperty(QStringLiteral("integer"),
-                             QStringLiteral("Target X (optional)."))},
+                             QStringLiteral(
+                                 "Target X in screenshot pixels (optional)."))},
               {QStringLiteral("to_y"),
                typedProperty(QStringLiteral("integer"),
-                             QStringLiteral("Target Y (optional)."))},
+                             QStringLiteral(
+                                 "Target Y in screenshot pixels (optional)."))},
               {QStringLiteral("steps"),
                typedProperty(QStringLiteral("integer"),
                              QStringLiteral("Interpolated moves (optional)."))},
@@ -1132,9 +1143,10 @@ void appendTabTools(QJsonArray &tools) {
   tools.append(toolEntry(
       QStringLiteral("browser_select_tab"),
       QStringLiteral(
-          "Make the tab at the given index the session's tab (active within "
-          "its window; the window is never raised, so the user keeps OS "
-          "focus). Call browser_tabs first: "
+          "Make the tab at the given index the session's tab. The tab is NOT "
+          "brought to the front and its window is never raised: the browser "
+          "goes on showing whichever tab its user chose, and this session "
+          "drives its own in the background. Call browser_tabs first: "
           "an index is only meaningful against a listing, and the call is "
           "refused if the tabs moved since that listing so the index cannot "
           "land on a tab you did not choose."),
@@ -1147,8 +1159,11 @@ void appendTabTools(QJsonArray &tools) {
           QJsonArray{QStringLiteral("index")})));
   tools.append(toolEntry(
       QStringLiteral("browser_new_tab"),
-      QStringLiteral("Open a new tab in the session's window, optionally "
-                     "navigating to a URL. It becomes the session's tab."),
+      QStringLiteral(
+          "Open a new tab in the session's window, optionally navigating to a "
+          "URL. It opens in the BACKGROUND -- the browser goes on showing "
+          "whichever tab its user chose -- and becomes the session's tab, "
+          "marked in the tab strip while this session drives it."),
       toolSchema(
           QJsonObject{{QStringLiteral("url"), stringProperty(QStringLiteral(
                                                   "URL to open (optional)."))}},

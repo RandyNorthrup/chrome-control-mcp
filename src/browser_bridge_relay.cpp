@@ -365,8 +365,10 @@ int runBrowserRelay() {
   QString token;
   int protocol = 0;
   QString error;
-  const HANDLE pipe =
-      relayConnect(browserBridgeRendezvousPath(), &token, &protocol, &error);
+  const QString rendezvous = browserBridgeRendezvousPath(&error);
+  const HANDLE pipe = rendezvous.isEmpty()
+                          ? INVALID_HANDLE_VALUE
+                          : relayConnect(rendezvous, &token, &protocol, &error);
   if (pipe == INVALID_HANDLE_VALUE ||
       !relayHandshake(pipe, token, protocol, &error)) {
     // Tell the extension the bridge is down so it can surface it, then exit

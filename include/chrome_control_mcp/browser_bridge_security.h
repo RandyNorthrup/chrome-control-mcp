@@ -60,8 +60,17 @@ struct RendezvousRecord {
 /// not a security boundary -- the DACL and peer code-identity checks are.
 [[nodiscard]] QString generateBridgeToken();
 
-/// Absolute path of the rendezvous record file under the user's local app data.
-[[nodiscard]] QString browserBridgeRendezvousPath();
+/// Names another directory for the bridge's rendezvous record (and, off
+/// Windows, its socket). A server and the relay of a browser started with the
+/// same value pair with each other and with nothing else -- a dedicated browser
+/// beside the user's own, each with its own bridge.
+inline constexpr char kBrowserBridgeRuntimeDirVariable[] =
+    "CHROME_CONTROL_MCP_RUNTIME_DIR";
+
+/// Absolute path of the rendezvous record file: in the directory
+/// kBrowserBridgeRuntimeDirVariable names when it is set, else under the
+/// user's local app data. Empty on failure with @p error set.
+[[nodiscard]] QString browserBridgeRendezvousPath(QString *error = nullptr);
 
 /// Write / read the rendezvous record as JSON at @p path. The file-I/O core is
 /// split out (path-parameterized) so it is unit-testable without touching the

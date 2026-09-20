@@ -106,12 +106,16 @@ else()
     )
 endif()
 
-add_custom_command(TARGET chrome_control_mcp POST_BUILD
+# The unpacked extension is staged beside the executable on EVERY build, not as a post-build
+# step of the executable: that step runs only when the executable relinks, so a change to the
+# extension alone built "successfully" and left Chrome loading the previous copy.
+add_custom_target(stage_browser_extension ALL
     COMMAND ${CMAKE_COMMAND} -E copy_directory
             "${CMAKE_CURRENT_SOURCE_DIR}/browser/extension"
             "$<TARGET_FILE_DIR:chrome_control_mcp>/extension"
-    COMMENT "Staging unpacked browser extension and Qt runtime"
+    COMMENT "Staging unpacked browser extension"
 )
+add_dependencies(stage_browser_extension chrome_control_mcp)
 if(WIN32)
     add_custom_command(TARGET chrome_control_mcp POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy_if_different

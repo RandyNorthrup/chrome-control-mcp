@@ -373,8 +373,11 @@ int runBrowserRelay() {
   QString token;
   int protocol = 0;
   QString error;
+  const QString rendezvous = browserBridgeRendezvousPath(&error);
   const NativeIpcHandle socketFd =
-      relayConnect(browserBridgeRendezvousPath(), &token, &protocol, &error);
+      rendezvous.isEmpty()
+          ? kInvalidNativeIpcHandle
+          : relayConnect(rendezvous, &token, &protocol, &error);
   if (!nativeIpcHandleIsValid(socketFd) ||
       !relayHandshake(socketFd, token, protocol, &error)) {
     (void)writeStdoutFrame(QJsonObject{

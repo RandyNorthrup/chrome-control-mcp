@@ -24,20 +24,21 @@
 ![Chrome Control MCP driving UI Test Automation Playground with its visible pink control frame, AI CONTROL badge, and agent cursor](docs/assets/chrome-control-overlay-playground.png)
 
 Active automation stays visible: pink frame, **AI CONTROL** badge, and pulsing agent cursor show
-when an assistant controls Chrome. Model-facing screenshots hide this overlay by default;
-documentation captures can opt in.
+when an assistant controls Chrome, and the tab under control sits in a pink **AI CONTROL** tab
+group, so it is identifiable in the tab strip without opening it. Model-facing screenshots hide the
+page overlay by default; documentation captures can opt in.
 
 ## Why this project
 
-| Capability          | Included                                                                     |
-| ------------------- | ---------------------------------------------------------------------------- |
-| Background control  | Session pins its own tab; never raises windows or takes your OS focus        |
-| Semantic control    | Accessibility-tree snapshots with stable element refs                        |
-| Real input          | Click, type, keys, hover, drag, select, scroll, dialogs, and media           |
-| Visual reasoning    | Viewport/full-page PNG capture and guarded coordinate clicks                 |
-| Browser management  | Navigation, tabs, tab groups, windows, emulation, and waits                  |
-| Browser state       | Cookies, local/session storage, permissions, downloads, print, and HTTP auth |
-| Extension lifecycle | Prepare, inspect, and unregister current-user native-host integration        |
+| Capability          | Included                                                                                                         |
+| ------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| Works beside you    | Session drives its own visible tab; never changes which tab is in front, raises a window, or takes your OS focus |
+| Semantic control    | Accessibility-tree snapshots with stable element refs                                                            |
+| Real input          | Click, type, keys, hover, drag, select, scroll, dialogs, and media                                               |
+| Visual reasoning    | Viewport/full-page PNG capture and guarded coordinate clicks                                                     |
+| Browser management  | Navigation, tabs, tab groups, windows, emulation, and waits                                                      |
+| Browser state       | Cookies, local/session storage, permissions, downloads, print, and HTTP auth                                     |
+| Extension lifecycle | Prepare, inspect, and unregister current-user native-host integration                                            |
 
 All **43 MCP tools** use strict JSON Schemas. Long-lived MCP process preserves session and
 element-ref state while Chrome remains an ordinary user-controlled browser.
@@ -134,7 +135,7 @@ flowchart LR
     A[AI assistant] -->|MCP over stdio| B[chrome_control_mcp]
     B -->|Windows named pipe<br/>Linux/macOS Unix socket| C[Native-host relay]
     C -->|Chrome native messaging| D[Unpacked MV3 extension]
-    D -->|Chrome DevTools Protocol| E[Active Chrome tab]
+    D -->|Chrome DevTools Protocol| E[The session's own tab]
 ```
 
 One executable serves MCP server and native-host relay roles. Browser control belongs in MCP

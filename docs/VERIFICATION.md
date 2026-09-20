@@ -151,10 +151,61 @@ node tests/e2e/user_interference_e2e.mjs build/chrome_control_mcp
   `device_scale_factor` refused 1.25×; restoring last-focused-window targeting made interference
   E2E read user's page. Each failed as intended and passed after restoration.
 
+## macOS live Chrome
+
+Evidence recorded 2026-09-19 on macOS 15.7.4 (Intel), Chrome 153.0.8010.48, Chrome for Testing
+153.0.8010.52, Qt 6.11.1, Node 26.5.0, CMake 4.4.0.
+
+```shell
+node tests/e2e/full_browser_e2e.mjs build/chrome_control_mcp            # the user's own Chrome
+node tests/e2e/isolated_run.mjs --chrome=<CfT> tests/e2e/user_interference_e2e.mjs
+node tests/e2e/display_matrix_e2e.mjs --chrome=<CfT> --parallel=3
+```
+
+- Full E2E on the user's own Chrome, every call in a background tab: **43/43 tools, 151 reversible
+  live cases**, 12.5 s of tool time, the extension attaching in 0.8 s. The user's tab was asserted to still be the one in front after
+  every single call, and the machine's front application (their editor) was unchanged before and
+  after.
+- User interference, in a dedicated browser: **10/10 checks**. A tab and then a window opened as the
+  user; snapshots, typing, screenshots, scrolling, and clicking stayed on the session's tab, the
+  user's tab stayed in front throughout, and the session opened no windows of its own.
+- Display matrix, in dedicated browsers: **35/35 configurations, 3335/3335 checks** across display
+  scales 1×, 1.25×, 1.5×, 1.75×, 2×, 2.5×, 3×; windows from 390×844 to 3840×2160; every one of
+  Chrome's zoom steps from 25% to 500%; trackpad pinch at 1.5×, 2×, and 3×; and both a scrollbar
+  drawn over the page and one that takes layout space. Every coordinate is proven by where its click
+  landed on the fixture, and every screenshot by the pixels of its solid-colour targets measured
+  against the page's own `getBoundingClientRect`. Eight configurations end in a refusal instead of a
+  click -- a target flush with the page's edge under a pinch at 67% zoom or less, where the pinched
+  page's scrollbar covers all of it -- and each refusal is accepted only because the browser's own
+  hit test agrees no point of the target is on top.
+
+### What a background tab costs, measured
+
+Chrome answers a tab nobody is looking at differently, and the numbers drove several fixes above.
+Per call, on the user's own Chrome, before and after:
+
+| Call                                               | Before    | After    |
+| -------------------------------------------------- | --------- | -------- |
+| `browser_drag` (12 interpolated moves)             | 8,883 ms  | 103 ms   |
+| `browser_scroll` 300 px                            | 10,133 ms | 52 ms    |
+| `browser_hover` with `duration_ms: 100`            | 6,255 ms  | 155 ms   |
+| `browser_drag` with `hold_ms: 150`                 | 10,221 ms | 206 ms   |
+| `browser_wait_for`, 1.5 s timeout, never satisfied | 10,273 ms | 1,553 ms |
+| `browser_window` `new`                             | 10,904 ms | 286 ms   |
+
+Two causes, both measured rather than assumed. Chrome coalesces a background extension service
+worker's timers into seconds, while the same page's own timers keep time to the millisecond there
+(50 ms → 86, 100 → 101, 250 → 281, 1000 → 1003): every wait about the page is now timed by the
+page. And Chrome answers _continuous_ input -- mouse moves, wheels -- at a frame, which a hidden tab
+is drawn at rarely: the interpolated moves of a drag are now sent in order and awaited together, as
+Chrome coalesces a real mouse anyway. Reads, snapshots, screenshots, clicks, and keystrokes were
+never affected (26-129 ms).
+
 ## Claim boundary
 
 Source build, automated suites, static analysis, sanitizers, public identity, isolated native-host
-lifecycle, stdio MCP, and Windows and Linux (Wayland) live Chrome are verified. Linux transport and
-installer have real local runtime proof. macOS has source/CI compile-test coverage; live Chrome proof on physical macOS
-remains planned. This is strong software evidence, not a claim about every website, Chrome release,
-desktop environment, or machine configuration.
+lifecycle, stdio MCP, and Windows, Linux (Wayland), and macOS live Chrome are verified. Linux and
+macOS transport and installer have real local runtime proof. The display matrix runs on dedicated
+browsers, where a background tab still reports itself visible; hidden-tab behaviour is proven on
+physical macOS above. This is strong software evidence, not a claim about every website, Chrome
+release, desktop environment, or machine configuration.

@@ -2,14 +2,14 @@
 // SPDX-License-Identifier: MIT
 
 import assert from "node:assert/strict";
-import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
 import { mkdir, readFile, stat, unlink, writeFile } from "node:fs/promises";
 import path from "node:path";
-import readline from "node:readline";
 import { fileURLToPath } from "node:url";
 
+import { waitForExtensionAttached } from "./extension_attach.mjs";
 import { startFixtureServer } from "./fixture_server.mjs";
+import { jsonContent, McpClient, refFor, textContent } from "./mcp_client.mjs";
 
 const EXPECTED_TOOLS = [
   "browser_extension_install",
@@ -59,141 +59,6 @@ const EXPECTED_TOOLS = [
 
 const sleep = (milliseconds) =>
   new Promise((resolve) => setTimeout(resolve, milliseconds));
-
-class McpClient {
-  constructor(executable) {
-    this.child = spawn(executable, [], {
-      stdio: ["pipe", "pipe", "pipe"],
-      windowsHide: true,
-    });
-    this.pending = new Map();
-    this.nextId = 1;
-    this.stderr = "";
-    this.exited = false;
-    this.child.stderr.setEncoding("utf8");
-    this.child.stderr.on("data", (chunk) => {
-      this.stderr += chunk;
-    });
-    const lines = readline.createInterface({ input: this.child.stdout });
-    lines.on("line", (line) => {
-      let response;
-      try {
-        response = JSON.parse(line);
-      } catch (error) {
-        for (const pending of this.pending.values()) {
-          pending.reject(
-            new Error(
-              `Invalid MCP JSON: ${error.message}: ${line.slice(0, 500)}`,
-            ),
-          );
-        }
-        this.pending.clear();
-        return;
-      }
-      const pending = this.pending.get(response.id);
-      if (pending) {
-        clearTimeout(pending.timer);
-        this.pending.delete(response.id);
-        pending.resolve(response);
-      }
-    });
-    this.child.on("exit", (code, signal) => {
-      this.exited = true;
-      const error = new Error(
-        `MCP exited code=${code} signal=${signal}; stderr=${this.stderr}`,
-      );
-      for (const pending of this.pending.values()) {
-        clearTimeout(pending.timer);
-        pending.reject(error);
-      }
-      this.pending.clear();
-    });
-  }
-
-  request(method, params = {}, timeoutMs = 45000) {
-    if (this.exited) {
-      return Promise.reject(new Error(`MCP already exited: ${this.stderr}`));
-    }
-    const id = this.nextId++;
-    return new Promise((resolve, reject) => {
-      const timer = setTimeout(() => {
-        this.pending.delete(id);
-        reject(
-          new Error(`MCP request timed out after ${timeoutMs}ms: ${method}`),
-        );
-      }, timeoutMs);
-      this.pending.set(id, { resolve, reject, timer });
-      this.child.stdin.write(
-        `${JSON.stringify({ jsonrpc: "2.0", id, method, params })}\n`,
-      );
-    }).then((response) => {
-      if (response.error) {
-        throw new Error(
-          `MCP ${method} error ${response.error.code}: ${response.error.message}`,
-        );
-      }
-      return response.result;
-    });
-  }
-
-  notify(method, params = {}) {
-    this.child.stdin.write(
-      `${JSON.stringify({ jsonrpc: "2.0", method, params })}\n`,
-    );
-  }
-
-  async close() {
-    if (!this.exited) {
-      this.child.stdin.end();
-      await Promise.race([
-        new Promise((resolve) => this.child.once("exit", resolve)),
-        sleep(5000),
-      ]);
-    }
-    if (!this.exited) {
-      this.child.kill();
-      await new Promise((resolve) => this.child.once("exit", resolve));
-    }
-  }
-}
-
-function textContent(result) {
-  const block = Array.isArray(result.content)
-    ? result.content.find((item) => item && item.type === "text")
-    : null;
-  return block && typeof block.text === "string" ? block.text : "";
-}
-
-function jsonContent(result) {
-  const text = textContent(result);
-  try {
-    return JSON.parse(text);
-  } catch {
-    throw new Error(
-      `Expected JSON tool content, received: ${text.slice(0, 800)}`,
-    );
-  }
-}
-
-function refFor(snapshot, accessibleName) {
-  const line = snapshot
-    .split(/\r?\n/)
-    .find(
-      (candidate) =>
-        candidate.includes(`"${accessibleName}"`) &&
-        candidate.includes("[ref="),
-    );
-  if (!line) {
-    throw new Error(
-      `No ref found for accessible name "${accessibleName}". Snapshot: ${snapshot.slice(0, 6000)}`,
-    );
-  }
-  const match = line.match(/\[ref=(e\d+)\]/);
-  if (!match) {
-    throw new Error(`Malformed ref line for "${accessibleName}": ${line}`);
-  }
-  return match[1];
-}
 
 function assertIncludes(value, expected, message) {
   assert.ok(
@@ -248,7 +113,37 @@ async function main() {
   let createdWindowId = null;
   let cookieName = null;
   let failure = null;
+  let attachMilliseconds = null;
+  let fixtureTabsClosed = false;
+  // The session starts in the user's window, moves to the one it creates, and is sent back.
+  let sessionIsInUsersWindow = true;
   const platformNotes = [];
+
+  // The tab the user had in front when the run began. The session works in tabs it opened in the
+  // background; after every call the user's tab must still be the one in front of its window.
+  const userTabInFront = async (label) => {
+    const listing = jsonContent(
+      await client.request("tools/call", {
+        name: "browser_tabs",
+        arguments: {},
+      }),
+    );
+    const userTab = listing.tabs.find((tab) => tab.id === originalActiveTabId);
+    if (!userTab) {
+      // browser_tabs lists the SESSION's window. While the session is working in a window of its
+      // own, the user's tab is simply not in this listing; anywhere else, it is gone.
+      if (sessionIsInUsersWindow) {
+        throw new Error(`${label} closed the user's tab`);
+      }
+      return;
+    }
+    if (!userTab.active) {
+      const front = listing.tabs.find((tab) => tab.active);
+      throw new Error(
+        `${label} changed the user's tab: ${front ? front.url : "no tab"} is in front`,
+      );
+    }
+  };
 
   const runTool = async (name, args, label = name, timeoutMs = 45000) => {
     const started = Date.now();
@@ -260,6 +155,11 @@ async function main() {
     const text = textContent(result);
     if (result.isError) {
       throw new Error(`${label} failed: ${text}`);
+    }
+    // browser_dialog arms a response for the NEXT command alone; a listing here would be that
+    // command and spend the arm. It never touches a tab, and the next call's check follows.
+    if (originalActiveTabId !== null && name !== "browser_dialog") {
+      await userTabInFront(label);
     }
     seen.add(name);
     cases.push({
@@ -276,6 +176,8 @@ async function main() {
     textContent(await runTool("browser_snapshot", {}, label));
   const tabs = async (label) =>
     jsonContent(await runTool("browser_tabs", {}, label));
+  // Closes every fixture tab and answers whether any is left, so the report states what happened
+  // rather than a constant.
   const closeFixtureTabs = async () => {
     for (let attempt = 0; attempt < 12; attempt += 1) {
       const listing = jsonContent(
@@ -296,6 +198,13 @@ async function main() {
         arguments: { index: target.index },
       });
     }
+    const left = jsonContent(
+      await client.request("tools/call", {
+        name: "browser_tabs",
+        arguments: {},
+      }),
+    ).tabs.filter((tab) => String(tab.url || "").startsWith(fixture.origin));
+    return left.length === 0;
   };
 
   try {
@@ -314,8 +223,13 @@ async function main() {
       [...EXPECTED_TOOLS].sort(),
       "Live tool catalog drifted",
     );
-    assert.equal(new Set(names).size, 43);
-    await sleep(3000);
+    attachMilliseconds = await waitForExtensionAttached(async (name, args) => {
+      const result = await client.request("tools/call", {
+        name,
+        arguments: args,
+      });
+      return { isError: Boolean(result.isError), text: textContent(result) };
+    });
 
     const extensionStatus = jsonContent(
       await runTool(
@@ -360,6 +274,13 @@ async function main() {
         .filter((window) => window.focused)
         .map((window) => window.window_id);
     let baselineOsFocus = osFocus(baselineWindows);
+    if (baselineOsFocus.length === 0) {
+      // Every later comparison is [] against [], which no focus change could fail. Recorded, so
+      // the report does not read as proof that focus stayed put.
+      platformNotes.push(
+        "no window reported OS focus: the focus checks compared nothing",
+      );
+    }
     // Focus changes land asynchronously (a compositor grants them a frame or two later), so let
     // them settle before reading: an immediate read would pass a steal that is still in flight.
     const assertOsFocusUnchanged = async (label) => {
@@ -446,9 +367,11 @@ async function main() {
       await runTool("browser_get_value", { ref: inputRef }, "read typed value"),
     );
     assert.equal(value.value, "first value");
+    // Select All is Command+A on macOS; Control+A there moves to the start of the
+    // paragraph, exactly as it does for a person typing.
     await runTool(
       "browser_press_key",
-      { keys: "Control+A" },
+      { keys: process.platform === "darwin" ? "Meta+A" : "Control+A" },
       "select input text with keyboard",
     );
     await runTool(
@@ -557,10 +480,59 @@ async function main() {
     );
     assert.equal(media.volume, 0.4);
 
+    const nested = jsonContent(
+      await runTool(
+        "browser_scroll",
+        { ref: scrollRegionRef, direction: "down", amount: 180 },
+        "scroll nested region",
+      ),
+    );
+    assert.equal(nested.settled, true, "The nested scroll never came to rest");
+    assert.ok(
+      nested.scrolled.y > 0,
+      `The nested region did not scroll: ${JSON.stringify(nested)}`,
+    );
+    // The reply says the page is already where it says it is -- measured on the page, not taken
+    // from the reply: an element's box must have moved by exactly what the scroll reported.
+    // Revealed first, so the scroll's own bringing-into-view does not move the page as well.
+    await runTool(
+      "browser_reveal",
+      { ref: pageTwoRef },
+      "reveal the page-scroll anchor",
+    );
+    const beforeScroll = jsonContent(
+      await runTool("browser_box", { ref: hoverRef }, "box before page scroll"),
+    );
+    // Over an element outside the nested scroller: a wheel latches onto the scroller under it, and
+    // the one scrolled a moment ago is at its end.
+    const pageScroll = jsonContent(
+      await runTool(
+        "browser_scroll",
+        { ref: pageTwoRef, direction: "down", amount: 200 },
+        "scroll the page",
+      ),
+    );
+    assert.ok(
+      pageScroll.scrolled.y > 0,
+      `The page did not scroll: ${JSON.stringify(pageScroll)}`,
+    );
+    const afterScroll = jsonContent(
+      await runTool("browser_box", { ref: hoverRef }, "box after page scroll"),
+    );
+    assert.equal(
+      pageScroll.settled,
+      true,
+      "The page scroll never came to rest",
+    );
+    assert.ok(
+      Math.abs(beforeScroll.y - afterScroll.y - pageScroll.scrolled.y) <= 1,
+      `Scroll reported ${JSON.stringify(pageScroll.scrolled)} but the page moved ` +
+        `${beforeScroll.y - afterScroll.y}px`,
+    );
     await runTool(
       "browser_scroll",
-      { ref: scrollRegionRef, direction: "down", amount: 180 },
-      "scroll nested region",
+      { direction: "up", amount: 100000 },
+      "scroll back to the top",
     );
     const revealed = jsonContent(
       await runTool(
@@ -1094,6 +1066,9 @@ async function main() {
         (window) => window.window_id === originalWindowId,
       ),
     );
+    // The session lands in the window this creates, so the user's tab leaves the listing from
+    // here until it is sent back.
+    sessionIsInUsersWindow = false;
     const newWindow = jsonContent(
       await runTool(
         "browser_window",
@@ -1115,6 +1090,14 @@ async function main() {
     // (Hyprland focuses every newly mapped window). The tool must say so rather than take focus
     // silently; on Windows, macOS, X11, and focus-stealing-prevention compositors it never does.
     if (newWindow.took_os_focus) {
+      // Checked against the browser's own listing rather than taken on the tool's word: a tool
+      // that stole focus could otherwise excuse itself from every check below by saying so.
+      assert.ok(
+        windowsAfterCreate.windows.some(
+          (window) => window.window_id === createdWindowId && window.focused,
+        ),
+        "The tool reported took_os_focus for a window the browser does not list as focused",
+      );
       process.stderr.write(
         "NOTE compositor focused the new window despite focused:false (reported by the tool)\n",
       );
@@ -1132,6 +1115,10 @@ async function main() {
       ),
     );
     assert.equal(retargeted.session_window, true);
+    sessionIsInUsersWindow = true;
+    // Back in the user's window, their tab must be there and in front: the check above stood down
+    // while the session was away, so this is where that gap is closed.
+    await userTabInFront("the session returning to the user's window");
     const retargetedTabs = await tabs("list tabs after window retarget");
     assert.ok(
       retargetedTabs.tabs.some((tab) => tab.id === originalActiveTabId),
@@ -1170,18 +1157,13 @@ async function main() {
     );
     assert.equal(finalExtensionStatus.state, "prepared");
 
-    await closeFixtureTabs();
-    const finalTabs = await tabs("list tabs for original-tab restore");
+    fixtureTabsClosed = await closeFixtureTabs();
+    const finalTabs = await tabs("list tabs after the run");
     const original = finalTabs.tabs.find(
       (tab) => tab.id === originalActiveTabId,
     );
-    if (original && !original.active) {
-      await runTool(
-        "browser_select_tab",
-        { index: original.index },
-        "restore original active tab",
-      );
-    }
+    assert.ok(original, "The user's tab is gone");
+    assert.equal(original.active, true, "The user's tab is not in front");
 
     const missing = EXPECTED_TOOLS.filter((name) => !seen.has(name));
     assert.deepEqual(
@@ -1223,26 +1205,7 @@ async function main() {
           }
         }
         try {
-          await closeFixtureTabs();
-        } catch (cleanupError) {
-          failure ||= cleanupError;
-        }
-        try {
-          const listing = jsonContent(
-            await client.request("tools/call", {
-              name: "browser_tabs",
-              arguments: {},
-            }),
-          );
-          const original = listing.tabs.find(
-            (tab) => tab.id === originalActiveTabId,
-          );
-          if (original && !original.active) {
-            await client.request("tools/call", {
-              name: "browser_select_tab",
-              arguments: { index: original.index },
-            });
-          }
+          fixtureTabsClosed = await closeFixtureTabs();
         } catch (cleanupError) {
           failure ||= cleanupError;
         }
@@ -1282,8 +1245,9 @@ async function main() {
     case_count: cases.length,
     cases,
     generated_files_cleaned: [...generatedFiles],
-    chrome_state_restored: true,
+    chrome_state_restored: fixtureTabsClosed,
     platform_notes: platformNotes,
+    extension_attach_milliseconds: attachMilliseconds,
     error: failure ? String(failure.stack || failure) : null,
   };
   process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);

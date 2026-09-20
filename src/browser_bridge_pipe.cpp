@@ -307,13 +307,19 @@ BrowserBridgePipeServer::BrowserBridgePipeServer()
 BrowserBridgePipeServer::BrowserBridgePipeServer(Options options)
     : options_(std::move(options)) {
   rendezvous_path_ = options_.rendezvous_path.isEmpty()
-                         ? browserBridgeRendezvousPath()
+                         ? browserBridgeRendezvousPath(&rendezvous_error_)
                          : options_.rendezvous_path;
 }
 
 BrowserBridgePipeServer::~BrowserBridgePipeServer() { stop(); }
 
 bool BrowserBridgePipeServer::createPipeResources(QString *error) {
+  if (rendezvous_path_.isEmpty()) {
+    if (error != nullptr) {
+      *error = rendezvous_error_;
+    }
+    return false;
+  }
   // Stand down if a live server instance already owns the browser bridge, so a
   // concurrent short-lived process cannot clobber the shared rendezvous record
   // the persistent server (and thus the extension relay) depends on.
