@@ -6,6 +6,13 @@ All notable changes are documented here. Project follows [Semantic Versioning](h
 
 Nothing yet.
 
+## [1.1.2] - 2026-09-22
+
+### Fixed
+
+- The comment wrapping in `browser_extension_installer.cpp` that failed the `clang-format` gate
+  on the 1.1.1 commit. No behaviour changes; 1.1.1 and 1.1.2 are the same program.
+
 ## [1.1.1] - 2026-09-22
 
 ### Fixed

@@ -355,11 +355,13 @@ ExtensionInstallResult BrowserExtensionInstaller::install() {
   }
 #endif
 
-  // The load itself is the user's to do, and saying so plainly here is load-bearing: an
-  // assistant that reads "load unpacked" as a task of its own goes looking for a way to automate
-  // it, and there is none to find. Chrome removed --load-extension from branded builds in 137,
-  // policy installation wants a Web Store listing this project does not have, and clicking the
-  // browser's windows is not an install path. The honest answer is the folder and the clicks.
+  // The load itself is the user's to do, and saying so plainly here is
+  // load-bearing: an assistant that reads "load unpacked" as a task of its own
+  // goes looking for a way to automate it, and there is none to find. Chrome
+  // removed --load-extension from branded builds in 137, policy installation
+  // wants a Web Store listing this project does not have, and clicking the
+  // browser's windows is not an install path. The honest answer is the folder
+  // and the clicks.
   return {true, QStringLiteral("Browser extension bridge prepared"),
           QStringLiteral(
               "Native host registered. The extension itself must now be loaded "
