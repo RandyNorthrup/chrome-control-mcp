@@ -10,7 +10,7 @@
 ![Platforms](https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20%7C%20macOS-2563eb.svg)
 ![C++20](https://img.shields.io/badge/C%2B%2B-20-00599c.svg)
 ![Chrome 116+](https://img.shields.io/badge/Chrome-116%2B-4285f4.svg)
-![MCP tools](https://img.shields.io/badge/MCP%20tools-43-ff1493.svg)
+![MCP tools](https://img.shields.io/badge/MCP%20tools-44-ff1493.svg)
 
 <p>
   Standalone Model Context Protocol server connecting an AI assistant to your existing Chrome
@@ -35,12 +35,13 @@ page overlay by default; documentation captures can opt in.
 | Works beside you    | Session drives its own visible tab; never changes which tab is in front, raises a window, or takes your OS focus |
 | Semantic control    | Accessibility-tree snapshots with stable element refs                                                            |
 | Real input          | Click, type, keys, hover, drag, select, scroll, dialogs, and media                                               |
+| File upload         | Attach local files to a page's file input, as the user's own picker would                                        |
 | Visual reasoning    | Viewport/full-page PNG capture and guarded coordinate clicks                                                     |
 | Browser management  | Navigation, tabs, tab groups, windows, emulation, and waits                                                      |
 | Browser state       | Cookies, local/session storage, permissions, downloads, print, and HTTP auth                                     |
 | Extension lifecycle | Prepare, inspect, and unregister current-user native-host integration                                            |
 
-All **43 MCP tools** use strict JSON Schemas. Long-lived MCP process preserves session and
+All **44 MCP tools** use strict JSON Schemas. Long-lived MCP process preserves session and
 element-ref state while Chrome remains an ordinary user-controlled browser.
 
 ## See it work
@@ -176,7 +177,7 @@ Local Windows and Linux gates currently cover:
 - Warnings-as-errors plus `clang-tidy` and exhaustive `cppcheck`
 - Separate ASan+UBSan and TSan runs
 - Full-history Gitleaks scan and npm dependency audit
-- 43/43 live MCP tools through real Chrome on Windows
+- 44/44 live MCP tools through real Chrome on Windows
 - 35/35 display configurations on Windows and macOS: scales 1x to 3x, zoom 25% to 500%, pinch, and
   both scrollbar kinds, each coordinate proven by where its click landed
 - Public UI Playground navigation, snapshot, typing, click, and PNG capture

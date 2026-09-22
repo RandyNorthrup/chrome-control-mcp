@@ -4,6 +4,11 @@
 #include "chrome_control_mcp/browser_control.h"
 
 #include "chrome_control_mcp/browser_contract.h"
+#include "chrome_control_mcp/browser_uploads.h"
+
+#include <QJsonArray>
+#include <QJsonValue>
+#include <QStringList>
 
 namespace chrome_control_mcp {
 
@@ -81,8 +86,18 @@ ToolResult BrowserControl::invoke(const QString &name,
     }
   }
   syncSessionToConnection();
+  // The one tool that is not one command: its files go first, in pieces the
+  // bridge can carry, and the command that assigns them follows.
+  if (name == QLatin1String("browser_upload")) {
+    return invokeUpload(arguments);
+  }
   const browser::BrowserBridgeSession::Outgoing outgoing =
       session_.beginCommand(name, arguments);
+  return exchange(outgoing);
+}
+
+ToolResult BrowserControl::exchange(
+    const browser::BrowserBridgeSession::Outgoing &outgoing) {
   if (!outgoing.ok) {
     return {.text = outgoing.error,
             .is_error = true,
@@ -120,6 +135,72 @@ ToolResult BrowserControl::invoke(const QString &name,
           .is_error = false,
           .image_base64 = incoming.image_base64,
           .image_mime = incoming.image_mime};
+}
+
+ToolResult BrowserControl::invokeUpload(const QJsonObject &arguments) {
+  // Read and bound the files BEFORE anything is sent: a refusal that arrives
+  // after half a file is on the wire has already spent the bridge on bytes the
+  // page was never going to get.
+  QStringList paths;
+  const QJsonArray requested =
+      arguments.value(QStringLiteral("paths")).toArray();
+  for (const QJsonValue &value : requested) {
+    paths.append(value.toString());
+  }
+  const browser::UploadBatch batch = browser::readUploadFiles(
+      paths,
+      QString::fromLocal8Bit(qgetenv("CHROME_CONTROL_MCP_UPLOAD_ROOTS")));
+  if (!batch.ok) {
+    return {.text = batch.error,
+            .is_error = true,
+            .image_base64 = {},
+            .image_mime = {}};
+  }
+  // Every file gets an id of its own so the extension can hold several at once
+  // and match each piece to the file it belongs to.
+  QJsonArray manifest;
+  int index = 0;
+  for (const browser::UploadFile &file : batch.files) {
+    const QString upload_id =
+        QStringLiteral("u-%1-%2").arg(++upload_counter_).arg(index++);
+    const int total = static_cast<int>(file.chunks.size());
+    for (int seq = 0; seq < total; ++seq) {
+      const browser::BrowserBridgeSession::Outgoing chunk =
+          session_.beginInternalCommand(
+              QStringLiteral("uploadChunk"),
+              QJsonObject{{QStringLiteral("upload_id"), upload_id},
+                          {QStringLiteral("seq"), seq},
+                          {QStringLiteral("total"), total},
+                          {QStringLiteral("data"), file.chunks.at(seq)}});
+      const ToolResult sent = exchange(chunk);
+      if (sent.is_error) {
+        // Say which file and where it stopped: "the upload failed" leaves a
+        // caller with several files and no idea which one to look at.
+        return {.text =
+                    QStringLiteral("Sending %1 failed at piece %2 of %3: %4")
+                        .arg(file.name)
+                        .arg(seq + 1)
+                        .arg(total)
+                        .arg(sent.text),
+                .is_error = true,
+                .image_base64 = {},
+                .image_mime = {}};
+      }
+    }
+    manifest.append(QJsonObject{{QStringLiteral("upload_id"), upload_id},
+                                {QStringLiteral("name"), file.name},
+                                {QStringLiteral("mime"), file.mime},
+                                {QStringLiteral("size"), file.size}});
+  }
+  // The element is resolved the way every other by-ref tool resolves it, and
+  // the manifest is added to that translated command: the paths themselves stop
+  // here, so nothing downstream ever learns where on the disk a file came from.
+  browser::BrowserBridgeSession::Outgoing apply =
+      session_.beginCommand(QStringLiteral("browser_upload"), arguments);
+  if (apply.ok) {
+    apply.frame.insert(QStringLiteral("files"), manifest);
+  }
+  return exchange(apply);
 }
 
 } // namespace chrome_control_mcp

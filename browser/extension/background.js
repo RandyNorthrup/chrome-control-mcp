@@ -741,6 +741,12 @@ const COMMAND_TABLE = new Map([
   // Given the tab so its poll is timed by that page's clock, not this worker's.
   ["download", { fn: handleDownload, tab: true, args: true }],
   ["httpAuth", { fn: handleHttpAuth, tab: true, args: true }],
+  // Carries bytes only: it names no element and touches no page, so it needs no tab.
+  [
+    "uploadChunk",
+    { fn: (args) => handleUploadChunk(args), tab: false, args: true },
+  ],
+  ["upload", { fn: handleUpload, tab: true, args: true }],
 ]);
 
 async function dispatchCommand(cmd, args) {
@@ -1084,6 +1090,7 @@ async function detachAll(_reason) {
   originalUserAgent = null; // emulation overrides are per-session; recapture on the next tab
   httpAuthCreds = null; // armed HTTP-auth credentials do not carry across sessions
   lastFetchError = null; // nor does an interception failure from a page we no longer drive
+  clearUploads(); // a half-delivered file belongs to the session that is ending, not the next one
   if (attachedTabId === null) {
     return;
   }
@@ -3982,11 +3989,206 @@ async function handleReveal(tabId, args) {
   return { ok: true, laid_out: true, box: quadRect(quad) };
 }
 
-// NOTE: a dedicated file-upload tool is intentionally absent. CDP DOM.setFileInputFiles is
-// blocked ("Not allowed") for chrome.debugger extension sessions -- Chrome forbids programmatic
-// local-file selection through an extension, which is the exact exfiltration vector such a tool
-// would create. File uploads are instead done by composition: browser_click the file input to
-// open the native Windows chooser, then drive that dialog with the win32 UIA tools.
+// -- file upload ------------------------------------------------------------
+//
+// CDP's own file API (DOM.setFileInputFiles) answers "Not allowed" to a chrome.debugger session,
+// so a file is handed to the page the way the page itself would build one: the bytes arrive here
+// over the bridge, and a function running IN the page makes a File out of them and assigns it
+// through a DataTransfer. That is ordinary web platform behaviour and needs no privileged API.
+// The input then holds a real File -- name, size, type, and contents -- and the page's own change
+// handler runs, so a site that reads files[0] or submits the form sees exactly what the user's
+// own choice would have given it.
+//
+// The bytes arrive in pieces because they must: Chrome caps one native-messaging message from a
+// host at 1 MiB, so the app sends a file as a series of uploadChunk commands and then one upload
+// command naming the element and the files to assign. Chunks are held here only between those
+// calls, are bounded in size and number, and are dropped whenever the session ends.
+//
+// This tool can put any file the user can read onto any page the session is on. That is the point
+// of it and also its risk: it is a mutating tool, absent from the read-only profile, and the app
+// refuses a path outside CHROME_CONTROL_MCP_UPLOAD_ROOTS when that is set.
+
+// A file's bytes, in base64, keyed by the upload id the app minted for it. One entry per file in
+// flight; entries go as soon as the upload is applied, abandoned, or the session ends.
+const uploadChunks = new Map();
+// Bounds on what may be held here at once. The app enforces the same ceiling before it sends
+// anything; this is the side that must not be talked into holding more than it should.
+const MAX_UPLOAD_BASE64 = 24 * 1024 * 1024;
+const MAX_UPLOAD_CHUNKS = 64;
+const MAX_UPLOADS_IN_FLIGHT = 8;
+
+// Drop every buffered chunk. Called when the session ends, the bridge drops, or CDP detaches: a
+// half-delivered file belongs to a session that no longer exists, and keeping it would carry the
+// user's bytes into the next one.
+function clearUploads() {
+  uploadChunks.clear();
+}
+
+// One piece of a file. Pieces may arrive in any order; sequence numbers put them back together,
+// and a piece that would push this upload past its bounds is refused rather than truncated --
+// a truncated file uploaded as though whole is worse than no upload at all.
+async function handleUploadChunk(args) {
+  const id = typeof args.upload_id === "string" ? args.upload_id : "";
+  const seq = Number(args.seq);
+  const total = Number(args.total);
+  const data = typeof args.data === "string" ? args.data : "";
+  if (!id || !Number.isInteger(seq) || !Number.isInteger(total) || total < 1) {
+    throw new Error("An upload chunk needs upload_id, seq, and total.");
+  }
+  if (total > MAX_UPLOAD_CHUNKS) {
+    throw new Error("The upload has too many pieces.");
+  }
+  if (seq < 0 || seq >= total) {
+    throw new Error("The upload chunk is out of range.");
+  }
+  let entry = uploadChunks.get(id);
+  if (!entry) {
+    if (uploadChunks.size >= MAX_UPLOADS_IN_FLIGHT) {
+      throw new Error("Too many uploads are in flight.");
+    }
+    entry = { total, pieces: new Map(), bytes: 0 };
+    uploadChunks.set(id, entry);
+  }
+  if (entry.total !== total) {
+    throw new Error("The upload's pieces disagree about how many there are.");
+  }
+  const previous = entry.pieces.get(seq);
+  const nextBytes =
+    entry.bytes - (previous ? previous.length : 0) + data.length;
+  if (nextBytes > MAX_UPLOAD_BASE64) {
+    throw new Error("The upload is larger than this bridge carries.");
+  }
+  entry.pieces.set(seq, data);
+  entry.bytes = nextBytes;
+  return { ok: true, received: entry.pieces.size, total: entry.total };
+}
+
+// Put an upload back together, or say it cannot be. Returns null when a piece never arrived,
+// which the caller reports rather than assigning a file with a hole in it.
+function assembleUpload(id) {
+  const entry = uploadChunks.get(id);
+  if (!entry) {
+    return null;
+  }
+  const ordered = [];
+  for (let seq = 0; seq < entry.total; seq += 1) {
+    const piece = entry.pieces.get(seq);
+    if (typeof piece !== "string") {
+      return null;
+    }
+    ordered.push(piece);
+  }
+  return ordered.join("");
+}
+
+// Assign the delivered files to a file input, as the user's own choice would. GATED like every
+// other tool that changes the page.
+async function handleUpload(tabId, args) {
+  await ensureAttached(tabId);
+  requireSnapshotTab(tabId);
+  const files = Array.isArray(args.files) ? args.files : [];
+  if (!files.length) {
+    throw new Error("browser_upload needs at least one file.");
+  }
+  const payload = [];
+  for (const file of files) {
+    const data = assembleUpload(file.upload_id);
+    if (data === null) {
+      for (const entry of files) {
+        uploadChunks.delete(entry.upload_id);
+      }
+      throw new Error(
+        "The file did not arrive whole; nothing was assigned. Send the upload again.",
+      );
+    }
+    payload.push({
+      data,
+      name: typeof file.name === "string" ? file.name : "file",
+      mime: typeof file.mime === "string" ? file.mime : "",
+    });
+  }
+  const objectId = await resolveNodeObjectId(tabId, args.backendNodeId);
+  const point = await resolveActionPoint(tabId, args.backendNodeId).catch(
+    () => null,
+  );
+  if (point) {
+    await moveAgentCursor(tabId, point.x, point.y);
+  }
+  // Runs in the page: the File and the DataTransfer are the page's own, which is why this works
+  // where the protocol's own file API does not.
+  const assignFn = function (delivered) {
+    const el = this;
+    if (!el) {
+      return { ok: false, error: "no element" };
+    }
+    const tag = (el.tagName || "").toLowerCase();
+    const type = (el.type || "").toLowerCase();
+    if (tag !== "input" || type !== "file") {
+      return {
+        ok: false,
+        error:
+          "that element is not a file input; upload needs <input type=file>",
+      };
+    }
+    if (delivered.length > 1 && !el.multiple) {
+      return {
+        ok: false,
+        error: "that file input takes one file; it is not marked multiple",
+      };
+    }
+    if (el.disabled) {
+      return { ok: false, error: "that file input is disabled" };
+    }
+    const transfer = new DataTransfer();
+    for (const item of delivered) {
+      const binary = atob(item.data);
+      const bytes = new Uint8Array(binary.length);
+      for (let i = 0; i < binary.length; i += 1) {
+        bytes[i] = binary.charCodeAt(i);
+      }
+      transfer.items.add(
+        new File(
+          [bytes],
+          item.name,
+          item.mime ? { type: item.mime } : undefined,
+        ),
+      );
+    }
+    el.files = transfer.files;
+    // A page learns about a user's choice through these two events; a site listening for only one
+    // of them would otherwise never see the file.
+    el.dispatchEvent(new Event("input", { bubbles: true }));
+    el.dispatchEvent(new Event("change", { bubbles: true }));
+    const assigned = [];
+    for (const file of el.files) {
+      assigned.push({ name: file.name, size: file.size, type: file.type });
+    }
+    return { ok: true, files: assigned };
+  };
+  let result;
+  try {
+    result = await sendCdp(tabId, "Runtime.callFunctionOn", {
+      objectId,
+      functionDeclaration: String(assignFn),
+      arguments: [{ value: payload }],
+      returnByValue: true,
+      objectGroup: CDP_OBJECT_GROUP,
+    });
+  } finally {
+    // The bytes have served their purpose either way, and holding them past the call keeps the
+    // user's file in a worker for no reason.
+    for (const file of files) {
+      uploadChunks.delete(file.upload_id);
+    }
+  }
+  const value = result && result.result && result.result.value;
+  if (!value || !value.ok) {
+    throw new Error(
+      (value && value.error) || "The file could not be assigned.",
+    );
+  }
+  return { ok: true, files: value.files };
+}
 
 // Programmatic el.click() in-page, as a fallback when a real pointer click cannot land (target
 // occluded by an overlay, zero-box but present, or a control that ignores synthetic pointer

@@ -67,9 +67,24 @@ public:
 private:
   void syncSessionToConnection();
 
+  /// One command round trip on an already-synced session: send @p frame and
+  /// feed the reply back in. Shared by the ordinary single-command path and by
+  /// the upload, which is several commands for one tool call.
+  [[nodiscard]] ToolResult
+  exchange(const browser::BrowserBridgeSession::Outgoing &outgoing);
+
+  /// browser_upload: read the named files here, send their bytes as bridge-
+  /// sized chunks, then the command that assigns them to the element. It is
+  /// several round trips because Chrome accepts at most 1 MiB in one message
+  /// from a native host, and a file is usually larger than the rest of a
+  /// session's traffic put together.
+  [[nodiscard]] ToolResult invokeUpload(const QJsonObject &arguments);
+
   BrowserBridgePipeServer pipe_;
   browser::BrowserBridgeSession session_;
   quint64 observed_generation_{0};
+  /// Distinguishes one call's files from another's in the extension's buffer.
+  quint64 upload_counter_{0};
   bool started_{false};
 };
 

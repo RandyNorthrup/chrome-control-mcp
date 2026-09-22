@@ -72,7 +72,7 @@ assert.equal(responses.length, 3, "Expected three MCP responses");
 const initialize = responses.find(({ id }) => id === 1);
 assert.equal(initialize.result.serverInfo.name, "chrome-control-mcp");
 const catalog = responses.find(({ id }) => id === 2);
-assert.equal(catalog.result.tools.length, readOnly ? 10 : 43);
+assert.equal(catalog.result.tools.length, readOnly ? 10 : 44);
 const statusResponse = responses.find(({ id }) => id === 3);
 assert.equal(statusResponse.result.isError, false);
 const status = JSON.parse(statusResponse.result.content[0].text);

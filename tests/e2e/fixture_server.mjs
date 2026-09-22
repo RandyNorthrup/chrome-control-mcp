@@ -67,7 +67,11 @@ function fixtureHome() {
         <label>Fixture range
           <input id="range" type="range" min="0" max="100" value="10" aria-label="Fixture range">
         </label>
+        <label>Fixture file input
+          <input id="file-input" type="file" aria-label="Fixture file input">
+        </label>
       </div>
+      <output id="file-output" aria-live="polite">No file</output>
       <div class="grid">
         <button id="normal-button" type="button">Fixture click button</button>
         <button id="js-button" type="button">Fixture JS button</button>
@@ -114,6 +118,15 @@ function fixtureHome() {
     });
     document.getElementById('hover-target').addEventListener('mouseenter', () => {
       document.getElementById('hover-output').textContent = 'hovered';
+    });
+    // The page reports the file the way a site would use it: through its own change event,
+    // reading name, size, and -- the part that proves the bytes really arrived -- the contents.
+    document.getElementById('file-input').addEventListener('change', async (event) => {
+      const out = document.getElementById('file-output');
+      const file = event.target.files[0];
+      if (!file) { out.textContent = 'No file'; return; }
+      const text = await file.text();
+      out.textContent = 'file:' + file.name + ':' + file.size + ':' + text;
     });
     let dragging = false;
     document.getElementById('drag-source').addEventListener('mousedown', () => { dragging = true; });

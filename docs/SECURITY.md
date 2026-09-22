@@ -19,6 +19,27 @@ redaction.
 Redaction is best-effort text masking. Screenshots and unmodeled secret shapes remain outside its
 guarantee.
 
+## Uploads
+
+`browser_upload` is the one tool that reads the user's disk, so it is also the one tool that can
+carry a local file onto a web page. It is absent from the read-only profile. Where the assistant
+should reach only part of the disk, name the directories it may read:
+
+```text
+CHROME_CONTROL_MCP_UPLOAD_ROOTS=C:\Users\you\Uploads;C:\Work\attachments
+```
+
+Paths are made canonical before the test, so a symlink or a `..` cannot point inside a root and
+read outside it, and a sibling directory whose name merely starts with a root's name is not inside
+it. A path must be absolute and name a real file; a file is read once, bounded at 16 MiB, and sent
+as bridge-sized pieces that the extension holds only until the file is assigned and drops whenever
+the session ends. No path reaches the extension or the page: the page receives the file's name,
+type, and bytes, exactly as the user's own file chooser would have given them.
+
+Unset, the variable means no restriction, and an assistant with this tool can attach any file the
+user can read. That is the same reach the user has in their own browser, which is the model this
+project works to, but it is worth choosing deliberately.
+
 ## Defenses
 
 - Native host accepts only pinned extension origin.

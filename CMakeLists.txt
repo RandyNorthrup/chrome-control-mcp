@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.25)
 
-project(chrome_control_mcp VERSION 1.1.2 LANGUAGES CXX)
+project(chrome_control_mcp VERSION 1.2.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -57,6 +57,7 @@ set(CCMCP_CORE_SOURCES
     src/browser_contract.cpp
     src/browser_control.cpp
     src/browser_extension_installer.cpp
+    src/browser_uploads.cpp
     src/native_messaging.cpp
 )
 
@@ -192,6 +193,13 @@ if(BUILD_TESTING)
     )
     configure_qt_test(test_browser_extension_installer)
 
+    add_executable(test_browser_uploads
+        tests/test_browser_uploads.cpp
+        src/browser_uploads.cpp
+    )
+    target_link_libraries(test_browser_uploads PRIVATE Qt6::Core Qt6::Test)
+    configure_qt_test(test_browser_uploads)
+
     add_executable(test_browser_bridge_security
         tests/test_browser_bridge_security.cpp
         src/browser_bridge_security.cpp
@@ -222,6 +230,7 @@ if(BUILD_TESTING)
         src/browser_control.cpp
         src/browser_bridge.cpp
         src/browser_contract.cpp
+        src/browser_uploads.cpp
         ${CCMCP_BRIDGE_PIPE_SOURCE}
         src/browser_bridge_security.cpp
         src/native_messaging.cpp

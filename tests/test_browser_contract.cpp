@@ -4,6 +4,7 @@
 #include "chrome_control_mcp/browser_contract.h"
 
 #include <QJsonArray>
+#include <QJsonDocument>
 #include <QJsonObject>
 #include <QtTest/QtTest>
 
@@ -84,6 +85,8 @@ private slots:
   void buildCommand_httpAuthToolBuilds();
   void buildCommand_windowToolsBuild();
   void catalog_advertisesBatch3Tools();
+  void buildCommand_uploadKeepsPathsOnThisSide();
+  void buildCommand_uploadRefusesMalformedPaths();
   void buildCommand_rejectsUnknownArgument();
   void buildCommand_carriesOriginExpectationsToTheExtension();
   void buildCommand_rejectsFractionalAndOutOfRangeInt();
@@ -357,11 +360,11 @@ void BrowserContractTests::catalog_advertisesDomFirstToolsWithStrictSchemas() {
   // Pin the full advertised catalog size. browserToolCatalog() appends a fixed
   // set unconditionally
   // (nav/action/pointer/form/tab/wait/inspection/window/infra/print/
-  // permission/storage/cookies/download/http-auth/advanced-input), 40 tools in
-  // all.
+  // permission/storage/cookies/download/upload/http-auth/advanced-input), 41
+  // tools in all.
   // `>= 15` could not catch a tool silently dropped from or duplicated into the
   // catalog.
-  QCOMPARE(tools.size(), 40);
+  QCOMPARE(tools.size(), 41);
 
   QStringList names;
   for (const QJsonValue &value : tools) {
@@ -1135,6 +1138,67 @@ void BrowserContractTests::catalog_advertisesBatch3Tools() {
         QStringLiteral("browser_http_auth")}) {
     QVERIFY2(names.contains(expected), qPrintable(expected));
   }
+}
+
+void BrowserContractTests::buildCommand_uploadKeepsPathsOnThisSide() {
+  // The whole point of the upload contract: the element is resolved here, the
+  // paths are validated here, and NEITHER the paths nor anything derived from
+  // them goes into the command. The app reads the files and sends their bytes;
+  // a local path must never travel to the extension, which could hand it to a
+  // page.
+  const QJsonObject ref_index{
+      {QStringLiteral("e4"),
+       QJsonObject{{QStringLiteral("backendNodeId"), 77}}}};
+  const ExtensionCommand cmd = buildExtensionCommand(
+      QStringLiteral("browser_upload"),
+      QJsonObject{{QStringLiteral("ref"), QStringLiteral("e4")},
+                  {QStringLiteral("paths"),
+                   QJsonArray{QStringLiteral("C:/secrets/passport.png")}}},
+      ref_index);
+  QVERIFY(cmd.ok);
+  QCOMPARE(cmd.command.value(QStringLiteral("cmd")).toString(),
+           QStringLiteral("upload"));
+  QCOMPARE(cmd.command.value(QStringLiteral("backendNodeId")).toInt(), 77);
+  QVERIFY(!cmd.command.contains(QStringLiteral("paths")));
+  const QString serialized =
+      QString::fromUtf8(QJsonDocument(cmd.command).toJson());
+  QVERIFY(!serialized.contains(QStringLiteral("passport")));
+  QVERIFY(!serialized.contains(QStringLiteral("secrets")));
+}
+
+void BrowserContractTests::buildCommand_uploadRefusesMalformedPaths() {
+  const QJsonObject ref_index{
+      {QStringLiteral("e4"),
+       QJsonObject{{QStringLiteral("backendNodeId"), 77}}}};
+  // Missing entirely.
+  const ExtensionCommand missing = buildExtensionCommand(
+      QStringLiteral("browser_upload"),
+      QJsonObject{{QStringLiteral("ref"), QStringLiteral("e4")}}, ref_index);
+  QVERIFY(!missing.ok);
+  // Present but empty: an upload of nothing is a call the caller did not mean.
+  const ExtensionCommand empty = buildExtensionCommand(
+      QStringLiteral("browser_upload"),
+      QJsonObject{{QStringLiteral("ref"), QStringLiteral("e4")},
+                  {QStringLiteral("paths"), QJsonArray{}}},
+      ref_index);
+  QVERIFY(!empty.ok);
+  // A list with a non-string entry is refused rather than narrowed to the
+  // entries that happen to parse.
+  const ExtensionCommand mixed = buildExtensionCommand(
+      QStringLiteral("browser_upload"),
+      QJsonObject{
+          {QStringLiteral("ref"), QStringLiteral("e4")},
+          {QStringLiteral("paths"), QJsonArray{QStringLiteral("C:/a.png"), 7}}},
+      ref_index);
+  QVERIFY(!mixed.ok);
+  // And a ref that is not in the snapshot fails as every by-ref tool does.
+  const ExtensionCommand stale = buildExtensionCommand(
+      QStringLiteral("browser_upload"),
+      QJsonObject{
+          {QStringLiteral("ref"), QStringLiteral("e99")},
+          {QStringLiteral("paths"), QJsonArray{QStringLiteral("C:/a.png")}}},
+      ref_index);
+  QVERIFY(!stale.ok);
 }
 
 void BrowserContractTests::buildCommand_rejectsUnknownArgument() {

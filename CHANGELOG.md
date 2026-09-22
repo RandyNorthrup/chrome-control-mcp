@@ -6,6 +6,28 @@ All notable changes are documented here. Project follows [Semantic Versioning](h
 
 Nothing yet.
 
+## [1.2.0] - 2026-09-22
+
+### Added
+
+- `browser_upload` attaches local files to a page's file input, which is the last thing a person
+  still had to do by hand in a browser an assistant was otherwise driving. The page receives real
+  `File` objects and runs its own `input`/`change` handlers, so a site that reads `files[0]` or
+  submits the form sees exactly what the user's own picker would have given it.
+
+  It was left out before on the grounds that it could not be done: CDP's `DOM.setFileInputFiles`
+  answers "Not allowed" to an extension's debugger session. It can be done, just not that way. The
+  bytes are delivered to the page and a function running IN the page builds the `File` and assigns
+  it through a `DataTransfer`, which is ordinary web platform behaviour needing no privileged API.
+  Files cross the bridge in pieces because Chrome carries at most 1 MiB in one message from a
+  native host; the extension holds them only until the upload is applied and drops them whenever
+  the session ends.
+
+  This is the one tool that reads the user's disk. It is absent from the read-only profile, refuses
+  a relative path or a path outside `CHROME_CONTROL_MCP_UPLOAD_ROOTS` when that is set, bounds a
+  file at 16 MiB and a call at 8 files, and sends no path to the extension or the page --
+  canonicalising first, so a symlink or a `..` cannot point inside a root and read outside it.
+
 ## [1.1.2] - 2026-09-22
 
 ### Fixed

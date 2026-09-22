@@ -110,6 +110,11 @@ const EXPORTED = [
   "tabIsOnScreen",
   "captureScreenshotWithFrames",
   "FRAME_FORCING_SCREENCAST",
+  "handleUploadChunk",
+  "assembleUpload",
+  "clearUploads",
+  "MAX_UPLOAD_CHUNKS",
+  "MAX_UPLOADS_IN_FLIGHT",
 ];
 
 function loadWorker(overrides = {}) {
@@ -1230,4 +1235,125 @@ test("a capture that fails is not left with a screencast running", async () => {
     true,
     "the cast must be stopped even when the capture fails",
   );
+});
+
+// -- the bytes of an upload, in pieces --------------------------------------
+//
+// A file crosses the bridge in pieces because Chrome carries at most 1 MiB in
+// one message from a host. These hold the part that decides whether the page
+// gets the user's file or a corrupted imitation of it: pieces reassemble in
+// order whatever order they arrive in, a missing piece is reported rather than
+// papered over, and nothing unbounded is ever held here.
+
+const base64Of = (text) => Buffer.from(text, "utf8").toString("base64");
+
+test("pieces reassemble in order, whatever order they arrive in", async () => {
+  const w2 = loadWorker();
+  const whole = base64Of("the whole file, in three parts");
+  const pieces = [whole.slice(0, 10), whole.slice(10, 22), whole.slice(22)];
+  // Deliberately out of order: the sequence number decides, not arrival.
+  for (const seq of [2, 0, 1]) {
+    await w2.handleUploadChunk({
+      upload_id: "u-1",
+      seq,
+      total: 3,
+      data: pieces[seq],
+    });
+  }
+  assert.equal(w2.assembleUpload("u-1"), whole);
+});
+
+test("a missing piece assembles to nothing rather than a hole", async () => {
+  const w2 = loadWorker();
+  await w2.handleUploadChunk({
+    upload_id: "u-2",
+    seq: 0,
+    total: 2,
+    data: base64Of("first"),
+  });
+  assert.equal(w2.assembleUpload("u-2"), null);
+  assert.equal(w2.assembleUpload("never-sent"), null);
+});
+
+test("an upload's pieces must agree on how many there are", async () => {
+  const w2 = loadWorker();
+  await w2.handleUploadChunk({
+    upload_id: "u-3",
+    seq: 0,
+    total: 2,
+    data: "AA",
+  });
+  await assert.rejects(
+    () =>
+      w2.handleUploadChunk({ upload_id: "u-3", seq: 1, total: 5, data: "BB" }),
+    /disagree/,
+  );
+});
+
+test("an out-of-range or unnamed piece is refused", async () => {
+  const w2 = loadWorker();
+  await assert.rejects(
+    () => w2.handleUploadChunk({ upload_id: "", seq: 0, total: 1, data: "AA" }),
+    /upload_id/,
+  );
+  await assert.rejects(
+    () =>
+      w2.handleUploadChunk({ upload_id: "u-4", seq: 3, total: 2, data: "AA" }),
+    /out of range/,
+  );
+  await assert.rejects(
+    () =>
+      w2.handleUploadChunk({
+        upload_id: "u-4",
+        seq: 0,
+        total: w2.MAX_UPLOAD_CHUNKS + 1,
+        data: "AA",
+      }),
+    /too many pieces/,
+  );
+});
+
+test("the worker holds only so many uploads at once", async () => {
+  const w2 = loadWorker();
+  for (let i = 0; i < w2.MAX_UPLOADS_IN_FLIGHT; i += 1) {
+    await w2.handleUploadChunk({
+      upload_id: `u-${i}`,
+      seq: 0,
+      total: 1,
+      data: "AA",
+    });
+  }
+  await assert.rejects(
+    () =>
+      w2.handleUploadChunk({
+        upload_id: "one-too-many",
+        seq: 0,
+        total: 1,
+        data: "AA",
+      }),
+    /in flight/,
+  );
+});
+
+test("ending the session drops every buffered piece", async () => {
+  const w2 = loadWorker();
+  await w2.handleUploadChunk({
+    upload_id: "u-5",
+    seq: 0,
+    total: 1,
+    data: base64Of("bytes of a file the next session must never see"),
+  });
+  assert.notEqual(w2.assembleUpload("u-5"), null);
+  w2.clearUploads();
+  assert.equal(w2.assembleUpload("u-5"), null);
+});
+
+test("detaching clears uploads, so a file cannot outlive its session", () => {
+  // The guarantee above is only real if teardown actually calls it.
+  assert.match(workerSource, /clearUploads\(\);/);
+  const detachAll = workerSource.slice(
+    workerSource.indexOf("async function detachAll("),
+    workerSource.indexOf("async function detachAll(") + 2000,
+  );
+  assert.match(detachAll, /clearUploads\(\)/);
 });

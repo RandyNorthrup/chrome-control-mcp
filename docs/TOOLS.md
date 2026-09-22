@@ -1,6 +1,6 @@
 # Tool catalog
 
-Full profile advertises 43 tools: 40 live browser tools and 3 extension lifecycle tools.
+Full profile advertises 44 tools: 41 live browser tools and 3 extension lifecycle tools.
 
 ## Navigation and capture
 
@@ -28,6 +28,7 @@ that should show the exact control presence visible in Chrome.
 - `browser_drag`
 - `browser_select`
 - `browser_set_value`
+- `browser_upload`
 - `browser_media`
 - `browser_js_click`
 

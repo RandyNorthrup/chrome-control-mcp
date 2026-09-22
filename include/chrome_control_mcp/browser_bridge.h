@@ -68,6 +68,17 @@ public:
   [[nodiscard]] Outgoing beginCommand(const QString &tool,
                                       const QJsonObject &arguments);
 
+  /// Build a command frame for an internal command the model never calls:
+  /// today, the upload chunks that carry a file's bytes to the extension
+  /// before the upload itself names the element to assign them to. It takes
+  /// the same connection and one-op-in-flight guarantees as beginCommand and
+  /// mints from the same id sequence, but skips contract translation --
+  /// there is no tool here, and no ref to resolve, only bytes already read and
+  /// bounded by the caller. Not reachable from tools/call: MCP dispatch only
+  /// knows the catalog, and @p cmd is never in it.
+  [[nodiscard]] Outgoing beginInternalCommand(const QString &cmd,
+                                              const QJsonObject &payload);
+
   /// Feed a reply frame from the extension. A frame whose id does not match the
   /// outstanding op is dropped (matched == false) -- this is how a late reply
   /// from a previously timed-out op is discarded rather than mis-paired. On a

@@ -3,7 +3,16 @@
 
 import assert from "node:assert/strict";
 import { existsSync } from "node:fs";
-import { mkdir, readFile, stat, unlink, writeFile } from "node:fs/promises";
+import {
+  mkdir,
+  mkdtemp,
+  readFile,
+  rm,
+  stat,
+  unlink,
+  writeFile,
+} from "node:fs/promises";
+import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -55,6 +64,7 @@ const EXPECTED_TOOLS = [
   "browser_download",
   "browser_http_auth",
   "browser_js_click",
+  "browser_upload",
 ];
 
 const sleep = (milliseconds) =>
@@ -421,6 +431,41 @@ async function main() {
       ),
     );
     assert.equal(ranged.value, "73");
+
+    // A real file, from this machine's disk, into the page's own file input. The page reports
+    // back what IT received, so the check is the page's view of the bytes rather than the
+    // tool's account of them: a tool that reported success while delivering nothing, or half a
+    // file, or a file under the wrong name, fails here.
+    const uploadDir = await mkdtemp(path.join(tmpdir(), "ccm-upload-"));
+    const uploadPath = path.join(uploadDir, "fixture-upload.txt");
+    const uploadBody = `chrome-control-mcp upload ${Date.now()}`;
+    await writeFile(uploadPath, uploadBody, "utf8");
+    try {
+      const fileInputRef = refFor(page, "Fixture file input");
+      const uploaded = jsonContent(
+        await runTool(
+          "browser_upload",
+          { ref: fileInputRef, paths: [uploadPath] },
+          "upload a file to the file input",
+        ),
+      );
+      assert.equal(uploaded.files.length, 1);
+      assert.equal(uploaded.files[0].name, "fixture-upload.txt");
+      assert.equal(uploaded.files[0].size, Buffer.byteLength(uploadBody));
+      const sawFile = jsonContent(
+        await runTool(
+          "browser_wait_for",
+          {
+            text: `file:fixture-upload.txt:${Buffer.byteLength(uploadBody)}:${uploadBody}`,
+            timeout_ms: 3000,
+          },
+          "the page read the uploaded file's own bytes",
+        ),
+      );
+      assert.equal(sawFile.satisfied, true);
+    } finally {
+      await rm(uploadDir, { recursive: true, force: true });
+    }
 
     await runTool(
       "browser_click",

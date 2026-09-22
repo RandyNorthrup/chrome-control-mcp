@@ -16,7 +16,7 @@ Live Windows browser: Chrome 151.0.7922.138. Minimum supported manifest version 
 
 - Extension ID: `iojehhmnaigcejfcpmilpclmeljhlkaa`
 - Native host: `com.chromecontrolmcp.browser`
-- Extension version: `1.1.2`
+- Extension version: `1.2.0`
 - Delivery: unpacked extension directory
 - Public manifest identity derives pinned extension ID
 - No private key, packaged browser artifact, store account, or enterprise policy
@@ -40,7 +40,7 @@ Windows generator may add `-A x64`; multi-config builds place executable under `
 
 ## Automated tests
 
-Result: **9/9 passed** under Windows/MSVC, Linux/GCC, Linux/Clang, and macOS/Clang.
+Result: **10/10 passed** under Windows/MSVC, Linux/GCC, Linux/Clang, and macOS/Clang.
 
 | Test                               | Coverage                                                               |
 | ---------------------------------- | ---------------------------------------------------------------------- |
@@ -48,11 +48,12 @@ Result: **9/9 passed** under Windows/MSVC, Linux/GCC, Linux/Clang, and macOS/Cla
 | `test_native_messaging`            | Native frame codec and host handshake                                  |
 | `test_browser_bridge`              | Session, reply correlation, snapshots, and stale refs                  |
 | `test_browser_extension_installer` | Public identity and isolated native-host lifecycle                     |
+| `test_browser_uploads`             | Upload path rules, roots confinement, and byte-exact chunking          |
 | `test_browser_bridge_security`     | ACL/permissions, nonce, rendezvous, and ownership                      |
 | `test_browser_bridge_pipe`         | Platform IPC handshake, peer verification, timeout, framing, reconnect |
 | `test_browser_bridge_relay`        | End-to-end relay/bridge/session with fake extension                    |
-| `test_browser_mcp_server`          | Identity, 43 tools, profiles, envelopes, schemas, and MCP content      |
-| `test_browser_extension_pure`      | 43 service-worker security, storage, geometry, and decision cases      |
+| `test_browser_mcp_server`          | Identity, 44 tools, profiles, envelopes, schemas, and MCP content      |
+| `test_browser_extension_pure`      | 59 service-worker security, storage, geometry, and decision cases      |
 
 ## Strict analysis
 
@@ -86,7 +87,7 @@ npm run extension -- status
 Results:
 
 - Initialize protocol `2024-11-05`, server `chrome-control-mcp`
-- Full profile: 43 tools
+- Full profile: 44 tools
 - Read-only profile: 10 tools
 - Staged extension present with pinned ID
 - Linux isolated install → status → uninstall lifecycle passed with generated mode-`0600` manifest
@@ -212,8 +213,10 @@ node tests/e2e/isolated_run.mjs --chrome=<CfT> --chrome-arg=--headless=new tests
 node tests/e2e/display_matrix_e2e.mjs --chrome=<CfT> --parallel=2
 ```
 
-- Full E2E, every call in a background tab: **43/43 tools, 151 reversible live cases**, the
-  extension attaching in 2.1 s, Chrome state restored.
+- Full E2E, every call in a background tab: **44/44 tools, 153 reversible live cases**, the
+  extension attaching in 2.1 s, Chrome state restored. The upload case writes a temporary file,
+  attaches it to the fixture's file input, and asserts what the PAGE read back: the name, the
+  size, and the file's own bytes.
 - User interference, in a dedicated browser: **10/10 checks**. A tab and then a window opened as
   the user; the session's tab kept every snapshot, keystroke, screenshot, and listing.
 - Display matrix, in dedicated browsers: **35/35 configurations, 3335/3335 checks** across display

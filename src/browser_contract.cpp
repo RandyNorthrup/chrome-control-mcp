@@ -304,6 +304,11 @@ QHash<QString, CmdSpec> formCommandSpecs() {
         QStringLiteral("required"),
         {{QStringLiteral("action"), QStringLiteral("string"), true},
          {QStringLiteral("value"), QStringLiteral("string"), false}}}},
+      // The paths stay on this side: the app reads the files and sends their
+      // bytes, so the command that reaches the extension names an element and
+      // the files delivered for it, never a location on the user's disk.
+      {QStringLiteral("browser_upload"),
+       {QStringLiteral("upload"), QStringLiteral("required"), {}}},
   };
 }
 
@@ -749,6 +754,28 @@ QString applyDownloadExtra(const QJsonObject &arguments) {
   return downloadFilenameError(filename);
 }
 
+// browser_upload's `paths`. Validated here and deliberately NOT copied into the
+// command: the app reads those files itself and sends their bytes, so a local
+// path never reaches the extension, let alone the page. A present-but-malformed
+// list is refused rather than narrowed, because an upload that silently drops
+// one of several files is an upload the caller cannot check.
+QString applyUploadPaths(const QJsonObject &arguments) {
+  const QJsonValue paths = arguments.value(QStringLiteral("paths"));
+  if (!paths.isArray()) {
+    return QStringLiteral("paths must be an array of file paths");
+  }
+  const QJsonArray items = paths.toArray();
+  if (items.isEmpty()) {
+    return QStringLiteral("paths must name at least one file");
+  }
+  if (!std::ranges::all_of(items, [](const QJsonValue &item) {
+        return item.isString() && !item.toString().trimmed().isEmpty();
+      })) {
+    return QStringLiteral("paths must be an array of non-empty file paths");
+  }
+  return QString();
+}
+
 // Tool-specific extras the generic ref/scalar-arg copiers do not cover. Returns
 // an error string (empty on success).
 QString applyToolExtras(const QString &tool, const QJsonObject &arguments,
@@ -761,6 +788,9 @@ QString applyToolExtras(const QString &tool, const QJsonObject &arguments,
   }
   if (tool == QLatin1String("browser_download")) {
     return applyDownloadExtra(arguments);
+  }
+  if (tool == QLatin1String("browser_upload")) {
+    return applyUploadPaths(arguments);
   }
   return QString();
 }
@@ -782,6 +812,9 @@ QSet<QString> allowedArgKeys(const QString &tool, const CmdSpec &spec) {
   }
   if (tool == QLatin1String("browser_select")) {
     allowed.insert(QStringLiteral("values"));
+  }
+  if (tool == QLatin1String("browser_upload")) {
+    allowed.insert(QStringLiteral("paths"));
   }
   return allowed;
 }
@@ -1088,6 +1121,29 @@ void appendFormControlTools(QJsonArray &tools) {
                                            "in a multiple-select "
                                            "(optional).")}}}},
           QJsonArray{QStringLiteral("ref")})));
+  tools.append(toolEntry(
+      QStringLiteral("browser_upload"),
+      QStringLiteral(
+          "Give a file input with [ref] from the latest snapshot one or more "
+          "local files, exactly as the user picking them would: the page "
+          "receives real File objects and its input/change handlers run. Pass "
+          "absolute paths. The element must be <input type=file>, and more "
+          "than one path needs an input marked multiple. Files are read by "
+          "this server and sent over the bridge; no path reaches the page."),
+      toolSchema(
+          QJsonObject{
+              {QStringLiteral("ref"),
+               stringProperty(
+                   QStringLiteral("Target file input ref, e.g. \"e5\"."))},
+              {QStringLiteral("paths"),
+               QJsonObject{{QStringLiteral("type"), QStringLiteral("array")},
+                           {QStringLiteral("items"),
+                            QJsonObject{{QStringLiteral("type"),
+                                         QStringLiteral("string")}}},
+                           {QStringLiteral("description"),
+                            QStringLiteral(
+                                "Absolute paths of the files to attach.")}}}},
+          QJsonArray{QStringLiteral("ref"), QStringLiteral("paths")})));
   tools.append(toolEntry(
       QStringLiteral("browser_set_value"),
       QStringLiteral(

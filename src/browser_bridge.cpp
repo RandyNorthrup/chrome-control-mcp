@@ -246,6 +246,30 @@ BrowserBridgeSession::beginCommand(const QString &tool,
   return out;
 }
 
+BrowserBridgeSession::Outgoing
+BrowserBridgeSession::beginInternalCommand(const QString &cmd,
+                                           const QJsonObject &payload) {
+  if (!connected_) {
+    return refuse(
+        QStringLiteral("Browser not connected: the Chrome Control MCP "
+                       "browser-control extension is not attached."));
+  }
+  if (!outstanding_id_.isEmpty()) {
+    return refuse(QStringLiteral("A browser action is already in progress."));
+  }
+  const QString id = QStringLiteral("b-%1").arg(++counter_);
+  Outgoing out;
+  out.ok = true;
+  out.frame = payload;
+  out.frame.insert(QStringLiteral("cmd"), cmd);
+  out.frame.insert(QStringLiteral("type"), QStringLiteral("command"));
+  out.frame.insert(QStringLiteral("id"), id);
+  outstanding_id_ = id;
+  outstanding_cmd_ = cmd;
+  outstanding_epoch_ = session_epoch_;
+  return out;
+}
+
 void BrowserBridgeSession::fillResult(const QString &sent_cmd,
                                       quint64 sent_epoch,
                                       const QJsonObject &frame,
