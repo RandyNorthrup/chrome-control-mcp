@@ -4,8 +4,10 @@
 #include "chrome_control_mcp/browser_control.h"
 
 #include "chrome_control_mcp/browser_contract.h"
+#include "chrome_control_mcp/browser_extension_installer.h"
 #include "chrome_control_mcp/browser_uploads.h"
 
+#include <QCoreApplication>
 #include <QJsonArray>
 #include <QJsonValue>
 #include <QStringList>
@@ -93,6 +95,23 @@ ToolResult BrowserControl::invoke(const QString &name,
   }
   const browser::BrowserBridgeSession::Outgoing outgoing =
       session_.beginCommand(name, arguments);
+  // "The extension is not attached" is true but unhelpful when the reason is
+  // that Chrome starts a DIFFERENT copy of this program: the relay it launches
+  // refuses a bridge served by another image, correctly, and the operator is
+  // left with nothing to act on. Say which executable is registered and which
+  // one is serving.
+  if (!outgoing.ok && !pipe_.clientConnected()) {
+    const BrowserExtensionInstaller installer;
+    const QString note =
+        nativeHostRegistrationNote(installer.registeredHostExecutable(),
+                                   QCoreApplication::applicationFilePath());
+    if (!note.isEmpty()) {
+      return {.text = outgoing.error + QStringLiteral(" ") + note,
+              .is_error = true,
+              .image_base64 = {},
+              .image_mime = {}};
+    }
+  }
   return exchange(outgoing);
 }
 

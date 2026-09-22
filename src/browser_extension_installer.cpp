@@ -193,7 +193,7 @@ bool writeRegistryDefault(const QString &subkey, const QString &value,
                                    nullptr, REG_OPTION_NON_VOLATILE,
                                    KEY_SET_VALUE, nullptr, &raw, &disposition);
   Q_UNUSED(disposition);
-  UniqueRegKey key(raw);
+  const UniqueRegKey key(raw);
   if (status != ERROR_SUCCESS) {
     *error = QStringLiteral("registry create failed (%1): %2")
                  .arg(status)
@@ -221,7 +221,7 @@ int nativeHostPresence(const ExtensionInstallConfig &config) {
   const std::wstring keyName = wide(config.native_host_key_path);
   const LSTATUS opened = RegOpenKeyExW(HKEY_CURRENT_USER, keyName.c_str(), 0,
                                        KEY_QUERY_VALUE, &raw);
-  UniqueRegKey key(raw);
+  const UniqueRegKey key(raw);
   if (opened == ERROR_FILE_NOT_FOUND || opened == ERROR_PATH_NOT_FOUND) {
     return 0;
   }
@@ -415,6 +415,73 @@ ExtensionInstallState BrowserExtensionInstaller::state() const {
     return ExtensionInstallState::NotPrepared;
   }
   return ExtensionInstallState::Partial;
+}
+
+QString nativeHostRegistrationNote(const QString &registered_exe,
+                                   const QString &running_exe) {
+  if (registered_exe.isEmpty()) {
+    return QString();
+  }
+#ifdef Q_OS_WIN
+  constexpr Qt::CaseSensitivity pathCase = Qt::CaseInsensitive;
+#else
+  constexpr Qt::CaseSensitivity pathCase = Qt::CaseSensitive;
+#endif
+  const QString registered = QDir::cleanPath(registered_exe);
+  const QString running = QDir::cleanPath(running_exe);
+  if (registered.compare(running, pathCase) == 0) {
+    return QString();
+  }
+  return QStringLiteral(
+             "Chrome's native-messaging host is registered to %1, but this "
+             "server is %2. Chrome starts the registered executable, and the "
+             "relay it starts refuses a bridge served by a different copy of "
+             "the program, so no browser tool can reach the extension until "
+             "they match. Call browser_extension_install on this server to "
+             "re-register it.")
+      .arg(QDir::toNativeSeparators(registered),
+           QDir::toNativeSeparators(running));
+}
+
+QString BrowserExtensionInstaller::registeredHostExecutable() const {
+#ifdef Q_OS_WIN
+  // The registry names a manifest; the manifest names the executable.
+  HKEY raw = nullptr;
+  const std::wstring keyName = wide(config_.native_host_key_path);
+  const LSTATUS opened = RegOpenKeyExW(HKEY_CURRENT_USER, keyName.c_str(), 0,
+                                       KEY_QUERY_VALUE, &raw);
+  const UniqueRegKey key(raw);
+  if (opened != ERROR_SUCCESS) {
+    return QString();
+  }
+  DWORD type = 0;
+  DWORD bytes = 0;
+  if (RegQueryValueExW(key.get(), nullptr, nullptr, &type, nullptr, &bytes) !=
+          ERROR_SUCCESS ||
+      (type != REG_SZ && type != REG_EXPAND_SZ) || bytes < sizeof(wchar_t)) {
+    return QString();
+  }
+  std::vector<wchar_t> value(bytes / sizeof(wchar_t) + 1, L'\0');
+  if (RegQueryValueExW(key.get(), nullptr, nullptr, &type,
+                       reinterpret_cast<BYTE *>(value.data()),
+                       &bytes) != ERROR_SUCCESS) {
+    return QString();
+  }
+  const QString manifestPath = QString::fromWCharArray(value.data());
+#else
+  const QString manifestPath = hostManifestPath(config_);
+#endif
+  QFile file(manifestPath);
+  if (!file.open(QIODevice::ReadOnly)) {
+    return QString();
+  }
+  QJsonParseError parseError;
+  const QJsonDocument document =
+      QJsonDocument::fromJson(file.readAll(), &parseError);
+  if (parseError.error != QJsonParseError::NoError || !document.isObject()) {
+    return QString();
+  }
+  return document.object().value(QStringLiteral("path")).toString();
 }
 
 QString BrowserExtensionInstaller::stateString() const {

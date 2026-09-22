@@ -152,6 +152,9 @@ private slots:
   void prepareRegistersValidatedNativeHost();
   void missingExtensionFailsClosed();
   void uninstallRemovesOnlyOwnedRegistration();
+  void registrationNote_namesBothExecutablesAndTheFix();
+  void registrationNote_silentWhenNothingToSay();
+  void registeredHostExecutable_readsTheManifest();
 };
 
 void BrowserExtensionInstallerTests::init() {
@@ -283,6 +286,72 @@ void BrowserExtensionInstallerTests::uninstallRemovesOnlyOwnedRegistration() {
 #endif
   QCOMPARE(static_cast<int>(installer.state()),
            static_cast<int>(ExtensionInstallState::Partial));
+}
+
+void BrowserExtensionInstallerTests::
+    registrationNote_namesBothExecutablesAndTheFix() {
+  // The failure this exists for: Chrome starts the executable its registration
+  // names, that copy's relay refuses a bridge served by a different copy, and
+  // the operator is told only "the extension is not attached" -- true, and
+  // useless. The note has to name both paths and say what to run.
+  const QString note = nativeHostRegistrationNote(
+      QStringLiteral("C:/Users/x/AppData/Local/Programs/ccm/ccm.exe"),
+      QStringLiteral("C:/Users/x/code/ccm/build/Release/ccm.exe"));
+  QVERIFY(!note.isEmpty());
+  QVERIFY(note.contains(QDir::toNativeSeparators(
+      QStringLiteral("C:/Users/x/AppData/Local/Programs/ccm/ccm.exe"))));
+  QVERIFY(note.contains(QDir::toNativeSeparators(
+      QStringLiteral("C:/Users/x/code/ccm/build/Release/ccm.exe"))));
+  QVERIFY(note.contains(QStringLiteral("browser_extension_install")));
+}
+
+void BrowserExtensionInstallerTests::registrationNote_silentWhenNothingToSay() {
+  // Same executable: there is no mismatch to report, and appending a paragraph
+  // to every "not attached" error would bury the one case that matters.
+  QVERIFY(nativeHostRegistrationNote(QStringLiteral("/opt/ccm/ccm"),
+                                     QStringLiteral("/opt/ccm/ccm"))
+              .isEmpty());
+  // Differing only by a redundant path segment is the same file.
+  QVERIFY(nativeHostRegistrationNote(QStringLiteral("/opt/ccm/./ccm"),
+                                     QStringLiteral("/opt/ccm/ccm"))
+              .isEmpty());
+  // Nothing registered says nothing about a mismatch; that is a different
+  // problem, with its own message from the installer's state.
+  QVERIFY(nativeHostRegistrationNote(QString(), QStringLiteral("/opt/ccm/ccm"))
+              .isEmpty());
+#ifdef Q_OS_WIN
+  // Windows compares paths without case, so a drive letter or a folder in
+  // another case is the same executable, not a mismatch to shout about.
+  QVERIFY(nativeHostRegistrationNote(QStringLiteral("C:/CCM/ccm.exe"),
+                                     QStringLiteral("c:/ccm/CCM.EXE"))
+              .isEmpty());
+#endif
+}
+
+void BrowserExtensionInstallerTests::
+    registeredHostExecutable_readsTheManifest() {
+  // What the accessor is for: reporting the executable Chrome would actually
+  // start, read from the registration this config points at.
+  QTemporaryDir dir;
+  QVERIFY(dir.isValid());
+  const QString extension = makeExtension(dir.path());
+  const QString executable =
+      makeFile(QDir(dir.path()).filePath(QStringLiteral("host.exe")), "exe");
+  const ExtensionInstallConfig config =
+      configFor(dir.path(), extension, executable);
+  BrowserExtensionInstaller installer(config);
+
+  // Nothing registered yet: an empty answer, not a guess at the default.
+  QVERIFY(installer.registeredHostExecutable().isEmpty());
+
+  const ExtensionInstallResult installed = installer.install();
+  QVERIFY2(installed.ok, qPrintable(installed.detail));
+  QCOMPARE(QDir::cleanPath(installer.registeredHostExecutable()),
+           QDir::cleanPath(config.host_exe_path));
+
+  const ExtensionInstallResult removed = installer.uninstall();
+  QVERIFY2(removed.ok, qPrintable(removed.detail));
+  QVERIFY(installer.registeredHostExecutable().isEmpty());
 }
 
 QTEST_MAIN(BrowserExtensionInstallerTests)

@@ -6,6 +6,22 @@ All notable changes are documented here. Project follows [Semantic Versioning](h
 
 Nothing yet.
 
+## [1.3.1] - 2026-09-22
+
+### Fixed
+
+- A bridge refused because Chrome starts a DIFFERENT copy of this program now says so. Two copies
+  are easy to end up with -- a build directory beside an installed one -- and Chrome starts
+  whichever executable its native-messaging registration names. When that is not the copy serving
+  MCP, the relay refuses the bridge, correctly, and every browser tool answered "the extension is
+  not attached": true, and impossible to act on. The refusal now names the registered executable,
+  names the one serving, explains that Chrome starts the registered one, and says to call
+  `browser_extension_install` on the server that is running.
+- The relay's own message said "not the Chrome Control MCP binary" about a process that often WAS
+  that binary, just another copy of it, which sends the reader hunting for an impostor. It now
+  names both images, or, when the serving process cannot be read at all, says that instead of
+  claiming a mismatch it did not observe.
+
 ## [1.3.0] - 2026-09-22
 
 ### Changed

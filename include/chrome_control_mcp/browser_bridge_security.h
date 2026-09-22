@@ -78,6 +78,23 @@ inline constexpr char kBrowserBridgeRuntimeDirVariable[] =
 [[nodiscard]] bool writeRendezvousRecord(const QString &path,
                                          const RendezvousRecord &record,
                                          QString *error = nullptr);
+/// The message a relay reports when the process serving the bridge is not this
+/// relay's own executable image.
+///
+/// The check itself is a security check and stays fail-closed, but its
+/// commonest cause is mundane: two copies of this same program. Chrome starts
+/// whichever executable its native-messaging registration names, and that need
+/// not be the copy serving MCP -- a build directory beside an installed one is
+/// enough. A message that says only "not the Chrome Control MCP binary" sends
+/// the reader hunting for an impostor when what they have is the wrong path in
+/// a registration, so both images are named and the fix is stated.
+///
+/// @p server_image may be empty when the process is gone or unreadable, which
+/// is reported as such rather than as a mismatch of paths.
+[[nodiscard]] QString bridgeImageMismatchText(const QString &server_image,
+                                              qint64 server_pid,
+                                              const QString &own_image);
+
 [[nodiscard]] bool readRendezvousRecord(const QString &path,
                                         RendezvousRecord *out,
                                         QString *error = nullptr);

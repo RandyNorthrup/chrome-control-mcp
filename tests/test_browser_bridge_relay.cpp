@@ -16,6 +16,7 @@
 #include <chrono>
 #include <thread>
 
+using chrome_control_mcp::bridgeImageMismatchText;
 using chrome_control_mcp::BrowserBridgePipeServer;
 using chrome_control_mcp::BrowserControl;
 using chrome_control_mcp::closeNativeIpcHandle;
@@ -121,6 +122,7 @@ class BrowserBridgeRelayTests : public QObject {
 
 private slots:
   void relayConnect_rejectsForeignServerPid();
+  void imageMismatchText_namesBothCopiesAndTheFix();
   void relayHandshake_rejectsBadToken();
   void relayHandshake_rejectsProtocolMismatch();
   void relay_forwardsCommandAndReplyOverRealPipe();
@@ -145,11 +147,37 @@ void BrowserBridgeRelayTests::relayConnect_rejectsForeignServerPid() {
   int protocol = 0;
   const NativeIpcHandle pipe = relayConnect(path, &token, &protocol, &error);
   QCOMPARE(pipe, kInvalidNativeIpcHandle);
-  // pid 999999 -> the single pidIsOwnImage-false message, which contains BOTH
-  // substrings, so the || distinguished nothing. Pin the exact deterministic
-  // message.
-  QCOMPARE(error, QStringLiteral("Bridge server pid 999999 is not the Chrome "
-                                 "Control MCP binary (or is gone)."));
+  // A pid nothing is running under cannot be compared to anything, and saying
+  // "not the Chrome Control MCP binary" about a process that does not exist
+  // sends the reader looking for an impostor. Pin the exact deterministic
+  // message, which names the pid and says why it could not be checked.
+  QCOMPARE(error, QStringLiteral("The bridge is served by process 999999, "
+                                 "which this relay cannot read (it may have "
+                                 "exited)."));
+}
+
+void BrowserBridgeRelayTests::imageMismatchText_namesBothCopiesAndTheFix() {
+  // The check is a security check, but its commonest cause is two copies of
+  // this program -- a build directory beside an installed one -- because Chrome
+  // starts whichever executable its native-messaging registration names. The
+  // message has to name both, or the reader cannot tell a misconfiguration from
+  // an attack.
+  const QString text = bridgeImageMismatchText(
+      QStringLiteral("c:/users/x/appdata/local/programs/ccm/ccm.exe"), 4242,
+      QStringLiteral("c:/users/x/code/ccm/build/release/ccm.exe"));
+  QVERIFY(text.contains(
+      QStringLiteral("c:/users/x/appdata/local/programs/ccm/ccm.exe")));
+  QVERIFY(text.contains(
+      QStringLiteral("c:/users/x/code/ccm/build/release/ccm.exe")));
+  QVERIFY(text.contains(QStringLiteral("browser_extension_install")));
+
+  // An unreadable process is reported as that, not as a path mismatch: there is
+  // no second path to name, and claiming one would be a guess.
+  const QString gone =
+      bridgeImageMismatchText(QString(), 4242, QStringLiteral("/opt/ccm/ccm"));
+  QVERIFY(gone.contains(QStringLiteral("4242")));
+  QVERIFY(gone.contains(QStringLiteral("cannot read")));
+  QVERIFY(!gone.contains(QStringLiteral("/opt/ccm/ccm")));
 }
 
 void BrowserBridgeRelayTests::relayHandshake_rejectsBadToken() {
@@ -299,10 +327,15 @@ void BrowserBridgeRelayTests::control_notConnectedReportsError() {
   const ToolResult result =
       control.invoke(QStringLiteral("browser_snapshot"), {});
   QVERIFY(result.is_error);
-  QCOMPARE(result.text,
-           QStringLiteral("Browser not connected: the Chrome Control MCP "
-                          "browser-control extension is "
-                          "not attached."));
+  // The refusal itself is fixed text. What may follow it is a diagnosis of the
+  // native-host registration, which depends on what this machine has
+  // registered -- and in a test binary is nearly always a different executable
+  // -- so the refusal is pinned by its start and the diagnosis is tested where
+  // it is built, on the pure function.
+  QVERIFY2(result.text.startsWith(
+               QStringLiteral("Browser not connected: the Chrome Control MCP "
+                              "browser-control extension is not attached.")),
+           qPrintable(result.text));
   control.stop();
 }
 

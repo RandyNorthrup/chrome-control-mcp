@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.25)
 
-project(chrome_control_mcp VERSION 1.3.0 LANGUAGES CXX)
+project(chrome_control_mcp VERSION 1.3.1 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -231,6 +231,9 @@ if(BUILD_TESTING)
         src/browser_bridge.cpp
         src/browser_contract.cpp
         src/browser_uploads.cpp
+        # browser_control diagnoses a native-host registration that names another
+        # copy of this program, which is the installer's knowledge to give.
+        src/browser_extension_installer.cpp
         ${CCMCP_BRIDGE_PIPE_SOURCE}
         src/browser_bridge_security.cpp
         src/native_messaging.cpp

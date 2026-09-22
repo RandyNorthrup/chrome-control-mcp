@@ -12,7 +12,7 @@ namespace chrome_control_mcp {
 namespace {
 
 constexpr char kServerName[] = "chrome-control-mcp";
-constexpr char kServerVersion[] = "1.3.0";
+constexpr char kServerVersion[] = "1.3.1";
 
 ToolResult jsonResult(const QJsonObject &object) {
   return {.text = QString::fromUtf8(

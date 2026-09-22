@@ -325,4 +325,19 @@ bool buildBridgePipeSecurity(SECURITY_ATTRIBUTES *attributes,
 }
 #endif
 
+QString bridgeImageMismatchText(const QString &server_image, qint64 server_pid,
+                                const QString &own_image) {
+  if (server_image.isEmpty()) {
+    return QStringLiteral("The bridge is served by process %1, which this "
+                          "relay cannot read (it may have exited).")
+        .arg(server_pid);
+  }
+  return QStringLiteral(
+             "The bridge is served by %1, but this relay is %2. Chrome starts "
+             "the executable named in its native-messaging registration, so "
+             "re-register from the server you are running: call "
+             "browser_extension_install on it.")
+      .arg(server_image, own_image);
+}
+
 } // namespace chrome_control_mcp

@@ -269,9 +269,16 @@ NativeIpcHandle relayConnect(const QString &rendezvous_path, QString *token_out,
     return kInvalidNativeIpcHandle;
   }
   if (!pidIsOwnImage(static_cast<pid_t>(record.app_pid))) {
-    setError(error, QStringLiteral("Bridge server pid %1 is not the Chrome "
-                                   "Control MCP binary (or is gone).")
-                        .arg(record.app_pid));
+    // Name both images: the commonest cause is two copies of this program, not
+    // an intruder. Chrome starts whichever executable its native-messaging
+    // registration names, and that is not always the one serving MCP.
+    setError(error,
+             bridgeImageMismatchText(
+                 QFileInfo(processImage(static_cast<pid_t>(record.app_pid)))
+                     .canonicalFilePath(),
+                 record.app_pid,
+                 QFileInfo(QCoreApplication::applicationFilePath())
+                     .canonicalFilePath()));
     return kInvalidNativeIpcHandle;
   }
 
@@ -307,9 +314,11 @@ NativeIpcHandle relayConnect(const QString &rendezvous_path, QString *token_out,
   const PeerIdentity server = peerIdentity(socketFd);
   if (server.uid != geteuid() || server.pid != record.app_pid ||
       !pidIsOwnImage(server.pid)) {
-    setError(error,
-             QStringLiteral("The bridge socket is not served by the recorded "
-                            "Chrome Control MCP process."));
+    setError(error, bridgeImageMismatchText(
+                        QFileInfo(processImage(server.pid)).canonicalFilePath(),
+                        server.pid,
+                        QFileInfo(QCoreApplication::applicationFilePath())
+                            .canonicalFilePath()));
     close(socketFd);
     return kInvalidNativeIpcHandle;
   }

@@ -204,9 +204,14 @@ HANDLE relayConnect(const QString &rendezvous_path, QString *token_out,
   // error if the server is gone). The binding check below is what actually
   // matters.
   if (!pidIsOwnImage(static_cast<DWORD>(record.app_pid))) {
-    setError(error, QStringLiteral("Bridge server pid %1 is not the Chrome "
-                                   "Control MCP binary (or is gone).")
-                        .arg(record.app_pid));
+    // Name both images. The commonest cause by far is not an intruder but two
+    // copies of this program: Chrome starts whichever executable its
+    // native-messaging registration names, and that is not always the one
+    // serving MCP. "Not the binary" alone sends the reader looking for the
+    // wrong fault.
+    setError(error, bridgeImageMismatchText(
+                        imageLower(static_cast<DWORD>(record.app_pid)),
+                        record.app_pid, ownImageLower()));
     return INVALID_HANDLE_VALUE;
   }
   const std::wstring wide = record.pipe_name.toStdWString();
@@ -226,10 +231,9 @@ HANDLE relayConnect(const QString &rendezvous_path, QString *token_out,
   ULONG server_pid = 0;
   if (GetNamedPipeServerProcessId(pipe, &server_pid) == FALSE ||
       !pidIsOwnImage(static_cast<DWORD>(server_pid))) {
-    setError(
-        error,
-        QStringLiteral(
-            "The bridge pipe is not served by the Chrome Control MCP binary."));
+    setError(error, bridgeImageMismatchText(
+                        imageLower(static_cast<DWORD>(server_pid)),
+                        static_cast<qint64>(server_pid), ownImageLower()));
     CloseHandle(pipe);
     return INVALID_HANDLE_VALUE;
   }
