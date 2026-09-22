@@ -8,12 +8,17 @@
 //
 // Pairing: the MCP server and the relay Chrome starts both read CHROME_CONTROL_MCP_RUNTIME_DIR,
 // so this browser's extension reaches this server and nothing else, and the user's extension
-// never reaches it. The native-messaging manifest is written by the product's own installer into
-// this profile's NativeMessagingHosts directory, the user-level location Chrome reads for a
-// profile started with --user-data-dir.
+// never reaches it. On Linux and macOS the native-messaging manifest is written by the product's
+// own installer into this profile's NativeMessagingHosts directory, the user-level location
+// Chrome reads for a profile started with --user-data-dir. Windows keeps that registration in the
+// registry, one key for the user and not per profile, so a dedicated browser there runs against
+// the user's existing key: the run asserts that the key names the executable under test, and the
+// runtime directory alone keeps the two browsers on their own servers.
 
-import { spawn } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
+import fs from "node:fs";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import os from "node:os";
 import path from "node:path";
 import readline from "node:readline";
 
@@ -65,6 +70,46 @@ async function installNativeHost(executable, env) {
   }
 }
 
+// The registry key Chrome reads for this user, and the manifest it names. A dedicated browser on
+// Windows runs against that registration rather than one of its own, so the run is only isolated
+// when the registration points at the executable under test: a mismatch would quietly test the
+// user's installed build instead of this one, and pass or fail for the wrong binary.
+const WINDOWS_HOST_KEY =
+  "HKCU\\Software\\Google\\Chrome\\NativeMessagingHosts\\com.chromecontrolmcp.browser";
+
+function assertWindowsHostRegistration(executable) {
+  const wanted = path.resolve(executable).toLowerCase();
+  let manifestPath = null;
+  try {
+    const query = execFileSync("reg", ["query", WINDOWS_HOST_KEY, "/ve"], {
+      encoding: "utf8",
+      windowsHide: true,
+    });
+    const value = query.match(/REG_SZ\s+(.+)/);
+    manifestPath = value ? value[1].trim() : null;
+  } catch {
+    manifestPath = null;
+  }
+  const registered = manifestPath
+    ? (() => {
+        try {
+          return path
+            .resolve(JSON.parse(fs.readFileSync(manifestPath, "utf8")).path)
+            .toLowerCase();
+        } catch {
+          return null;
+        }
+      })()
+    : null;
+  if (registered !== wanted) {
+    throw new Error(
+      "The dedicated browser needs this user's native-messaging registration to name the " +
+        `executable under test. Registered: ${registered || "nothing"}. Under test: ${wanted}. ` +
+        "Run: npm run extension -- install <executable>",
+    );
+  }
+}
+
 // Prepare the dedicated browser: its profile, its bridge directory, and the native-messaging
 // registration. `scaleFactor` is the display scale (Windows 125%, a Retina panel's 2x),
 // `windowSize` the browser window in DIPs, `zoomPercent` the browser zoom a user sets in Chrome's
@@ -80,16 +125,20 @@ export async function prepareIsolatedChrome({
   zoomPercent = 100,
   extraArgs = [],
 }) {
+  // Windows registers native-messaging hosts in the registry, one key for the user, so this
+  // browser cannot be given a registration of its own -- and does not need one. The user's key
+  // already names an executable; when that is the executable under test, this browser reaches it
+  // exactly as the user's would. What keeps the two apart is CHROME_CONTROL_MCP_RUNTIME_DIR: the
+  // host inherits it from the browser that launched it, so this browser finds only this run's
+  // server, and the user's Chrome, launched without it, cannot reach this server at all.
   if (process.platform === "win32") {
-    // Chrome for Windows finds native-messaging hosts in the registry, one key per browser
-    // brand, not in the profile: an install here would rewrite the user's own registration.
-    throw new Error(
-      "The isolated browser is not supported on Windows: Chrome registers native-messaging " +
-        "hosts in the registry, shared with the user's own Chrome.",
-    );
+    assertWindowsHostRegistration(executable);
   }
-  // A short root: the bridge's socket path must fit sockaddr_un (104 bytes on macOS).
-  const root = await mkdtemp(path.join("/tmp", "ccm-"));
+  // A short root: the bridge's socket path must fit sockaddr_un (104 bytes on macOS). Windows
+  // names a pipe instead, and has no /tmp.
+  const root = await mkdtemp(
+    path.join(process.platform === "win32" ? os.tmpdir() : "/tmp", "ccm-"),
+  );
   const profile = path.join(root, "profile");
   const runtime = path.join(root, "run");
   await mkdir(runtime, { mode: 0o700 });
@@ -98,20 +147,26 @@ export async function prepareIsolatedChrome({
   const env = {
     ...process.env,
     CHROME_CONTROL_MCP_RUNTIME_DIR: runtime,
-    CHROME_CONTROL_MCP_NATIVE_HOST_DIR: path.join(
-      profile,
-      "NativeMessagingHosts",
-    ),
+    ...(process.platform === "win32"
+      ? {}
+      : {
+          CHROME_CONTROL_MCP_NATIVE_HOST_DIR: path.join(
+            profile,
+            "NativeMessagingHosts",
+          ),
+        }),
   };
   // The installer runs an MCP server of its own for one call, and a server publishes a bridge
   // record: in this browser's runtime directory that record would make the suite's own server
   // stand down (one bridge to a user, by design) and the browser would find a dead endpoint. It
   // gets a runtime directory of its own, which nothing else ever looks in.
   try {
-    await installNativeHost(executable, {
-      ...env,
-      CHROME_CONTROL_MCP_RUNTIME_DIR: path.join(root, "installer-run"),
-    });
+    if (process.platform !== "win32") {
+      await installNativeHost(executable, {
+        ...env,
+        CHROME_CONTROL_MCP_RUNTIME_DIR: path.join(root, "installer-run"),
+      });
+    }
   } catch (error) {
     // Nothing owns this directory yet: without this it would outlive the run.
     await rm(root, {

@@ -96,7 +96,10 @@ the page's own compositor and dispatched back to it.
 - `browser_extension_status`
 
 `browser_extension_install` registers the per-user native messaging host and returns the folder to
-load unpacked from `chrome://extensions`. `browser_extension_uninstall` removes that host
+load unpacked from `chrome://extensions`. Loading it is a one-time manual step for the person at
+the keyboard, and no tool here can do it: branded Chrome 137 and later ignore `--load-extension`,
+and policy installation requires a Web Store listing. An assistant should report the folder and the
+clicks rather than search for a way around it. `browser_extension_uninstall` removes that host
 registration; Chrome extension removal remains manual. No private key or packaged extension is
 used.
 

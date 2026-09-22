@@ -355,9 +355,19 @@ ExtensionInstallResult BrowserExtensionInstaller::install() {
   }
 #endif
 
+  // The load itself is the user's to do, and saying so plainly here is load-bearing: an
+  // assistant that reads "load unpacked" as a task of its own goes looking for a way to automate
+  // it, and there is none to find. Chrome removed --load-extension from branded builds in 137,
+  // policy installation wants a Web Store listing this project does not have, and clicking the
+  // browser's windows is not an install path. The honest answer is the folder and the clicks.
   return {true, QStringLiteral("Browser extension bridge prepared"),
-          QStringLiteral("Load unpacked in chrome://extensions from %1, then "
-                         "reload or restart Chrome")
+          QStringLiteral(
+              "Native host registered. The extension itself must now be loaded "
+              "once, by hand, by the person at the keyboard: open "
+              "chrome://extensions, turn on Developer mode, choose Load "
+              "unpacked, and select %1. Chrome offers no programmatic way to "
+              "load an unpacked extension, so do not try to automate this step "
+              "-- ask the user to do it. Then reload or restart Chrome.")
               .arg(QDir::toNativeSeparators(config_.extension_path))};
 }
 

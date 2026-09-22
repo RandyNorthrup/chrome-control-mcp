@@ -97,6 +97,28 @@ const MAX_SHOT_EDGE_PX = 16384;
 const MAX_SHOT_BASE64 = 16 * 1024 * 1024;
 const MAX_PDF_BASE64 = 24 * 1024 * 1024;
 
+// Chrome answers Page.captureScreenshot only once the tab produces a compositor frame, and a tab
+// that is not the front tab of an on-screen window produces none: the capture then never returns.
+// The session works in a tab of its own, beside the user's, so that is the ORDINARY case here --
+// left alone the wait runs out the app's whole transport deadline, which resets the bridge and
+// ends the session over one screenshot. A screencast makes Chrome composite a tab that is not on
+// screen, so the capture is taken with one running; its frames are bounded to a single pixel
+// because nothing reads them, and it is always stopped again.
+const FRAME_FORCING_SCREENCAST = {
+  format: "jpeg",
+  quality: 1,
+  maxWidth: 1,
+  maxHeight: 1,
+  everyNthFrame: 1,
+};
+// A capture of a tab that IS on screen answers in milliseconds; this is the patience for one
+// before the frame-forcing path is tried instead, long enough that a large full-page raster on a
+// slow machine is not abandoned mid-way.
+const ON_SCREEN_CAPTURE_DEADLINE_MS = 4000;
+// The bound on a forced capture. Every path here must end well inside the app's transport
+// deadline so a screenshot that cannot be taken is one failed tool call, not a dead bridge.
+const FORCED_CAPTURE_DEADLINE_MS = 15000;
+
 // CDP Input.dispatchKeyEvent modifier bitmask (Alt=1, Control=2, Meta=4, Shift=8).
 // These tables are indexed by a caller-supplied token, so they carry NO prototype: a plain object
 // literal answers "constructor"/"toString"/"valueOf" with an inherited member, and a lookup that
@@ -1939,6 +1961,75 @@ function shotMatchesRender(shot, now) {
   );
 }
 
+// Run a command with a bound on the wait. Resolves to {value} when it answers, {timedOut:true}
+// when it does not; a command that fails outright still rejects, because that is an answer. The
+// abandoned command keeps a catch of its own: it can still reject later (a detach mid-capture),
+// and an unhandled rejection in the worker would take down a session whose call was already
+// answered.
+function raceDeadline(promise, milliseconds) {
+  let timer = null;
+  const settledLate = promise.catch(() => undefined);
+  return Promise.race([
+    promise.then((value) => ({ value })),
+    new Promise((resolve) => {
+      timer = setTimeout(() => resolve({ timedOut: true }), milliseconds);
+    }),
+  ]).finally(() => {
+    clearTimeout(timer);
+    void settledLate;
+  });
+}
+
+// Is this tab the one Chrome is actually drawing? Only the active tab of a window that is not
+// minimized composites, and only a compositing tab answers a plain capture. Unknowable state
+// (the tab or window is gone from under us) counts as not on screen: the forced path works
+// either way, where the plain one can wait forever.
+async function tabIsOnScreen(tabId) {
+  const tab = await chrome.tabs.get(tabId).catch(() => null);
+  if (!tab || !tab.active) {
+    return false;
+  }
+  const home = await chrome.windows.get(tab.windowId).catch(() => null);
+  return Boolean(home) && home.state !== "minimized";
+}
+
+// Capture the tab, forcing the frames Chrome needs when it is not drawing the tab itself. An
+// on-screen tab is captured directly and falls back if that does not answer -- a window can be
+// fully covered by another, which stops its frames as surely as a background tab does, and
+// nothing in the extension can see that from here.
+async function captureScreenshotWithFrames(tabId, params) {
+  if (await tabIsOnScreen(tabId)) {
+    const direct = await raceDeadline(
+      sendCdp(tabId, "Page.captureScreenshot", params),
+      ON_SCREEN_CAPTURE_DEADLINE_MS,
+    );
+    if (!direct.timedOut) {
+      return direct.value;
+    }
+  }
+  await sendCdp(tabId, "Page.startScreencast", FRAME_FORCING_SCREENCAST);
+  let forced;
+  try {
+    forced = await raceDeadline(
+      sendCdp(tabId, "Page.captureScreenshot", params),
+      FORCED_CAPTURE_DEADLINE_MS,
+    );
+  } finally {
+    // The cast must not outlive the capture: it is the tab's own frames being relayed, and a cast
+    // left running keeps compositing a tab nobody is looking at.
+    await sendCdp(tabId, "Page.stopScreencast", {}).catch(() => undefined);
+  }
+  if (forced.timedOut) {
+    throw new Error(
+      "The screenshot timed out: the tab produced no frame within " +
+        FORCED_CAPTURE_DEADLINE_MS / 1000 +
+        " s. A tab whose window is minimized cannot be captured; restore the window, or use " +
+        "browser_read for the page's text.",
+    );
+  }
+  return forced.value;
+}
+
 async function handleScreenshot(tabId, args) {
   await ensureAttached(tabId);
   const fullPage = Boolean(args && args.full_page === true);
@@ -2027,7 +2118,7 @@ async function handleScreenshot(tabId, args) {
   }
   let res;
   try {
-    res = await sendCdp(tabId, "Page.captureScreenshot", params);
+    res = await captureScreenshotWithFrames(tabId, params);
   } finally {
     if (!includeControlOverlay) {
       await setPresenceVisible(tabId, true);

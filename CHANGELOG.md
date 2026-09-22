@@ -4,7 +4,32 @@ All notable changes are documented here. Project follows [Semantic Versioning](h
 
 ## [Unreleased]
 
-Nothing yet.
+### Fixed
+
+- `browser_screenshot` no longer hangs, and no longer takes the session down with it, when the
+  tab it captures is not the one Chrome is drawing. Chrome answers `Page.captureScreenshot` only
+  once the tab produces a compositor frame, and a background tab -- which is where this session
+  works by design -- produces none: the capture never returned, the app waited out its whole
+  transport deadline, and the reset that followed detached the extension and ended the session
+  over one screenshot. A capture of a tab that is not on screen now runs with a one-pixel
+  screencast that makes Chrome composite it, and every capture path is bounded well inside the
+  transport deadline, so a screenshot that truly cannot be taken is one failed call on a live
+  bridge. Measured on the E2E fixture in a background tab: no reply in 30 s and a dead bridge
+  before, 1.3 to 1.8 s and byte-identical output after.
+
+### Changed
+
+- The live suites' dedicated browser runs on Windows. It refused to, because Windows keeps
+  native-messaging registrations in the registry rather than per profile, and a profile-local
+  install was assumed to be the only way to leave the user's own Chrome alone. It is not: the
+  registration already names the executable under test, and `CHROME_CONTROL_MCP_RUNTIME_DIR` is
+  what keeps each browser to its own server. The run now asserts that the user's registration
+  names the executable under test and proceeds, so `display_matrix_e2e.mjs` -- every pointer tool
+  across display scales, window sizes, zoom levels, and pinches -- covers Windows too.
+- `browser_extension_install` says plainly, in its description and in its reply, that loading the
+  unpacked extension is a one-time manual step that cannot be automated, and why. README and
+  `docs/TOOLS.md` say the same. An assistant reading only the tool's own text now has what it
+  needs to hand the step to the user instead of looking for a workaround that does not exist.
 
 ## [1.1.0] - 2026-09-21
 

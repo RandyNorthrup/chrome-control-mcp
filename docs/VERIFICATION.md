@@ -201,11 +201,49 @@ is drawn at rarely: the interpolated moves of a drag are now sent in order and a
 Chrome coalesces a real mouse anyway. Reads, snapshots, screenshots, clicks, and keystrokes were
 never affected (26-129 ms).
 
+## Windows live Chrome
+
+Evidence recorded 2026-09-22 on Windows 11 Pro 26200, MSVC 19.50, Qt 6.10.0, CMake 4.4.3, Node
+24.13.0, Chrome for Testing 153.0.8010.52.
+
+```shell
+node tests/e2e/full_browser_e2e.mjs build/Release/chrome_control_mcp.exe
+node tests/e2e/isolated_run.mjs --chrome=<CfT> --chrome-arg=--headless=new tests/e2e/user_interference_e2e.mjs
+node tests/e2e/display_matrix_e2e.mjs --chrome=<CfT> --parallel=2
+```
+
+- Full E2E, every call in a background tab: **43/43 tools, 151 reversible live cases**, the
+  extension attaching in 2.1 s, Chrome state restored.
+- User interference, in a dedicated browser: **10/10 checks**. A tab and then a window opened as
+  the user; the session's tab kept every snapshot, keystroke, screenshot, and listing.
+- Display matrix, in dedicated browsers: **35/35 configurations, 3335/3335 checks** across display
+  scales 1x, 1.25x, 1.5x, 1.75x, 2x, 2.5x, 3x; windows from 390x844 to 3840x2160; every Chrome zoom
+  step from 25% to 500%; pinch at 1.5x, 2x, and 3x; and both scrollbar kinds.
+
+### The capture hang this platform found
+
+A dedicated browser on Windows hides a background tab, where macOS's did not, and that is what
+exposed it: `Page.captureScreenshot` returns only once the tab produces a compositor frame, and a
+tab nobody is looking at produces none. The capture never answered, the app waited out its whole
+30 s transport deadline, and the reset that followed detached the extension -- one screenshot ended
+the session. Reproduced on the E2E fixture in a background tab, then fixed by capturing with a
+one-pixel screencast running, which makes Chrome composite the tab:
+
+| Capture of the fixture in a background tab | Before                         | After |
+| ------------------------------------------ | ------------------------------ | ----- |
+| First capture                              | no reply in 30 s, bridge reset | 1.8 s |
+| Second capture                             | extension no longer attached   | 1.3 s |
+
+The forced path returns the same image, not a different one: at 2x, foreground plain capture and
+background screencast-forced capture were byte-identical, 114,526 bytes for the viewport and
+178,520 for the full page.
+
 ## Claim boundary
 
 Source build, automated suites, static analysis, sanitizers, public identity, isolated native-host
 lifecycle, stdio MCP, and Windows, Linux (Wayland), and macOS live Chrome are verified. Linux and
 macOS transport and installer have real local runtime proof. The display matrix runs on dedicated
-browsers, where a background tab still reports itself visible; hidden-tab behaviour is proven on
-physical macOS above. This is strong software evidence, not a claim about every website, Chrome
+browsers on all three platforms; hidden-tab behaviour is proven on physical macOS above and, since
+2026-09-22, on Windows, where a dedicated browser does hide a background tab and found the capture
+hang recorded below. This is strong software evidence, not a claim about every website, Chrome
 release, desktop environment, or machine configuration.

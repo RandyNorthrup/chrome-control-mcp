@@ -103,7 +103,15 @@ npm run extension -- install
 ```
 
 Open `chrome://extensions`, enable **Developer mode**, choose **Load unpacked**, then select folder
-printed by command. Chrome requires this one manual step for an unpacked extension.
+printed by command.
+
+**This step is manual and cannot be automated. That is Chrome's decision, not an omission here.**
+Branded Chrome 137 and later ignore `--load-extension`; only Chromium and Chrome for Testing still
+honour it. Installing by enterprise policy needs a Web Store listing and a packaged, signed
+extension, which this project deliberately does not have. Driving the browser's own windows with a
+UI-automation tool is not an install path either: it takes over the user's screen and breaks on any
+Chrome or locale change. An assistant asked to set this up should print the folder and the three
+clicks and hand the keyboard back; there is no workaround to go looking for.
 
 No signing key, packaged extension, store account, administrator access, or enterprise policy is
 needed. Public `key` in `manifest.json` only pins unpacked extension ID; it cannot sign software.
@@ -169,6 +177,8 @@ Local Windows and Linux gates currently cover:
 - Separate ASan+UBSan and TSan runs
 - Full-history Gitleaks scan and npm dependency audit
 - 43/43 live MCP tools through real Chrome on Windows
+- 35/35 display configurations on Windows and macOS: scales 1x to 3x, zoom 25% to 500%, pinch, and
+  both scrollbar kinds, each coordinate proven by where its click landed
 - Public UI Playground navigation, snapshot, typing, click, and PNG capture
 - Reversible native-host install/status/uninstall lifecycle
 

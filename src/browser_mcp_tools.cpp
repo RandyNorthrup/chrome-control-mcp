@@ -94,10 +94,16 @@ QJsonArray toolCatalog() {
           QStringLiteral("browser_extension_install"),
           QStringLiteral(
               "Prepare the unpacked Chrome Control MCP browser extension by "
-              "registering its "
-              "current-user native messaging host. Returns the exact folder to "
-              "load once from "
-              "chrome://extensions; no package or private key is required.")),
+              "registering its current-user native messaging host, and return "
+              "the exact folder to load. Loading that folder is a ONE-TIME "
+              "MANUAL step the person at the keyboard must do in "
+              "chrome://extensions; it cannot be automated, and no assistant "
+              "should try. Branded Chrome 137 and later ignore "
+              "--load-extension, policy installation needs a Web Store "
+              "listing, and driving the browser's own windows is not a "
+              "supported install path. Report the folder and the three clicks "
+              "to the user instead: Developer mode on, Load unpacked, pick the "
+              "folder. No package or private key is required.")),
       toolEntry(QStringLiteral("browser_extension_uninstall"),
                 QStringLiteral("Remove the Chrome Control MCP native messaging "
                                "host registration. If the unpacked "

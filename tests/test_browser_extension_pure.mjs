@@ -37,20 +37,30 @@ const workerSource = readFileSync(workerPath, "utf8");
 // (chrome.debugger.onDetach.addListener(fn)) work without enumerating the API surface.
 // It records nothing and returns itself; the tests below never assert on chrome behaviour,
 // they assert on decisions the worker makes before it would ever call chrome.
-function makeChromeStub() {
+// `overrides` maps a dotted path ("tabs.get", "debugger.sendCommand") to a real implementation.
+// Everything else still resolves to the proxy, so a test that needs Chrome to ANSWER something
+// says only what it needs and inherits the rest.
+function makeChromeStub(overrides = {}, path = "") {
   const target = function () {};
   return new Proxy(target, {
     get(_t, prop) {
       if (prop === "then") {
         return undefined;
       } // must not look like a thenable
-      return makeChromeStub();
+      if (typeof prop !== "string") {
+        return makeChromeStub(overrides, path);
+      }
+      const reached = path ? `${path}.${prop}` : prop;
+      if (Object.prototype.hasOwnProperty.call(overrides, reached)) {
+        return overrides[reached];
+      }
+      return makeChromeStub(overrides, reached);
     },
     apply() {
-      return makeChromeStub();
+      return makeChromeStub(overrides, path);
     },
     construct() {
-      return makeChromeStub();
+      return makeChromeStub(overrides, path);
     },
   });
 }
@@ -96,11 +106,15 @@ const EXPORTED = [
   "MAC_EDITING_COMMANDS",
   "macEditingCommands",
   "keyDownEvent",
+  "raceDeadline",
+  "tabIsOnScreen",
+  "captureScreenshotWithFrames",
+  "FRAME_FORCING_SCREENCAST",
 ];
 
-function loadWorker() {
+function loadWorker(overrides = {}) {
   const context = vm.createContext({
-    chrome: makeChromeStub(),
+    chrome: makeChromeStub(overrides),
     console: { log() {}, warn() {}, error() {}, debug() {} },
     setTimeout,
     clearTimeout,
@@ -1053,4 +1067,167 @@ test("MAC_EDITING_COMMANDS is Chromium's macOS table, entry for entry", () => {
       assert.match(selector, /^[a-z][A-Za-z]*:$/, `${chord} -> ${selector}`);
     }
   }
+});
+
+// -- capturing a tab Chrome is not drawing ----------------------------------
+//
+// Chrome answers Page.captureScreenshot only once the tab produces a compositor frame, and the
+// tab this session works in is ordinarily not the one in front. A capture that waits on a frame
+// that never comes used to run out the app's transport deadline, which reset the bridge and ended
+// the session; these tests hold the shape of the fix: force frames when the tab is not on screen,
+// bound every wait, and never leave a screencast running.
+
+function captureHarness({ tab, window: windowInfo, capture }) {
+  const calls = [];
+  const overrides = {
+    "tabs.get": async (tabId) => {
+      calls.push({ method: "tabs.get", tabId });
+      if (!tab) {
+        throw new Error("no such tab");
+      }
+      return { id: tabId, ...tab };
+    },
+    "windows.get": async (windowId) => {
+      calls.push({ method: "windows.get", windowId });
+      if (!windowInfo) {
+        throw new Error("no such window");
+      }
+      return { id: windowId, ...windowInfo };
+    },
+    "debugger.sendCommand": async (_target, method, params) => {
+      calls.push({ method, params });
+      if (method === "Page.captureScreenshot") {
+        return capture();
+      }
+      return {};
+    },
+  };
+  return { calls, worker: loadWorker(overrides) };
+}
+
+const methodsOf = (calls) => calls.map((call) => call.method);
+
+test("raceDeadline reports the value when the command answers", async () => {
+  const raced = await w.raceDeadline(Promise.resolve("answered"), 1000);
+  // Field by field: the worker's own realm builds this object, and a literal out here is never
+  // deep-equal to one of its objects.
+  assert.equal(raced.value, "answered");
+  assert.equal(raced.timedOut, undefined);
+});
+
+test("raceDeadline reports a timeout instead of waiting forever", async () => {
+  const raced = await w.raceDeadline(new Promise(() => {}), 10);
+  assert.equal(raced.timedOut, true);
+  assert.equal(raced.value, undefined);
+});
+
+test("raceDeadline still fails when the command itself fails", async () => {
+  await assert.rejects(
+    () => w.raceDeadline(Promise.reject(new Error("detached")), 1000),
+    /detached/,
+  );
+});
+
+test("raceDeadline leaves no unhandled rejection behind an abandoned command", async () => {
+  const rejections = [];
+  const record = (reason) => rejections.push(reason);
+  process.on("unhandledRejection", record);
+  try {
+    let fail = null;
+    const abandoned = new Promise((_resolve, reject) => {
+      fail = reject;
+    });
+    assert.equal((await w.raceDeadline(abandoned, 10)).timedOut, true);
+    fail(new Error("the debugger detached after we gave up"));
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  } finally {
+    process.off("unhandledRejection", record);
+  }
+  assert.deepEqual(rejections, []);
+});
+
+test("a tab in front of a normal window counts as on screen", async () => {
+  const { worker } = captureHarness({
+    tab: { active: true, windowId: 7 },
+    window: { state: "normal" },
+    capture: () => ({ data: "png" }),
+  });
+  assert.equal(await worker.tabIsOnScreen(1), true);
+});
+
+test("a background tab, a minimized window, and a vanished tab are not on screen", async () => {
+  const background = captureHarness({
+    tab: { active: false, windowId: 7 },
+    window: { state: "normal" },
+    capture: () => ({ data: "png" }),
+  });
+  assert.equal(await background.worker.tabIsOnScreen(1), false);
+
+  const minimized = captureHarness({
+    tab: { active: true, windowId: 7 },
+    window: { state: "minimized" },
+    capture: () => ({ data: "png" }),
+  });
+  assert.equal(await minimized.worker.tabIsOnScreen(1), false);
+
+  const gone = captureHarness({
+    tab: null,
+    window: null,
+    capture: () => ({ data: "png" }),
+  });
+  assert.equal(await gone.worker.tabIsOnScreen(1), false);
+});
+
+test("a tab on screen is captured directly, with no screencast", async () => {
+  const { calls, worker } = captureHarness({
+    tab: { active: true, windowId: 7 },
+    window: { state: "normal" },
+    capture: () => ({ data: "on-screen" }),
+  });
+  const shot = await worker.captureScreenshotWithFrames(1, { format: "png" });
+  assert.deepEqual(shot, { data: "on-screen" });
+  assert.deepEqual(
+    methodsOf(calls).filter((method) => method.startsWith("Page.")),
+    ["Page.captureScreenshot"],
+  );
+});
+
+test("a tab that is not on screen is captured with frames forced, and the cast is stopped", async () => {
+  const { calls, worker } = captureHarness({
+    tab: { active: false, windowId: 7 },
+    window: { state: "normal" },
+    capture: () => ({ data: "forced" }),
+  });
+  const shot = await worker.captureScreenshotWithFrames(1, { format: "png" });
+  assert.deepEqual(shot, { data: "forced" });
+  assert.deepEqual(
+    methodsOf(calls).filter((method) => method.startsWith("Page.")),
+    ["Page.startScreencast", "Page.captureScreenshot", "Page.stopScreencast"],
+  );
+  const cast = calls.find((call) => call.method === "Page.startScreencast");
+  // One pixel: nothing reads these frames, they exist only to make Chrome composite the tab.
+  assert.equal(cast.params.maxWidth, 1);
+  assert.equal(cast.params.maxHeight, 1);
+  // Same realm on both sides: the worker runs in its own vm context, and an object from it
+  // never deep-equals a literal built out here.
+  assert.deepEqual(cast.params, worker.FRAME_FORCING_SCREENCAST);
+});
+
+test("a capture that fails is not left with a screencast running", async () => {
+  const { calls, worker } = captureHarness({
+    tab: { active: false, windowId: 7 },
+    window: { state: "normal" },
+    capture: () => {
+      throw new Error("Session is not attached to the target");
+    },
+  });
+  await assert.rejects(
+    () => worker.captureScreenshotWithFrames(1, { format: "png" }),
+    /not attached/,
+  );
+  assert.equal(
+    methodsOf(calls).includes("Page.stopScreencast"),
+    true,
+    "the cast must be stopped even when the capture fails",
+  );
 });
