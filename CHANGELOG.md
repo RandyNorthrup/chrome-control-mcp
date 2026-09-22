@@ -4,6 +4,10 @@ All notable changes are documented here. Project follows [Semantic Versioning](h
 
 ## [Unreleased]
 
+Nothing yet.
+
+## [1.1.0] - 2026-09-21
+
 ### Changed
 
 - Control stays inside the browser. Session pins its own tab instead of re-resolving "active tab
