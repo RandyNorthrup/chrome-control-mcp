@@ -1,0 +1,130 @@
+<!doctype html>
+<html>
+<head><meta charset="utf-8">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { width: 1280px; height: 640px; overflow: hidden; }
+  body {
+    background: #07080d;
+    font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+    color: #e9ecf3;
+    position: relative;
+  }
+  .glow-a, .glow-b {
+    position: absolute; border-radius: 50%; filter: blur(90px); opacity: .55;
+  }
+  .glow-a { width: 620px; height: 620px; left: -180px; top: -240px;
+    background: radial-gradient(circle, rgba(236,72,153,.55), transparent 65%); }
+  .glow-b { width: 700px; height: 700px; right: -220px; bottom: -300px;
+    background: radial-gradient(circle, rgba(124,58,237,.5), transparent 65%); }
+  .grid {
+    position: absolute; inset: 0;
+    background-image: linear-gradient(rgba(255,255,255,.035) 1px, transparent 1px),
+                      linear-gradient(90deg, rgba(255,255,255,.035) 1px, transparent 1px);
+    background-size: 48px 48px;
+    mask-image: radial-gradient(ellipse at 50% 40%, #000 45%, transparent 80%);
+  }
+  .wrap { position: relative; display: flex; height: 100%; align-items: center; gap: 46px; padding: 0 64px; }
+  .left { width: 560px; }
+  .eyebrow {
+    display: inline-flex; align-items: center; gap: 10px;
+    font-size: 17px; font-weight: 700; letter-spacing: .16em; text-transform: uppercase;
+    color: #f9a8d4; margin-bottom: 20px;
+  }
+  .eyebrow .dot { width: 9px; height: 9px; border-radius: 50%; background: #ec4899;
+    box-shadow: 0 0 0 5px rgba(236,72,153,.22); }
+  h1 { font-size: 68px; line-height: 1.02; font-weight: 800; letter-spacing: -.025em; }
+  h1 .accent { background: linear-gradient(95deg, #f472b6, #a78bfa 60%, #60a5fa);
+    -webkit-background-clip: text; background-clip: text; color: transparent; }
+  p.tag { margin-top: 20px; font-size: 25px; line-height: 1.42; color: #aab3c4; font-weight: 400; }
+  p.tag b { color: #e9ecf3; font-weight: 600; }
+  .chips { margin-top: 30px; display: flex; flex-wrap: wrap; gap: 10px; }
+  .chip {
+    font-size: 16px; font-weight: 600; color: #cbd3e1;
+    border: 1px solid rgba(255,255,255,.14); background: rgba(255,255,255,.05);
+    border-radius: 999px; padding: 9px 15px; white-space: nowrap;
+  }
+  .chip.pink { color: #fbcfe8; border-color: rgba(236,72,153,.45); background: rgba(236,72,153,.12); }
+
+  /* the browser, with the product's own control presence drawn on it */
+  .browser {
+    flex: 1; height: 392px; border-radius: 16px; overflow: hidden;
+    background: #11131b; border: 1px solid rgba(255,255,255,.12);
+    box-shadow: 0 40px 90px rgba(0,0,0,.6), 0 0 0 1px rgba(255,255,255,.03) inset;
+    display: flex; flex-direction: column;
+  }
+  .tabstrip { height: 46px; background: #0d0f16; display: flex; align-items: flex-end; padding: 0 12px; gap: 8px; }
+  .dots { display: flex; gap: 7px; align-items: center; height: 46px; margin-right: 8px; }
+  .dots i { width: 11px; height: 11px; border-radius: 50%; display: block; background: #2a2f3d; }
+  .tab {
+    height: 32px; border-radius: 9px 9px 0 0; display: flex; align-items: center;
+    padding: 0 14px; font-size: 14px; color: #8b93a4; background: #151824; max-width: 190px;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .group {
+    display: flex; align-items: flex-end; gap: 6px; padding: 0 7px 0 9px;
+    background: rgba(236,72,153,.16); border-radius: 10px 10px 0 0;
+    border-top: 2px solid #ec4899;
+  }
+  .group .label { font-size: 12px; font-weight: 800; letter-spacing: .1em; color: #f9a8d4; padding-bottom: 9px; }
+  .tab.active { background: #1b1f2e; color: #e9ecf3; }
+  .page { flex: 1; margin: 10px; border-radius: 10px; background: #0b0d14; position: relative;
+    border: 3px solid #ec4899; box-shadow: 0 0 0 1px rgba(236,72,153,.35), 0 0 34px rgba(236,72,153,.25) inset; }
+  .badge {
+    position: absolute; top: 12px; right: 12px; display: flex; align-items: center; gap: 8px;
+    background: #ec4899; color: #fff; font-size: 13px; font-weight: 800; letter-spacing: .12em;
+    padding: 7px 12px; border-radius: 8px; box-shadow: 0 6px 18px rgba(236,72,153,.45);
+  }
+  .badge .pulse { width: 8px; height: 8px; border-radius: 50%; background: #fff; }
+  .lines { padding: 24px 24px; display: flex; flex-direction: column; gap: 13px; }
+  .line { height: 12px; border-radius: 6px; background: rgba(255,255,255,.09); }
+  .line.w1 { width: 62%; } .line.w2 { width: 84%; } .line.w3 { width: 47%; }
+  .field { margin-top: 8px; height: 40px; width: 70%; border-radius: 9px;
+    background: rgba(255,255,255,.05); border: 1px solid rgba(255,255,255,.14); display: flex; align-items: center; padding: 0 13px;
+    font-size: 15px; color: #7d8699; }
+  .btn { margin-top: 18px; align-self: flex-start; position: relative; display: inline-flex; align-items: center;
+    height: 44px; padding: 0 62px 0 30px; border-radius: 10px; background: linear-gradient(180deg, #2f6df6, #1d4ed8);
+    color: #fff; font-size: 16px; font-weight: 700; box-shadow: 0 8px 20px rgba(37,99,235,.35); }
+  .cursor { position: absolute; right: 22px; top: 50%; }
+  .cursor .halo { position: absolute; left: -17px; top: -17px; width: 44px; height: 44px; border-radius: 50%;
+    background: rgba(236,72,153,.28); box-shadow: 0 0 0 2px rgba(236,72,153,.5); }
+  .cursor .pt { position: absolute; width: 14px; height: 14px; border-radius: 50%; background: #ec4899;
+    box-shadow: 0 0 14px rgba(236,72,153,.9); }
+  .foot { position: absolute; left: 64px; bottom: 34px; font-size: 16px; color: #6f7a90; }
+</style>
+</head>
+<body>
+  <div class="glow-a"></div><div class="glow-b"></div><div class="grid"></div>
+  <div class="wrap">
+    <div class="left">
+      <div class="eyebrow"><span class="dot"></span>Model Context Protocol server</div>
+      <h1>Chrome Control <span class="accent">MCP</span></h1>
+      <p class="tag"><b>Visible, precise Chrome control for AI assistants.</b> It drives a tab of its own, beside you, and never hides that it is working.</p>
+      <div class="chips">
+        <span class="chip pink">43 MCP tools</span>
+        <span class="chip">Native messaging + DevTools Protocol</span>
+        <span class="chip">Windows · Linux · macOS</span>
+        <span class="chip">Local by design · MIT</span>
+      </div>
+    </div>
+    <div class="browser">
+      <div class="tabstrip">
+        <div class="dots"><i></i><i></i><i></i></div>
+        <div class="tab">Your tab</div>
+        <div class="group"><span class="label">AI CONTROL</span><div class="tab active">Under control</div></div>
+      </div>
+      <div class="page">
+        <div class="badge"><span class="pulse"></span>AI CONTROL</div>
+        <div class="lines">
+          <div class="line w1"></div>
+          <div class="line w2"></div>
+          <div class="line w3"></div>
+          <div class="field"></div>
+          <div class="field" style="width:52%"></div>
+          <div class="btn">Submit<span class="cursor"><span class="halo"></span><span class="pt"></span></span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>
