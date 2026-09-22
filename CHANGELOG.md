@@ -4,6 +4,10 @@ All notable changes are documented here. Project follows [Semantic Versioning](h
 
 ## [Unreleased]
 
+Nothing yet.
+
+## [1.1.1] - 2026-09-22
+
 ### Fixed
 
 - `browser_screenshot` no longer hangs, and no longer takes the session down with it, when the
