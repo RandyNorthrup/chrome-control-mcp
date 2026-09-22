@@ -96,11 +96,27 @@ bool roleIsStructuralNoise(const QString &role) {
          role == QLatin1String("inlinetextbox");
 }
 
+// A file input the page hides on purpose. The extension collects these straight
+// from the DOM and marks them, because the pattern is universal -- the real
+// `<input type="file">` is set to display:none and a styled button is put in
+// front of it -- and an element with no box would otherwise be dropped here,
+// leaving browser_upload nothing to name on any ordinary page. Kept for NAMING
+// only: it carries no bounds, and every coordinate path needs bounds, so
+// nothing can compute a click point from one.
+bool nodeIsHiddenFileInput(const QJsonObject &node) {
+  return node.value(QStringLiteral("hidden_input")).toBool(false) &&
+         node.value(QStringLiteral("role")).toString() ==
+             QLatin1String("filechooser");
+}
+
 // Drop invisible nodes, zero-area nodes, and unnamed structural filler. A node
 // with no bounds object is kept (the extension may omit bounds for virtualized
 // content); only an explicit zero/negative size is treated as not rendered.
 bool nodeIsRenderable(const QJsonObject &node, bool interactable,
                       const QString &name) {
+  if (nodeIsHiddenFileInput(node)) {
+    return true;
+  }
   if (!node.value(QStringLiteral("visible")).toBool(true)) {
     return false;
   }
@@ -178,6 +194,16 @@ QString stateSuffix(const QJsonObject &node) {
     if (node.value(QLatin1String(key)).toBool()) {
       flags << QLatin1String(key);
     }
+  }
+  // Say when a control is on the page but not shown, so a model reading the
+  // outline knows why it never saw this one on a screenshot -- and does not try
+  // to click something that has no place on screen. Only file inputs reach the
+  // outline this way; see nodeIsHiddenFileInput.
+  if (node.value(QStringLiteral("hidden_input")).toBool(false)) {
+    flags << QStringLiteral("hidden");
+  }
+  if (node.value(QStringLiteral("multiple")).toBool(false)) {
+    flags << QStringLiteral("multiple");
   }
   appendValueFlags(node, flags);
   return flags.isEmpty() ? QString()
@@ -1124,12 +1150,15 @@ void appendFormControlTools(QJsonArray &tools) {
   tools.append(toolEntry(
       QStringLiteral("browser_upload"),
       QStringLiteral(
-          "Give a file input with [ref] from the latest snapshot one or more "
-          "local files, exactly as the user picking them would: the page "
-          "receives real File objects and its input/change handlers run. Pass "
-          "absolute paths. The element must be <input type=file>, and more "
-          "than one path needs an input marked multiple. Files are read by "
-          "this server and sent over the bridge; no path reaches the page."),
+          "Give a file input one or more local files, exactly as the user "
+          "picking them would: the page receives real File objects and its "
+          "input/change handlers run. [ref] may name the file input itself or "
+          "the control that opens it -- the button, label, or menu item a "
+          "person would click -- because most pages hide the real input behind "
+          "one; a hidden input is also listed in the snapshot as filechooser "
+          "(hidden). Pass absolute paths; more than one needs an input marked "
+          "multiple. Files are read by this server and sent over the bridge; "
+          "no path reaches the page."),
       toolSchema(
           QJsonObject{
               {QStringLiteral("ref"),

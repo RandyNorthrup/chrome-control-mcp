@@ -85,6 +85,8 @@ private slots:
   void buildCommand_httpAuthToolBuilds();
   void buildCommand_windowToolsBuild();
   void catalog_advertisesBatch3Tools();
+  void renderSnapshot_keepsFileInputsThePageHides();
+  void renderSnapshot_keepsOnlyMarkedFileInputsWithNoBox();
   void buildCommand_uploadKeepsPathsOnThisSide();
   void buildCommand_uploadRefusesMalformedPaths();
   void buildCommand_rejectsUnknownArgument();
@@ -1138,6 +1140,73 @@ void BrowserContractTests::catalog_advertisesBatch3Tools() {
         QStringLiteral("browser_http_auth")}) {
     QVERIFY2(names.contains(expected), qPrintable(expected));
   }
+}
+
+void BrowserContractTests::renderSnapshot_keepsFileInputsThePageHides() {
+  // The universal pattern on the web: the real <input type="file"> is
+  // display:none behind a styled button, so it has no box and the accessibility
+  // tree never mentions it. The extension collects it from the DOM and marks
+  // it; this layer must KEEP it, because browser_upload exists to give that
+  // element a file and a ref is the only way to name one.
+  QJsonObject hidden{
+      {QStringLiteral("backendNodeId"), 77},
+      {QStringLiteral("role"), QStringLiteral("filechooser")},
+      {QStringLiteral("name"), QStringLiteral("repo-image-file-input")},
+      {QStringLiteral("interactable"), true},
+      {QStringLiteral("visible"), true},
+      {QStringLiteral("hidden_input"), true},
+      {QStringLiteral("multiple"), true},
+      {QStringLiteral("depth"), 0},
+      {QStringLiteral("bounds"), bounds(0, 0)}};
+  const QJsonObject button = node(12, QStringLiteral("button"),
+                                  QStringLiteral("Upload an image"), true);
+
+  const QJsonObject capture{
+      {QStringLiteral("url"), QStringLiteral("https://s.example/settings")},
+      {QStringLiteral("title"), QStringLiteral("Settings")},
+      {QStringLiteral("nodes"), QJsonArray{button, hidden}}};
+  const SnapshotView view = renderSnapshot(capture);
+
+  QCOMPARE(view.element_count, 2);
+  QVERIFY(view.outline.contains(
+      QStringLiteral("- button \"Upload an image\" [ref=e1]")));
+  // Named, and flagged for what it is: a control that is there but not shown,
+  // so a model does not go hunting for it on a screenshot or try to click it.
+  QVERIFY(view.outline.contains(QStringLiteral(
+      "- filechooser \"repo-image-file-input\" [ref=e2] (hidden,multiple)")));
+  QVERIFY(view.ref_index.contains(QStringLiteral("e2")));
+  QCOMPARE(view.ref_index.value(QStringLiteral("e2"))
+               .toObject()
+               .value(QStringLiteral("backendNodeId"))
+               .toInt(),
+           77);
+}
+
+void BrowserContractTests::renderSnapshot_keepsOnlyMarkedFileInputsWithNoBox() {
+  // The exemption is narrow on purpose. A zero-area node that is NOT a marked
+  // file input is still dropped, and so is one that merely claims the role
+  // without the extension's mark -- otherwise "role" alone would be a way for a
+  // page to keep invisible nodes in the outline.
+  QJsonObject zeroAreaButton =
+      node(21, QStringLiteral("button"), QStringLiteral("Ghost"), true);
+  zeroAreaButton.insert(QStringLiteral("bounds"), bounds(0, 0));
+  QJsonObject roleOnly{{QStringLiteral("backendNodeId"), 22},
+                       {QStringLiteral("role"), QStringLiteral("filechooser")},
+                       {QStringLiteral("name"), QStringLiteral("Claimed")},
+                       {QStringLiteral("interactable"), true},
+                       {QStringLiteral("visible"), false},
+                       {QStringLiteral("depth"), 0},
+                       {QStringLiteral("bounds"), bounds(0, 0)}};
+
+  const QJsonObject capture{
+      {QStringLiteral("url"), QStringLiteral("https://s.example/")},
+      {QStringLiteral("title"), QStringLiteral("Page")},
+      {QStringLiteral("nodes"), QJsonArray{zeroAreaButton, roleOnly}}};
+  const SnapshotView view = renderSnapshot(capture);
+
+  QCOMPARE(view.element_count, 0);
+  QVERIFY(!view.outline.contains(QStringLiteral("Ghost")));
+  QVERIFY(!view.outline.contains(QStringLiteral("Claimed")));
 }
 
 void BrowserContractTests::buildCommand_uploadKeepsPathsOnThisSide() {

@@ -114,6 +114,9 @@ const EXPORTED = [
   "assembleUpload",
   "clearUploads",
   "MAX_UPLOAD_CHUNKS",
+  "resolveFileInputFrom",
+  "collectFileInputs",
+  "MAX_FILE_INPUT_NODES",
   "MAX_UPLOADS_IN_FLIGHT",
 ];
 
@@ -1356,4 +1359,231 @@ test("detaching clears uploads, so a file cannot outlive its session", () => {
     workerSource.indexOf("async function detachAll(") + 2000,
   );
   assert.match(detachAll, /clearUploads\(\)/);
+});
+
+// -- finding the file input behind the control a person clicks ---------------
+//
+// The input a page shows is almost never the one it uses: the real <input type=file> is hidden
+// and a button, label, or menu item stands in front of it. resolveFileInputFrom runs IN the page
+// (its source is inlined into the upload call), so these tests build the shapes the web actually
+// uses out of plain objects and hold the search to them -- including the one case it must refuse
+// rather than guess.
+
+// A DOM small enough to read and real enough to resolve against: parentElement chains,
+// querySelector(All) scoped to a subtree, closest by tag, and a label's `control`.
+function el(tag, props = {}, children = []) {
+  const node = {
+    tagName: tag.toUpperCase(),
+    children,
+    parentElement: null,
+    ...props,
+  };
+  const descendants = () => {
+    const out = [];
+    const walk = (n) => {
+      for (const child of n.children || []) {
+        out.push(child);
+        walk(child);
+      }
+    };
+    walk(node);
+    return out;
+  };
+  const isFile = (n) =>
+    n.tagName === "INPUT" && (n.type || "").toLowerCase() === "file";
+  node.querySelector = (selector) =>
+    selector === 'input[type="file"]'
+      ? descendants().find(isFile) || null
+      : null;
+  node.querySelectorAll = (selector) =>
+    selector === 'input[type="file"]' ? descendants().filter(isFile) : [];
+  node.closest = (tagName) => {
+    let scope = node;
+    while (scope) {
+      if (scope.tagName === tagName.toUpperCase()) {
+        return scope;
+      }
+      scope = scope.parentElement;
+    }
+    return null;
+  };
+  for (const child of children) {
+    child.parentElement = node;
+  }
+  return node;
+}
+
+const fileInput = (props = {}) => el("input", { type: "file", ...props });
+
+test("a ref naming the file input itself resolves to it", () => {
+  const input = fileInput();
+  assert.equal(w.resolveFileInputFrom(input).input, input);
+});
+
+test("a label resolves to the input it controls, by property or by htmlFor", () => {
+  const input = fileInput();
+  assert.equal(
+    w.resolveFileInputFrom(el("label", { control: input })).input,
+    input,
+  );
+
+  // The other half of the same pattern: a label with `for` and the input elsewhere.
+  const byId = fileInput({ id: "pick" });
+  const label = el("label", {
+    htmlFor: "pick",
+    ownerDocument: { getElementById: (id) => (id === "pick" ? byId : null) },
+  });
+  assert.equal(w.resolveFileInputFrom(label).input, byId);
+});
+
+test("a button wrapping a hidden input resolves to the input", () => {
+  const input = fileInput({ hidden: true });
+  const button = el("button", {}, [el("span", {}, []), input]);
+  assert.equal(w.resolveFileInputFrom(button).input, input);
+});
+
+test("a menu item beside a hidden input resolves through their container", () => {
+  // The social preview form, in miniature: the input is a sibling of the menu, not inside it.
+  const input = fileInput({ id: "repo-image-file-input" });
+  const item = el("span", {}, []);
+  el("form", {}, [input, el("details", {}, [el("menu", {}, [item])])]);
+  assert.equal(w.resolveFileInputFrom(item).input, input);
+});
+
+test("several file inputs in scope is refused, never guessed", () => {
+  const first = fileInput({ id: "a" });
+  const second = fileInput({ id: "b" });
+  const item = el("span", {}, []);
+  el("form", {}, [first, second, el("div", {}, [item])]);
+  const found = w.resolveFileInputFrom(item);
+  assert.equal(found.input, undefined);
+  assert.match(found.error, /several file inputs/);
+});
+
+test("a control that opens nothing says so, and nothing says no element", () => {
+  const lonely = el("button", {}, []);
+  el("div", {}, [lonely]);
+  assert.match(w.resolveFileInputFrom(lonely).error, /does not open one/);
+  assert.match(w.resolveFileInputFrom(null).error, /no element/);
+});
+
+test("the page runs this very function, not a copy of it", () => {
+  // handleUpload inlines the resolver's source into the declaration it sends. If someone
+  // re-implements the search inside the page function, these tests stop covering what ships.
+  assert.match(workerSource, /String\(resolveFileInputFrom\)/);
+  assert.match(workerSource, /const found = resolveFileInputFrom\(this\);/);
+});
+
+// -- naming a file input the page hides --------------------------------------
+
+test("hidden file inputs are collected, named, and flagged", async () => {
+  const nodes = [
+    { backendNodeId: 11, role: "button", name: "Upload an image" },
+  ];
+  const attrs = {
+    7: ["type", "file", "id", "repo-image-file-input", "multiple", ""],
+    9: ["type", "file", "aria-label", "Attach receipts", "accept", "image/*"],
+  };
+  const worker = loadWorker({
+    "debugger.sendCommand": async (_target, method, params) => {
+      if (method === "DOM.getDocument") {
+        return { root: { nodeId: 1 } };
+      }
+      if (method === "DOM.querySelectorAll") {
+        assert.equal(params.selector, 'input[type="file"]');
+        return { nodeIds: [7, 9] };
+      }
+      if (method === "DOM.describeNode") {
+        return {
+          node: {
+            backendNodeId: params.nodeId,
+            nodeName: "INPUT",
+            attributes: attrs[params.nodeId],
+          },
+        };
+      }
+      return {};
+    },
+  });
+  const collected = await worker.collectFileInputs(1, nodes);
+  assert.equal(collected.truncated, false);
+  assert.equal(collected.nodes.length, 2);
+  const [first, second] = collected.nodes;
+  // Named by what the page gives: id when there is nothing better, aria-label when there is.
+  assert.equal(first.name, "repo-image-file-input");
+  assert.equal(first.role, "filechooser");
+  assert.equal(first.hidden_input, true);
+  assert.equal(first.multiple, true);
+  assert.equal(second.name, "Attach receipts");
+  assert.equal(second.accepts, "image/*");
+  assert.equal(second.multiple, false);
+});
+
+test("an input the accessibility pass already named is not named twice", async () => {
+  const worker = loadWorker({
+    "debugger.sendCommand": async (_target, method) => {
+      if (method === "DOM.getDocument") {
+        return { root: { nodeId: 1 } };
+      }
+      if (method === "DOM.querySelectorAll") {
+        return { nodeIds: [42] };
+      }
+      if (method === "DOM.describeNode") {
+        return {
+          node: {
+            backendNodeId: 42,
+            nodeName: "INPUT",
+            attributes: ["type", "file"],
+          },
+        };
+      }
+      return {};
+    },
+  });
+  // 42 is already in the capture: the page shows this one, and the pass that saw it knows its
+  // label and its box. A second entry would be the same control under two refs.
+  const collected = await worker.collectFileInputs(1, [
+    { backendNodeId: 42, role: "button", name: "Choose file" },
+  ]);
+  assert.deepEqual(crossRealm(collected.nodes), []);
+});
+
+test("a page full of file inputs is capped, and says it was", async () => {
+  const many = Array.from(
+    { length: w.MAX_FILE_INPUT_NODES + 5 },
+    (_, i) => i + 1,
+  );
+  const worker = loadWorker({
+    "debugger.sendCommand": async (_target, method, params) => {
+      if (method === "DOM.getDocument") {
+        return { root: { nodeId: 1 } };
+      }
+      if (method === "DOM.querySelectorAll") {
+        return { nodeIds: many };
+      }
+      if (method === "DOM.describeNode") {
+        return {
+          node: {
+            backendNodeId: params.nodeId,
+            nodeName: "INPUT",
+            attributes: ["type", "file"],
+          },
+        };
+      }
+      return {};
+    },
+  });
+  const collected = await worker.collectFileInputs(1, []);
+  assert.equal(collected.nodes.length, w.MAX_FILE_INPUT_NODES);
+  assert.equal(collected.truncated, true);
+});
+
+test("a page that exposes no document fails the scan instead of reporting none", async () => {
+  const worker = loadWorker({
+    "debugger.sendCommand": async () => ({}),
+  });
+  await assert.rejects(
+    () => worker.collectFileInputs(1, []),
+    /no document node/,
+  );
 });

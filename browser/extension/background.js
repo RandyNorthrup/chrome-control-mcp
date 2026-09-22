@@ -1652,6 +1652,10 @@ function collectOmittedFrames(snapshot, frameTree) {
 // 50,000 round trips outlive the bridge's I/O deadline and tear the connection down) and at
 // whatever is left of the snapshot's node budget. A cap that bit is reported, never hidden.
 const MAX_MEDIA_NODES = 100;
+// The same ceiling, for the same reason, on the file inputs collected below: each costs a serial
+// round trip and the count is the page's to choose. Lower, because a page with more than a few
+// dozen file inputs is not a page anyone is uploading to by name.
+const MAX_FILE_INPUT_NODES = 50;
 
 async function collectMediaNodes(tabId, existing) {
   const have = new Set(
@@ -1720,6 +1724,82 @@ async function collectMediaNodes(tabId, existing) {
   return { nodes: out, truncated };
 }
 
+// Every file input on the page, whether or not the page shows it.
+//
+// This is the one control the web hides on purpose: `<input type="file">` is set to display:none
+// and a styled button, label, or menu item is put in front of it. A hidden input has no box and
+// no accessibility node, so the ordinary pass cannot see it, and browser_upload -- the tool whose
+// whole job is to give that element a file -- would have nothing to name on any real page. So
+// they are collected directly from the DOM and merged in, marked `hidden_input` when the page is
+// not showing them, and the outline flags them so a model knows what it is looking at. They are
+// named only: nothing computes a click point from a node with no box.
+async function collectFileInputs(tabId, existing) {
+  const have = new Set(
+    existing
+      .filter((n) => typeof n.backendNodeId === "number")
+      .map((n) => n.backendNodeId),
+  );
+  const out = [];
+  const doc = await sendCdp(tabId, "DOM.getDocument", { depth: 0 });
+  const root = doc && doc.root && doc.root.nodeId;
+  if (!root) {
+    throw new Error(
+      "The page exposed no document node to scan for file inputs.",
+    );
+  }
+  const found = await sendCdp(tabId, "DOM.querySelectorAll", {
+    nodeId: root,
+    selector: 'input[type="file"]',
+  });
+  const all = (found && found.nodeIds) || [];
+  const budget = Math.max(
+    0,
+    Math.min(MAX_FILE_INPUT_NODES, MAX_CAPTURE_NODES - existing.length),
+  );
+  let truncated = all.length > budget;
+  for (const nodeId of all.slice(0, budget)) {
+    const described = await sendCdp(tabId, "DOM.describeNode", {
+      nodeId,
+    }).catch(() => null);
+    const node = described && described.node;
+    if (!node) {
+      truncated = true;
+      continue;
+    }
+    if (
+      typeof node.backendNodeId !== "number" ||
+      have.has(node.backendNodeId)
+    ) {
+      continue; // already named by the accessibility pass: the page shows this one
+    }
+    const attrs = {};
+    const pairs = node.attributes || [];
+    for (let i = 0; i + 1 < pairs.length; i += 2) {
+      attrs[pairs[i]] = pairs[i + 1];
+    }
+    // Named by whatever the page gives, in the order a person would recognise it.
+    const name =
+      attrs["aria-label"] ||
+      attrs["title"] ||
+      attrs["name"] ||
+      attrs["id"] ||
+      "file input";
+    out.push({
+      role: "filechooser",
+      name,
+      depth: 0,
+      interactable: true,
+      visible: true,
+      hidden_input: true,
+      accepts: attrs["accept"] || "",
+      multiple: Object.prototype.hasOwnProperty.call(attrs, "multiple"),
+      backendNodeId: node.backendNodeId,
+    });
+    have.add(node.backendNodeId);
+  }
+  return { nodes: out, truncated };
+}
+
 async function captureSnapshot(tabId) {
   await ensureAttached(tabId);
   // The capture is five sequential CDP reads. A top-frame navigation part way through does not
@@ -1736,8 +1816,12 @@ async function captureSnapshot(tabId) {
   const axTree = await sendCdp(tabId, "Accessibility.getFullAXTree", {});
   const built = buildNodes(axTree, boundsByBackend);
   const media = await collectMediaNodes(tabId, built.nodes);
-  const nodes = built.nodes.concat(media.nodes);
-  const truncated = built.truncated || media.truncated;
+  const withMedia = built.nodes.concat(media.nodes);
+  // After the accessibility pass, so an input the page actually shows is named once, by the pass
+  // that knows its label and its box; only the ones nothing else could see are added here.
+  const fileInputs = await collectFileInputs(tabId, withMedia);
+  const nodes = withMedia.concat(fileInputs.nodes);
+  const truncated = built.truncated || media.truncated || fileInputs.truncated;
   const info = await tabInfo(tabId);
   // getFullAXTree + DOMSnapshot cover the main frame and its SAME-process subframes.
   // Cross-origin (out-of-process) iframes live in separate targets this single pass does
@@ -4081,6 +4165,78 @@ function assembleUpload(id) {
   return ordered.join("");
 }
 
+// The file input behind a control, or why there is none. Returns {input} or {error}.
+//
+// The input a page shows is almost never the one it uses. The pattern is universal: the real
+// `<input type="file">` is hidden and a styled button, label, or menu item is put in front of it.
+// A hidden input has no box and no accessibility node, so a ref may well name the visible control
+// instead -- and a tool that insisted on the input itself could not be used on any ordinary page.
+// So the search runs outward from whatever was named: the element itself, the input a label
+// points at, one inside it, the input of an enclosing label, and finally the single file input of
+// the nearest ancestor that has exactly one.
+//
+// Exactly one, at every step: a scope holding several is ambiguous, and taking the first in
+// document order would attach the caller's file to an input they never named. Ambiguity is
+// reported, never guessed at.
+//
+// It runs in the PAGE (its source is inlined into the call), so it closes over nothing, uses no
+// worker state, and touches only the element it is given and that element's own document.
+function resolveFileInputFrom(start) {
+  if (!start) {
+    return { error: "no element" };
+  }
+  const isFileInput = (node) =>
+    Boolean(node) &&
+    node.tagName === "INPUT" &&
+    (node.type || "").toLowerCase() === "file";
+  if (isFileInput(start)) {
+    return { input: start };
+  }
+  if (isFileInput(start.control)) {
+    return { input: start.control }; // a <label> whose control is the input
+  }
+  if (start.htmlFor && start.ownerDocument) {
+    const byId = start.ownerDocument.getElementById(start.htmlFor);
+    if (isFileInput(byId)) {
+      return { input: byId };
+    }
+  }
+  if (typeof start.querySelector === "function") {
+    const inside = start.querySelector('input[type="file"]');
+    if (inside) {
+      return { input: inside };
+    }
+  }
+  if (typeof start.closest === "function") {
+    const label = start.closest("label");
+    if (label && isFileInput(label.control)) {
+      return { input: label.control };
+    }
+  }
+  let scope = start.parentElement;
+  while (scope) {
+    const found =
+      typeof scope.querySelectorAll === "function"
+        ? scope.querySelectorAll('input[type="file"]')
+        : [];
+    if (found.length > 1) {
+      return {
+        error:
+          "that control has several file inputs near it; name the input itself",
+      };
+    }
+    if (found.length === 1) {
+      return { input: found[0] };
+    }
+    scope = scope.parentElement;
+  }
+  return {
+    error:
+      "that element is not a file input and does not open one; upload needs " +
+      "<input type=file> or the control that opens it",
+  };
+}
+
 // Assign the delivered files to a file input, as the user's own choice would. GATED like every
 // other tool that changes the page.
 async function handleUpload(tabId, args) {
@@ -4115,21 +4271,14 @@ async function handleUpload(tabId, args) {
     await moveAgentCursor(tabId, point.x, point.y);
   }
   // Runs in the page: the File and the DataTransfer are the page's own, which is why this works
-  // where the protocol's own file API does not.
+  // where the protocol's own file API does not. The resolver's source is inlined into the
+  // declaration rather than duplicated, so the page runs the very function the tests exercise.
   const assignFn = function (delivered) {
-    const el = this;
-    if (!el) {
-      return { ok: false, error: "no element" };
+    const found = resolveFileInputFrom(this);
+    if (found.error) {
+      return { ok: false, error: found.error };
     }
-    const tag = (el.tagName || "").toLowerCase();
-    const type = (el.type || "").toLowerCase();
-    if (tag !== "input" || type !== "file") {
-      return {
-        ok: false,
-        error:
-          "that element is not a file input; upload needs <input type=file>",
-      };
-    }
+    const el = found.input;
     if (delivered.length > 1 && !el.multiple) {
       return {
         ok: false,
@@ -4165,11 +4314,18 @@ async function handleUpload(tabId, args) {
     }
     return { ok: true, files: assigned };
   };
+  // The page gets one self-contained declaration: the resolver's own source in place of the name
+  // the worker knows it by. Nothing is re-implemented for the page, so what runs there and what
+  // the unit tests call are the same function.
+  const declaration = String(assignFn).replace(
+    "resolveFileInputFrom(this)",
+    `(${String(resolveFileInputFrom)})(this)`,
+  );
   let result;
   try {
     result = await sendCdp(tabId, "Runtime.callFunctionOn", {
       objectId,
-      functionDeclaration: String(assignFn),
+      functionDeclaration: declaration,
       arguments: [{ value: payload }],
       returnByValue: true,
       objectGroup: CDP_OBJECT_GROUP,

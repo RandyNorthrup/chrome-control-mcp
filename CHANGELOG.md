@@ -6,6 +6,29 @@ All notable changes are documented here. Project follows [Semantic Versioning](h
 
 Nothing yet.
 
+## [1.3.0] - 2026-09-22
+
+### Changed
+
+- `browser_upload` works on pages that hide their file input, which is nearly all of them. The
+  real `<input type="file">` is set to display:none and a styled button, label, or menu item is
+  put in front of it; a hidden element has no box and no accessibility node, so it had no ref, and
+  the tool that exists to give it a file could not be aimed at it. Two halves fix that, and either
+  one is enough on its own:
+  - A ref may now name **the control a person would click**. The page-side search runs outward
+    from it: the element itself, the input a label points at, one inside it, the input of an
+    enclosing label, then the single file input of the nearest ancestor that has exactly one. A
+    scope holding several is reported as ambiguous rather than guessed at, so a file is never
+    attached to an input the caller did not name.
+  - **The snapshot names file inputs whether or not the page shows them**, collected from the DOM
+    after the accessibility pass and listed as `filechooser "name" [ref=eN] (hidden)`. They are
+    kept for naming only -- they carry no box, so no coordinate path can act on one -- and the
+    scan is capped like the media scan, reporting truncation rather than hiding it.
+
+  Proved against the shape the web actually uses: the E2E fixture now hides an input behind a
+  button, and the suite uploads through the button and by naming the input directly, each time
+  asserting what the PAGE read back rather than what the tool reported.
+
 ## [1.2.2] - 2026-09-22
 
 ### Fixed

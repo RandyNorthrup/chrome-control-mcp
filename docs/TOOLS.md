@@ -32,6 +32,14 @@ that should show the exact control presence visible in Chrome.
 - `browser_media`
 - `browser_js_click`
 
+`browser_upload` attaches local files to a page's file input, as the user's own picker would: the
+page receives real `File` objects and runs its `input`/`change` handlers. The ref may name the
+input itself or the control that opens it, because nearly every page hides the real
+`<input type="file">` behind a styled button, label, or menu item. Hidden inputs are listed in the
+snapshot as `filechooser "name" [ref=eN] (hidden)`, so either can be named. A control with several
+file inputs in scope is refused rather than guessed at. See [`SECURITY.md`](SECURITY.md) for the
+limits and `CHROME_CONTROL_MCP_UPLOAD_ROOTS`.
+
 ## Tabs and windows
 
 - `browser_tabs`

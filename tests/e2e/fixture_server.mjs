@@ -70,8 +70,17 @@ function fixtureHome() {
         <label>Fixture file input
           <input id="file-input" type="file" aria-label="Fixture file input">
         </label>
+        <!-- What the whole web does: the real input is hidden and a styled button stands in
+             front of it, clicking the input on the user's behalf. The input has no box and no
+             accessibility node, so it can only be reached if the snapshot names it or the
+             upload resolves from the button to the input beside it. -->
+        <span id="hidden-file-group">
+          <button id="hidden-file-button" type="button" aria-label="Fixture hidden file picker">Choose a file</button>
+          <input id="hidden-file-input" type="file" style="display:none" aria-label="Fixture hidden file input">
+        </span>
       </div>
       <output id="file-output" aria-live="polite">No file</output>
+      <output id="hidden-file-output" aria-live="polite">No hidden file</output>
       <div class="grid">
         <button id="normal-button" type="button">Fixture click button</button>
         <button id="js-button" type="button">Fixture JS button</button>
@@ -127,6 +136,16 @@ function fixtureHome() {
       if (!file) { out.textContent = 'No file'; return; }
       const text = await file.text();
       out.textContent = 'file:' + file.name + ':' + file.size + ':' + text;
+    });
+    document.getElementById('hidden-file-button').addEventListener('click', () => {
+      document.getElementById('hidden-file-input').click();
+    });
+    document.getElementById('hidden-file-input').addEventListener('change', async (event) => {
+      const out = document.getElementById('hidden-file-output');
+      const file = event.target.files[0];
+      if (!file) { out.textContent = 'No hidden file'; return; }
+      const text = await file.text();
+      out.textContent = 'hidden:' + file.name + ':' + file.size + ':' + text;
     });
     let dragging = false;
     document.getElementById('drag-source').addEventListener('mousedown', () => { dragging = true; });

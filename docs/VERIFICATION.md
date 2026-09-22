@@ -16,7 +16,7 @@ Live Windows browser: Chrome 151.0.7922.138. Minimum supported manifest version 
 
 - Extension ID: `iojehhmnaigcejfcpmilpclmeljhlkaa`
 - Native host: `com.chromecontrolmcp.browser`
-- Extension version: `1.2.2`
+- Extension version: `1.3.0`
 - Delivery: unpacked extension directory
 - Public manifest identity derives pinned extension ID
 - No private key, packaged browser artifact, store account, or enterprise policy
@@ -53,7 +53,7 @@ Result: **10/10 passed** under Windows/MSVC, Linux/GCC, Linux/Clang, and macOS/C
 | `test_browser_bridge_pipe`         | Platform IPC handshake, peer verification, timeout, framing, reconnect |
 | `test_browser_bridge_relay`        | End-to-end relay/bridge/session with fake extension                    |
 | `test_browser_mcp_server`          | Identity, 44 tools, profiles, envelopes, schemas, and MCP content      |
-| `test_browser_extension_pure`      | 59 service-worker security, storage, geometry, and decision cases      |
+| `test_browser_extension_pure`      | 70 service-worker security, storage, geometry, and decision cases      |
 
 ## Strict analysis
 

@@ -463,6 +463,67 @@ async function main() {
         ),
       );
       assert.equal(sawFile.satisfied, true);
+
+      // The case that matters on the real web: the input is display:none behind a styled
+      // label, so it has no box and no accessibility node. Both ways of naming it must work --
+      // the label a person would click, and the input itself, which only reaches the snapshot
+      // because file inputs are collected whether the page shows them or not.
+      const hiddenBody = `hidden pick ${Date.now()}`;
+      const hiddenPath = path.join(uploadDir, "hidden-upload.txt");
+      await writeFile(hiddenPath, hiddenBody, "utf8");
+
+      const labelRef = refFor(page, "Fixture hidden file picker");
+      const viaLabel = jsonContent(
+        await runTool(
+          "browser_upload",
+          { ref: labelRef, paths: [hiddenPath] },
+          "upload through the control that opens a hidden input",
+        ),
+      );
+      assert.equal(viaLabel.files[0].name, "hidden-upload.txt");
+      const sawHidden = jsonContent(
+        await runTool(
+          "browser_wait_for",
+          {
+            text: `hidden:hidden-upload.txt:${Buffer.byteLength(hiddenBody)}:${hiddenBody}`,
+            timeout_ms: 3000,
+          },
+          "the page read the file delivered through its label",
+        ),
+      );
+      assert.equal(sawHidden.satisfied, true);
+
+      // And by naming the hidden input directly, which the snapshot flags as hidden.
+      const snapshotText = textContent(
+        await runTool("browser_snapshot", {}, "snapshot names hidden inputs"),
+      );
+      assert.match(
+        snapshotText,
+        /filechooser "Fixture hidden file input" \[ref=e\d+\] \(hidden\)/,
+      );
+      const hiddenRef = refFor(snapshotText, "Fixture hidden file input");
+      const secondBody = `named directly ${Date.now()}`;
+      const secondPath = path.join(uploadDir, "direct-upload.txt");
+      await writeFile(secondPath, secondBody, "utf8");
+      const viaInput = jsonContent(
+        await runTool(
+          "browser_upload",
+          { ref: hiddenRef, paths: [secondPath] },
+          "upload to a hidden input named directly",
+        ),
+      );
+      assert.equal(viaInput.files[0].name, "direct-upload.txt");
+      const sawSecond = jsonContent(
+        await runTool(
+          "browser_wait_for",
+          {
+            text: `hidden:direct-upload.txt:${Buffer.byteLength(secondBody)}:${secondBody}`,
+            timeout_ms: 3000,
+          },
+          "the page read the file put straight into its hidden input",
+        ),
+      );
+      assert.equal(sawSecond.satisfied, true);
     } finally {
       await rm(uploadDir, { recursive: true, force: true });
     }
