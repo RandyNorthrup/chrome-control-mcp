@@ -144,7 +144,10 @@ ToolResult BrowserControl::invokeUpload(const QJsonObject &arguments) {
   QStringList paths;
   const QJsonArray requested =
       arguments.value(QStringLiteral("paths")).toArray();
-  for (const QJsonValue &value : requested) {
+  // `const auto &`: a QJsonArray's iterator hands back QJsonValueConstRef, and
+  // binding that to a QJsonValue reference converts through a temporary on
+  // every element.
+  for (const auto &value : requested) {
     paths.append(value.toString());
   }
   const browser::UploadBatch batch = browser::readUploadFiles(

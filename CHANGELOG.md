@@ -6,6 +6,15 @@ All notable changes are documented here. Project follows [Semantic Versioning](h
 
 Nothing yet.
 
+## [1.2.1] - 2026-09-22
+
+### Fixed
+
+- The loop that reads `browser_upload`'s paths bound a `QJsonValueConstRef` to a
+  `const QJsonValue &`, converting through a temporary on every element and failing the
+  `clang-tidy` gate on the 1.2.0 commit. No behaviour changes; 1.2.0 and 1.2.1 are the same
+  program.
+
 ## [1.2.0] - 2026-09-22
 
 ### Added
