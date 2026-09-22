@@ -9,6 +9,8 @@
 #include <QMimeDatabase>
 #include <QMimeType>
 
+#include <algorithm>
+
 namespace chrome_control_mcp::browser {
 namespace {
 
@@ -54,13 +56,10 @@ bool uploadPathAllowed(const QString &canonical_path, const QString &roots) {
   }
   const QStringList entries =
       trimmed.split(rootsSeparator(), Qt::SkipEmptyParts);
-  for (const QString &entry : entries) {
+  return std::ranges::any_of(entries, [&canonical_path](const QString &entry) {
     const QString root = entry.trimmed();
-    if (!root.isEmpty() && insideRoot(canonical_path, root)) {
-      return true;
-    }
-  }
-  return false;
+    return !root.isEmpty() && insideRoot(canonical_path, root);
+  });
 }
 
 QString uploadMimeForName(const QString &name) {
