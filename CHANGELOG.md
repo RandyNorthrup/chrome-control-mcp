@@ -6,6 +6,15 @@ All notable changes are documented here. Project follows [Semantic Versioning](h
 
 Nothing yet.
 
+## [1.2.2] - 2026-09-22
+
+### Fixed
+
+- The roots test in `browser_uploads.cpp` searched with a raw loop, which `cppcheck` reads as a
+  `std::any_of` waiting to happen, and which failed the analysis gate on the 1.2.1 commit. It now
+  says what it does: whether any configured root contains this path. No behaviour changes; 1.2.0,
+  1.2.1 and 1.2.2 are the same program.
+
 ## [1.2.1] - 2026-09-22
 
 ### Fixed
