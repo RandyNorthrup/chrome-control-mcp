@@ -11,7 +11,6 @@
 #include <QEventLoop>
 #include <QFile>
 #include <QFileInfo>
-#include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QNetworkAccessManager>
@@ -91,9 +90,6 @@ UpdateCheckResult checkFailure(const UpdaterConfig &config,
   result.ok = false;
   result.error = error;
   result.current_version = config.current_version;
-  result.install_root = config.layout.root;
-  result.managed_install =
-      !installRootForExecutable(config.executable_path).isEmpty();
   return result;
 }
 
@@ -375,14 +371,6 @@ bool copyDirectory(const QString &source, const QString &destination,
   return true;
 }
 
-QString executableFileName() {
-#ifdef Q_OS_WIN
-  return QStringLiteral("chrome_control_mcp.exe");
-#else
-  return QStringLiteral("chrome_control_mcp");
-#endif
-}
-
 } // namespace
 
 UpdaterConfig UpdaterConfig::withDefaults(UpdaterConfig config) {
@@ -499,9 +487,6 @@ UpdateCheckResult checkForUpdate(const UpdaterConfig &config) {
   result.latest_version = version;
   result.update_available = isNewerVersion(version, resolved.current_version);
   result.notes_url = release.value(QStringLiteral("html_url")).toString();
-  result.install_root = resolved.layout.root;
-  result.managed_install =
-      !installRootForExecutable(resolved.executable_path).isEmpty();
   return result;
 }
 
@@ -549,11 +534,8 @@ UpdateApplyResult installStagedRelease(const UpdaterConfig &config,
   result.ok = true;
   result.previous_version = previous_version;
   result.installed_version = version;
-  result.executable_path =
-      QDir::cleanPath(QDir(layout.current).filePath(executableFileName()));
-  result.extension_path = QDir::cleanPath(
-      QDir(layout.current)
-          .filePath(QString::fromLatin1(kBrowserExtensionDirectoryName)));
+  result.executable_path = currentExecutable(layout);
+  result.extension_path = currentExtensionDirectory(layout);
   // The running process keeps the files it already opened. The new version is
   // what the client will launch next time, not what is answering right now.
   result.restart_required = version != resolved.current_version;
@@ -573,10 +555,10 @@ UpdateApplyResult adoptRunningInstall(const UpdaterConfig &config) {
   }
   const QString source =
       QDir::cleanPath(QFileInfo(resolved.executable_path).absolutePath());
-  if (!QFileInfo(QDir(source).filePath(executableFileName())).isFile()) {
+  if (!QFileInfo(QDir(source).filePath(installedExecutableName())).isFile()) {
     return applyFailure(
         QStringLiteral("%1 does not hold %2")
-            .arg(QDir::toNativeSeparators(source), executableFileName()));
+            .arg(QDir::toNativeSeparators(source), installedExecutableName()));
   }
   const InstallLayout &layout = resolved.layout;
   if (source.startsWith(layout.root, Qt::CaseInsensitive)) {
@@ -593,7 +575,7 @@ UpdateApplyResult adoptRunningInstall(const UpdaterConfig &config) {
   // would be pure work, and this path runs on every editor start for the VS
   // Code extension, so say so instead.
   const QString existing = layout.versionDirectory(version);
-  if (QFileInfo(QDir(existing).filePath(executableFileName())).isFile() &&
+  if (QFileInfo(QDir(existing).filePath(installedExecutableName())).isFile() &&
       currentVersion(layout) == version) {
     UpdateApplyResult unchanged;
     unchanged.ok = true;
@@ -601,11 +583,8 @@ UpdateApplyResult adoptRunningInstall(const UpdaterConfig &config) {
     unchanged.adopted_from = source;
     unchanged.previous_version = version;
     unchanged.installed_version = version;
-    unchanged.executable_path =
-        QDir::cleanPath(QDir(layout.current).filePath(executableFileName()));
-    unchanged.extension_path = QDir::cleanPath(
-        QDir(layout.current)
-            .filePath(QString::fromLatin1(kBrowserExtensionDirectoryName)));
+    unchanged.executable_path = currentExecutable(layout);
+    unchanged.extension_path = currentExtensionDirectory(layout);
     unchanged.restart_required = true;
     return unchanged;
   }
@@ -726,12 +705,13 @@ UpdateApplyResult applyUpdate(const UpdaterConfig &config) {
   }
 
   const QString release_root = extractedReleaseRoot(extraction);
-  if (!QFileInfo(QDir(release_root).filePath(executableFileName())).isFile()) {
+  if (!QFileInfo(QDir(release_root).filePath(installedExecutableName()))
+           .isFile()) {
     QDir(staging).removeRecursively();
     return applyFailure(
         QStringLiteral("The release archive did not contain %1, so nothing was "
                        "installed.")
-            .arg(executableFileName()));
+            .arg(installedExecutableName()));
   }
 
   UpdateApplyResult result =

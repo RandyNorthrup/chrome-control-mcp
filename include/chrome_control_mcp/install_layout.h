@@ -97,6 +97,16 @@ struct InstallLayout {
 /// through this. Pure.
 [[nodiscard]] QString stableExecutablePath(const QString &executable_path);
 
+/// The server executable's file name on this platform.
+[[nodiscard]] QString installedExecutableName();
+
+/// The two paths every registration outside this program names: the server to
+/// launch, and the folder Chrome loads. Both resolve through `current`, which
+/// is what keeps them correct across an update, and both are spelled here once
+/// so no caller can spell them differently.
+[[nodiscard]] QString currentExecutable(const InstallLayout &layout);
+[[nodiscard]] QString currentExtensionDirectory(const InstallLayout &layout);
+
 /// Installed version directory names, sorted newest first by version-number
 /// order rather than lexically, so 1.10.0 sorts above 1.9.0. Missing versions
 /// directory yields an empty list.

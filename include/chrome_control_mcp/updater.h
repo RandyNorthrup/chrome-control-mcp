@@ -41,17 +41,6 @@ struct UpdaterConfig {
   [[nodiscard]] static UpdaterConfig withDefaults(UpdaterConfig config);
 };
 
-/// One release as the update path needs to see it.
-struct ReleaseInfo {
-  QString tag;        // v1.3.2
-  QString version;    // 1.3.2
-  QString asset_name; // chrome-control-mcp-v1.3.2-windows-x64.zip
-  QUrl asset_url;
-  QUrl checksums_url;
-  QString notes_url;
-  [[nodiscard]] bool isEmpty() const { return version.isEmpty(); }
-};
-
 /// Result of asking which release is newest.
 struct UpdateCheckResult {
   bool ok{false};
@@ -60,8 +49,6 @@ struct UpdateCheckResult {
   QString latest_version;
   bool update_available{false};
   QString notes_url;
-  QString install_root;
-  bool managed_install{false};
 };
 
 /// Result of installing a release.

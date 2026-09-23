@@ -3,8 +3,9 @@
 
 #include "chrome_control_mcp/install_layout.h"
 
+#include "chrome_control_mcp/browser_extension_installer.h"
+
 #include <QDir>
-#include <QFile>
 #include <QFileInfo>
 #include <QStandardPaths>
 #include <QVersionNumber>
@@ -183,6 +184,31 @@ QString stableExecutablePath(const QString &executable_path) {
   return QDir::cleanPath(
       QDir(layout.current)
           .filePath(QFileInfo(cleaned(executable_path)).fileName()));
+}
+
+QString installedExecutableName() {
+#ifdef Q_OS_WIN
+  return QStringLiteral("chrome_control_mcp.exe");
+#else
+  return QStringLiteral("chrome_control_mcp");
+#endif
+}
+
+QString currentExecutable(const InstallLayout &layout) {
+  if (layout.isEmpty()) {
+    return {};
+  }
+  return QDir::cleanPath(
+      QDir(layout.current).filePath(installedExecutableName()));
+}
+
+QString currentExtensionDirectory(const InstallLayout &layout) {
+  if (layout.isEmpty()) {
+    return {};
+  }
+  return QDir::cleanPath(
+      QDir(layout.current)
+          .filePath(QString::fromLatin1(kBrowserExtensionDirectoryName)));
 }
 
 QStringList installedVersions(const InstallLayout &layout) {

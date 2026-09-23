@@ -173,9 +173,7 @@ int runInstall() {
     result.ok = true;
     result.installed_version = serverVersion();
     result.executable_path = stableExecutablePath(executable);
-    result.extension_path = QDir::cleanPath(
-        QDir(layout.current)
-            .filePath(QString::fromLatin1(kBrowserExtensionDirectoryName)));
+    result.extension_path = currentExtensionDirectory(layout);
   }
   QJsonObject payload;
   if (!result.ok) {
