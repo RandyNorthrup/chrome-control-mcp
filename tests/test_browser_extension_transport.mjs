@@ -26,12 +26,19 @@ import assert from "node:assert/strict";
 import { loadWorker, makeFakePort, settle } from "./extension_harness.mjs";
 
 // Functions reached directly. Everything else is driven through the port.
-const EXPORTED = ["connect", "send", "health"];
+const EXPORTED = ["connect", "send"];
 
-// `port`, `bridgeReady` and `commandGeneration` are `let` bindings, so naming them in the
-// epilogue would capture their value at load time rather than follow them. A closure reads
-// them live.
-const LIVE = "peek: () => ({ port, bridgeReady, commandGeneration, domEpoch })";
+// The session's fields are reassigned as the bridge comes and goes, so naming them in the
+// epilogue would capture their values at load time rather than follow them; a closure reads
+// them live. `health` is the exception -- it is one object mutated in place, never replaced,
+// so a direct reference to it stays current.
+const LIVE =
+  "health: session.health, " +
+  "peek: () => ({" +
+  " port: session.port," +
+  " bridgeReady: session.bridgeReady," +
+  " commandGeneration: session.commandGeneration," +
+  " domEpoch: session.domEpoch })";
 
 // Load the worker with a port under the test's control. The worker calls connect() at top
 // level, so the port is already open and both listeners are registered when this returns.
