@@ -290,6 +290,4 @@ jobs:
         run: cmake --build build --parallel
 
       - name: Test
-        env:
-          TSAN_OPTIONS: suppressions=${{ github.workspace }}/tests/tsan.supp
         run: ctest --test-dir build --output-on-failure

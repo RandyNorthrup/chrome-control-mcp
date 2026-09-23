@@ -94,17 +94,16 @@ ASan+UBSan was re-run locally against this release on Arch with GCC 16.2.1 and Q
 suites pass and neither sanitizer reports anything, including the bridge pipe, relay, and security
 suites, which are the ones that actually run threads.
 
-TSan uses [`tests/tsan.supp`](../tests/tsan.supp) for two exact QtTest watchdog/logger symbols from
-prebuilt Qt. Project frames remain unsuppressed; any project race still fails the job.
+TSan runs with no suppressions. It carried a suppression file naming two Qt symbols until that file
+was audited with `print_suppressions=1`: neither entry ever matched, and the job reported no race
+with or without them. One named the wrong function and the other used `thread:`, which suppresses
+thread-leak reports rather than data races, so neither could have matched. The file is gone, and any
+race this gate sees now fails it.
 
-Those suppressions are matched by symbol, so they bind only where Qt ships symbols. On a
-distribution that strips Qt -- Arch, with Qt 6.11.2 -- QtTest's own watchdog race is reported
-instead, and eleven of the thirteen binaries exit non-zero because of it. It is one race at one
-address inside `libQt6Test`, between the watchdog thread and main's stack during teardown, with no
-project frame in either stack, and it appears even in `test_install_layout`, which runs no thread of
-this project's own. Qt exposes no way to disable that watchdog. The suppression is deliberately not
-widened to match the library instead of the symbol: QtTest calls this project's test functions, so a
-library-scoped rule would also hide a real race in them.
+Qt 6.11.2 does carry a race in `QPlainTestLogger::stopLogging`, between QtTest's watchdog thread and
+main's stack during teardown, which is visible when these suites are built against it. It has no
+project frame in either stack and appears even in `test_install_layout`, which starts no thread of
+this project's own. The Qt this workflow pins, 6.10.0, does not exhibit it.
 
 ## MCP and native-host smoke
 
