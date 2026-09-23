@@ -110,20 +110,30 @@ jobs:
           if (-not $sbom) { throw "QtBase SBOM not found in $sbomDirectory" }
           Copy-Item $sbom.FullName (Join-Path $licenses 'qtbase.spdx')
 
+          # Core AND Network: the updater reaches the release host over HTTPS, so
+          # a package carrying only Core is one the executable cannot even load
+          # on macOS, and one that works on a Linux box with Qt installed while
+          # failing on every other.
+          $qtModules = @('Core', 'Network')
           if ($IsLinux) {
-            $qtCoreLink = Get-Item (Join-Path $env:QT_ROOT_DIR 'lib/libQt6Core.so.6')
-            $qtCore = if ($qtCoreLink.LinkType) {
-              $qtCoreLink.ResolveLinkTarget($true)
-            } else {
-              $qtCoreLink
+            foreach ($module in $qtModules) {
+              $name = "libQt6$module.so.6"
+              $link = Get-Item (Join-Path $env:QT_ROOT_DIR "lib/$name")
+              $library = if ($link.LinkType) {
+                $link.ResolveLinkTarget($true)
+              } else {
+                $link
+              }
+              Copy-Item $library.FullName (Join-Path $stagePath $name)
             }
-            Copy-Item $qtCore.FullName (Join-Path $stagePath 'libQt6Core.so.6')
           } elseif ($IsMacOS) {
             $frameworks = Join-Path $stagePath 'Frameworks'
             New-Item -ItemType Directory -Force -Path $frameworks | Out-Null
-            & ditto (Join-Path $env:QT_ROOT_DIR 'lib/QtCore.framework') `
-              (Join-Path $frameworks 'QtCore.framework')
-            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+            foreach ($module in $qtModules) {
+              & ditto (Join-Path $env:QT_ROOT_DIR "lib/Qt$module.framework") `
+                (Join-Path $frameworks "Qt$module.framework")
+              if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+            }
           }
 
           $executable = if ($IsWindows) {
@@ -155,7 +165,11 @@ jobs:
           executable="$(find package -maxdepth 2 -type f -name chrome_control_mcp -print -quit)"
           file "$executable"
           if [[ "$RUNNER_OS" == "Linux" ]]; then
-            dependencies="$(ldd "$executable")"
+            # Without LD_LIBRARY_PATH: the runner has Qt installed, so with it set
+            # this resolves libraries the PACKAGE does not ship and passes an
+            # archive that cannot start on a machine without Qt. That is exactly
+            # how a package missing libQt6Network.so.6 went out green.
+            dependencies="$(env -u LD_LIBRARY_PATH ldd "$executable")"
             printf '%s\n' "$dependencies"
             ! grep -F 'not found' <<<"$dependencies"
           else
