@@ -516,8 +516,8 @@ async function runConfig(config, { chrome, executable, fixture, extraArgs }) {
         [image.width, metrics.ew, gutter],
         [image.height, metrics.eh, 0],
       ].every(
-        ([pixels, css, gutter]) =>
-          pixels >= (css - 0.5) * dpr - 1 - gutter &&
+        ([pixels, css, allowance]) =>
+          pixels >= (css - 0.5) * dpr - 1 - allowance &&
           pixels <= (css + 0.5) * dpr + config.scaleFactor + 1,
       );
     check(
