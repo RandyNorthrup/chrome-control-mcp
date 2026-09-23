@@ -48,6 +48,7 @@ const EXPORTED = [
   "quadCenter",
   "scrollDistance",
   "scrollRoom",
+  "handleScroll",
   "scrollContextFn",
   "boundedMs",
   "boundedCount",
@@ -465,6 +466,170 @@ test("scrollContextFn names what the wheel lands on and the chain under it", () 
   );
   assert.equal(empty.hit, null);
   assert.deepEqual(empty.scrollers, [["page", 200, 1200]]);
+});
+
+// A scroll aimed at a named element must land ON that element. Bringing it into view moves the
+// page, and until this guard existed the box could be read while the page was still settling: the
+// point stayed put in the viewport, the element slid out from under it, and the wheel scrolled
+// whatever had moved into that spot while the reply named the element the caller asked for. On the
+// macOS runner that was DIV#shadow-host, a different section of the page.
+function scrollWorker(hitAnswers) {
+  const calls = [];
+  const hits = hitAnswers.slice();
+  const sendCommand = (_target, method, params) => {
+    calls.push({ method, params });
+    if (method === "DOM.getBoxModel") {
+      return Promise.resolve({
+        model: { content: [10, 20, 40, 20, 40, 60, 10, 60] },
+      });
+    }
+    if (method === "DOM.resolveNode") {
+      return Promise.resolve({ object: { objectId: "target-1" } });
+    }
+    if (method === "Runtime.callFunctionOn") {
+      const answer = hits.shift();
+      return Promise.resolve({ result: { value: answer } });
+    }
+    if (method === "Runtime.evaluate") {
+      const expression = String(params.expression || "");
+      // viewportState, which decides whether the element's centre is on screen. Tested before
+      // the settle read because its expression mentions window.scrollX too.
+      if (expression.includes("dpr:")) {
+        return Promise.resolve({
+          result: {
+            value: {
+              dpr: 1,
+              sx: 0,
+              sy: 0,
+              href: "https://example.test/",
+              iw: 1280,
+              ih: 800,
+              vs: 1,
+              vl: 0,
+              vt: 0,
+            },
+          },
+        });
+      }
+      // settleScroll's offsets: the same answer twice means the page has stopped.
+      if (expression.includes("window.scrollX")) {
+        return Promise.resolve({ result: { value: [0, 0, 0, 0] } });
+      }
+      // armScrollEnd and every page-timed wait. Answering null is "no scrollend arrived",
+      // which is what a scroll that moves nothing produces. Matched before the offset reads
+      // because the scrollend script carries scrollOffsetsFn's source inside it.
+      if (expression.includes("new Promise")) {
+        return Promise.resolve({ result: { value: null } });
+      }
+      // scrollContextFn: what the wheel lands on, and the travel left under it.
+      if (expression.includes("scrollers")) {
+        return Promise.resolve({
+          result: {
+            value: {
+              hit: "DIV#scroll-region",
+              scrollers: [["scroller-0:DIV#scroll-region", 0, 600]],
+            },
+          },
+        });
+      }
+      // scrollOffsetsFn: the offsets before and after the wheel.
+      if (expression.includes("visual-viewport")) {
+        return Promise.resolve({
+          result: {
+            value: [
+              ["visual-viewport", 0, 0],
+              ["page", 0, 0],
+            ],
+          },
+        });
+      }
+      // The scrollend race, and the page-timed waits, resolve immediately as "nothing moved".
+      return Promise.resolve({ result: { value: null } });
+    }
+    return Promise.resolve({});
+  };
+  const worker = loadWorker({
+    "debugger.sendCommand": sendCommand,
+    "tabs.get": () => Promise.resolve({ id: 1, url: "https://example.test/" }),
+  });
+  return { worker, calls };
+}
+
+test("a scroll whose point misses its element is refused, not aimed at a stranger", async () => {
+  // Off target both times: the page is moving under the point, and no wheel should be sent.
+  const missed = scrollWorker([
+    { hit: "DIV#shadow-host", onTarget: false },
+    { hit: "DIV#shadow-host", onTarget: false },
+  ]);
+  const session = missed.worker.makeSession();
+  session.attachedTabId = 1;
+  // requireSnapshotTab: the ref must come from a snapshot of THIS tab, at the DOM the page is
+  // still on.
+  session.lastSnapshotTabId = 1;
+  session.lastSnapshotEpoch = session.domEpoch;
+  await assert.rejects(
+    () =>
+      missed.worker.handleScroll(session, 1, {
+        backendNodeId: 7,
+        direction: "down",
+        amount: 180,
+      }),
+    // It names what it hit instead: without that, the reply said "scrolled 0" and the cause
+    // was invisible.
+    /lands on DIV#shadow-host instead/,
+  );
+  assert.equal(
+    missed.calls.some((c) => c.params && c.params.type === "mouseWheel"),
+    false,
+    "no wheel may be dispatched once the point is known to miss",
+  );
+  // The box is taken twice: once, then again after the point is found to have slipped off.
+  assert.equal(
+    missed.calls.filter((c) => c.method === "DOM.getBoxModel").length,
+    2,
+  );
+});
+
+test("a point that slips once is re-resolved and the scroll goes ahead", async () => {
+  const recovered = scrollWorker([
+    { hit: "DIV#shadow-host", onTarget: false },
+    { hit: "DIV#scroll-region", onTarget: true },
+  ]);
+  const session = recovered.worker.makeSession();
+  session.attachedTabId = 1;
+  // requireSnapshotTab: the ref must come from a snapshot of THIS tab, at the DOM the page is
+  // still on.
+  session.lastSnapshotTabId = 1;
+  session.lastSnapshotEpoch = session.domEpoch;
+  const reply = crossRealm(
+    await recovered.worker.handleScroll(session, 1, {
+      backendNodeId: 7,
+      direction: "down",
+      amount: 180,
+    }),
+  );
+  assert.equal(reply.ok, true);
+  assert.equal(
+    recovered.calls.some((c) => c.params && c.params.type === "mouseWheel"),
+    true,
+    "the second point is on the element, so the wheel is sent",
+  );
+  // The box was taken again after the first point was found to have slipped: without that the
+  // wheel would go to the same stale point a second time and miss in exactly the same way.
+  assert.equal(
+    recovered.calls.filter((c) => c.method === "DOM.getBoxModel").length,
+    2,
+  );
+  // And the wheel went to the re-read point, not the first one.
+  const wheel = recovered.calls.find(
+    (c) => c.params && c.params.type === "mouseWheel",
+  );
+  assert.equal(
+    recovered.calls.filter((c) => c.method === "Runtime.callFunctionOn").length,
+    2,
+    "the element is asked again after the box is re-read",
+  );
+  assert.ok(wheel.params.deltaY > 0, "a down scroll pushes the content down");
 });
 
 test("boundedMs and boundedCount refuse what they cannot honour", () => {

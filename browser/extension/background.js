@@ -2898,6 +2898,43 @@ async function resolveActionPoint(tabId, backendNodeId) {
   return quadCenter(await resolveActionQuad(tabId, backendNodeId));
 }
 
+// Bringing an element into view moves the page, and the move is not always finished when the
+// command that asked for it returns. A box read while the page is still settling describes where
+// the element WAS: the point taken from it stays fixed in the viewport while the element slides
+// out from under it, and the action then lands on whatever has moved into that spot. Measured on
+// the macOS runner, a scroll aimed at the fixture's scroll region was dispatched at a point that
+// hit DIV#shadow-host -- a different section of the page, with nothing scrollable under it.
+//
+// The page's own offsets say when it has stopped. Two consecutive reads that agree is the answer
+// in the common case where the scroll was instant, and costs two round trips; a page still moving
+// is given a short budget to come to rest and is not waited on beyond it, because an action at a
+// slightly stale point is still better than no action at all.
+const SCROLL_SETTLE_POLLS = 8;
+const SCROLL_SETTLE_STEP_MS = 24;
+
+async function settleScroll(tabId) {
+  let previous = null;
+  for (let poll = 0; poll < SCROLL_SETTLE_POLLS; poll += 1) {
+    const read = await sendCdp(tabId, "Runtime.evaluate", {
+      expression:
+        "(function(){var v=window.visualViewport;" +
+        "return [window.scrollX, window.scrollY, v.offsetLeft, v.offsetTop];})()",
+      returnByValue: true,
+    }).catch(() => null);
+    const now = read && read.result ? read.result.value : null;
+    // A page that will not answer where it is cannot be waited for; the caller's own guards
+    // (the on-screen check, and the hit test before a scroll) still apply.
+    if (!Array.isArray(now)) {
+      return;
+    }
+    if (previous && now.every((value, index) => value === previous[index])) {
+      return;
+    }
+    previous = now;
+    await pageDelay(tabId, SCROLL_SETTLE_STEP_MS).catch(() => {});
+  }
+}
+
 // Scroll the element into view and return its content quad in visual-viewport CSS px.
 async function resolveActionQuad(tabId, backendNodeId) {
   if (typeof backendNodeId !== "number") {
@@ -2908,6 +2945,7 @@ async function resolveActionQuad(tabId, backendNodeId) {
   await sendCdp(tabId, "DOM.scrollIntoViewIfNeeded", { backendNodeId }).catch(
     () => {},
   );
+  await settleScroll(tabId);
   let model;
   try {
     model = await sendCdp(tabId, "DOM.getBoxModel", { backendNodeId });
@@ -5254,6 +5292,40 @@ function armScrollEnd(tabId, x, y, before) {
   );
 }
 
+// Does the point still land on the element the caller named, or on something inside it? Asked of
+// the element itself, so it survives a page that moved between the box read and this question --
+// which is the whole reason it is asked. A wheel dispatched at a point that misses its element
+// scrolls a stranger and reports the element the caller asked for.
+async function pointLandsOn(tabId, backendNodeId, x, y) {
+  const resolved = await sendCdp(tabId, "DOM.resolveNode", {
+    backendNodeId,
+    // Tagged so the handle this pins is released with the rest of the command's group; an
+    // untagged one would pin the node in the renderer for the life of the document.
+    objectGroup: CDP_OBJECT_GROUP,
+  }).catch(() => null);
+  const objectId = resolved && resolved.object && resolved.object.objectId;
+  if (!objectId) {
+    return { known: false, onTarget: true, hit: null };
+  }
+  const answer = await sendCdp(tabId, "Runtime.callFunctionOn", {
+    objectId,
+    functionDeclaration:
+      "function(x, y){var v=window.visualViewport;" +
+      "var hit=document.elementFromPoint(x + v.offsetLeft, y + v.offsetTop);" +
+      "if(!hit){return {hit:null,onTarget:false};}" +
+      "return {hit: hit.tagName + (hit.id ? '#' + hit.id : '')," +
+      " onTarget: hit === this || this.contains(hit) || hit.contains(this)};}",
+    arguments: [{ value: Number(x) }, { value: Number(y) }],
+    returnByValue: true,
+  }).catch(() => null);
+  const value = answer && answer.result ? answer.result.value : null;
+  // An unanswerable hit test must not refuse a scroll that would have worked.
+  if (!value || typeof value.onTarget !== "boolean") {
+    return { known: false, onTarget: true, hit: null };
+  }
+  return { known: true, onTarget: value.onTarget, hit: value.hit };
+}
+
 // Where the wheel will actually land, and how far the scrollers under that point can still
 // travel. A scroll that moves nothing is either an edge already reached or a wheel that never
 // reached the scroller at all, and those want opposite fixes -- without the room left, the reply
@@ -5352,6 +5424,31 @@ async function handleScroll(session, tabId, args) {
   if (typeof args.backendNodeId === "number") {
     requireSnapshotTab(session, tabId);
     point = await resolveActionPoint(tabId, args.backendNodeId);
+    // The box is read after the page has settled, but a page can move for reasons of its own
+    // between that read and this wheel. Ask the element, and take the box once more if it says
+    // the point has slipped off it.
+    let landing = await pointLandsOn(
+      tabId,
+      args.backendNodeId,
+      point.x,
+      point.y,
+    );
+    if (landing.known && !landing.onTarget) {
+      point = await resolveActionPoint(tabId, args.backendNodeId);
+      landing = await pointLandsOn(tabId, args.backendNodeId, point.x, point.y);
+    }
+    if (landing.known && !landing.onTarget) {
+      throw new Error(
+        "The scroll could not be aimed at that element: the point on it (" +
+          Math.round(point.x) +
+          ", " +
+          Math.round(point.y) +
+          ") lands on " +
+          (landing.hit || "nothing") +
+          " instead, so the page is still moving under it. Take a fresh " +
+          "snapshot and try again.",
+      );
+    }
   } else {
     // The point decides WHICH scroller receives the wheel event, so a made-up one scrolls a
     // container the caller never named. A viewport that cannot be read is not a viewport of
