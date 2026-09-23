@@ -140,7 +140,11 @@ bool browserInputClosed(NativeIpcHandle input) {
   // thread -- so ask how many are waiting instead. None, on a descriptor poll
   // calls readable, is the writer having closed.
   int available = 0;
-  if (::ioctl(input, FIONREAD, &available) != 0) {
+  // POSIX ioctl is variadic; there is no non-variadic spelling of FIONREAD.
+  // NOLINTBEGIN(cppcoreguidelines-pro-type-vararg)
+  const int asked = ::ioctl(input, FIONREAD, &available);
+  // NOLINTEND(cppcoreguidelines-pro-type-vararg)
+  if (asked != 0) {
     return false;
   }
   return available == 0;

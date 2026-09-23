@@ -229,7 +229,7 @@ void watchForBrowserExit() {
         // destructors underneath it is the one way this could turn a clean
         // exit into a crash. The server sees its client drop, which is exactly
         // what happened.
-        std::fflush(nullptr);
+        static_cast<void>(std::fflush(nullptr));
         std::_Exit(0);
       }
     }

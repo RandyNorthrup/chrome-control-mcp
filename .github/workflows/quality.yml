@@ -227,7 +227,13 @@ jobs:
             echo "CHROME_PATH_EOF"
           } >> "$GITHUB_OUTPUT"
 
+      # shell: bash on the piped steps below is load-bearing. The default non-Windows
+      # shell is `bash -e {0}`, which does not set pipefail, so a pipeline reports tee's
+      # status and the suite could never fail this job -- which is how browser_navigate
+      # shipped broken in 1.5.0 through a green live-browser run. `shell: bash` gets
+      # GitHub's `bash --noprofile --norc -eo pipefail`.
       - name: Display scale, zoom, and pinch matrix
+        shell: bash
         run: >-
           node tests/e2e/display_matrix_e2e.mjs
           --chrome="${{ steps.chrome.outputs.path }}" --parallel=2
@@ -240,11 +246,13 @@ jobs:
       # there and this job covers Linux with the matrix and the interference suite.
       - name: Full browser E2E
         if: runner.os != 'Linux'
+        shell: bash
         run: >-
           node tests/e2e/isolated_run.mjs --chrome="${{ steps.chrome.outputs.path }}"
           ${{ matrix.chrome-args }} tests/e2e/full_browser_e2e.mjs | tee full-browser-e2e.json
 
       - name: User interference E2E
+        shell: bash
         run: >-
           node tests/e2e/isolated_run.mjs --chrome="${{ steps.chrome.outputs.path }}"
           ${{ matrix.chrome-args }} tests/e2e/user_interference_e2e.mjs
