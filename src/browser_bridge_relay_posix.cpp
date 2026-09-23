@@ -21,6 +21,7 @@
 #include <thread>
 
 #include <poll.h>
+#include <sys/ioctl.h>
 #include <sys/socket.h>
 #include <sys/types.h>
 #include <sys/un.h>
@@ -122,15 +123,27 @@ bool browserInputClosed(NativeIpcHandle input) {
   }
   pollfd watched{};
   watched.fd = input;
-  // No events requested: POLLHUP, POLLERR and POLLNVAL are reported whether or
-  // not they were asked for, and asking for POLLIN would report a readable
-  // descriptor the pump is about to consume. This must never look like a
-  // reader.
-  watched.events = 0;
+  watched.events = POLLIN;
   if (::poll(&watched, 1, 0) <= 0) {
+    return false; // nothing to report: still there, or cannot tell
+  }
+  if ((watched.revents & (POLLHUP | POLLERR | POLLNVAL)) != 0) {
+    return true;
+  }
+  if ((watched.revents & POLLIN) == 0) {
     return false;
   }
-  return (watched.revents & (POLLHUP | POLLERR | POLLNVAL)) != 0;
+  // Readable means either bytes waiting or end-of-file, and the two platforms
+  // disagree about which they report: Linux raises POLLHUP for a pipe whose
+  // writer has gone, macOS only marks it readable. Telling them apart by
+  // reading is not available here -- those bytes belong to the pump, on another
+  // thread -- so ask how many are waiting instead. None, on a descriptor poll
+  // calls readable, is the writer having closed.
+  int available = 0;
+  if (::ioctl(input, FIONREAD, &available) != 0) {
+    return false;
+  }
+  return available == 0;
 }
 
 bool relayReadPipeFrame(NativeIpcHandle pipe, QJsonObject *out) {

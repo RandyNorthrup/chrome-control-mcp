@@ -231,7 +231,11 @@ if(BUILD_TESTING)
                         "$<TARGET_FILE:Qt6::Test>" "$<TARGET_FILE_DIR:${target}>"
             )
         endif()
-        add_test(NAME ${target} COMMAND ${target} -o "${target}.txt,txt")
+        # Two sinks: the file keeps the full log as an artifact, and stdout is
+        # what ctest --output-on-failure can actually show. With the file alone a
+        # CI failure prints the suite name and nothing else, which is how a macOS
+        # failure in 1.5.2 arrived with no assertion to read.
+        add_test(NAME ${target} COMMAND ${target} -o "${target}.txt,txt" -o "-,txt")
     endfunction()
 
     add_executable(test_browser_contract
