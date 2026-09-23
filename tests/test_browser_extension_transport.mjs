@@ -23,11 +23,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import {
-  loadWorker,
-  makeFakePort,
-  settle,
-} from "./extension_harness.mjs";
+import { loadWorker, makeFakePort, settle } from "./extension_harness.mjs";
 
 // Functions reached directly. Everything else is driven through the port.
 const EXPORTED = ["connect", "send", "health"];
@@ -86,7 +82,11 @@ test("bridge_ready on the agreed protocol is what opens the bridge", () => {
   assert.equal(worker.health.connected, true);
   assert.equal(worker.health.bridge, "ready");
   assert.equal(worker.health.error, null);
-  assert.deepEqual(port.posted, [], "readiness is not acknowledged on the wire");
+  assert.deepEqual(
+    port.posted,
+    [],
+    "readiness is not acknowledged on the wire",
+  );
 });
 
 test("a protocol the worker does not speak leaves the bridge closed", async () => {
@@ -107,7 +107,11 @@ test("a protocol the worker does not speak leaves the bridge closed", async () =
   assert.equal(port.lastPosted().type, "error");
   assert.equal(port.lastPosted().id, "b-1", "the refusal is correlated");
   assert.match(String(port.lastPosted().error), /protocol mismatch/i);
-  assert.deepEqual(attached, [], "the command must never have reached the browser");
+  assert.deepEqual(
+    attached,
+    [],
+    "the command must never have reached the browser",
+  );
 });
 
 test("a command arriving before any handshake is refused, not run", async () => {
@@ -128,7 +132,11 @@ test("a command arriving before any handshake is refused, not run", async () => 
     /readiness handshake/i,
     "the refusal must name the missing handshake",
   );
-  assert.deepEqual(attached, [], "the command must never have reached the browser");
+  assert.deepEqual(
+    attached,
+    [],
+    "the command must never have reached the browser",
+  );
 });
 
 test("a command frame with no usable id is dropped in silence", async () => {
@@ -162,7 +170,10 @@ test("bridge_unavailable closes the bridge and says why", async () => {
   ready(port);
   assert.equal(worker.peek().bridgeReady, true);
 
-  port.emit({ type: "bridge_unavailable", error: "no server published a record" });
+  port.emit({
+    type: "bridge_unavailable",
+    error: "no server published a record",
+  });
   await settle();
 
   assert.equal(worker.peek().bridgeReady, false);
@@ -230,7 +241,11 @@ test("losing the port closes the bridge and drops the transport state", async ()
   await settle();
 
   assert.equal(worker.peek().port, null, "no port to post a stale reply on");
-  assert.equal(worker.peek().bridgeReady, false, "the next host must handshake again");
+  assert.equal(
+    worker.peek().bridgeReady,
+    false,
+    "the next host must handshake again",
+  );
   assert.equal(worker.health.connected, false);
 });
 
