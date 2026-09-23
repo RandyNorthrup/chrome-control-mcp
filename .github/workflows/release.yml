@@ -249,7 +249,9 @@ jobs:
             exit 0
           fi
           npm ci
-          # One call for all four targets. A partial publish would leave the
-          # marketplace serving this version to some platforms and the previous
-          # one to the rest.
-          npx vsce publish --pat "$VSCE_PAT"             $(for f in ../release-assets/*.vsix; do printf -- '--packagePath %s ' "$f"; done)
+          # --packagePath is variadic: it takes every path after a SINGLE flag.
+          # Repeating the flag per file risks only the last being published, which
+          # would put this version on the marketplace for one platform and leave the
+          # rest on the previous one -- and the version could not be republished to
+          # fix it.
+          npx vsce publish --pat "$VSCE_PAT" --packagePath ../release-assets/*.vsix
