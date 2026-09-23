@@ -79,20 +79,6 @@ QStringList peerRecords(const QString &own_path) {
 
 } // namespace
 
-qint64 otherLiveBridgeOwnerPid(const QString &own_path) {
-  for (const QString &record : peerRecords(own_path)) {
-    if (record.compare(own_path, kRendezvousPathCase) == 0) {
-      continue; // our own advertisement is not a rival
-    }
-    RendezvousRecord found;
-    if (readRendezvousRecord(record, &found, nullptr) &&
-        liveBridgeOwnerExists(record)) {
-      return found.app_pid;
-    }
-  }
-  return 0;
-}
-
 int sweepStaleRendezvousRecords(const QString &own_path) {
   int removed = 0;
   for (const QString &record : peerRecords(own_path)) {
@@ -125,18 +111,6 @@ bool BrowserBridgePipeServer::ensurePublished(QString *error) {
   if (present && current.app_pid == self && current.pipe_name == pipe_name_ &&
       current.token == token_) {
     return true; // still ours, word for word
-  }
-  // A LIVE server of our own image advertising beside us is the one using the
-  // browser: publishing over it would steal the relay from that session. Its
-  // record is its own to withdraw, so we stand down instead.
-  const qint64 rival = otherLiveBridgeOwnerPid(rendezvous_path_);
-  if (rival != 0) {
-    setError(error,
-             QStringLiteral("Another Chrome Control MCP server (pid %1) owns "
-                            "the browser bridge; close that session, or wait "
-                            "for it to exit, and try again.")
-                 .arg(rival));
-    return false;
   }
   // Missing, ours but rewritten, or left by a server that has exited: publish
   // this server's endpoint so the extension's next relay can find it.

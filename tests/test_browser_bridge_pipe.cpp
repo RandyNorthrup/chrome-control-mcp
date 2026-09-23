@@ -248,7 +248,6 @@ private slots:
   void ensurePublished_republishesALostRecord();
   void ensurePublished_takesOverARecordLeftByAnExitedServer();
   void ensurePublished_refusesWhileNotRunning();
-  void records_areFoundBesideOurOwnNotInTheDefaultLocation();
   void sweep_removesDepartedServersAndSparesTheLiving();
 };
 
@@ -760,57 +759,9 @@ void BrowserBridgePipeTests::ensurePublished_refusesWhileNotRunning() {
   QVERIFY(!QFile::exists(rendezvous));
 }
 
-// The per-pid layout means a server finds its peers by looking beside its own
-// record rather than by reading the one file it would itself write.
-//
-// Only the negative answers can be established in one process: "another live
-// instance of this program" is true exactly when a record names a DIFFERENT pid
-// that resolves to our own executable image, and this test has no second copy
-// of itself to point at. That was equally true of liveBridgeOwnerExists before
-// this change -- every existing test of it forges a departed pid -- so the
-// positive branch is covered where two processes really exist, in the live
-// browser suites.
-void BrowserBridgePipeTests::
-    records_areFoundBesideOurOwnNotInTheDefaultLocation() {
-  QTemporaryDir dir;
-  QVERIFY(dir.isValid());
-  const QString root = QDir::cleanPath(dir.path());
-  const qint64 self = chrome_control_mcp::currentProcessId();
-  const QString own =
-      QDir(root).filePath(QStringLiteral("browser_bridge-%1.json").arg(self));
-
-  // An empty directory holds no owner -- and, importantly, the answer came from
-  // THIS directory and not from the real per-user one, which on a developer's
-  // machine may well have a live server in it.
-  QCOMPARE(chrome_control_mcp::otherLiveBridgeOwnerPid(own), qint64{0});
-
-  // A record left behind by a server that has exited is not an owner. This is
-  // what stops a crashed session from holding the bridge forever.
-  QString error;
-  const QString departed = QDir(root).filePath(
-      QStringLiteral("browser_bridge-%1.json").arg(kAbsentPid));
-  const chrome_control_mcp::RendezvousRecord gone{
-      QStringLiteral("endpoint-gone"), QStringLiteral("t"), 0, kAbsentPid};
-  QVERIFY2(chrome_control_mcp::writeRendezvousRecord(departed, gone, &error),
-           qPrintable(error));
-  QCOMPARE(chrome_control_mcp::otherLiveBridgeOwnerPid(own), qint64{0});
-
-  // Neither is our own advertisement, which is the whole point of excluding it:
-  // a server must not stand down because it found itself.
-  const chrome_control_mcp::RendezvousRecord mine{
-      QStringLiteral("endpoint-own"), QStringLiteral("t"), 0, self};
-  QVERIFY2(chrome_control_mcp::writeRendezvousRecord(own, mine, &error),
-           qPrintable(error));
-  QCOMPARE(chrome_control_mcp::otherLiveBridgeOwnerPid(own), qint64{0});
-
-  // Files in the same directory that are not records are not offered as ones.
-  QFile stray(QDir(root).filePath(QStringLiteral("browser_bridge.json")));
-  QVERIFY(stray.open(QIODevice::WriteOnly));
-  stray.write("{}");
-  stray.close();
-  QCOMPARE(chrome_control_mcp::otherLiveBridgeOwnerPid(own), qint64{0});
-}
-
+// Records a departed server left behind are swept when a server starts, so a
+// relay never pays a failed connection attempt for one. With one shared record
+// a dead server's entry was simply overwritten and nothing ever accumulated.
 void BrowserBridgePipeTests::sweep_removesDepartedServersAndSparesTheLiving() {
   // One shared record was overwritten by whoever published next, so nothing
   // ever accumulated and nothing ever had to be cleaned up. Per-pid records do

@@ -50,16 +50,6 @@ inline constexpr int kBrowserBridgeDefaultIoTimeoutMs = 30'000;
 /// callers are not.
 [[nodiscard]] bool liveBridgeOwnerExists(const QString &rendezvous_path);
 
-/// The pid of a still-running instance of this program advertising a rendezvous
-/// record OTHER than @p own_path, or 0 when there is none.
-///
-/// Records are per-pid, so a server no longer learns about its peers by reading
-/// the one file it would itself write; it has to look at the ones beside it.
-/// This is the single-owner check expressed over that layout, and it answers
-/// with the pid rather than a bool because the refusal names who holds the
-/// bridge -- which is the only actionable part of that message.
-[[nodiscard]] qint64 otherLiveBridgeOwnerPid(const QString &own_path);
-
 /// Delete rendezvous records left behind by servers that are gone: a pid that
 /// has exited, or one that now resolves to a different program after reuse.
 /// Never touches @p own_path, and never touches a record naming a live instance

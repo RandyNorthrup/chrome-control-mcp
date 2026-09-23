@@ -28,18 +28,18 @@ import { loadWorker, makeFakePort, settle } from "./extension_harness.mjs";
 // Functions reached directly. Everything else is driven through the port.
 const EXPORTED = ["connect", "send"];
 
-// The session's fields are reassigned as the bridge comes and goes, so naming them in the
+// A session's fields are reassigned as the bridge comes and goes, so naming them in the
 // epilogue would capture their values at load time rather than follow them; a closure reads
-// them live. `health` is the exception -- it is one object mutated in place, never replaced,
-// so a direct reference to it stays current.
+// them live.
+//
+// The worker serves a SET of sessions now, one per native port. These tests drive a single
+// port, so `peek` reports that session, and `sessions` itself is exposed because "how many
+// ports did the worker open" is the question a surplus or duplicate one shows up in.
 const LIVE =
-  "health: session.health, " +
-  "peek: () => ({" +
-  " port: session.port," +
-  " bridgeReady: session.bridgeReady," +
-  " commandGeneration: session.commandGeneration," +
-  " domEpoch: session.domEpoch," +
-  " serverId: session.serverId })";
+  "sessions, peek: () => { const s = [...sessions][0]; return s ? {" +
+  " port: s.port, bridgeReady: s.bridgeReady," +
+  " commandGeneration: s.commandGeneration, domEpoch: s.domEpoch," +
+  " serverId: s.serverId, health: s.health, surplus: s.surplus } : {}; }";
 
 // Load the worker with a port under the test's control. The worker calls connect() at top
 // level, so the port is already open and both listeners are registered when this returns.
@@ -72,12 +72,18 @@ function ready(port, protocol = PROTOCOL) {
   port.emit({ type: "bridge_ready", protocol });
 }
 
-test("connect opens one native port and reuses it", () => {
+test("connecting gives the port a session of its own", () => {
   const { worker, port } = bootWorker();
-  // The worker connected during evaluation; it must not open a second port when asked again.
+  // The worker connected during evaluation. A port IS a session: Chrome starts
+  // a separate host process per port and the relay behind it attaches to
+  // exactly one server, so a second port is a second session rather than a
+  // second route to the first.
+  assert.equal(worker.sessions.size, 1);
   assert.equal(worker.peek().port, port);
-  assert.equal(worker.connect(), port);
-  assert.equal(worker.peek().port, port);
+
+  worker.connect();
+
+  assert.equal(worker.sessions.size, 2, "a second port is a second session");
 });
 
 test("bridge_ready on the agreed protocol is what opens the bridge", () => {
@@ -87,9 +93,9 @@ test("bridge_ready on the agreed protocol is what opens the bridge", () => {
   ready(port);
 
   assert.equal(worker.peek().bridgeReady, true);
-  assert.equal(worker.health.connected, true);
-  assert.equal(worker.health.bridge, "ready");
-  assert.equal(worker.health.error, null);
+  assert.equal(worker.peek().health.connected, true);
+  assert.equal(worker.peek().health.bridge, "ready");
+  assert.equal(worker.peek().health.error, null);
   assert.deepEqual(
     port.posted,
     [],
@@ -105,8 +111,11 @@ test("a protocol the worker does not speak leaves the bridge closed", async () =
   ready(port, PROTOCOL + 1);
 
   assert.equal(worker.peek().bridgeReady, false);
-  assert.match(String(worker.health.error), /protocol mismatch/i);
-  assert.match(String(worker.health.error), new RegExp(String(PROTOCOL + 1)));
+  assert.match(String(worker.peek().health.error), /protocol mismatch/i);
+  assert.match(
+    String(worker.peek().health.error),
+    new RegExp(String(PROTOCOL + 1)),
+  );
 
   port.emit({ type: "command", id: "b-1", cmd: "snapshot" });
   await settle();
@@ -185,9 +194,12 @@ test("bridge_unavailable closes the bridge and says why", async () => {
   await settle();
 
   assert.equal(worker.peek().bridgeReady, false);
-  assert.equal(worker.health.connected, false);
-  assert.equal(worker.health.bridge, "unavailable");
-  assert.match(String(worker.health.error), /no server published a record/);
+  assert.equal(worker.peek().health.connected, false);
+  assert.equal(worker.peek().health.bridge, "unavailable");
+  assert.match(
+    String(worker.peek().health.error),
+    /no server published a record/,
+  );
 });
 
 test("cancel retires the current command generation and is never answered", async () => {
@@ -268,7 +280,7 @@ test("an unrecognised frame type changes nothing", async () => {
   assert.equal(after.bridgeReady, before.bridgeReady);
   assert.equal(after.commandGeneration, before.commandGeneration);
   assert.equal(after.domEpoch, before.domEpoch);
-  assert.equal(worker.health.connected, true);
+  assert.equal(worker.peek().health.connected, true);
   assert.deepEqual(port.posted, []);
   assert.equal(port.connected, true, "and the port stays up");
 });
@@ -300,7 +312,7 @@ test("losing the port closes the bridge and drops the transport state", async ()
     false,
     "the next host must handshake again",
   );
-  assert.equal(worker.health.connected, false);
+  assert.equal(worker.peek().health.connected, false);
 });
 
 test("a reply that cannot be delivered tears the port down at once", async () => {
@@ -316,6 +328,6 @@ test("a reply that cannot be delivered tears the port down at once", async () =>
 
   assert.equal(worker.peek().port, null);
   assert.equal(worker.peek().bridgeReady, false);
-  assert.equal(worker.health.connected, false);
-  assert.match(String(worker.health.error), /could not be delivered/i);
+  assert.equal(worker.peek().health.connected, false);
+  assert.match(String(worker.peek().health.error), /could not be delivered/i);
 });

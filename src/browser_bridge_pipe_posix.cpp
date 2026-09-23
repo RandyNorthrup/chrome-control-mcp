@@ -286,17 +286,6 @@ bool BrowserBridgePipeServer::createPipeResources(QString *error) {
   // them wastes a connection attempt on each. Clear them before deciding
   // whether anyone is actually here.
   (void)sweepStaleRendezvousRecords(rendezvous_path_);
-  // Stand down if a live server instance already owns the browser bridge, so a
-  // concurrent short-lived process cannot take the browser from the persistent
-  // server (and thus from the extension relay) that is using it.
-  if (otherLiveBridgeOwnerPid(rendezvous_path_) != 0) {
-    if (error != nullptr) {
-      *error = QStringLiteral(
-          "Another Chrome Control MCP server already owns the browser bridge; "
-          "serving native tools with browser control off.");
-    }
-    return false;
-  }
   pipe_name_ = browserBridgePipeName(error);
   if (pipe_name_.isEmpty()) {
     return false;

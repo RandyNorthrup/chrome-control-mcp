@@ -83,6 +83,7 @@ const EXPORTED = [
   "collectFileInputs",
   "MAX_FILE_INPUT_NODES",
   "MAX_UPLOADS_IN_FLIGHT",
+  "makeSession",
 ];
 
 function loadWorker(overrides = {}) {
@@ -287,12 +288,30 @@ test("shotMatchesRender sees a pinch, not only a scroll or zoom", () => {
     epoch: 0,
   };
   const now = { ...shot, ok: true };
-  assert.equal(w.shotMatchesRender(shot, now), true);
-  assert.equal(w.shotMatchesRender(shot, { ...now, scale: 1.5 }), false);
-  assert.equal(w.shotMatchesRender(shot, { ...now, offsetX: 133 }), false);
-  assert.equal(w.shotMatchesRender(shot, { ...now, offsetY: 76 }), false);
-  assert.equal(w.shotMatchesRender(shot, { ...now, dpr: 2.2 }), false);
-  assert.equal(w.shotMatchesRender(shot, { ...now, ok: false }), false);
+  // A screenshot's coordinates are meaningful only against the DOM generation
+  // it was captured at, so the check is against a session, not a global.
+  const session = w.makeSession();
+  assert.equal(w.shotMatchesRender(session, shot, now), true);
+  assert.equal(
+    w.shotMatchesRender(session, shot, { ...now, scale: 1.5 }),
+    false,
+  );
+  assert.equal(
+    w.shotMatchesRender(session, shot, { ...now, offsetX: 133 }),
+    false,
+  );
+  assert.equal(
+    w.shotMatchesRender(session, shot, { ...now, offsetY: 76 }),
+    false,
+  );
+  assert.equal(w.shotMatchesRender(session, shot, { ...now, dpr: 2.2 }), false);
+  assert.equal(
+    w.shotMatchesRender(session, shot, { ...now, ok: false }),
+    false,
+  );
+  // A navigation since the capture retires it, whatever the geometry says.
+  session.domEpoch += 1;
+  assert.equal(w.shotMatchesRender(session, shot, now), false);
 });
 
 test("scrollDistance matches scrollers by name, and counts each once", () => {
@@ -1195,35 +1214,38 @@ const base64Of = (text) => Buffer.from(text, "utf8").toString("base64");
 
 test("pieces reassemble in order, whatever order they arrive in", async () => {
   const w2 = loadWorker();
+  const uploadSession = w2.makeSession();
   const whole = base64Of("the whole file, in three parts");
   const pieces = [whole.slice(0, 10), whole.slice(10, 22), whole.slice(22)];
   // Deliberately out of order: the sequence number decides, not arrival.
   for (const seq of [2, 0, 1]) {
-    await w2.handleUploadChunk({
+    await w2.handleUploadChunk(uploadSession, {
       upload_id: "u-1",
       seq,
       total: 3,
       data: pieces[seq],
     });
   }
-  assert.equal(w2.assembleUpload("u-1"), whole);
+  assert.equal(w2.assembleUpload(uploadSession, "u-1"), whole);
 });
 
 test("a missing piece assembles to nothing rather than a hole", async () => {
   const w2 = loadWorker();
-  await w2.handleUploadChunk({
+  const uploadSession = w2.makeSession();
+  await w2.handleUploadChunk(uploadSession, {
     upload_id: "u-2",
     seq: 0,
     total: 2,
     data: base64Of("first"),
   });
-  assert.equal(w2.assembleUpload("u-2"), null);
-  assert.equal(w2.assembleUpload("never-sent"), null);
+  assert.equal(w2.assembleUpload(uploadSession, "u-2"), null);
+  assert.equal(w2.assembleUpload(uploadSession, "never-sent"), null);
 });
 
 test("an upload's pieces must agree on how many there are", async () => {
   const w2 = loadWorker();
-  await w2.handleUploadChunk({
+  const uploadSession = w2.makeSession();
+  await w2.handleUploadChunk(uploadSession, {
     upload_id: "u-3",
     seq: 0,
     total: 2,
@@ -1231,25 +1253,42 @@ test("an upload's pieces must agree on how many there are", async () => {
   });
   await assert.rejects(
     () =>
-      w2.handleUploadChunk({ upload_id: "u-3", seq: 1, total: 5, data: "BB" }),
+      w2.handleUploadChunk(uploadSession, {
+        upload_id: "u-3",
+        seq: 1,
+        total: 5,
+        data: "BB",
+      }),
     /disagree/,
   );
 });
 
 test("an out-of-range or unnamed piece is refused", async () => {
   const w2 = loadWorker();
+  const uploadSession = w2.makeSession();
   await assert.rejects(
-    () => w2.handleUploadChunk({ upload_id: "", seq: 0, total: 1, data: "AA" }),
+    () =>
+      w2.handleUploadChunk(uploadSession, {
+        upload_id: "",
+        seq: 0,
+        total: 1,
+        data: "AA",
+      }),
     /upload_id/,
   );
   await assert.rejects(
     () =>
-      w2.handleUploadChunk({ upload_id: "u-4", seq: 3, total: 2, data: "AA" }),
+      w2.handleUploadChunk(uploadSession, {
+        upload_id: "u-4",
+        seq: 3,
+        total: 2,
+        data: "AA",
+      }),
     /out of range/,
   );
   await assert.rejects(
     () =>
-      w2.handleUploadChunk({
+      w2.handleUploadChunk(uploadSession, {
         upload_id: "u-4",
         seq: 0,
         total: w2.MAX_UPLOAD_CHUNKS + 1,
@@ -1261,8 +1300,9 @@ test("an out-of-range or unnamed piece is refused", async () => {
 
 test("the worker holds only so many uploads at once", async () => {
   const w2 = loadWorker();
+  const uploadSession = w2.makeSession();
   for (let i = 0; i < w2.MAX_UPLOADS_IN_FLIGHT; i += 1) {
-    await w2.handleUploadChunk({
+    await w2.handleUploadChunk(uploadSession, {
       upload_id: `u-${i}`,
       seq: 0,
       total: 1,
@@ -1271,7 +1311,7 @@ test("the worker holds only so many uploads at once", async () => {
   }
   await assert.rejects(
     () =>
-      w2.handleUploadChunk({
+      w2.handleUploadChunk(uploadSession, {
         upload_id: "one-too-many",
         seq: 0,
         total: 1,
@@ -1283,15 +1323,16 @@ test("the worker holds only so many uploads at once", async () => {
 
 test("ending the session drops every buffered piece", async () => {
   const w2 = loadWorker();
-  await w2.handleUploadChunk({
+  const uploadSession = w2.makeSession();
+  await w2.handleUploadChunk(uploadSession, {
     upload_id: "u-5",
     seq: 0,
     total: 1,
     data: base64Of("bytes of a file the next session must never see"),
   });
-  assert.notEqual(w2.assembleUpload("u-5"), null);
-  w2.clearUploads();
-  assert.equal(w2.assembleUpload("u-5"), null);
+  assert.notEqual(w2.assembleUpload(uploadSession, "u-5"), null);
+  w2.clearUploads(uploadSession);
+  assert.equal(w2.assembleUpload(uploadSession, "u-5"), null);
 });
 
 // That teardown actually calls clearUploads() was asserted here by slicing the text of

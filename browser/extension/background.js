@@ -399,6 +399,11 @@ function makeSession() {
 
     port: null,
 
+    // True when this port was opened to look for a server and every one that
+    // was offered is already held. Losing such a port must not start the
+    // reconnect cycle, which would open a surplus port every two seconds.
+    surplus: false,
+
     // Which server this port is attached to, as the pid string the relay
     // offered, or "" before any offer has been answered. A session identifies
     // its server by this rather than by anything it could look up itself.
@@ -506,7 +511,106 @@ function makeSession() {
   };
 }
 
-const session = makeSession();
+// Every assistant session this worker is serving. One per native port, and one
+// port per MCP server that published a bridge record, so two editors driving
+// two servers get a session each instead of contending for one.
+//
+// A Set rather than a map keyed by server id: a session exists from the moment
+// its port opens, which is before the relay has offered it a server to attach
+// to, so there is a window in which it has no id to be keyed by.
+const sessions = new Set();
+
+// Which session holds a given debugger attachment, and which adopted a given
+// tab. A browser event names only a tab, so these are how one is routed to the
+// session it concerns -- the only places a session has to be searched for.
+function sessionForAttachedTab(tabId) {
+  for (const session of sessions) {
+    if (session.attachedTabId === tabId) {
+      return session;
+    }
+  }
+  return null;
+}
+
+// Set while a probe port is open, so the alarm does not stack probes.
+//
+// A relay offers its list once, at startup, so a session that is already up
+// never hears about a server that started later -- a second editor opening.
+// The probe is how that is noticed: it opens a port, reads a fresh offer, and
+// either takes a server nothing holds or finds none and goes away.
+let probing = false;
+
+// A session is attached to at most one server; these say what the worker holds.
+function anyPortOpen() {
+  for (const session of sessions) {
+    if (session.port) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function heldServers() {
+  return [...sessions]
+    .map((session) => session.serverId)
+    .filter((id) => id !== "");
+}
+
+// The servers in `offered` that no session has taken. One port per server is
+// the whole point: a second port onto a server already held would give two
+// sessions the same browser authority.
+function unheldServers(offered) {
+  const held = new Set(heldServers());
+  return offered.map(String).filter((id) => id !== "" && !held.has(id));
+}
+
+// The session other than @p session that holds @p tabId, or null.
+//
+// A tab is leased by the session that adopted it, or that has a debugger
+// attachment on it. Two sessions driving one tab would each invalidate the
+// other's snapshot, ref index and screenshot transform without anything
+// failing, so the second one to reach for it is refused instead.
+//
+// Chrome enforces the same thing for the CDP half by allowing one debugger
+// client per target, but that does not cover chrome.tabs, chrome.windows,
+// cookies or downloads -- which is why this exists rather than being left to
+// the browser.
+function leaseHolder(tabId, session) {
+  if (typeof tabId !== "number") {
+    return null;
+  }
+  for (const other of sessions) {
+    if (other === session) {
+      continue;
+    }
+    if (other.sessionTabId === tabId || other.attachedTabId === tabId) {
+      return other;
+    }
+  }
+  return null;
+}
+
+// Refuse a tab another session is driving, naming which one, so the operator
+// can tell "busy" from "gone".
+function requireUnleasedTab(session, tab) {
+  const holder = tab && leaseHolder(tab.id, session);
+  if (holder) {
+    throw new Error(
+      "That tab is being driven by another Chrome Control MCP session" +
+        (holder.serverId ? " (server " + holder.serverId + ")" : "") +
+        ". Choose a different tab, or open one with browser_new_tab.",
+    );
+  }
+}
+
+function sessionForAdoptedTab(tabId) {
+  for (const session of sessions) {
+    if (session.sessionTabId === tabId) {
+      return session;
+    }
+  }
+  return null;
+}
 
 // True when two origins are the same scheme://host:port. Both inputs are normalized through URL
 // so "https://host" and "https://host:443" compare equal; falls back to strict string equality
@@ -536,48 +640,60 @@ function originOf(url) {
 
 // -- Native messaging port ---------------------------------------------------
 
-function scheduleReconnect() {
+function scheduleReconnect(session) {
   if (session.reconnectTimer) {
     return;
   }
   session.reconnectTimer = setTimeout(() => {
     session.reconnectTimer = null;
+    // The session this timer belonged to is finished: reconnecting means asking
+    // for a fresh one, not reviving this record.
+    sessions.delete(session);
     connect();
   }, 2000);
 }
 
-function onDisconnect() {
+function onDisconnect(session) {
   const err = chrome.runtime.lastError;
   session.health.connected = false;
   session.health.error = err ? err.message : "port closed";
   session.bridgeReady = false; // the next host must handshake again before it can command us
   session.port = null;
-  releaseSessionTarget(); // the session is over; the next one adopts the user's tab afresh
+  releaseSessionTarget(session); // the next session adopts the user's tab afresh
   console.warn("[ChromeControlMCP] host disconnected:", session.health.error);
   // The bridge (and thus any CDP session it drove) is gone; drop our attachment.
-  detachAll("bridge disconnected");
-  scheduleReconnect();
+  detachAll(session, "bridge disconnected");
+  if (session.surplus) {
+    sessions.delete(session); // it had no server; there is nothing to retry for
+    return;
+  }
+  scheduleReconnect(session);
 }
 
+// Open one native port and give it a session of its own.
+//
+// Chrome starts a separate host process per port, so a port IS a session: the
+// relay behind it attaches to exactly one server. The session is closed over by
+// this port's listeners, which is why no frame ever has to be matched back to a
+// session by searching -- the closure already knows.
 function connect() {
-  if (session.port) {
-    return session.port;
-  }
+  const session = makeSession();
   try {
     session.port = chrome.runtime.connectNative(HOST_NAME);
   } catch (e) {
     session.health.connected = false;
     session.health.error = String(e);
     console.error("[ChromeControlMCP] connectNative threw:", e);
-    scheduleReconnect();
+    scheduleReconnect(session);
     return null;
   }
-  session.port.onMessage.addListener(onHostMessage);
-  session.port.onDisconnect.addListener(onDisconnect);
+  sessions.add(session);
+  session.port.onMessage.addListener((msg) => onHostMessage(session, msg));
+  session.port.onDisconnect.addListener(() => onDisconnect(session));
   return session.port;
 }
 
-function send(reply) {
+function send(session, reply) {
   if (!session.port) {
     console.warn(
       "[ChromeControlMCP] no port to reply on; dropping",
@@ -606,14 +722,14 @@ function send(reply) {
       "reply could not be delivered: " +
       (e && e.message ? e.message : String(e));
     session.bridgeReady = false; // a reconnected host must handshake again before it can command us
-    detachAll("reply delivery failed");
-    scheduleReconnect();
+    detachAll(session, "reply delivery failed");
+    scheduleReconnect(session);
   }
 }
 
 // -- Frame dispatch ----------------------------------------------------------
 
-function onHostMessage(msg) {
+function onHostMessage(session, msg) {
   if (!msg || typeof msg !== "object") {
     return;
   }
@@ -628,10 +744,30 @@ function onHostMessage(msg) {
     // the reply to a command it had not yet sent, putting every later exchange
     // one step out of phase.
     const offered = Array.isArray(msg.servers) ? msg.servers : [];
-    // One session per port, so the first offer is this port's server. Choosing
-    // among several is what a second port is for, and nothing opens one yet.
-    session.serverId = offered.length > 0 ? String(offered[0]) : "";
-    send({ type: "attach_session", session: session.serverId });
+    probing = false;
+    // One port per server: this port takes a server nothing else holds. If every
+    // offered server is already taken, this port has no work -- it answers with
+    // no session, and the relay reports the bridge unavailable and exits rather
+    // than being left waiting.
+    const available = unheldServers(offered);
+    session.serverId = available.length > 0 ? available[0] : "";
+    send(session, { type: "attach_session", session: session.serverId });
+    if (session.serverId === "") {
+      // Every offered server is already held, so this port has nothing to do.
+      // Mark it so losing it does not start the reconnect cycle: retrying would
+      // open another surplus port every two seconds forever. An offer listing
+      // NO servers is different -- nothing is running yet, and that is exactly
+      // the case the reconnect cycle exists for.
+      session.surplus = offered.length > 0;
+      return;
+    }
+    // Another editor is running and nothing is attached to its server yet. One
+    // more port is opened here; its own offer opens the next if more remain, so
+    // the chain converges without this having to loop over an answer that has
+    // not arrived yet.
+    if (available.length > 1) {
+      connect();
+    }
     return;
   }
   if (msg.type === "bridge_ready") {
@@ -654,7 +790,7 @@ function onHostMessage(msg) {
     session.health.bridge = "unavailable";
     session.health.error = msg.error || "bridge unavailable";
     session.bridgeReady = false;
-    releaseSessionTarget();
+    releaseSessionTarget(session);
     console.warn(
       "[ChromeControlMCP] bridge unavailable:",
       session.health.error,
@@ -682,7 +818,7 @@ function onHostMessage(msg) {
       return;
     }
     if (typeof msg.cmd !== "string" || msg.cmd.length === 0) {
-      send({
+      send(session, {
         type: "error",
         id: msg.id,
         cmd: "",
@@ -696,7 +832,7 @@ function onHostMessage(msg) {
     // protocol we already know we do not speak. Refuse it (still exactly one reply per
     // command frame, so the relay's one-op pump stays in step).
     if (!session.bridgeReady) {
-      send({
+      send(session, {
         type: "error",
         id: msg.id,
         cmd: msg.cmd,
@@ -707,13 +843,13 @@ function onHostMessage(msg) {
       });
       return;
     }
-    handleCommand(msg);
+    handleCommand(session, msg);
     return;
   }
   console.warn("[ChromeControlMCP] unexpected frame type:", msg.type);
 }
 
-async function handleCommand(msg) {
+async function handleCommand(session, msg) {
   const id = msg.id;
   const cmd = msg.cmd;
   // Every arriving frame retires whatever came before it. A polling handler captures this value
@@ -721,10 +857,16 @@ async function handleCommand(msg) {
   // instead of running on against a page (and a relay) that has moved on without it.
   session.commandGeneration++;
   try {
-    const payload = await runCommand(cmd, msg);
-    send({ type: "result", id, cmd, payload, domEpoch: session.domEpoch });
+    const payload = await runCommand(session, cmd, msg);
+    send(session, {
+      type: "result",
+      id,
+      cmd,
+      payload,
+      domEpoch: session.domEpoch,
+    });
   } catch (e) {
-    send({
+    send(session, {
       type: "error",
       id,
       cmd,
@@ -734,7 +876,7 @@ async function handleCommand(msg) {
   }
 }
 
-async function runCommand(cmd, args) {
+async function runCommand(session, cmd, args) {
   // Scope an armed dialog response to the SINGLE command meant to trigger the dialog: if that
   // command runs without the dialog firing (which would consume the arm in the onEvent
   // handler), drop the arm so it can never persist and auto-answer an unrelated later dialog.
@@ -748,14 +890,14 @@ async function runCommand(cmd, args) {
     session.dialogArmActive = true;
   }
   try {
-    return await dispatchCommand(cmd, args);
+    return await dispatchCommand(session, cmd, args);
   } finally {
     session.dialogArmActive = false;
     if (scopedPolicy !== null && session.pendingDialogPolicy === scopedPolicy) {
       session.pendingDialogPolicy = null;
     }
     // The handles this command resolved end with it; nothing outlives the dispatch that made them.
-    await releaseCdpObjects();
+    await releaseCdpObjects(session);
   }
 }
 
@@ -772,8 +914,22 @@ const COMMAND_TABLE = new Map([
   ["snapshot", { fn: captureSnapshot, tab: true, args: false }],
   ["read", { fn: handleRead, tab: true, args: true }],
   ["navigate", { fn: handleNavigate, tab: true, args: true }],
-  ["back", { fn: () => handleHistory("back"), tab: false, args: false }],
-  ["forward", { fn: () => handleHistory("forward"), tab: false, args: false }],
+  [
+    "back",
+    {
+      fn: (session) => handleHistory(session, "back"),
+      tab: false,
+      args: false,
+    },
+  ],
+  [
+    "forward",
+    {
+      fn: (session) => handleHistory(session, "forward"),
+      tab: false,
+      args: false,
+    },
+  ],
   ["reload", { fn: handleReload, tab: false, args: false }],
   ["listTabs", { fn: handleListTabs, tab: false, args: false }],
   ["selectTab", { fn: handleSelectTab, tab: false, args: true }],
@@ -813,19 +969,26 @@ const COMMAND_TABLE = new Map([
   // Carries bytes only: it names no element and touches no page, so it needs no tab.
   [
     "uploadChunk",
-    { fn: (args) => handleUploadChunk(args), tab: false, args: true },
+    {
+      fn: (session, args) => handleUploadChunk(session, args),
+      tab: false,
+      args: true,
+    },
   ],
   ["upload", { fn: handleUpload, tab: true, args: true }],
 ]);
 
-async function dispatchCommand(cmd, args) {
+async function dispatchCommand(session, cmd, args) {
   const entry = COMMAND_TABLE.get(cmd);
   if (!entry) {
     throw new Error("Unknown command: " + cmd);
   }
-  const params = [];
+  // Every handler takes the session it is acting for as its first argument,
+  // then the tab and the arguments it asked for. Nothing reaches session state
+  // except through what it was handed.
+  const params = [session];
   if (entry.tab) {
-    params.push(await activeTabId());
+    params.push(await activeTabId(session));
   }
   if (entry.args) {
     params.push(args);
@@ -847,23 +1010,25 @@ const CONTROL_GROUP_COLOR = "pink";
 // create one each, leaving the first on the user's tab strip with nothing tracking it.
 let markingQueue = Promise.resolve();
 
-function queueControlMark(tabId) {
+function queueControlMark(session, tabId) {
   markingQueue = markingQueue.then(() =>
-    markControlledTab(tabId).catch((e) => {
+    markControlledTab(session, tabId).catch((e) => {
       console.warn("[ChromeControlMCP] could not mark the controlled tab:", e);
     }),
   );
   return markingQueue;
 }
 
-function queueControlUnmark() {
-  markingQueue = markingQueue.then(() => unmarkControlledTab().catch(() => {}));
+function queueControlUnmark(session) {
+  markingQueue = markingQueue.then(() =>
+    unmarkControlledTab(session).catch(() => {}),
+  );
   return markingQueue;
 }
 
 // Groups this extension left behind: a worker that was reloaded or crashed forgets which group it
 // made, and the pink group would stay on a tab nobody is driving. Cleared whenever a tab is marked.
-async function releaseOrphanControlGroups(keepGroupId) {
+async function releaseOrphanControlGroups(session, keepGroupId) {
   const groups = await chrome.tabGroups
     .query({ title: CONTROL_GROUP_TITLE })
     .catch(() => []);
@@ -882,7 +1047,7 @@ async function releaseOrphanControlGroups(keepGroupId) {
   }
 }
 
-async function markControlledTab(tabId) {
+async function markControlledTab(session, tabId) {
   if (!chrome.tabGroups) {
     return; // grouping unavailable: the page overlay and toolbar badge still mark the tab
   }
@@ -897,8 +1062,8 @@ async function markControlledTab(tabId) {
   if (grouped && session.controlGroupTabId === tabId) {
     return; // already marked
   }
-  await unmarkControlledTab();
-  await releaseOrphanControlGroups(null);
+  await unmarkControlledTab(session);
+  await releaseOrphanControlGroups(session, null);
   // In the tab's OWN window: a group created without one lands in "the current window", which
   // MOVES the tab there -- and a window whose only tab left closes with it.
   const groupId = await chrome.tabs
@@ -924,7 +1089,7 @@ async function markControlledTab(tabId) {
     });
 }
 
-async function unmarkControlledTab() {
+async function unmarkControlledTab(session) {
   const tabId = session.controlGroupTabId;
   const groupId = session.controlGroupId;
   session.controlGroupTabId = null;
@@ -939,16 +1104,16 @@ async function unmarkControlledTab() {
   }
 }
 
-function pinSessionTarget(tab) {
+function pinSessionTarget(session, tab) {
   session.sessionTabId = tab.id;
   session.sessionWindowId = tab.windowId;
-  queueControlMark(tab.id);
+  queueControlMark(session, tab.id);
 }
 
-function releaseSessionTarget() {
+function releaseSessionTarget(session) {
   session.sessionTabId = null;
   session.sessionWindowId = null;
-  queueControlUnmark();
+  queueControlUnmark(session);
 }
 
 // The tab the session controls. The first command adopts the active tab of the last focused
@@ -962,7 +1127,7 @@ function releaseSessionTarget() {
 // it over would be exactly the interference this worker must never commit. The session stays
 // without a tab, and says so, until it is given one: browser_new_tab opens its own in the
 // background, browser_select_tab names one, browser_window new/focus picks a window's.
-async function activeTab() {
+async function activeTab(session) {
   if (session.sessionTabId !== null) {
     const pinned = await chrome.tabs
       .get(session.sessionTabId)
@@ -985,18 +1150,22 @@ async function activeTab() {
   if (!tabs || !tabs.length) {
     throw new Error("No active tab.");
   }
-  pinSessionTarget(tabs[0]);
+  // Adopting the user's active tab is the one place a session takes a tab it
+  // was not given, so it is also where it could take one another session is
+  // already driving.
+  requireUnleasedTab(session, tabs[0]);
+  pinSessionTarget(session, tabs[0]);
   return tabs[0];
 }
 
-async function activeTabId() {
-  return (await activeTab()).id;
+async function activeTabId(session) {
+  return (await activeTab(session)).id;
 }
 
 // The window the session works in: where tab listings, tab indices, and new tabs resolve. It
 // outlives the session's tab: after that tab closes, a listing or a new tab still belongs in the
 // window the session was working in.
-async function sessionWindow() {
+async function sessionWindow(session) {
   if (session.sessionTabId !== null) {
     const pinned = await chrome.tabs
       .get(session.sessionTabId)
@@ -1014,20 +1183,22 @@ async function sessionWindow() {
       }
     }
   }
-  return (await activeTab()).windowId;
+  return (await activeTab(session)).windowId;
 }
 
 // A foreground tab opened BY the session's page (a target=_blank link, window.open) is where the
 // session's own action led, so the session follows it -- as it did when targeting tracked the
 // active tab. A tab the user opens elsewhere has no such opener and never moves the session.
 chrome.tabs.onCreated.addListener((tab) => {
-  if (
-    session.sessionTabId !== null &&
-    tab.active &&
-    typeof tab.id === "number" &&
-    tab.openerTabId === session.sessionTabId
-  ) {
-    pinSessionTarget(tab);
+  if (!tab.active || typeof tab.id !== "number") {
+    return;
+  }
+  // A browser event names only a tab, so the session it concerns is the one
+  // that adopted the opener. A tab opened from some other session's page, or
+  // from none, moves nothing here.
+  const session = sessionForAdoptedTab(tab.openerTabId);
+  if (session) {
+    pinSessionTarget(session, tab);
   }
 });
 
@@ -1066,7 +1237,7 @@ const CDP_OBJECT_GROUP = "chrome_control_mcp";
 // computed: the two ways it can fail (the session detached, the context was destroyed) have both
 // already freed every handle in the group, so failing the completed command over it would report
 // an error about work that succeeded. It is logged rather than swallowed.
-async function releaseCdpObjects() {
+async function releaseCdpObjects(session) {
   const tabId = session.attachedTabId;
   if (typeof tabId !== "number") {
     return;
@@ -1085,7 +1256,7 @@ async function releaseCdpObjects() {
 // in-flight tracking browser_wait_for reads for network_idle. A domain that failed to enable is
 // a safety mechanism silently switched off, so it takes the whole attach down rather than leaving
 // a session that looks controlled and is not. enable is idempotent.
-async function enableSessionDomains(tabId) {
+async function enableSessionDomains(session, tabId) {
   session.networkInstrumented = false;
   await sendCdp(tabId, "DOM.enable");
   await sendCdp(tabId, "Accessibility.enable");
@@ -1107,10 +1278,10 @@ async function enableSessionDomains(tabId) {
   });
 }
 
-async function ensureAttached(tabId) {
+async function ensureAttached(session, tabId) {
   if (session.attachedTabId !== tabId) {
     if (session.attachedTabId !== null) {
-      await detachAll("switching tabs");
+      await detachAll(session, "switching tabs");
     }
     try {
       await chrome.debugger.attach({ tabId }, "1.3");
@@ -1129,7 +1300,7 @@ async function ensureAttached(tabId) {
     // this block, and never retries the domain -- so the session runs on with its dialog
     // auto-answer and its epoch invalidation quietly absent, reporting success throughout.
     try {
-      await enableSessionDomains(tabId);
+      await enableSessionDomains(session, tabId);
     } catch (error) {
       await chrome.debugger.detach({ tabId }).catch(() => {});
       throw new Error(
@@ -1155,7 +1326,7 @@ async function ensureAttached(tabId) {
 // generation, did not clear the captured User-Agent, and did not drop a half-delivered upload.
 // None of those three has a visible symptom at the moment it goes wrong, which is why the
 // divergence survived.
-function releaseAttachedState() {
+function releaseAttachedState(session) {
   // Retire whatever a polling handler (browser_wait_for, browser_download) is watching, so it
   // abandons instead of driving a tab nothing is attached to any more.
   session.commandGeneration++;
@@ -1173,14 +1344,14 @@ function releaseAttachedState() {
   session.originalUserAgent = null; // emulation overrides are per-session; recapture on the next tab
   session.httpAuthCreds = null; // armed HTTP-auth credentials do not carry across sessions
   session.lastFetchError = null; // nor does an interception failure from a page we no longer drive
-  clearUploads(); // a half-delivered file belongs to the session that is ending, not the next one
+  clearUploads(session); // a half-delivered file belongs to the session that is ending, not the next one
 }
 
-async function detachAll(_reason) {
+async function detachAll(session, _reason) {
   // A tab switch WE initiate ends the attachment just as a close does, and the onDetach
   // listener cannot see it: attachedTabId is cleared below before the detach call, so the
   // listener's source check never matches and the release does not run twice.
-  releaseAttachedState();
+  releaseAttachedState(session);
   if (session.attachedTabId === null) {
     return;
   }
@@ -1198,13 +1369,19 @@ async function detachAll(_reason) {
 
 // The user opening DevTools, or the tab closing, force-detaches our session.
 chrome.debugger.onDetach.addListener((source) => {
-  // The listener fires for every target this extension is attached to, so a detach of a tab
-  // this session never held has to be ignored: reacting would retire a live command
-  // generation and blank a snapshot that is still valid.
-  if (source && source.tabId === session.attachedTabId) {
+  if (!source) {
+    return;
+  }
+  // The listener fires for every target this extension is attached to, and with
+  // several sessions that now includes tabs other sessions hold. Reacting to one
+  // this session never held would retire a live command generation and blank a
+  // snapshot that is still valid, so the detach is routed to its owner or
+  // ignored.
+  const session = sessionForAttachedTab(source.tabId);
+  if (session) {
     setTabControlBadge(source.tabId, false); // control ended; clear the toolbar badge
     session.attachedTabId = null;
-    releaseAttachedState();
+    releaseAttachedState(session);
   }
 });
 
@@ -1222,7 +1399,7 @@ function defaultDialogAccept(type) {
 // A paused request that could not be resumed stalls the page on that resource. Keep the newest
 // such failure so browser_http_auth can surface it; discarding it leaves a hung page with nothing
 // anywhere that explains why.
-function recordFetchError(e) {
+function recordFetchError(session, e) {
   session.lastFetchError = String(e && e.message ? e.message : e);
 }
 
@@ -1232,7 +1409,14 @@ function recordFetchError(e) {
 const DIALOG_TYPES = new Set(["alert", "confirm", "prompt", "beforeunload"]);
 
 chrome.debugger.onEvent.addListener((source, method, params) => {
-  if (!source || source.tabId !== session.attachedTabId) {
+  if (!source) {
+    return;
+  }
+  // Same routing as onDetach: the event belongs to whichever session holds that
+  // attachment. Resolved once here and used for the whole body, including the
+  // callbacks below that run after this listener has returned.
+  const session = sessionForAttachedTab(source.tabId);
+  if (!session) {
     return;
   }
   // Network-activity tracking for browser_wait_for network_idle. A request starting records its
@@ -1368,7 +1552,7 @@ chrome.debugger.onEvent.addListener((source, method, params) => {
 // Refs are valid only on the tab the snapshot was taken from AND only against the DOM
 // generation it was captured at; refuse a ref action when either moved (a tab switch, a
 // model-opened foreground tab, or a navigation the page itself drove under us).
-function requireSnapshotTab(tabId) {
+function requireSnapshotTab(session, tabId) {
   if (
     session.lastSnapshotTabId === null ||
     tabId !== session.lastSnapshotTabId
@@ -1891,8 +2075,8 @@ async function collectFileInputs(tabId, existing) {
   return { nodes: out, truncated };
 }
 
-async function captureSnapshot(tabId) {
-  await ensureAttached(tabId);
+async function captureSnapshot(session, tabId) {
+  await ensureAttached(session, tabId);
   // The capture is five sequential CDP reads. A top-frame navigation part way through does not
   // throw -- it silently leaves geometry and AX nodes from document A joined to the url/title
   // (and stamped with the epoch) of document B, and backendNodeIds restart across a cross-process
@@ -2006,9 +2190,9 @@ async function readOmittedFrames(tabId) {
   };
 }
 
-async function handleRead(tabId, args) {
+async function handleRead(session, tabId, args) {
   const format = readFormat(args);
-  await ensureAttached(tabId);
+  await ensureAttached(session, tabId);
   const read =
     format === "html"
       ? "document.documentElement ? document.documentElement.outerHTML : ''"
@@ -2127,7 +2311,7 @@ async function viewportState(tabId) {
 // moves pixels under a coordinate the model measured off that image: a scroll, zoom, or pinch, a
 // navigation, a same-URL reload or SPA route change (which href alone cannot see -- hence the
 // DOM generation), and a viewport resize.
-function shotMatchesRender(shot, now) {
+function shotMatchesRender(session, shot, now) {
   return (
     now.ok &&
     now.dpr === shot.dpr &&
@@ -2212,8 +2396,8 @@ async function captureScreenshotWithFrames(tabId, params) {
   return forced.value;
 }
 
-async function handleScreenshot(tabId, args) {
-  await ensureAttached(tabId);
+async function handleScreenshot(session, tabId, args) {
+  await ensureAttached(session, tabId);
   const fullPage = Boolean(args && args.full_page === true);
   const includeControlOverlay = Boolean(
     args && args.include_control_overlay === true,
@@ -2916,9 +3100,9 @@ async function reachablePoint(tabId, backendNodeId) {
   }
 }
 
-async function handleClick(tabId, args) {
-  await ensureAttached(tabId);
-  requireSnapshotTab(tabId);
+async function handleClick(session, tabId, args) {
+  await ensureAttached(session, tabId);
+  requireSnapshotTab(session, tabId);
   const button = mouseButton(args.button);
   const clickCount = clickCountOf(args.click_count);
   const modifiers = parseModifiers(args.modifiers);
@@ -2961,9 +3145,9 @@ async function handleClick(tabId, args) {
 
 // Move-only pointer over a target so :hover/mouseenter UI (menus, tooltips) reveals; the model
 // then re-snapshots to read what appeared. Optional dwell lets hover-intent JS settle.
-async function handleHover(tabId, args) {
-  await ensureAttached(tabId);
-  requireSnapshotTab(tabId);
+async function handleHover(session, tabId, args) {
+  await ensureAttached(session, tabId);
+  requireSnapshotTab(session, tabId);
   const point = await resolveActionPoint(tabId, args.backendNodeId);
   await moveAgentCursor(tabId, point.x, point.y);
   await dispatchMouse(tabId, "mouseMoved", point.x, point.y, {
@@ -2983,8 +3167,8 @@ async function handleHover(tabId, args) {
 
 // Drag from a source (ref or x,y) to a target (ref or x,y) with interpolated moves so drag
 // thresholds trigger. hold_ms pauses after press (long-press pickup for sortables/kanban).
-async function handleDrag(tabId, args) {
-  await ensureAttached(tabId);
+async function handleDrag(session, tabId, args) {
+  await ensureAttached(session, tabId);
   // Both endpoints take a ref, and this was the one ref-taking handler that never checked the
   // snapshot. Either ref alone is enough to land the drag on a tab or a document the model
   // never saw, so the gate is keyed on either being present -- matching the bridge, which
@@ -2993,7 +3177,7 @@ async function handleDrag(tabId, args) {
     typeof args.backendNodeId === "number" ||
     typeof args.to_backendNodeId === "number"
   ) {
-    requireSnapshotTab(tabId);
+    requireSnapshotTab(session, tabId);
   }
   // A point given as x/y is a pixel of the most recent screenshot -- the only place a model reads
   // raw coordinates from -- converted exactly as browser_click_at converts it. Taken as CSS
@@ -3023,6 +3207,7 @@ async function handleDrag(tabId, args) {
   const fromPixel = fromRef
     ? null
     : await screenshotPoint(
+        session,
         tabId,
         Number(args.from_x),
         Number(args.from_y),
@@ -3031,6 +3216,7 @@ async function handleDrag(tabId, args) {
   const toPixel = toRef
     ? null
     : await screenshotPoint(
+        session,
         tabId,
         Number(args.to_x),
         Number(args.to_y),
@@ -3043,7 +3229,7 @@ async function handleDrag(tabId, args) {
   // Resolving a ref scrolls its element into view, and a scroll moves the page under a pixel
   // read before it. A drag that mixes the two is proven only if the render held still.
   if ((fromPixel || toPixel) && (fromRef || toRef)) {
-    await currentShot(tabId, "browser_drag");
+    await currentShot(session, tabId, "browser_drag");
   }
   const steps = boundedCount(args.steps, 12, 2, 60, "browser_drag steps");
   const hold = boundedMs(args.hold_ms, 0, 5000, "browser_drag hold_ms");
@@ -3117,11 +3303,11 @@ async function handleDrag(tabId, args) {
 // which only the DOM generation shows) would put it on a different document, and a viewport
 // resize would relay the page out under it. A pixel names a point only in the image it was read
 // from.
-async function screenshotPoint(tabId, sx, sy, tool) {
+async function screenshotPoint(session, tabId, sx, sy, tool) {
   if (!Number.isFinite(sx) || !Number.isFinite(sy) || sx < 0 || sy < 0) {
     throw new Error(tool + " needs non-negative x and y in screenshot pixels.");
   }
-  const shot = await currentShot(tabId, tool);
+  const shot = await currentShot(session, tabId, tool);
   const perCssPixel = shot.dpr * shot.scale;
   // Inside the image it was read from. A pixel past its edge is off the page on screen, and
   // dispatching there would report a click at coordinates nothing was ever drawn at.
@@ -3146,7 +3332,7 @@ async function screenshotPoint(tabId, sx, sy, tool) {
 
 // The most recent screenshot, if it is a viewport screenshot of this tab and the page still shows
 // what it captured; otherwise the refusal that says which.
-async function currentShot(tabId, tool) {
+async function currentShot(session, tabId, tool) {
   const shot = session.lastShot;
   if (!shot || shot.tabId !== tabId) {
     throw new Error(
@@ -3164,7 +3350,7 @@ async function currentShot(tabId, tool) {
     );
   }
   const now = await viewportState(tabId);
-  if (!shotMatchesRender(shot, now)) {
+  if (!shotMatchesRender(session, shot, now)) {
     session.lastShot = null;
     throw new Error(
       "The page moved (scrolled, zoomed, pinched, resized, reloaded, or navigated) since the " +
@@ -3176,11 +3362,17 @@ async function currentShot(tabId, tool) {
   return shot;
 }
 
-async function handleClickAt(tabId, args) {
-  await ensureAttached(tabId);
+async function handleClickAt(session, tabId, args) {
+  await ensureAttached(session, tabId);
   const sx = Number(args.x);
   const sy = Number(args.y);
-  const point = await screenshotPoint(tabId, sx, sy, "browser_click_at");
+  const point = await screenshotPoint(
+    session,
+    tabId,
+    sx,
+    sy,
+    "browser_click_at",
+  );
   const button = mouseButton(args.button);
   const clickCount = clickCountOf(args.click_count);
   await clickAt(tabId, point.x, point.y, {
@@ -3225,9 +3417,9 @@ async function nodeHasFocus(tabId, backendNodeId) {
   return (await callOnNode(tabId, objectId, focusFn, [])) === true;
 }
 
-async function handleType(tabId, args) {
-  await ensureAttached(tabId);
-  requireSnapshotTab(tabId);
+async function handleType(session, tabId, args) {
+  await ensureAttached(session, tabId);
+  requireSnapshotTab(session, tabId);
   const text = typeof args.text === "string" ? args.text : "";
   // A validated ref is required: typing into the page-focused element would let page
   // content (element.focus()/autofocus) redirect the model's text into a field the
@@ -3407,9 +3599,9 @@ function selectCallArgs(args) {
 // inside the page via Runtime.callFunctionOn on the ref-resolved node -- the function body
 // is a CONSTANT string and value/label/index are passed as CDP argument VALUES (never
 // interpolated into code), so there is no page-content injection surface.
-async function handleSelect(tabId, args) {
-  await ensureAttached(tabId);
-  requireSnapshotTab(tabId);
+async function handleSelect(session, tabId, args) {
+  await ensureAttached(session, tabId);
+  requireSnapshotTab(session, tabId);
   if (typeof args.backendNodeId !== "number") {
     throw new Error(
       "This action needs a valid <select> element ref from the latest snapshot.",
@@ -3471,9 +3663,9 @@ async function callOnNode(tabId, objectId, fn, args, awaitPromise) {
 // date/time/color/number inputs, checkboxes/radios, contenteditable, and hidden or custom
 // controls (no visible box needed -- it acts on the ref'd node via a CONSTANT function; the
 // value/checked come in as CDP argument values, never interpolated as code).
-async function handleSetValue(tabId, args) {
-  await ensureAttached(tabId);
-  requireSnapshotTab(tabId);
+async function handleSetValue(session, tabId, args) {
+  await ensureAttached(session, tabId);
+  requireSnapshotTab(session, tabId);
   const hasChecked = typeof args.checked === "boolean";
   const hasValue = typeof args.value === "string";
   if (!hasChecked && !hasValue) {
@@ -3539,9 +3731,9 @@ async function handleSetValue(tabId, args) {
 
 // Control an <audio>/<video> element: play/pause/mute/unmute/seek/volume/rate. Returns the
 // resulting media state. Constant function body; the numeric argument arrives as a value.
-async function handleMedia(tabId, args) {
-  await ensureAttached(tabId);
-  requireSnapshotTab(tabId);
+async function handleMedia(session, tabId, args) {
+  await ensureAttached(session, tabId);
+  requireSnapshotTab(session, tabId);
   const action = String(args.action || "").toLowerCase();
   const num =
     args.value !== undefined && args.value !== null && String(args.value) !== ""
@@ -3753,8 +3945,8 @@ function waitDurationMs(raw, name, fallback, cap) {
 // checks element presence, never mutating the page. Exactly one of text / url_contains /
 // selector; `absent` inverts the wait (gone instead of present). Text/selector conditions run
 // injection-safely (text compared here, selector passed as a CDP param).
-async function handleWaitFor(tabId, args) {
-  await ensureAttached(tabId);
+async function handleWaitFor(session, tabId, args) {
+  await ensureAttached(session, tabId);
   // The generation this wait belongs to. Re-checked every poll so a superseded wait stops
   // driving the page instead of finishing into a connection that is already gone.
   const gen = session.commandGeneration;
@@ -3864,9 +4056,9 @@ async function handleWaitFor(tabId, args) {
 // text, disabled). Read-only; constant function body. Everything read here is page-controlled
 // data of unbounded size, so each string and the option list are capped -- and a cap that BIT is
 // reported, because a silently truncated value reads as the whole value to the model.
-async function handleGetValue(tabId, args) {
-  await ensureAttached(tabId);
-  requireSnapshotTab(tabId);
+async function handleGetValue(session, tabId, args) {
+  await ensureAttached(session, tabId);
+  requireSnapshotTab(session, tabId);
   const objectId = await resolveNodeObjectId(tabId, args.backendNodeId);
   const getFn = function () {
     const el = this;
@@ -3921,9 +4113,9 @@ async function handleGetValue(tabId, args) {
 // LIST are page-derived and unbounded (hundreds of data-* attributes, a 2 MB data: URI in src), so
 // both are capped -- and a cap that bit is reported, because a href cut at exactly 2048 chars
 // reads back as a complete URL the model may then navigate to.
-async function handleGetAttribute(tabId, args) {
-  await ensureAttached(tabId);
-  requireSnapshotTab(tabId);
+async function handleGetAttribute(session, tabId, args) {
+  await ensureAttached(session, tabId);
+  requireSnapshotTab(session, tabId);
   const objectId = await resolveNodeObjectId(tabId, args.backendNodeId);
   const name = typeof args.name === "string" ? args.name : "";
   const attrFn = function (attributeName) {
@@ -4025,9 +4217,9 @@ function quadRect(quad) {
 // Report a ref's geometry, whether it is inside the viewport, and whether an overlay covers its
 // center (occlusion). Read-only; scrolls-into-view are not performed here so the box reflects
 // where the element actually sits right now.
-async function handleBox(tabId, args) {
-  await ensureAttached(tabId);
-  requireSnapshotTab(tabId);
+async function handleBox(session, tabId, args) {
+  await ensureAttached(session, tabId);
+  requireSnapshotTab(session, tabId);
   if (typeof args.backendNodeId !== "number") {
     throw new Error(
       "This action needs a valid element ref from the latest snapshot.",
@@ -4099,9 +4291,9 @@ async function handleBox(tabId, args) {
 
 // Focus a ref (fires the page's focus events, like a real tab-into). Pointer-adjacent and
 // non-destructive; used to prepare an element for browser_press_key without a click.
-async function handleFocus(tabId, args) {
-  await ensureAttached(tabId);
-  requireSnapshotTab(tabId);
+async function handleFocus(session, tabId, args) {
+  await ensureAttached(session, tabId);
+  requireSnapshotTab(session, tabId);
   if (typeof args.backendNodeId !== "number") {
     throw new Error(
       "This action needs a valid element ref from the latest snapshot.",
@@ -4130,9 +4322,9 @@ async function handleFocus(tabId, args) {
 
 // Scroll a ref into view (bring an off-screen element on-screen before a screenshot or
 // coordinate click). Viewport-only change, like browser_scroll.
-async function handleReveal(tabId, args) {
-  await ensureAttached(tabId);
-  requireSnapshotTab(tabId);
+async function handleReveal(session, tabId, args) {
+  await ensureAttached(session, tabId);
+  requireSnapshotTab(session, tabId);
   if (typeof args.backendNodeId !== "number") {
     throw new Error(
       "This action needs a valid element ref from the latest snapshot.",
@@ -4191,14 +4383,14 @@ const MAX_UPLOADS_IN_FLIGHT = 8;
 // Drop every buffered chunk. Called when the session ends, the bridge drops, or CDP detaches: a
 // half-delivered file belongs to a session that no longer exists, and keeping it would carry the
 // user's bytes into the next one.
-function clearUploads() {
+function clearUploads(session) {
   session.uploadChunks.clear();
 }
 
 // One piece of a file. Pieces may arrive in any order; sequence numbers put them back together,
 // and a piece that would push this upload past its bounds is refused rather than truncated --
 // a truncated file uploaded as though whole is worse than no upload at all.
-async function handleUploadChunk(args) {
+async function handleUploadChunk(session, args) {
   const id = typeof args.upload_id === "string" ? args.upload_id : "";
   const seq = Number(args.seq);
   const total = Number(args.total);
@@ -4236,7 +4428,7 @@ async function handleUploadChunk(args) {
 
 // Put an upload back together, or say it cannot be. Returns null when a piece never arrived,
 // which the caller reports rather than assigning a file with a hole in it.
-function assembleUpload(id) {
+function assembleUpload(session, id) {
   const entry = session.uploadChunks.get(id);
   if (!entry) {
     return null;
@@ -4326,16 +4518,16 @@ function resolveFileInputFrom(start) {
 
 // Assign the delivered files to a file input, as the user's own choice would. GATED like every
 // other tool that changes the page.
-async function handleUpload(tabId, args) {
-  await ensureAttached(tabId);
-  requireSnapshotTab(tabId);
+async function handleUpload(session, tabId, args) {
+  await ensureAttached(session, tabId);
+  requireSnapshotTab(session, tabId);
   const files = Array.isArray(args.files) ? args.files : [];
   if (!files.length) {
     throw new Error("browser_upload needs at least one file.");
   }
   const payload = [];
   for (const file of files) {
-    const data = assembleUpload(file.upload_id);
+    const data = assembleUpload(session, file.upload_id);
     if (data === null) {
       for (const entry of files) {
         session.uploadChunks.delete(entry.upload_id);
@@ -4436,9 +4628,9 @@ async function handleUpload(tabId, args) {
 // Programmatic el.click() in-page, as a fallback when a real pointer click cannot land (target
 // occluded by an overlay, zero-box but present, or a control that ignores synthetic pointer
 // events). GATED like browser_click. Constant function body.
-async function handleJsClick(tabId, args) {
-  await ensureAttached(tabId);
-  requireSnapshotTab(tabId);
+async function handleJsClick(session, tabId, args) {
+  await ensureAttached(session, tabId);
+  requireSnapshotTab(session, tabId);
   const objectId = await resolveNodeObjectId(tabId, args.backendNodeId);
   const point = await resolveActionPoint(tabId, args.backendNodeId).catch(
     () => null,
@@ -4648,8 +4840,8 @@ async function focusedElementInfo(tabId) {
   return value;
 }
 
-async function handlePressKey(tabId, args) {
-  await ensureAttached(tabId);
+async function handlePressKey(session, tabId, args) {
+  await ensureAttached(session, tabId);
   const { modifiers, def } = parseChord(args.keys);
   // The key goes to whatever the page has focused -- which the page itself can move between a
   // browser_click/browser_focus and this call. Read the target first so the reply says WHERE the
@@ -4796,13 +4988,13 @@ function scrollDistance(before, after) {
   return { x: Math.round(x), y: Math.round(y) };
 }
 
-async function handleScroll(tabId, args) {
-  await ensureAttached(tabId);
+async function handleScroll(session, tabId, args) {
+  await ensureAttached(session, tabId);
   const amount = scrollAmountPx(args.amount);
   const deltaY = scrollDirection(args.direction) === "up" ? -amount : amount;
   let point;
   if (typeof args.backendNodeId === "number") {
-    requireSnapshotTab(tabId);
+    requireSnapshotTab(session, tabId);
     point = await resolveActionPoint(tabId, args.backendNodeId);
   } else {
     // The point decides WHICH scroller receives the wheel event, so a made-up one scrolls a
@@ -4869,8 +5061,8 @@ function dialogSourceMatches(frameUrl, armedOrigin) {
   return frameOrigin ? frameOrigin === armedOrigin : frameUrl === armedOrigin;
 }
 
-async function handleDialog(tabId, args) {
-  await ensureAttached(tabId);
+async function handleDialog(session, tabId, args) {
+  await ensureAttached(session, tabId);
   // "dismiss" is the documented default, but an unrecognized action is a request we do not
   // understand -- answering it as a dismiss would silently substitute a different answer.
   const action =
@@ -5012,8 +5204,8 @@ async function handleNavigate(tabId, args) {
   return { ok: true, url: info.url, title: info.title, load_complete: loaded };
 }
 
-async function handleHistory(direction) {
-  const tab = await activeTab();
+async function handleHistory(session, direction) {
+  const tab = await activeTab(session);
   if (direction === "back") {
     await chrome.tabs.goBack(tab.id);
   } else {
@@ -5024,8 +5216,8 @@ async function handleHistory(direction) {
   return { ok: true, url: info.url, title: info.title, load_complete: loaded };
 }
 
-async function handleReload() {
-  const tab = await activeTab();
+async function handleReload(session) {
+  const tab = await activeTab(session);
   await chrome.tabs.reload(tab.id);
   // A reload lands on the same url it started from, so the pre-navigation url never stops
   // matching and the wait rests entirely on the completion event -- which a reload always fires.
@@ -5052,14 +5244,21 @@ function capField(entry, key, raw, cap) {
   }
 }
 
-async function handleListTabs() {
+async function handleListTabs(session) {
   const tabs = (
-    await chrome.tabs.query({ windowId: await sessionWindow() })
+    await chrome.tabs.query({ windowId: await sessionWindow(session) })
   ).sort((a, b) => a.index - b.index);
   const groupTitles = new Map();
   const list = [];
   for (const t of tabs.slice(0, MAX_LIST_TABS)) {
     const entry = { index: t.index, id: t.id, active: Boolean(t.active) };
+    // Say which tabs another session is driving rather than hiding them. The
+    // operator can see the whole window either way; what changes is that
+    // selecting one of these is refused, and a listing that showed no reason
+    // for that refusal would read as a bug.
+    if (leaseHolder(t.id, session)) {
+      entry.controlled_by_other_session = true;
+    }
     capField(entry, "title", t.title, MAX_TAB_TITLE_CHARS);
     capField(entry, "url", t.url, MAX_TAB_URL_CHARS);
     if (typeof t.groupId === "number" && t.groupId >= 0) {
@@ -5094,7 +5293,7 @@ async function handleListTabs() {
 // is the tab's stable identity for its whole lifetime, so compare THAT: if the tab now sitting
 // at the index is a different tab -- or the query resolved a different window than the one that
 // was listed -- the index no longer names what the operator confirmed.
-function requireListedTab(tab) {
+function requireListedTab(session, tab) {
   if (
     !session.lastTabListing ||
     session.lastTabListing.windowId !== tab.windowId
@@ -5130,8 +5329,10 @@ const GROUP_COLORS = new Set([
 ]);
 
 // Resolve a comma-separated zero-based tab-index spec to tab ids; default to the active tab.
-async function tabIdsFromIndices(spec) {
-  const tabs = await chrome.tabs.query({ windowId: await sessionWindow() });
+async function tabIdsFromIndices(session, spec) {
+  const tabs = await chrome.tabs.query({
+    windowId: await sessionWindow(session),
+  });
   if (spec === undefined || spec === null || String(spec).trim() === "") {
     const active = tabs.find((t) => t.active);
     if (!active) {
@@ -5162,14 +5363,14 @@ async function tabIdsFromIndices(spec) {
     if (!t) {
       throw new Error("No tab at index " + idx + ".");
     }
-    requireListedTab(t);
+    requireListedTab(session, t);
     ids.push(t.id);
   }
   return ids;
 }
 
-async function handleGroupTabs(args) {
-  const tabIds = await tabIdsFromIndices(args && args.tab_indices);
+async function handleGroupTabs(session, args) {
+  const tabIds = await tabIdsFromIndices(session, args && args.tab_indices);
   const groupId = await chrome.tabs.group({ tabIds });
   session.lastTabListing = null; // grouping moves tabs together: every index after this is unproven
   const update = {};
@@ -5204,35 +5405,38 @@ async function handleGroupTabs(args) {
   };
 }
 
-async function handleUngroupTabs(args) {
-  const tabIds = await tabIdsFromIndices(args && args.tab_indices);
+async function handleUngroupTabs(session, args) {
+  const tabIds = await tabIdsFromIndices(session, args && args.tab_indices);
   await chrome.tabs.ungroup(tabIds);
   session.lastTabListing = null; // ungrouping moves tabs out of the group: the indices are unproven
   return { ok: true, ungrouped: tabIds.length };
 }
 
-async function tabByIndex(index) {
-  const tabs = await chrome.tabs.query({ windowId: await sessionWindow() });
+async function tabByIndex(session, index) {
+  const tabs = await chrome.tabs.query({
+    windowId: await sessionWindow(session),
+  });
   const tab = tabs.find((t) => t.index === index);
   if (!tab) {
     throw new Error("No tab at index " + index + ".");
   }
-  requireListedTab(tab);
+  requireListedTab(session, tab);
   return tab;
 }
 
-async function handleSelectTab(args) {
+async function handleSelectTab(session, args) {
   const index = Number(args && args.index);
-  const tab = await tabByIndex(index);
+  const tab = await tabByIndex(session, index);
+  requireUnleasedTab(session, tab);
   // Retarget the session -- and nothing else. The tab is NOT activated: its window shows the tab
   // the user chose to look at, and the session drives this one in the background over the
   // debugger protocol. Neither the tab nor its window is brought forward.
-  pinSessionTarget(tab);
+  pinSessionTarget(session, tab);
   const info = await tabInfo(tab.id);
   return { ok: true, index, url: info.url, title: info.title };
 }
 
-async function handleNewTab(args) {
+async function handleNewTab(session, args) {
   // A supplied url must be usable. Letting a blank one through opens a blank tab under the guise
   // of having honored the request, which is not the tab the caller asked for.
   if (args && typeof args.url === "string" && args.url.trim().length === 0) {
@@ -5248,11 +5452,11 @@ async function handleNewTab(args) {
   // window the user focused last.
   const tab = await chrome.tabs.create(
     Object.assign(
-      { windowId: await sessionWindow(), active: false },
+      { windowId: await sessionWindow(session), active: false },
       url ? { url } : {},
     ),
   );
-  pinSessionTarget(tab);
+  pinSessionTarget(session, tab);
   session.lastTabListing = null; // a new tab shifts what an index names
   // chrome.tabs.create resolves the moment the tab EXISTS -- the target is still in pendingUrl
   // and url is empty. Reporting the requested url here would state that the tab is at a page no
@@ -5276,11 +5480,11 @@ async function handleNewTab(args) {
   };
 }
 
-async function handleCloseTab(args) {
+async function handleCloseTab(session, args) {
   const tab =
     args && args.index !== undefined && args.index !== null
-      ? await tabByIndex(Number(args.index))
-      : await activeTab();
+      ? await tabByIndex(session, Number(args.index))
+      : await activeTab(session);
   await chrome.tabs.remove(tab.id);
   session.lastTabListing = null; // every index after the closed one has shifted
   return { ok: true, index: tab.index };
@@ -5292,7 +5496,7 @@ async function handleCloseTab(args) {
 // browser_tabs lists the tabs inside) so nothing opened off-screen is invisible. window CRUD
 // mutates the browser (opening/closing windows), so it is gated at the normal-confirm tier.
 
-async function handleListWindows() {
+async function handleListWindows(session) {
   const wins = await chrome.windows.getAll({ populate: true });
   // Only what the browser actually supplied. A missing type reported as "normal" is a claim about
   // a window nobody read, and an absent tabs array reported as tab_count 0 describes a populated
@@ -5378,7 +5582,7 @@ function windowGainsOsFocus(windowId, timeoutMs, tabId) {
 // A window action is meaningful only against a window the caller has been shown. Chrome window
 // ids are small sequential integers, so an invented or stale one readily names somebody's live
 // window -- and "close" takes it and its tabs down.
-function requireListedWindow(windowId) {
+function requireListedWindow(session, windowId) {
   if (!session.lastWindowListing || !session.lastWindowListing.has(windowId)) {
     throw new Error(
       "Window " +
@@ -5403,7 +5607,7 @@ async function windowFacts(windowId) {
   return facts;
 }
 
-async function handleWindow(args) {
+async function handleWindow(session, args) {
   const action = String((args && args.action) || "").toLowerCase();
   if (action !== "new" && action !== "focus" && action !== "close") {
     throw new Error("browser_window action must be new, focus, or close.");
@@ -5429,7 +5633,7 @@ async function handleWindow(args) {
     // this tab as its own just below, so it is attached either way.
     const watched =
       firstTab &&
-      (await ensureAttached(firstTab.id).then(
+      (await ensureAttached(session, firstTab.id).then(
         () => true,
         () => false,
       ))
@@ -5439,7 +5643,7 @@ async function handleWindow(args) {
       osFocusBefore !== win.id &&
       (await windowGainsOsFocus(win.id, NEW_WINDOW_FOCUS_SETTLE_MS, watched));
     if (firstTab) {
-      pinSessionTarget(firstTab);
+      pinSessionTarget(session, firstTab);
     }
     // A window this session just opened is one the caller has been told about, so it can be
     // named next without a re-listing.
@@ -5464,7 +5668,7 @@ async function handleWindow(args) {
       "browser_window needs window_id for focus/close (see browser_windows).",
     );
   }
-  requireListedWindow(windowId);
+  requireListedWindow(session, windowId);
   const facts = await windowFacts(windowId);
   if (action === "focus") {
     // Make this window the session's working window: its active tab becomes the target of every
@@ -5475,7 +5679,7 @@ async function handleWindow(args) {
     if (!tab || typeof tab.id !== "number") {
       throw new Error("Window " + windowId + " has no active tab to control.");
     }
-    pinSessionTarget(tab);
+    pinSessionTarget(session, tab);
     session.lastTabListing = null; // indices from another window's listing name nothing here
     return Object.assign(
       { ok: true, window_id: windowId, session_window: true },
@@ -5502,7 +5706,7 @@ function argProvided(v) {
 // fake viewport, touch input, or a spoofed identity -- for the rest of the session. Swallowing
 // that and answering ok:true reports the one state the caller must never be told without it being
 // true, so let the failure surface.
-async function resetEmulation(tabId) {
+async function resetEmulation(session, tabId) {
   await sendCdp(tabId, "Emulation.clearDeviceMetricsOverride");
   await sendCdp(tabId, "Emulation.setTouchEmulationEnabled", {
     enabled: false,
@@ -5564,7 +5768,7 @@ async function applyDeviceMetrics(tabId, args, applied) {
   }
 }
 
-async function applyUserAgentOverride(tabId, args, applied) {
+async function applyUserAgentOverride(session, tabId, args, applied) {
   if (typeof args.user_agent !== "string" || args.user_agent.length === 0) {
     return;
   }
@@ -5588,8 +5792,8 @@ async function applyUserAgentOverride(tabId, args, applied) {
   }
 }
 
-async function handleEmulate(tabId, args) {
-  await ensureAttached(tabId);
+async function handleEmulate(session, tabId, args) {
+  await ensureAttached(session, tabId);
   if (session.originalUserAgent === null) {
     // The real UA comes from THIS worker's own context, never from the page: navigator.userAgent
     // read in the page world is a value a hostile page can redefine, and reset would then install
@@ -5603,11 +5807,11 @@ async function handleEmulate(tabId, args) {
     }
   }
   if (args.reset === true) {
-    return await resetEmulation(tabId);
+    return await resetEmulation(session, tabId);
   }
   const applied = {};
   await applyDeviceMetrics(tabId, args, applied);
-  await applyUserAgentOverride(tabId, args, applied);
+  await applyUserAgentOverride(session, tabId, args, applied);
   if (typeof args.touch === "boolean") {
     // maxTouchPoints makes navigator.maxTouchPoints reflect touch live (the 'ontouchstart' in
     // window feature flag is fixed at page load, so it only flips after a reload).
@@ -5679,8 +5883,8 @@ function printPageOptions(args) {
   return opts;
 }
 
-async function handlePrint(tabId, args) {
-  await ensureAttached(tabId);
+async function handlePrint(session, tabId, args) {
+  await ensureAttached(session, tabId);
   const opts = printPageOptions(args);
   if (
     typeof args.page_ranges === "string" &&
@@ -5771,7 +5975,7 @@ function originPattern(origin) {
   return parsed.protocol + "//" + parsed.host + "/*";
 }
 
-async function handlePermission(args) {
+async function handlePermission(session, args) {
   const typeKey =
     PERMISSION_TYPES[String((args && args.name) || "").toLowerCase()];
   if (!typeKey) {
@@ -5797,7 +6001,7 @@ async function handlePermission(args) {
   }
   let ambientTab = null;
   if (!origin) {
-    ambientTab = await activeTab();
+    ambientTab = await activeTab(session);
     origin = ambientTab && ambientTab.url ? ambientTab.url : null;
   }
   const pattern = origin ? originPattern(origin) : null;
@@ -5816,7 +6020,7 @@ async function handlePermission(args) {
   // would redirect the setting to a site nobody named. Prove the same tab still shows the same
   // origin immediately before the write.
   if (ambientTab !== null) {
-    const now = await activeTab();
+    const now = await activeTab(session);
     if (now.id !== ambientTab.id || originPattern(now.url || "") !== pattern) {
       throw new Error(
         "The active tab changed while applying the permission; name the origin explicitly.",
@@ -6008,8 +6212,8 @@ async function storageOperation(tabId, storageId, area, action, key, value) {
   return result;
 }
 
-async function handleStorage(tabId, args) {
-  await ensureAttached(tabId);
+async function handleStorage(session, tabId, args) {
+  await ensureAttached(session, tabId);
   const action = String((args && args.action) || "").toLowerCase();
   if (["get", "set", "remove", "clear", "keys"].indexOf(action) < 0) {
     throw new Error(
@@ -6158,7 +6362,7 @@ async function cookiesSet(url, args) {
   return Object.assign({ ok: true, url, set: true }, view);
 }
 
-async function handleCookies(args) {
+async function handleCookies(session, args) {
   const action = String((args && args.action) || "").toLowerCase();
   if (["get", "set", "remove"].indexOf(action) < 0) {
     throw new Error("browser_cookies action must be get, set, or remove.");
@@ -6176,7 +6380,7 @@ async function handleCookies(args) {
   }
   let url = args && args.url ? String(args.url).trim() : null;
   if (!url) {
-    const tab = await activeTab();
+    const tab = await activeTab(session);
     url = tab && tab.url ? tab.url : null;
   }
   if (!url || !/^https?:/i.test(url)) {
@@ -6219,7 +6423,7 @@ async function handleCookies(args) {
 // is optional and must be RELATIVE with no ".." (chrome.downloads rejects absolute/parent
 // paths anyway; we reject early with a clear message), so a page cannot steer the write
 // outside the browser's download tree. Poll to completion under a bounded timeout.
-async function pollDownload(tabId, id, timeoutMs, gen) {
+async function pollDownload(session, tabId, id, timeoutMs, gen) {
   const deadline = Date.now() + timeoutMs;
   let item = null;
   while (Date.now() < deadline) {
@@ -6239,9 +6443,9 @@ async function pollDownload(tabId, id, timeoutMs, gen) {
   return item;
 }
 
-async function handleDownload(tabId, args) {
+async function handleDownload(session, tabId, args) {
   // Attached because the poll below is timed by this tab's page, as every wait here is.
-  await ensureAttached(tabId);
+  await ensureAttached(session, tabId);
   // The generation this download wait belongs to, captured before anything can supersede it.
   const gen = session.commandGeneration;
   const url = args && args.url ? String(args.url) : "";
@@ -6267,7 +6471,7 @@ async function handleDownload(tabId, args) {
   if (typeof id !== "number") {
     throw new Error("browser_download failed to start.");
   }
-  const item = await pollDownload(tabId, id, timeoutMs, gen);
+  const item = await pollDownload(session, tabId, id, timeoutMs, gen);
   if (!item) {
     throw new Error("browser_download could not track the download.");
   }
@@ -6305,21 +6509,21 @@ async function handleDownload(tabId, args) {
 // Carry any interception failure back on the reply. While Fetch is on, every request in the tab
 // is paused, so a continue that failed is a resource the page is still waiting on -- the operator
 // sees only a slow page unless the arm/disarm reply says so.
-function fetchStateReply(reply) {
+function fetchStateReply(session, reply) {
   if (session.lastFetchError !== null) {
     reply.last_fetch_error = session.lastFetchError;
   }
   return reply;
 }
 
-async function handleHttpAuth(tabId, args) {
-  await ensureAttached(tabId);
+async function handleHttpAuth(session, tabId, args) {
+  await ensureAttached(session, tabId);
   if (args && args.clear === true) {
     session.httpAuthCreds = null;
     // Not swallowed: while Fetch is still enabled every request stays paused for a handler that no
     // longer answers them, and the page wedges. Saying "cleared" then would be a false report.
     await sendCdp(tabId, "Fetch.disable");
-    return fetchStateReply({ ok: true, armed: false });
+    return fetchStateReply(session, { ok: true, armed: false });
   }
   const username =
     args && typeof args.username === "string" ? args.username : "";
@@ -6368,16 +6572,24 @@ async function handleHttpAuth(tabId, args) {
     handleAuthRequests: true,
     patterns: [{ urlPattern: "*" }],
   });
-  return fetchStateReply({ ok: true, armed: true, username, origin });
+  return fetchStateReply(session, { ok: true, armed: true, username, origin });
 }
 
 // -- Bring the bridge up -----------------------------------------------------
 
 // Connect when the extension loads, when the browser starts, and on demand from the
 // toolbar button (which also re-arms after a disconnect).
-chrome.runtime.onInstalled.addListener(connect);
-chrome.runtime.onStartup.addListener(connect);
-chrome.action.onClicked.addListener(connect);
+// Each opens a port only when none is up. connect() now creates a session per
+// call, so wiring it directly as a listener would spawn a surplus host process
+// every time the toolbar button was pressed.
+const connectIfIdle = () => {
+  if (!anyPortOpen()) {
+    connect();
+  }
+};
+chrome.runtime.onInstalled.addListener(connectIfIdle);
+chrome.runtime.onStartup.addListener(connectIfIdle);
+chrome.action.onClicked.addListener(connectIfIdle);
 
 // Ordinary browsing re-arms the bridge too. The 2 s timer below lives only as long as this
 // worker, and Chrome coalesces a background worker's timers into seconds, so a bridge that came up
@@ -6385,7 +6597,7 @@ chrome.action.onClicked.addListener(connect);
 // Every tab event is a moment the worker is awake anyway: a connect attempt then costs nothing and
 // is refused in microseconds while the port is already up.
 const reconnectOnActivity = () => {
-  if (!session.port) {
+  if (!anyPortOpen()) {
     connect();
   }
 };
@@ -6404,7 +6616,21 @@ const RECONNECT_ALARM = "chrome_control_mcp.reconnect";
 if (chrome.alarms) {
   chrome.alarms.create(RECONNECT_ALARM, { periodInMinutes: 0.5 });
   chrome.alarms.onAlarm.addListener((alarm) => {
-    if (alarm.name === RECONNECT_ALARM && !session.port) {
+    if (alarm.name !== RECONNECT_ALARM) {
+      return;
+    }
+    // With nothing attached this is the reconnect it always was. With something
+    // attached it is also how a server started LATER is noticed: a relay offers
+    // its list once, at startup, so a session already up never hears about a
+    // second editor opening. The probe port gets a fresh offer; if every server
+    // in it is already held it answers with no session and the relay exits,
+    // which costs one short-lived host process a minute.
+    if (!anyPortOpen()) {
+      connect();
+      return;
+    }
+    if (!probing) {
+      probing = true;
       connect();
     }
   });
@@ -6413,8 +6639,18 @@ if (chrome.alarms) {
 // Expose the last health snapshot to a popup / options page later.
 chrome.runtime.onMessage.addListener((request, _sender, sendResponse) => {
   if (request && request.type === "chrome_control_mcp.getHealth") {
-    connect();
-    sendResponse(session.health);
+    if (!anyPortOpen()) {
+      connect();
+    }
+    // One worker now serves several sessions, so health is a list. The first
+    // entry is the oldest session, which is the one a single-server install
+    // has.
+    sendResponse({
+      sessions: [...sessions].map((entry) => ({
+        server: entry.serverId,
+        ...entry.health,
+      })),
+    });
   }
   return false;
 });

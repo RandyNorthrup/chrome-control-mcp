@@ -20,9 +20,9 @@ import { loadWorker, makeFakePort } from "./extension_harness.mjs";
 
 const EXPORTED = ["detachAll"];
 
-// The session itself, so a reset can be asserted field by field. It is one object that is
-// never reassigned, so naming it in the epilogue gives a live view.
-const LIVE = "session";
+// The one session this suite drives, so a reset can be asserted field by field.
+// The worker holds a set of them now; these tests open a single port.
+const LIVE = "only: () => [...sessions][0]";
 
 function bootWorker() {
   const port = makeFakePort();
@@ -99,14 +99,14 @@ function assertReleased(session, before, how) {
 
 test("detaching on purpose releases everything the attachment asserted", async () => {
   const { worker } = bootWorker();
-  const { session } = worker;
+  const session = worker.only();
   occupySession(session, 41);
   const before = {
     domEpoch: session.domEpoch,
     commandGeneration: session.commandGeneration,
   };
 
-  await worker.detachAll("switching tabs");
+  await worker.detachAll(session, "switching tabs");
 
   assertReleased(session, before, "detachAll");
 });
@@ -115,7 +115,7 @@ test("the browser detaching releases exactly the same things", async () => {
   // The user closing the tab or opening DevTools is not a lesser event than a tab switch. A
   // field cleared by one path and not the other is a session that half survives its own end.
   const { worker, detach } = bootWorker();
-  const { session } = worker;
+  const session = worker.only();
   occupySession(session, 41);
   const before = {
     domEpoch: session.domEpoch,
@@ -133,7 +133,7 @@ test("a detach of some other tab is not this session's business", async () => {
   // The listener fires for every target the extension is attached to. Reacting to one this
   // session never held would retire a live command generation and blank a valid snapshot.
   const { worker, detach } = bootWorker();
-  const { session } = worker;
+  const session = worker.only();
   occupySession(session, 41);
   const before = {
     domEpoch: session.domEpoch,
