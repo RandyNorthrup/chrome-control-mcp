@@ -31,20 +31,24 @@ page overlay by default; documentation captures can opt in.
 
 ## Why this project
 
-| Capability          | Included                                                                                                         |
-| ------------------- | ---------------------------------------------------------------------------------------------------------------- |
-| Works beside you    | Session drives its own visible tab; never changes which tab is in front, raises a window, or takes your OS focus |
-| Semantic control    | Accessibility-tree snapshots with stable element refs                                                            |
-| Real input          | Click, type, keys, hover, drag, select, scroll, dialogs, and media                                               |
-| File upload         | Attach local files to a page's file input, as the user's own picker would                                        |
-| Visual reasoning    | Viewport/full-page PNG capture and guarded coordinate clicks                                                     |
-| Browser management  | Navigation, tabs, tab groups, windows, emulation, and waits                                                      |
-| Browser state       | Cookies, local/session storage, permissions, downloads, print, and HTTP auth                                     |
-| Extension lifecycle | Prepare, inspect, and unregister current-user native-host integration                                            |
-| In-place updates    | Check, download, verify, and install a new release without overwriting the running executable                    |
+| Capability           | Included                                                                                                         |
+| -------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| Works beside you     | Session drives its own visible tab; never changes which tab is in front, raises a window, or takes your OS focus |
+| Semantic control     | Accessibility-tree snapshots with stable element refs                                                            |
+| Real input           | Click, type, keys, hover, drag, select, scroll, dialogs, and media                                               |
+| File upload          | Attach local files to a page's file input, as the user's own picker would                                        |
+| Visual reasoning     | Viewport/full-page PNG capture and guarded coordinate clicks                                                     |
+| Browser management   | Navigation, tabs, tab groups, windows, emulation, and waits                                                      |
+| Browser state        | Cookies, local/session storage, permissions, downloads, print, and HTTP auth                                     |
+| A session per editor | Several editors drive Chrome at once, each owning its own tab and unable to touch another's                      |
+| Tab recording        | Record the session's tab to a `.webm` with a machine-readable timeline of the commands that ran                  |
+| Extension lifecycle  | Prepare, inspect, and unregister current-user native-host integration                                            |
+| In-place updates     | Check, download, verify, and install a new release without overwriting the running executable                    |
 
 All **49 MCP tools** use strict JSON Schemas. Long-lived MCP process preserves session and
-element-ref state while Chrome remains an ordinary user-controlled browser.
+element-ref state while Chrome remains an ordinary user-controlled browser. Since 1.5.0 several
+servers run side by side -- one per editor window -- and each gets its own session, its own tab, and
+no way to reach another session's tab.
 
 ## See it work
 
@@ -196,8 +200,13 @@ a server started through it keeps serving; the new build takes effect the next t
 starts the server.
 
 The MCP command path, Chrome's unpacked-extension folder, and the native-messaging registration all
-point through `current`, so none of them changes when a new version lands. No reconfiguring, and no
-second trip to `chrome://extensions`.
+point through `current`, so none of them changes when a new version lands. Nothing to reconfigure
+and no folder to pick again.
+
+Two things do still have to be restarted for a new build to take effect, because neither Chrome nor
+your editor reloads code underneath a running process: restart the MCP server in your client, and
+press reload on the extension at `chrome://extensions` (a Chrome restart does the same). Until the
+server restarts it keeps serving the old build.
 
 The first `browser_update_apply` from a build tree or an unpacked download moves that copy into the
 managed layout and prints the path to point your client at. That is the only time the path changes.
@@ -216,13 +225,19 @@ signature, and this project still ships no signing key.
 
 ```mermaid
 flowchart LR
-    A[AI assistant] -->|MCP over stdio| B[chrome_control_mcp]
-    B -->|Windows named pipe<br/>Linux/macOS Unix socket| C[Native-host relay]
-    C -->|Chrome native messaging| D[Unpacked MV3 extension]
-    D -->|Chrome DevTools Protocol| E[The session's own tab]
+    A1[AI assistant] -->|MCP over stdio| B1[chrome_control_mcp]
+    A2[Another editor] -->|MCP over stdio| B2[chrome_control_mcp]
+    B1 -->|Windows named pipe<br/>Linux/macOS Unix socket| C1[Native-host relay]
+    B2 -->|Windows named pipe<br/>Linux/macOS Unix socket| C2[Native-host relay]
+    C1 -->|Chrome native messaging| D[Unpacked MV3 extension]
+    C2 -->|Chrome native messaging| D
+    D -->|Chrome DevTools Protocol| E1[Session 1's own tab]
+    D -->|Chrome DevTools Protocol| E2[Session 2's own tab]
 ```
 
-One executable serves MCP server and native-host relay roles. Browser control belongs in MCP
+One executable serves MCP server and native-host relay roles. Each server publishes its own
+rendezvous record and gets its own relay; the one extension holds a session per relay and keeps
+their tabs apart. Browser control belongs in MCP
 because it needs callable tools, image results, hardened IPC, and persistent session state. A skill
 may add workflows, but does not replace server.
 
@@ -250,13 +265,16 @@ whatever the browser profile says.
 
 Local gates currently cover:
 
-- 17/17 native and extension suites on Windows, Linux, and macOS, with MSVC, GCC, and Clang
+- 18/18 native and extension suites on Windows and 17/17 on Linux and macOS, with MSVC, GCC,
+  and Clang. One suite is Windows-only: it asks whether a directory junction can make one file
+  look like two processes, which is a question the POSIX symbolic link does not raise.
 - Warnings-as-errors plus `clang-tidy` and exhaustive `cppcheck`
 - Separate ASan+UBSan and TSan runs
 - Full-history Gitleaks scan and npm dependency audit
 - 44/44 live browser and extension tools through real Chrome on Windows. The three
   `browser_update_*` tools are not browser tools and are not part of that run; their evidence is
-  below.
+  below. The two `browser_record_*` tools are not in that figure either: they are covered by unit
+  suites and have not yet been exercised against real Chrome.
 - 35/35 display configurations on Windows and macOS: scales 1x to 3x, zoom 25% to 500%, pinch, and
   both scrollbar kinds, each coordinate proven by where its click landed
 - Public UI Playground navigation, snapshot, typing, click, and PNG capture

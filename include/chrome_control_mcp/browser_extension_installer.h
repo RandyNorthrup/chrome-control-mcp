@@ -10,7 +10,7 @@ namespace chrome_control_mcp {
 // pins this id. It is public identity material, not a private signing key.
 inline constexpr char kBrowserExtensionId[] =
     "iojehhmnaigcejfcpmilpclmeljhlkaa";
-inline constexpr char kBrowserExtensionVersion[] = "1.5.0";
+inline constexpr char kBrowserExtensionVersion[] = "1.5.1";
 inline constexpr char kBrowserExtensionDirectoryName[] = "extension";
 inline constexpr char kNativeHostName[] = "com.chromecontrolmcp.browser";
 

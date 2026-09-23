@@ -5,6 +5,7 @@
 
 #include "chrome_control_mcp/browser_bridge_security.h"
 #include "chrome_control_mcp/native_messaging.h"
+#include "chrome_control_mcp/windows_process_identity.h"
 
 #include <QFile>
 #include <QHash>
@@ -34,10 +35,6 @@ constexpr DWORD kCancelDrainBudgetMs = 3000;
 // Native-messaging framing: a fixed 4-byte little-endian length prefix precedes
 // every body.
 constexpr int kFrameHeaderBytes = 4;
-
-// Wide-char path buffer sized at twice MAX_PATH so a long module/image path is
-// never truncated.
-constexpr DWORD kModulePathBufferChars = MAX_PATH * 2;
 
 // In/out buffer advisory for the named pipe (64 KiB each).
 constexpr DWORD kPipeBufferBytes = 64 * 1024;
@@ -196,28 +193,6 @@ ConnectResult waitForConnection(HANDLE pipe, HANDLE shutdown_event) {
   return result;
 }
 
-QString ownModulePath() {
-  wchar_t buffer[kModulePathBufferChars] = {0};
-  const DWORD length =
-      GetModuleFileNameW(nullptr, buffer, kModulePathBufferChars);
-  return QString::fromWCharArray(buffer, static_cast<int>(length)).toLower();
-}
-
-QString clientImagePath(DWORD pid) {
-  const HANDLE process =
-      OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pid);
-  if (process == nullptr) {
-    return {};
-  }
-  wchar_t buffer[kModulePathBufferChars] = {0};
-  DWORD size = kModulePathBufferChars;
-  const BOOL ok = QueryFullProcessImageNameW(process, 0, buffer, &size);
-  CloseHandle(process);
-  return ok != FALSE
-             ? QString::fromWCharArray(buffer, static_cast<int>(size)).toLower()
-             : QString();
-}
-
 // Pure ancestor-chain check: from `pid`, climb up to max_depth ancestors via
 // the child->parent map and return true iff one's lowercased image equals
 // target_basename_lower. The max_depth bound makes this terminate even on a
@@ -260,9 +235,7 @@ bool liveBridgeOwnerExists(const QString &rendezvous_path) {
   if (record.app_pid == currentProcessId()) {
     return false;
   }
-  const QString owner = clientImagePath(static_cast<DWORD>(record.app_pid));
-  const QString self = ownModulePath();
-  return !owner.isEmpty() && !self.isEmpty() && owner == self;
+  return isOwnExecutable(static_cast<quint32>(record.app_pid));
 }
 
 bool BrowserBridgePipeServer::createPipeResources(QString *error) {
@@ -481,8 +454,7 @@ bool BrowserBridgePipeServer::verifyPeer(QString *why) const {
     *why = QStringLiteral("cannot identify client");
     return false;
   }
-  const QString client_image = clientImagePath(static_cast<DWORD>(client_pid));
-  if (client_image.isEmpty() || client_image != ownModulePath()) {
+  if (!isOwnExecutable(static_cast<quint32>(client_pid))) {
     *why = QStringLiteral("client is not the bridge binary");
     return false;
   }

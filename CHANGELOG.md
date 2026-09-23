@@ -6,6 +6,41 @@ All notable changes are documented here. Project follows [Semantic Versioning](h
 
 Nothing yet.
 
+## [1.5.1] - 2026-09-23
+
+### Fixed
+
+- **The bridge could not attach on a Windows managed install.** Every relay refused every server
+  with "The bridge is served by ...\versions\1.5.0\chrome_control_mcp.exe, but this relay is
+  ...\current\chrome_control_mcp.exe", and no browser tool worked.
+
+  Both processes were the same file. `current` is a directory junction onto `versions/<version>`,
+  and the two halves of the identity check asked different questions: a process asked about ITSELF
+  with `GetModuleFileNameW`, which reports the path it was launched through, and about its PEER
+  with `QueryFullProcessImageNameW`, which reports what that path resolves to. Under a junction
+  those are two names for one file, so each side called the other a foreign image and closed the
+  connection.
+
+  The POSIX half already canonicalized both sides, with a comment naming `current/` as the reason.
+  The Windows half never got that fix, and the copies of it in the pipe server and the relay had no
+  way to disagree visibly -- so both are now one module, `windows_process_identity`, which asks
+  about itself and about a peer through the same call and canonicalizes the answer.
+
+  The same comparison decides whether another server's rendezvous record is live, so the fault also
+  made every peer's record look abandoned: servers swept each other's records and republished their
+  own, and the multi-session support released in 1.5.0 quietly worked against itself.
+
+  Latent since the versioned install layout landed; it became reachable when 1.5.0's self-update
+  first put both the MCP command path and the native-host registration behind `current`.
+
+### Changed
+
+- `docs/TOOLS.md` counted 43 live browser tools out of 49; the 49 is right and the breakdown was
+  not -- it is 41 browser tools plus the 2 recording tools added in 1.5.0. README now lists
+  multi-session and recording among the capabilities, states that a new build needs the MCP server
+  restarted and the extension reloaded before it takes effect, and no longer implies the two
+  `browser_record_*` tools are part of the 44/44 live-Chrome figure.
+
 ## [1.5.0] - 2026-09-23
 
 ### Added

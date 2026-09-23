@@ -6,7 +6,7 @@ Evidence recorded 2026-08-20. Commands below ran against repository checkout, no
 
 | Platform | Toolchain                                | Result                                   |
 | -------- | ---------------------------------------- | ---------------------------------------- |
-| Windows  | MSVC 19.50, CMake 3.31, Qt 6.10, Node 24 | Build + 17/17 suites + live Chrome pass  |
+| Windows  | MSVC 19.50, CMake 3.31, Qt 6.10, Node 24 | Build + 18/18 suites + live Chrome pass  |
 | Linux    | GCC 16 and Clang 22, Qt 6.11, Node 24    | Both builds + 17/17 suites + live Chrome |
 | macOS    | Clang + Qt 6.10 GitHub Actions runner    | Build + 17/17 suites                     |
 
@@ -40,31 +40,41 @@ Windows generator may add `-A x64`; multi-config builds place executable under `
 
 ## Automated tests
 
-Result: **17/17 passed** under Windows/MSVC, Linux/GCC, Linux/Clang, and macOS/Clang.
+Result: **18/18 passed** under Windows/MSVC and **17/17** under Linux/GCC, Linux/Clang, and
+macOS/Clang. The counts differ by one because `test_windows_process_identity` builds only on
+Windows.
 
-| Test                                  | Coverage                                                               |
-| ------------------------------------- | ---------------------------------------------------------------------- |
-| `test_browser_contract`               | 40 browser-tool schemas, translation, refs, bounds, and validation     |
-| `test_native_messaging`               | Native frame codec and host handshake                                  |
-| `test_browser_bridge`                 | Session, reply correlation, snapshots, and stale refs                  |
-| `test_browser_extension_installer`    | Public identity and isolated native-host lifecycle                     |
-| `test_browser_uploads`                | Upload path rules, roots confinement, and byte-exact chunking          |
-| `test_browser_bridge_security`        | ACL/permissions, nonce, rendezvous, and ownership                      |
-| `test_browser_bridge_pipe`            | Platform IPC handshake, peer verification, timeout, framing, reconnect |
-| `test_browser_bridge_relay`           | End-to-end relay/bridge/session with fake extension                    |
-| `test_install_layout`                 | Version-directory safety, link swap under an open file, and pruning    |
-| `test_updater`                        | Asset naming, checksum parsing, version order, and staged install      |
-| `test_browser_mcp_server`             | Identity, 49 tools, profiles, envelopes, schemas, and MCP content      |
-| `test_browser_extension_pure`         | 69 service-worker security, storage, geometry, and decision cases      |
-| `test_browser_extension_transport`    | Native port, readiness handshake, and how a command is refused         |
-| `test_browser_extension_session`      | What a session releases when its debugger attachment ends              |
-| `test_browser_extension_multisession` | One port per server, and the tab leases that keep sessions apart       |
-| `test_browser_extension_recording`    | Recording refusals, the timeline, and discard on a session's death     |
-| `test_vscode_payload`                 | VSIX payload rules, with red drills for a link that survives pruning   |
+| Test                                  | Coverage                                                                    |
+| ------------------------------------- | --------------------------------------------------------------------------- |
+| `test_browser_contract`               | 40 browser-tool schemas, translation, refs, bounds, and validation          |
+| `test_native_messaging`               | Native frame codec and host handshake                                       |
+| `test_browser_bridge`                 | Session, reply correlation, snapshots, and stale refs                       |
+| `test_browser_extension_installer`    | Public identity and isolated native-host lifecycle                          |
+| `test_browser_uploads`                | Upload path rules, roots confinement, and byte-exact chunking               |
+| `test_browser_bridge_security`        | ACL/permissions, nonce, rendezvous, and ownership                           |
+| `test_browser_bridge_pipe`            | Platform IPC handshake, peer verification, timeout, framing, reconnect      |
+| `test_browser_bridge_relay`           | End-to-end relay/bridge/session with fake extension                         |
+| `test_install_layout`                 | Version-directory safety, link swap under an open file, and pruning         |
+| `test_updater`                        | Asset naming, checksum parsing, version order, and staged install           |
+| `test_browser_mcp_server`             | Identity, 49 tools, profiles, envelopes, schemas, and MCP content           |
+| `test_browser_extension_pure`         | 69 service-worker security, storage, geometry, and decision cases           |
+| `test_browser_extension_transport`    | Native port, readiness handshake, and how a command is refused              |
+| `test_browser_extension_session`      | What a session releases when its debugger attachment ends                   |
+| `test_browser_extension_multisession` | One port per server, and the tab leases that keep sessions apart            |
+| `test_browser_extension_recording`    | Recording refusals, the timeline, and discard on a session's death          |
+| `test_vscode_payload`                 | VSIX payload rules, with red drills for a link that survives pruning        |
+| `test_windows_process_identity`       | Windows only: identity across a junction, from a child launched through one |
 
 `test_install_layout` and `test_updater` are newer than the local Linux and macOS desktop runs
 recorded above, but both have since passed on all three platforms in GitHub Actions, which is where
 the 17/17 figures for Linux and macOS come from.
+
+`test_windows_process_identity` builds only on Windows, which is why the Windows count is one
+higher. It re-launches the test binary through a real directory junction and has that child decide
+whether the parent is the same program -- the position the relay is in, and the only position from
+which the bug it guards is visible. Its teardown removes the junction as a link and never
+recursively, because the first version of the test used `QTemporaryDir`, whose recursive cleanup
+followed the junction and deleted the build directory it pointed at.
 
 The update path itself has been exercised end to end on Windows and on macOS 15.7.4, where a
 published archive installs and `browser_update_check` reaches the release host over HTTPS through

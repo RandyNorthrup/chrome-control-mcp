@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.25)
 
-project(chrome_control_mcp VERSION 1.5.0 LANGUAGES CXX)
+project(chrome_control_mcp VERSION 1.5.1 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -63,18 +63,20 @@ set(CCMCP_CORE_SOURCES
     src/updater.cpp
 )
 
+# "Which process is on the other end, and is it running our binary" is asked by
+# both the pipe server and the relay, and answered with different calls on each
+# platform. Each platform gets ONE implementation of that answer: the copies
+# that used to live in the pipe and relay units drifted apart on Windows, where
+# the in-process and out-of-process image-path calls disagree under the
+# `current` junction, and nothing in the build could notice.
 if(WIN32)
     set(CCMCP_BRIDGE_PIPE_SOURCE src/browser_bridge_pipe.cpp)
     set(CCMCP_BRIDGE_RELAY_SOURCE src/browser_bridge_relay.cpp)
-    set(CCMCP_POSIX_IDENTITY_SOURCE "")
+    set(CCMCP_PROCESS_IDENTITY_SOURCE src/windows_process_identity.cpp)
 else()
     set(CCMCP_BRIDGE_PIPE_SOURCE src/browser_bridge_pipe_posix.cpp)
     set(CCMCP_BRIDGE_RELAY_SOURCE src/browser_bridge_relay_posix.cpp)
-    # Peer credentials and process images are POSIX facts that both the pipe
-    # server and the relay ask for. Windows answers the same questions with
-    # different calls on a different handle type, so there is nothing to share
-    # there and this stays out of that build entirely.
-    set(CCMCP_POSIX_IDENTITY_SOURCE src/posix_process_identity.cpp)
+    set(CCMCP_PROCESS_IDENTITY_SOURCE src/posix_process_identity.cpp)
 endif()
 # The relay's stdio, frame decode, handshake and pump are identical on every
 # platform; only connecting and watching the endpoint are not. The common half
@@ -92,7 +94,7 @@ set(CCMCP_BRIDGE_PIPE_SOURCES
 list(APPEND CCMCP_CORE_SOURCES
     ${CCMCP_BRIDGE_PIPE_SOURCES}
     ${CCMCP_BRIDGE_RELAY_SOURCES}
-    ${CCMCP_POSIX_IDENTITY_SOURCE}
+    ${CCMCP_PROCESS_IDENTITY_SOURCE}
 )
 
 add_library(chrome_control_mcp_core STATIC ${CCMCP_CORE_SOURCES})
@@ -238,6 +240,17 @@ if(BUILD_TESTING)
     )
     target_link_libraries(test_browser_contract PRIVATE Qt6::Core Qt6::Test)
     configure_qt_test(test_browser_contract)
+    # Windows only: the question it answers -- does a junction make one file
+    # look like two processes -- does not exist where the install layout uses
+    # a symbolic link and both sides already resolve it.
+    if(WIN32)
+        add_executable(test_windows_process_identity
+            tests/test_windows_process_identity.cpp
+            ${CCMCP_PROCESS_IDENTITY_SOURCE}
+        )
+        target_link_libraries(test_windows_process_identity PRIVATE Qt6::Core Qt6::Test)
+        configure_qt_test(test_windows_process_identity)
+    endif()
 
     add_executable(test_native_messaging
         tests/test_native_messaging.cpp
@@ -316,7 +329,7 @@ if(BUILD_TESTING)
     add_executable(test_browser_bridge_pipe
         tests/test_browser_bridge_pipe.cpp
         ${CCMCP_BRIDGE_PIPE_SOURCES}
-        ${CCMCP_POSIX_IDENTITY_SOURCE}
+        ${CCMCP_PROCESS_IDENTITY_SOURCE}
         src/browser_bridge_security.cpp
         src/native_messaging.cpp
     )
@@ -331,7 +344,7 @@ if(BUILD_TESTING)
     add_executable(test_browser_bridge_relay
         tests/test_browser_bridge_relay.cpp
         ${CCMCP_BRIDGE_RELAY_SOURCES}
-        ${CCMCP_POSIX_IDENTITY_SOURCE}
+        ${CCMCP_PROCESS_IDENTITY_SOURCE}
         src/browser_control.cpp
         src/browser_bridge.cpp
         src/browser_contract.cpp

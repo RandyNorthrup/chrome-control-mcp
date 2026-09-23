@@ -1,6 +1,7 @@
 # Tool catalog
 
-Full profile advertises 49 tools: 43 live browser tools, 3 extension lifecycle tools, and 3
+Full profile advertises 49 tools: 41 live browser tools, 2 recording tools, 3 extension lifecycle
+tools, and 3
 self-update tools.
 
 ## Navigation and capture

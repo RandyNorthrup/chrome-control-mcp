@@ -6,6 +6,7 @@
 #include "chrome_control_mcp/browser_bridge_security.h"
 #include "chrome_control_mcp/error_out.h"
 #include "chrome_control_mcp/native_messaging.h"
+#include "chrome_control_mcp/windows_process_identity.h"
 
 #include <QByteArray>
 #include <QtEndian>
@@ -21,41 +22,6 @@ namespace {
 // reply. Short enough that a cancel stops a polling handler promptly, long
 // enough that an idle wait costs nothing measurable.
 constexpr DWORD kCancelPollMs = 25;
-
-// Room for a long \\?\-prefixed image path: twice MAX_PATH wide characters.
-constexpr int kImagePathBufferChars = MAX_PATH * 2;
-
-// Our own executable image path, lowercased for a case-insensitive compare.
-// Used to verify the recorded server pid is really the bridge binary (not a
-// foreign process a rewritten rendezvous record points at).
-QString ownImageLower() {
-  wchar_t buffer[kImagePathBufferChars] = {0};
-  const DWORD length =
-      GetModuleFileNameW(nullptr, buffer, kImagePathBufferChars);
-  return QString::fromWCharArray(buffer, static_cast<int>(length)).toLower();
-}
-
-QString imageLower(DWORD pid) {
-  const HANDLE process =
-      OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pid);
-  if (process == nullptr) {
-    return {};
-  }
-  wchar_t buffer[kImagePathBufferChars] = {0};
-  DWORD size = kImagePathBufferChars;
-  const BOOL ok = QueryFullProcessImageNameW(process, 0, buffer, &size);
-  CloseHandle(process);
-  return ok != FALSE
-             ? QString::fromWCharArray(buffer, static_cast<int>(size)).toLower()
-             : QString();
-}
-
-// True iff @p pid resolves to our own executable image (case-insensitive). An
-// empty image (pid gone / not queryable) is a failure, not a match.
-bool pidIsOwnImage(DWORD pid) {
-  const QString image = imageLower(pid);
-  return !image.isEmpty() && image == ownImageLower();
-}
 
 // Loop a synchronous ReadFile until @p size bytes arrive or the pipe
 // closes/errors.
@@ -128,15 +94,15 @@ HANDLE relayConnect(const QString &rendezvous_path, QString *token_out,
   // Early sanity: the recorded server pid should be our own binary (a clear
   // error if the server is gone). The binding check below is what actually
   // matters.
-  if (!pidIsOwnImage(static_cast<DWORD>(record.app_pid))) {
+  if (!isOwnExecutable(static_cast<quint32>(record.app_pid))) {
     // Name both images. The commonest cause by far is not an intruder but two
     // copies of this program: Chrome starts whichever executable its
     // native-messaging registration names, and that is not always the one
     // serving MCP. "Not the binary" alone sends the reader looking for the
     // wrong fault.
     setError(error, bridgeImageMismatchText(
-                        imageLower(static_cast<DWORD>(record.app_pid)),
-                        record.app_pid, ownImageLower()));
+                        processImage(static_cast<quint32>(record.app_pid)),
+                        record.app_pid, ownProcessImage()));
     return INVALID_HANDLE_VALUE;
   }
   const std::wstring wide = record.pipe_name.toStdWString();
@@ -155,10 +121,10 @@ HANDLE relayConnect(const QString &rendezvous_path, QString *token_out,
   // process serving THIS handle must be our binary, or we refuse and close.
   ULONG server_pid = 0;
   if (GetNamedPipeServerProcessId(pipe, &server_pid) == FALSE ||
-      !pidIsOwnImage(static_cast<DWORD>(server_pid))) {
+      !isOwnExecutable(static_cast<quint32>(server_pid))) {
     setError(error, bridgeImageMismatchText(
-                        imageLower(static_cast<DWORD>(server_pid)),
-                        static_cast<qint64>(server_pid), ownImageLower()));
+                        processImage(static_cast<quint32>(server_pid)),
+                        static_cast<qint64>(server_pid), ownProcessImage()));
     CloseHandle(pipe);
     return INVALID_HANDLE_VALUE;
   }
