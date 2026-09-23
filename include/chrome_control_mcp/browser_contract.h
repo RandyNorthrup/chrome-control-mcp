@@ -63,10 +63,23 @@ struct ExtensionCommand {
 ///       "bounds": { "x": 10, "y": 20, "width": 80, "height": 30 } }, ... ] }
 /// ```
 ///
-/// Invisible and zero-area nodes are dropped; interactable nodes get a stable
-/// `eN` ref in document order. Rendering is total: a missing or malformed
-/// capture yields an empty outline with element_count 0 rather than throwing.
+/// Invisible and zero-area nodes are dropped; interactable nodes get an `eN`
+/// ref. Rendering is total: a missing or malformed capture yields an empty
+/// outline with element_count 0 rather than throwing.
 [[nodiscard]] SnapshotView renderSnapshot(const QJsonObject &capture);
+
+/// The same, carrying `carried_index` -- the previous snapshot's ref_index for
+/// this same document -- so a node keeps the ref it was already issued.
+///
+/// A ref names a node, not a position. Numbering purely by document order means
+/// an element that gains a ref-worthy sibling above it answers to a different
+/// ref in the next snapshot, so a ref the model is still holding resolves
+/// silently, to the wrong element. Carrying by backendNodeId keeps `e29`
+/// meaning the node it meant, and issues new numbers only for nodes never seen.
+/// Pass an empty object whenever the document may have changed underneath that
+/// index (a navigation), where a backendNodeId no longer names the same node.
+[[nodiscard]] SnapshotView renderSnapshot(const QJsonObject &capture,
+                                          const QJsonObject &carried_index);
 
 /// The browser tool catalog advertised to the model: one entry per tool with a
 /// strict JSON-Schema `inputSchema` (`additionalProperties:false`). DOM-first,

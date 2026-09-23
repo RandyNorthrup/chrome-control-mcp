@@ -293,7 +293,14 @@ void BrowserBridgeSession::fillResult(const QString &sent_cmd,
                                      "again.");
       return;
     }
-    const SnapshotView view = renderSnapshot(payload);
+    // Carry the previous index so a node keeps the ref it was already issued:
+    // a model holding e29 from an earlier snapshot must not have it silently
+    // become a different element because something above it gained a ref.
+    // Never carried once the index is stale -- that is set when the document
+    // may have changed under it (a navigation), and a backendNodeId from the
+    // old document does not name the same node in the new one.
+    const SnapshotView view =
+        renderSnapshot(payload, ref_index_stale_ ? QJsonObject{} : ref_index_);
     ref_index_ = view.ref_index;
     ref_index_stale_ = false;
     incoming.text = formatSnapshot(view);

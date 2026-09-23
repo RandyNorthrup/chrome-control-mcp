@@ -55,6 +55,8 @@ private slots:
   void renderSnapshot_escapesRoleToPreventForgedLines();
   void renderSnapshot_ignoresNonIntegerBackendNodeId();
   void renderSnapshot_refsValueBearingNonInteractable();
+  void renderSnapshot_keepsARefOnItsNodeAcrossSnapshots();
+  void renderSnapshot_doesNotReuseARefForADifferentNode();
   void catalog_advertisesDomFirstToolsWithStrictSchemas();
   void buildCommand_screenshotCopiesOverlayOption();
   void buildCommand_navigateRequiresUrl();
@@ -130,6 +132,103 @@ void BrowserContractTests::
   QVERIFY(!view.outline.contains(QStringLiteral("heading \"Welcome\" [ref")));
   QVERIFY(view.outline.contains(
       QStringLiteral("  - link \"Home\" [ref=e2]"))); // depth 1 indent
+}
+
+// A ref names a node, not a position. This is the failure it exists to stop:
+// the model is handed e1/e2, the page then gains a ref-worthy element ABOVE
+// them, and a second snapshot renumbers by document order. Every ref the model
+// still holds keeps resolving -- to the element next door. Measured on the
+// macOS runner, a suite holding "Fixture scroll region" [ref=e29] drove the
+// fixture's shadow BUTTON instead, and the reply reported success.
+void BrowserContractTests::renderSnapshot_keepsARefOnItsNodeAcrossSnapshots() {
+  const QJsonObject first{
+      {QStringLiteral("url"), QStringLiteral("https://example.com/")},
+      {QStringLiteral("nodes"),
+       QJsonArray{
+           node(11, QStringLiteral("button"), QStringLiteral("Sign in"), true),
+           node(12, QStringLiteral("link"), QStringLiteral("Home"), true)}}};
+  const SnapshotView before = renderSnapshot(first);
+  QCOMPARE(before.ref_index.value(QStringLiteral("e1"))
+               .toObject()
+               .value(QStringLiteral("backendNodeId"))
+               .toInt(),
+           11);
+  QCOMPARE(before.ref_index.value(QStringLiteral("e2"))
+               .toObject()
+               .value(QStringLiteral("backendNodeId"))
+               .toInt(),
+           12);
+
+  // The page gains an element above both of them.
+  const QJsonObject second{
+      {QStringLiteral("url"), QStringLiteral("https://example.com/")},
+      {QStringLiteral("nodes"),
+       QJsonArray{
+           node(10, QStringLiteral("button"), QStringLiteral("Skip"), true),
+           node(11, QStringLiteral("button"), QStringLiteral("Sign in"), true),
+           node(12, QStringLiteral("link"), QStringLiteral("Home"), true)}}};
+  const SnapshotView after = renderSnapshot(second, before.ref_index);
+
+  // The two the model already knows keep the refs it was given...
+  QCOMPARE(after.ref_index.value(QStringLiteral("e1"))
+               .toObject()
+               .value(QStringLiteral("backendNodeId"))
+               .toInt(),
+           11);
+  QCOMPARE(after.ref_index.value(QStringLiteral("e2"))
+               .toObject()
+               .value(QStringLiteral("backendNodeId"))
+               .toInt(),
+           12);
+  // ...and the newcomer takes a number of its own rather than either of theirs.
+  QCOMPARE(after.ref_index.value(QStringLiteral("e3"))
+               .toObject()
+               .value(QStringLiteral("backendNodeId"))
+               .toInt(),
+           10);
+  QCOMPARE(after.element_count, 3);
+  // The outline says the same thing the index does; they are one pass, and a
+  // model reads the outline.
+  QVERIFY(
+      after.outline.contains(QStringLiteral("- button \"Sign in\" [ref=e1]")));
+  QVERIFY(after.outline.contains(QStringLiteral("- button \"Skip\" [ref=e3]")));
+}
+
+// The other half: a ref must not be carried onto a node that never had it. A
+// document the index cannot belong to (a navigation) is passed no index at all,
+// and a node that has gone takes its ref with it rather than leaving it for
+// whoever is standing in that position next.
+void BrowserContractTests::renderSnapshot_doesNotReuseARefForADifferentNode() {
+  const QJsonObject first{
+      {QStringLiteral("url"), QStringLiteral("https://example.com/")},
+      {QStringLiteral("nodes"),
+       QJsonArray{
+           node(11, QStringLiteral("button"), QStringLiteral("Sign in"), true),
+           node(12, QStringLiteral("link"), QStringLiteral("Home"), true)}}};
+  const SnapshotView before = renderSnapshot(first);
+
+  // Node 11 is gone and a stranger has taken its place in document order.
+  const QJsonObject second{
+      {QStringLiteral("url"), QStringLiteral("https://example.com/")},
+      {QStringLiteral("nodes"),
+       QJsonArray{
+           node(99, QStringLiteral("button"), QStringLiteral("Buy now"), true),
+           node(12, QStringLiteral("link"), QStringLiteral("Home"), true)}}};
+  const SnapshotView after = renderSnapshot(second, before.ref_index);
+
+  // e1 belonged to node 11. The stranger must not inherit it.
+  QVERIFY(after.ref_index.value(QStringLiteral("e1"))
+              .toObject()
+              .value(QStringLiteral("backendNodeId"))
+              .toInt() != 99);
+  QCOMPARE(after.ref_index.value(QStringLiteral("e2"))
+               .toObject()
+               .value(QStringLiteral("backendNodeId"))
+               .toInt(),
+           12);
+  QCOMPARE(after.element_count, 2);
+  // And no two refs may name the same node.
+  QCOMPARE(after.ref_index.keys().size(), 2);
 }
 
 void BrowserContractTests::

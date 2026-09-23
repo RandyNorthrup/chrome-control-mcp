@@ -1793,6 +1793,11 @@ void appendOmittedFramesNote(const QJsonObject &capture, QString &outline) {
 } // namespace
 
 SnapshotView renderSnapshot(const QJsonObject &capture) {
+  return renderSnapshot(capture, QJsonObject{});
+}
+
+SnapshotView renderSnapshot(const QJsonObject &capture,
+                            const QJsonObject &carried_index) {
   SnapshotView view;
   view.url =
       oneLine(capture.value(QStringLiteral("url")).toString(), kMaxUrlChars);
@@ -1801,6 +1806,27 @@ SnapshotView renderSnapshot(const QJsonObject &capture) {
 
   QString outline;
   QJsonObject ref_index;
+  // A ref names a NODE, not a position. The outline is rebuilt on every
+  // snapshot, and numbering purely by document order means an element that
+  // gains a ref-worthy sibling above it answers to a different ref in the next
+  // snapshot -- while every ref the model is still holding resolves silently,
+  // to the wrong element. The previous snapshot's index is therefore carried in
+  // by backendNodeId: a node seen before keeps the ref it was issued, and only
+  // a genuinely new node takes a new number.
+  QHash<qint64, QString> carried;
+  QSet<QString> taken;
+  for (auto it = carried_index.begin(); it != carried_index.end(); ++it) {
+    qint64 carried_id = 0;
+    if (asBackendId(
+            it.value().toObject().value(QStringLiteral("backendNodeId")),
+            &carried_id)) {
+      carried.insert(carried_id, it.key());
+      // Reserved whether or not that node is still here: a fresh number that
+      // collided with a carried ref appearing later in the document would hand
+      // two nodes the same name.
+      taken.insert(it.key());
+    }
+  }
   int next_ref = 0;
   int emitted = 0;
   // The extension caps its own node walk and marks the capture truncated; honor
@@ -1837,7 +1863,14 @@ SnapshotView renderSnapshot(const QJsonObject &capture) {
     QString ref;
     if (nodeIsRefWorthy(node, interactable) &&
         asBackendId(node.value(QStringLiteral("backendNodeId")), &backend_id)) {
-      ref = QStringLiteral("e%1").arg(++next_ref);
+      ref = carried.value(backend_id);
+      if (ref.isEmpty()) {
+        do {
+          ref = QStringLiteral("e%1").arg(++next_ref);
+        } while (taken.contains(ref));
+      }
+      taken.insert(ref);
+      ++view.element_count;
       ref_index.insert(
           ref, QJsonObject{{QStringLiteral("backendNodeId"), backend_id},
                            {QStringLiteral("role"),
@@ -1859,7 +1892,6 @@ SnapshotView renderSnapshot(const QJsonObject &capture) {
 
   view.outline = outline;
   view.ref_index = ref_index;
-  view.element_count = next_ref;
   return view;
 }
 
