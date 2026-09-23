@@ -49,6 +49,7 @@ const EXPORTED = [
   "scrollDistance",
   "scrollRoom",
   "handleScroll",
+  "pointLandsOnFn",
   "scrollContextFn",
   "boundedMs",
   "boundedCount",
@@ -558,8 +559,8 @@ function scrollWorker(hitAnswers) {
 test("a scroll whose point misses its element is refused, not aimed at a stranger", async () => {
   // Off target both times: the page is moving under the point, and no wheel should be sent.
   const missed = scrollWorker([
-    { hit: "DIV#shadow-host", onTarget: false },
-    { hit: "DIV#shadow-host", onTarget: false },
+    { hit: "DIV#shadow-host", target: "DIV#scroll-region", onTarget: false },
+    { hit: "DIV#shadow-host", target: "DIV#scroll-region", onTarget: false },
   ]);
   const session = missed.worker.makeSession();
   session.attachedTabId = 1;
@@ -576,7 +577,7 @@ test("a scroll whose point misses its element is refused, not aimed at a strange
       }),
     // It names what it hit instead: without that, the reply said "scrolled 0" and the cause
     // was invisible.
-    /lands on DIV#shadow-host instead/,
+    /aimed at DIV#scroll-region: the point on it \(\d+, \d+\) lands on DIV#shadow-host/,
   );
   assert.equal(
     missed.calls.some((c) => c.params && c.params.type === "mouseWheel"),
@@ -592,8 +593,8 @@ test("a scroll whose point misses its element is refused, not aimed at a strange
 
 test("a point that slips once is re-resolved and the scroll goes ahead", async () => {
   const recovered = scrollWorker([
-    { hit: "DIV#shadow-host", onTarget: false },
-    { hit: "DIV#scroll-region", onTarget: true },
+    { hit: "DIV#shadow-host", target: "DIV#scroll-region", onTarget: false },
+    { hit: "DIV#scroll-region", target: "DIV#scroll-region", onTarget: true },
   ]);
   const session = recovered.worker.makeSession();
   session.attachedTabId = 1;
@@ -630,6 +631,57 @@ test("a point that slips once is re-resolved and the scroll goes ahead", async (
     "the element is asked again after the box is re-read",
   );
   assert.ok(wheel.params.deltaY > 0, "a down scroll pushes the content down");
+});
+
+// document.elementFromPoint reports the HOST for a point inside a shadow tree, and Node.contains
+// stops at the shadow boundary. A guard built on contains() alone therefore calls every element
+// in a shadow root a miss -- including the fixture's own shadow button.
+test("the hit test climbs out of a shadow tree instead of calling it a miss", () => {
+  const host = { tagName: "DIV", id: "shadow-host", parentNode: null };
+  const shadowRoot = { host, parentNode: null };
+  const button = {
+    tagName: "BUTTON",
+    id: "shadow-button",
+    parentNode: shadowRoot,
+  };
+  const elsewhere = { tagName: "DIV", id: "far-away", parentNode: null };
+
+  const run = (target, hit) => {
+    const call = new Function(
+      "window",
+      "document",
+      "target",
+      `return (${w.pointLandsOnFn.toString()}).call(target, 10, 20);`,
+    );
+    return crossRealm(
+      call(
+        { visualViewport: { offsetLeft: 0, offsetTop: 0 } },
+        { elementFromPoint: () => hit },
+        target,
+      ),
+    );
+  };
+
+  // The point is inside the shadow tree, so the page reports the host. The button is still what
+  // the wheel will reach.
+  const inShadow = run(button, host);
+  assert.equal(inShadow.onTarget, true);
+  assert.equal(inShadow.hit, "DIV#shadow-host");
+  assert.equal(inShadow.target, "BUTTON#shadow-button");
+
+  // The ordinary case: the point lands on the element itself.
+  assert.equal(run(button, button).onTarget, true);
+
+  // And a genuine miss is still a miss -- the climb must not make everything match.
+  const missed = run(button, elsewhere);
+  assert.equal(missed.onTarget, false);
+  assert.equal(missed.hit, "DIV#far-away");
+
+  // Nothing under the point at all.
+  const nothing = run(button, null);
+  assert.equal(nothing.onTarget, false);
+  assert.equal(nothing.hit, null);
+  assert.equal(nothing.target, "BUTTON#shadow-button");
 });
 
 test("boundedMs and boundedCount refuse what they cannot honour", () => {

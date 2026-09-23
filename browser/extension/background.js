@@ -5292,6 +5292,36 @@ function armScrollEnd(tabId, x, y, before) {
   );
 }
 
+// The hit test itself, run in the page with the target element as `this`.
+//
+// Two things it must get right, both learned the hard way. document.elementFromPoint reports the
+// HOST for any point inside a shadow tree, and Node.contains stops at a shadow boundary -- so a
+// plain contains() test reads every element in a shadow root as "missed". Climbing through
+// .host as well as .parentNode is what makes the shadow button in the E2E fixture scrollable.
+function pointLandsOnFn(x, y) {
+  const v = window.visualViewport;
+  const name = (e) => (e ? e.tagName + (e.id ? "#" + e.id : "") : null);
+  const climbs = (from, to) => {
+    let e = from;
+    while (e) {
+      if (e === to) {
+        return true;
+      }
+      e = e.parentNode || e.host || null;
+    }
+    return false;
+  };
+  const hit = document.elementFromPoint(x + v.offsetLeft, y + v.offsetTop);
+  if (!hit) {
+    return { hit: null, target: name(this), onTarget: false };
+  }
+  return {
+    hit: name(hit),
+    target: name(this),
+    onTarget: hit === this || climbs(hit, this) || climbs(this, hit),
+  };
+}
+
 // Does the point still land on the element the caller named, or on something inside it? Asked of
 // the element itself, so it survives a page that moved between the box read and this question --
 // which is the whole reason it is asked. A wheel dispatched at a point that misses its element
@@ -5305,25 +5335,25 @@ async function pointLandsOn(tabId, backendNodeId, x, y) {
   }).catch(() => null);
   const objectId = resolved && resolved.object && resolved.object.objectId;
   if (!objectId) {
-    return { known: false, onTarget: true, hit: null };
+    return { known: false, onTarget: true, hit: null, target: null };
   }
   const answer = await sendCdp(tabId, "Runtime.callFunctionOn", {
     objectId,
-    functionDeclaration:
-      "function(x, y){var v=window.visualViewport;" +
-      "var hit=document.elementFromPoint(x + v.offsetLeft, y + v.offsetTop);" +
-      "if(!hit){return {hit:null,onTarget:false};}" +
-      "return {hit: hit.tagName + (hit.id ? '#' + hit.id : '')," +
-      " onTarget: hit === this || this.contains(hit) || hit.contains(this)};}",
+    functionDeclaration: `(${pointLandsOnFn.toString()})`,
     arguments: [{ value: Number(x) }, { value: Number(y) }],
     returnByValue: true,
   }).catch(() => null);
   const value = answer && answer.result ? answer.result.value : null;
   // An unanswerable hit test must not refuse a scroll that would have worked.
   if (!value || typeof value.onTarget !== "boolean") {
-    return { known: false, onTarget: true, hit: null };
+    return { known: false, onTarget: true, hit: null, target: null };
   }
-  return { known: true, onTarget: value.onTarget, hit: value.hit };
+  return {
+    known: true,
+    onTarget: value.onTarget,
+    hit: value.hit,
+    target: value.target,
+  };
 }
 
 // Where the wheel will actually land, and how far the scrollers under that point can still
@@ -5439,14 +5469,16 @@ async function handleScroll(session, tabId, args) {
     }
     if (landing.known && !landing.onTarget) {
       throw new Error(
-        "The scroll could not be aimed at that element: the point on it (" +
+        "The scroll could not be aimed at " +
+          (landing.target || "that element") +
+          ": the point on it (" +
           Math.round(point.x) +
           ", " +
           Math.round(point.y) +
           ") lands on " +
           (landing.hit || "nothing") +
-          " instead, so the page is still moving under it. Take a fresh " +
-          "snapshot and try again.",
+          " instead. Something is drawn over it, or the page is still moving " +
+          "under it; take a fresh snapshot and try again.",
       );
     }
   } else {
