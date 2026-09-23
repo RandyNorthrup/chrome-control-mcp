@@ -229,6 +229,22 @@ QStringList browserBridgeRendezvousRecords(QString *error) {
   return browserBridgeRendezvousRecordsIn(directory);
 }
 
+qint64 rendezvousRecordPid(const QString &path) {
+  const QString name = QFileInfo(path).fileName();
+  const QString prefix = QString::fromLatin1(kRendezvousPrefix);
+  const QString suffix = QString::fromLatin1(kRendezvousSuffix);
+  if (!name.startsWith(prefix) || !name.endsWith(suffix)) {
+    return 0;
+  }
+  const QString digits =
+      name.mid(prefix.size(), name.size() - prefix.size() - suffix.size());
+  bool ok = false;
+  const qlonglong pid = digits.toLongLong(&ok);
+  // A pid of 0 is the "not a record" answer, so a file literally named for pid
+  // 0 -- or for something that is not a number at all -- reports the same.
+  return ok && pid > 0 ? static_cast<qint64>(pid) : 0;
+}
+
 QStringList browserBridgeRendezvousRecordsIn(const QString &directory) {
   if (directory.isEmpty()) {
     return {};

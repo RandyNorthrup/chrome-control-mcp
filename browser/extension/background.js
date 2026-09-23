@@ -399,6 +399,11 @@ function makeSession() {
 
     port: null,
 
+    // Which server this port is attached to, as the pid string the relay
+    // offered, or "" before any offer has been answered. A session identifies
+    // its server by this rather than by anything it could look up itself.
+    serverId: "",
+
     health: { connected: false, bridge: null, error: null },
 
     // True only while the host has completed the bridge_ready handshake AND declared the exact
@@ -610,6 +615,23 @@ function send(reply) {
 
 function onHostMessage(msg) {
   if (!msg || typeof msg !== "object") {
+    return;
+  }
+  if (msg.type === "bridge_offers") {
+    // The relay lists the servers publishing a bridge record and asks which one
+    // this port should attach to. This worker cannot discover them by itself --
+    // it has no filesystem access -- so the offer is the only way it learns
+    // that any exist, which is why the relay asks rather than being told.
+    //
+    // Answering is the ONLY circumstance in which this worker speaks first on
+    // this channel. A frame sent unprompted would be read by an older relay as
+    // the reply to a command it had not yet sent, putting every later exchange
+    // one step out of phase.
+    const offered = Array.isArray(msg.servers) ? msg.servers : [];
+    // One session per port, so the first offer is this port's server. Choosing
+    // among several is what a second port is for, and nothing opens one yet.
+    session.serverId = offered.length > 0 ? String(offered[0]) : "";
+    send({ type: "attach_session", session: session.serverId });
     return;
   }
   if (msg.type === "bridge_ready") {

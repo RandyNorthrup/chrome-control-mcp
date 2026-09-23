@@ -116,29 +116,46 @@ Two consequences:
 
 ### 2. The relay is told which server it is for
 
-Chrome gives the relay no argv it controls, so it cannot discover its server today. The extension
-sends `{type:"attach_session", session:"<pid>"}` on stdin, and the relay reads it before choosing a
-record.
+Chrome gives the relay no argv it controls, so it cannot discover its server today. One exchange is
+added at the front of the stdio hop, and **the relay speaks first**, as it already does there:
+
+1. relay → extension `{type:"bridge_offers", protocol, servers:[<pid>, …]}`
+2. extension → relay `{type:"attach_session", session:"<pid>"}`
+3. relay connects to that record, handshakes, and sends `bridge_ready` as before
+
+An earlier draft had the extension sending `attach_session` unprompted, immediately after
+`connectNative`. That was wrong twice over.
+
+**The extension cannot name a server.** It has no filesystem access, so it cannot enumerate records
+and has no pid to send. The offers list is how it learns them — which is why the relay has to speak
+first, not merely why it is tidier.
+
+**An unprompted frame is unsafe in one skew direction.** The relay touches stdin nowhere before the
+handshake, and afterwards only as the first `command`'s _reply_
+([browser_bridge_relay_common.cpp:139](../src/browser_bridge_relay_common.cpp#L139)). A newer
+extension posting a frame at connect time to an older relay would have it eaten as that reply,
+failing the id gate and putting every later exchange one step out of phase. That pairing is real
+here: Chrome does not reload an unpacked extension when its files change, so a Chrome holding a
+stale loaded copy is the normal case after an update, in either direction.
+
+Offers-first degrades cleanly both ways. An older extension treats `bridge_offers` as an unknown
+type — `console.warn` and nothing else
+([background.js:644](../browser/extension/background.js#L644)) — so it never replies and the relay
+times out. A newer extension talking to an older relay sees `bridge_ready` arrive first and simply
+never sends `attach_session`. No frame is ever sent unprompted, in either direction.
 
 Named `attach_session`, not `attach`: `{type:"attach"}` is already load-bearing on the _pipe_ hop as
 the negative case proving any first frame other than `hello` is refused
 ([test_browser_bridge_pipe.cpp:304](../tests/test_browser_bridge_pipe.cpp#L304)). Different hop, so
 no functional collision — but no reason to make a reader check.
 
-**The read has to come first, and that is the awkward part.** The relay does not touch stdin at any
-point before the handshake, and not after it either until the server has sent the first `command`:
-its first stdin read is as that command's _reply_
-([browser_bridge_relay_common.cpp:139](../src/browser_bridge_relay_common.cpp#L139)). A frame posted
-right after `connectNative` today would therefore be consumed as that first reply, fail the id gate,
-and put every later exchange one step out of phase. So the attach read goes at the very top of
-`runBrowserRelay`, before `relayConnect` — it has to, because it is what _selects_ the record.
-
-That read must be bounded. `stdinReadExact`
+The wait for the reply must be bounded. `stdinReadExact`
 ([browser_bridge_relay_common.cpp:28](../src/browser_bridge_relay_common.cpp#L28)) is an unbounded
-blocking `std::cin.read` with no deadline, so an extension that never sends the frame — an older
-unpacked copy still loaded in Chrome — would hang the host forever. On timeout the relay writes
-`bridge_unavailable` naming the missing frame and exits 0, the same shape as every other startup
-failure. That is a fail-closed timeout, not a fallback path.
+blocking `std::cin.read` with no deadline, so an extension that never answers would hang the host
+forever. On timeout the relay writes `bridge_unavailable` saying the extension did not answer the
+offer and that it is older than the server, then exits 0 — the same shape as every other startup
+failure, and the message has to carry the diagnosis because the protocol version is never exchanged
+on this path. A fail-closed timeout, not a fallback.
 
 ### 3. The extension keeps one port per server
 

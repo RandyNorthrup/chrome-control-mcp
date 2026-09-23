@@ -123,6 +123,7 @@ class BrowserBridgeRelayTests : public QObject {
 private slots:
   void relayConnect_rejectsForeignServerPid();
   void imageMismatchText_namesBothCopiesAndTheFix();
+  void selectRecord_honoursTheSessionTheExtensionNamed();
   void relayHandshake_rejectsBadToken();
   void relayHandshake_rejectsProtocolMismatch();
   void relay_forwardsCommandAndReplyOverRealPipe();
@@ -395,6 +396,44 @@ void BrowserBridgeRelayTests::control_snapshotRoundTripsThroughRelay() {
                   // it exits
   relay.join();
   closeNativeIpcHandle(pipe);
+}
+
+// Which record a relay connects to is now the extension's choice, so the rule
+// is a pure function and testable without a relay or a server.
+void BrowserBridgeRelayTests::
+    selectRecord_honoursTheSessionTheExtensionNamed() {
+  const QStringList records{
+      QStringLiteral("/run/ccmcp/browser_bridge-300.json"),
+      QStringLiteral("/run/ccmcp/browser_bridge-200.json"),
+      QStringLiteral("/run/ccmcp/browser_bridge-100.json"),
+  };
+
+  // Named: that one, not the newest.
+  QCOMPARE(chrome_control_mcp::selectRendezvousRecord(records,
+                                                      QStringLiteral("100")),
+           records.at(2));
+  QCOMPARE(chrome_control_mcp::selectRendezvousRecord(records,
+                                                      QStringLiteral("300")),
+           records.first());
+
+  // No preference: the newest, which is what a one-server install resolves to.
+  QCOMPARE(chrome_control_mcp::selectRendezvousRecord(records, QString{}),
+           records.first());
+
+  // The server it asked for is gone. Substituting another would attach the
+  // extension's session to a server it did not choose, so nothing is returned
+  // and the relay reports the bridge unavailable instead.
+  QVERIFY(
+      chrome_control_mcp::selectRendezvousRecord(records, QStringLiteral("999"))
+          .isEmpty());
+  QVERIFY(chrome_control_mcp::selectRendezvousRecord(
+              records, QStringLiteral("not-a-pid"))
+              .isEmpty());
+
+  // Nothing published at all.
+  QVERIFY(chrome_control_mcp::selectRendezvousRecord({}, QStringLiteral("100"))
+              .isEmpty());
+  QVERIFY(chrome_control_mcp::selectRendezvousRecord({}, QString{}).isEmpty());
 }
 
 QTEST_MAIN(BrowserBridgeRelayTests)

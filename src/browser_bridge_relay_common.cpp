@@ -17,11 +17,17 @@
 #include "chrome_control_mcp/native_messaging.h"
 
 #include <QByteArray>
+#include <QJsonArray>
 #include <QStringList>
 #include <QtEndian>
 
+#include <algorithm>
+#include <atomic>
+#include <chrono>
 #include <cstdio>
 #include <iostream>
+#include <memory>
+#include <thread>
 
 namespace chrome_control_mcp {
 namespace {
@@ -70,7 +76,72 @@ bool writeStdoutFrame(const QJsonObject &message) {
          std::fflush(stdout) == 0;
 }
 
+// Wait for the extension's answer to `bridge_offers`, giving up after
+// @p timeout_ms and filling @p wanted with the session it named.
+//
+// The read runs on its own thread because a blocking std::cin.read cannot be
+// cancelled: on timeout the thread is ABANDONED rather than joined, and its
+// buffer is kept alive by the shared state it owns, so nothing it may still
+// write into has been destroyed. That is only safe because the sole caller
+// exits the process immediately afterwards -- the fields the thread writes are
+// never read on this path.
+bool awaitAttachSession(int timeout_ms, QString *wanted) {
+  struct Pending {
+    std::atomic<bool> done{false};
+    bool ok{false};
+    QJsonObject frame;
+  };
+  const auto pending = std::make_shared<Pending>();
+  std::thread reader([pending] {
+    pending->ok = readStdinFrame(&pending->frame);
+    pending->done.store(true, std::memory_order_release);
+  });
+
+  const auto deadline =
+      std::chrono::steady_clock::now() + std::chrono::milliseconds(timeout_ms);
+  while (!pending->done.load(std::memory_order_acquire) &&
+         std::chrono::steady_clock::now() < deadline) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(5));
+  }
+  if (!pending->done.load(std::memory_order_acquire)) {
+    reader.detach();
+    return false;
+  }
+  reader.join();
+  if (!pending->ok || pending->frame.value(QStringLiteral("type")).toString() !=
+                          QLatin1String("attach_session")) {
+    // Anything other than the answer to the question just asked leaves the
+    // stream out of step; there is no way back to a known state from here.
+    return false;
+  }
+  *wanted = pending->frame.value(QStringLiteral("session")).toString();
+  return true;
+}
+
 } // namespace
+
+QString selectRendezvousRecord(const QStringList &records,
+                               const QString &wanted) {
+  if (records.isEmpty()) {
+    return {};
+  }
+  if (wanted.isEmpty()) {
+    // No preference expressed: the newest record, which is what a single-server
+    // install always resolves to.
+    return records.first();
+  }
+  const auto match = std::find_if(
+      records.cbegin(), records.cend(), [&wanted](const QString &record) {
+        return QString::number(rendezvousRecordPid(record)) == wanted;
+      });
+  if (match != records.cend()) {
+    return *match;
+  }
+  // The server it asked for is gone. Connecting to a different one would bind
+  // the extension's session to a server it did not choose, which is worse than
+  // reporting that the bridge is unavailable.
+  return {};
+}
 
 bool readFrameBody(const ReadExactFn &read_exact, quint32 length,
                    QJsonObject *out) {
@@ -149,30 +220,53 @@ int runBrowserRelay() {
   QString token;
   int protocol = 0;
   QString error;
-  // Records are per-server now, so the relay searches rather than computing one
-  // path. It tries them newest first and stops at the first that answers: a
-  // record whose server has exited fails its own pid-to-image check inside
-  // relayConnect, so a stale one costs an attempt and is skipped rather than
-  // being mistaken for the bridge.
-  //
-  // Which server a relay SHOULD reach is not yet something it is told -- the
-  // extension names no session, so there is nothing to select on. While one
-  // server publishes at a time, newest-first is that answer.
+  // Records are per-server, so the relay does not compute one path: it lists
+  // what is published and offers that list to the extension, which picks. The
+  // relay speaks first on this hop -- as it already does with bridge_ready --
+  // because the extension has no filesystem access and so has no pid to name
+  // until it is told one.
   const QStringList records = browserBridgeRendezvousRecords(&error);
-  NativeIpcHandle pipe = kInvalidNativeIpcHandle;
+  QJsonArray offered;
   for (const QString &record : records) {
-    QString attempt;
-    pipe = relayConnect(record, &token, &protocol, &attempt);
-    if (nativeIpcHandleIsValid(pipe)) {
-      break;
-    }
-    if (error.isEmpty()) {
-      error = attempt; // the first refusal is the one worth reporting
+    const qint64 pid = rendezvousRecordPid(record);
+    if (pid != 0) {
+      offered.append(QString::number(pid));
     }
   }
+  (void)writeStdoutFrame(
+      QJsonObject{{QStringLiteral("type"), QStringLiteral("bridge_offers")},
+                  {QStringLiteral("protocol"), kBrowserBridgeProtocol},
+                  {QStringLiteral("servers"), offered}});
+
+  QString wanted;
+  if (!awaitAttachSession(kRelayAttachTimeoutMs, &wanted)) {
+    // An extension older than this relay treats the offer as an unknown frame
+    // type and never answers. The protocol version is never exchanged on this
+    // path, so the message has to carry the diagnosis itself.
+    (void)writeStdoutFrame(QJsonObject{
+        {QStringLiteral("type"), QStringLiteral("bridge_unavailable")},
+        {QStringLiteral("error"),
+         QStringLiteral("The Chrome Control MCP extension did not answer the "
+                        "bridge offer within %1 ms. It is older than this "
+                        "server; reload it from the managed install.")
+             .arg(kRelayAttachTimeoutMs)}});
+    return 0;
+  }
+
+  const QString chosen = selectRendezvousRecord(records, wanted);
+  NativeIpcHandle pipe = kInvalidNativeIpcHandle;
+  if (!chosen.isEmpty()) {
+    pipe = relayConnect(chosen, &token, &protocol, &error);
+  }
   if (!nativeIpcHandleIsValid(pipe) && error.isEmpty()) {
-    error = QStringLiteral(
-        "No Chrome Control MCP server has published a bridge record.");
+    error =
+        records.isEmpty()
+            ? QStringLiteral(
+                  "No Chrome Control MCP server has published a bridge record.")
+            : QStringLiteral(
+                  "The Chrome Control MCP server the extension asked "
+                  "for (%1) is no longer published.")
+                  .arg(wanted);
   }
   if (!nativeIpcHandleIsValid(pipe) ||
       !relayHandshake(pipe, token, protocol, &error)) {

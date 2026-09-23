@@ -98,6 +98,15 @@ browserBridgeRendezvousRecords(QString *error = nullptr);
 [[nodiscard]] QStringList
 browserBridgeRendezvousRecordsIn(const QString &directory);
 
+/// The publishing pid encoded in a rendezvous record's FILE NAME, or 0 when
+/// @p path is not named like one.
+///
+/// Read from the name rather than from the file so a caller can identify and
+/// filter records without opening each one, and so the extension -- which has
+/// no filesystem access at all -- can be handed a stable id for a server it
+/// will later ask for by name. Pure.
+[[nodiscard]] qint64 rendezvousRecordPid(const QString &path);
+
 /// Write / read the rendezvous record as JSON at @p path. The file-I/O core is
 /// split out (path-parameterized) so it is unit-testable without touching the
 /// real per-user location.

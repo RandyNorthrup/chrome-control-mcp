@@ -38,7 +38,8 @@ const LIVE =
   " port: session.port," +
   " bridgeReady: session.bridgeReady," +
   " commandGeneration: session.commandGeneration," +
-  " domEpoch: session.domEpoch })";
+  " domEpoch: session.domEpoch," +
+  " serverId: session.serverId })";
 
 // Load the worker with a port under the test's control. The worker calls connect() at top
 // level, so the port is already open and both listeners are registered when this returns.
@@ -204,6 +205,52 @@ test("cancel retires the current command generation and is never answered", asyn
     "cancel must retire the generation",
   );
   assert.deepEqual(port.posted, [], "a cancel is not replied to");
+});
+
+test("the worker answers a bridge offer with the server it will attach to", async () => {
+  // The relay asks which server this port should take, because the worker has
+  // no filesystem access and cannot discover one for itself.
+  const { worker, port } = bootWorker();
+  assert.deepEqual(port.posted, [], "nothing is sent before being asked");
+
+  port.emit({ type: "bridge_offers", protocol: PROTOCOL, servers: ["4242"] });
+  await settle();
+
+  assert.equal(port.posted.length, 1);
+  assert.equal(port.lastPosted().type, "attach_session");
+  assert.equal(port.lastPosted().session, "4242");
+  assert.equal(worker.peek().serverId, "4242");
+  // Answering an offer is not a handshake: commands stay refused until the
+  // relay has actually reached that server and said so.
+  assert.equal(worker.peek().bridgeReady, false);
+});
+
+test("an offer with no servers is still answered, so the relay is not left waiting", async () => {
+  // The relay's wait for this answer is bounded and a timeout is reported as
+  // the extension being too old. Staying silent because there was nothing to
+  // choose would produce exactly that misleading diagnosis.
+  const { worker, port } = bootWorker();
+
+  port.emit({ type: "bridge_offers", protocol: PROTOCOL, servers: [] });
+  await settle();
+
+  assert.equal(port.posted.length, 1);
+  assert.equal(port.lastPosted().type, "attach_session");
+  assert.equal(port.lastPosted().session, "");
+  assert.equal(worker.peek().serverId, "");
+});
+
+test("the worker never speaks first on this channel", async () => {
+  // A frame sent unprompted would be read by an older relay as the reply to a
+  // command it had not sent, putting every later exchange one step out of
+  // phase. Connecting, and a readiness handshake, must both stay silent.
+  const { port } = bootWorker();
+  await settle();
+  assert.deepEqual(port.posted, [], "connecting sends nothing");
+
+  ready(port);
+  await settle();
+  assert.deepEqual(port.posted, [], "bridge_ready is not acknowledged either");
 });
 
 test("an unrecognised frame type changes nothing", async () => {

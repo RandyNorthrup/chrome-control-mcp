@@ -57,6 +57,25 @@ using ReadExactFn = std::function<bool(char *buffer, qsizetype size)>;
 [[nodiscard]] bool readFrameBody(const ReadExactFn &read_exact, quint32 length,
                                  QJsonObject *out);
 
+/// How long the relay waits for the extension to answer `bridge_offers` before
+/// giving up. The answer arrives as fast as the service worker can post it, so
+/// this is not a latency budget -- it is the bound that keeps a worker which
+/// will NEVER answer (one older than this relay, which treats the offer as an
+/// unknown frame type) from hanging the host forever.
+inline constexpr int kRelayAttachTimeoutMs = 5000;
+
+/// Choose which rendezvous record to connect to, given the records available
+/// (@p records, newest first) and the session the extension asked for
+/// (@p wanted, a pid as a string).
+///
+/// An empty @p wanted means the extension expressed no preference and the
+/// newest record is taken. A @p wanted naming a record that is not in the list
+/// yields an empty string: the server it asked for is gone, and connecting to a
+/// different one instead would attach the extension's session to a server it
+/// did not choose. Pure, so the rule is testable without a relay.
+[[nodiscard]] QString selectRendezvousRecord(const QStringList &records,
+                                             const QString &wanted);
+
 /// Wait for the browser's reply to a command already forwarded, while staying
 /// able to see a `cancel` the server sends mid-exchange and pass it on.
 ///
@@ -121,12 +140,27 @@ using ReadExactFn = std::function<bool(char *buffer, qsizetype size)>;
 [[nodiscard]] bool relayWritePipeFrame(NativeIpcHandle pipe,
                                        const QJsonObject &message);
 
-/// Run the full relay against Chrome's stdio: discover + connect + verify +
-/// handshake, announce readiness to the extension with a single `bridge_ready`
-/// frame (or a `bridge_unavailable` frame then exit if the bridge is down),
-/// then loop relayPumpOnce until either side closes. Returns a process exit
-/// code (0 on a clean shutdown). Assumes stdin/stdout are already in binary
-/// mode.
+/// Run the full relay against Chrome's stdio. The sequence is:
+///
+///   1. list the published rendezvous records and offer them to the extension
+///      as `{type:"bridge_offers", protocol, servers:[<pid>, ...]}`
+///   2. wait (bounded by kRelayAttachTimeoutMs) for
+///      `{type:"attach_session", session:"<pid>"}` naming the one to take
+///   3. connect to that record, verify the server's code identity, and complete
+///      the token/protocol handshake
+///   4. announce `{type:"bridge_ready", protocol}` and pump relayPumpOnce until
+///      either side closes
+///
+/// Any failure before step 4 writes a single `bridge_unavailable` frame and
+/// exits 0, so Chrome relaunches the host on the next port connection.
+///
+/// The relay speaks first because the extension has no filesystem access and
+/// therefore no way to name a server until it is offered one -- and because a
+/// frame sent unprompted would be read by an older relay as the reply to a
+/// command it had not yet sent, putting every later exchange out of step.
+///
+/// Returns a process exit code (0 on a clean shutdown). Assumes stdin/stdout
+/// are already in binary mode.
 [[nodiscard]] int runBrowserRelay();
 
 } // namespace chrome_control_mcp
