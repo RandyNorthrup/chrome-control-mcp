@@ -1294,15 +1294,11 @@ test("ending the session drops every buffered piece", async () => {
   assert.equal(w2.assembleUpload("u-5"), null);
 });
 
-test("detaching clears uploads, so a file cannot outlive its session", () => {
-  // The guarantee above is only real if teardown actually calls it.
-  assert.match(workerSource, /clearUploads\(\);/);
-  const detachAll = workerSource.slice(
-    workerSource.indexOf("async function detachAll("),
-    workerSource.indexOf("async function detachAll(") + 2000,
-  );
-  assert.match(detachAll, /clearUploads\(\)/);
-});
+// That teardown actually calls clearUploads() was asserted here by slicing the text of
+// detachAll and looking for the call. test_browser_extension_session.mjs now drives both ways
+// an attachment can end and checks the buffer is empty afterwards, which is the same guarantee
+// established by observation rather than by reading the source -- and it covers the browser
+// detaching for us, which the text search never did.
 
 // -- finding the file input behind the control a person clicks ---------------
 //

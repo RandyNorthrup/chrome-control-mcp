@@ -1124,12 +1124,22 @@ async function ensureAttached(tabId) {
   await refreshControlPresence(tabId);
 }
 
-async function detachAll(_reason) {
-  session.commandGeneration++; // the session a polling command was watching is over; retire it
-  // A tab switch WE initiate ends the DOM every outstanding ref was captured against just as a
-  // navigation does, and the onDetach listener cannot see it: this clears attachedTabId before
-  // calling detach, so its source check never matches. Raise the generation here so the bridge
-  // invalidates its ref_index instead of holding refs that now name nodes in another renderer.
+// Everything this session stops being able to assert once its debugger attachment ends.
+//
+// The attachment ends two ways -- this worker detaches on purpose, or the browser detaches for
+// us when the user closes the tab or opens DevTools -- and the session is in the same state
+// afterwards either way, because what is no longer true does not depend on who ended it. This
+// existed as two lists that had drifted: the onDetach path did not retire the command
+// generation, did not clear the captured User-Agent, and did not drop a half-delivered upload.
+// None of those three has a visible symptom at the moment it goes wrong, which is why the
+// divergence survived.
+function releaseAttachedState() {
+  // Retire whatever a polling handler (browser_wait_for, browser_download) is watching, so it
+  // abandons instead of driving a tab nothing is attached to any more.
+  session.commandGeneration++;
+  // The DOM every outstanding ref was captured against is gone. Raising the generation is what
+  // makes the bridge invalidate its ref_index rather than hold refs that now name nodes in
+  // another renderer.
   session.domEpoch++;
   session.lastSnapshotTabId = null; // any ref_index is now unverifiable against a live tab
   session.lastSnapshotEpoch = null; // and its DOM generation no longer names a live document
@@ -1142,6 +1152,13 @@ async function detachAll(_reason) {
   session.httpAuthCreds = null; // armed HTTP-auth credentials do not carry across sessions
   session.lastFetchError = null; // nor does an interception failure from a page we no longer drive
   clearUploads(); // a half-delivered file belongs to the session that is ending, not the next one
+}
+
+async function detachAll(_reason) {
+  // A tab switch WE initiate ends the attachment just as a close does, and the onDetach
+  // listener cannot see it: attachedTabId is cleared below before the detach call, so the
+  // listener's source check never matches and the release does not run twice.
+  releaseAttachedState();
   if (session.attachedTabId === null) {
     return;
   }
@@ -1159,19 +1176,13 @@ async function detachAll(_reason) {
 
 // The user opening DevTools, or the tab closing, force-detaches our session.
 chrome.debugger.onDetach.addListener((source) => {
+  // The listener fires for every target this extension is attached to, so a detach of a tab
+  // this session never held has to be ignored: reacting would retire a live command
+  // generation and blank a snapshot that is still valid.
   if (source && source.tabId === session.attachedTabId) {
-    session.domEpoch++; // the DOM our refs were captured against is gone
     setTabControlBadge(source.tabId, false); // control ended; clear the toolbar badge
     session.attachedTabId = null;
-    session.lastSnapshotTabId = null;
-    session.lastSnapshotEpoch = null;
-    session.lastShot = null;
-    session.pendingDialogPolicy = null;
-    session.lastDialog = null;
-    session.inflightRequests.clear();
-    session.networkInstrumented = false;
-    session.httpAuthCreds = null;
-    session.lastFetchError = null;
+    releaseAttachedState();
   }
 });
 
