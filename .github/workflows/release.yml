@@ -131,7 +131,7 @@ jobs:
             # the executable otherwise. The files are copied under the soname
             # the loader asks for, resolving the symlink to real content.
             Get-ChildItem (Join-Path $env:QT_ROOT_DIR 'lib') -Filter 'libicu*' |
-              Where-Object { $_.Name -match '^libicu[a-z]+\.so\.[0-9]+$' } |
+              Where-Object { $_.Name -match '^libicu[a-z0-9]+\.so\.[0-9]+$' } |
               ForEach-Object {
                 $source = if ($_.LinkType) {
                   $_.ResolveLinkTarget($true).FullName

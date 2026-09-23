@@ -88,6 +88,26 @@ fs.rmSync(binary, { recursive: true, force: true });
 // few megabytes and leaves the paths dyld actually resolves -- the versioned
 // ones named by the install_name -- as ordinary files.
 fs.cpSync(payloadRoot, binary, { recursive: true, dereference: true });
+// Qt frameworks ship their headers, and a framework's Headers directory is
+// hundreds of text files that nothing at runtime reads. They are dead weight in
+// a VSIX and they are what the marketplace secret scanner spends its time on,
+// so drop them along with the other build-time leftovers.
+function prune(directory) {
+  for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
+    const full = path.join(directory, entry.name);
+    if (entry.isDirectory()) {
+      if (entry.name === "Headers" || entry.name.endsWith(".dSYM")) {
+        fs.rmSync(full, { recursive: true, force: true });
+        continue;
+      }
+      prune(full);
+    } else if (entry.name.endsWith(".prl") || entry.name.endsWith(".la")) {
+      fs.rmSync(full, { force: true });
+    }
+  }
+}
+prune(binary);
+
 // A VSIX is a zip and the executable bit does not survive it reliably; the
 // extension re-applies it at runtime. Set it here too so a locally installed
 // VSIX works even if that ever regresses.
