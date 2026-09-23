@@ -83,6 +83,7 @@ private slots:
   void stagedReleaseLandsWhileTheOldBuildIsHeldOpen();
   void stagedReleaseRefusesAnUnsafeVersionName();
   void stagedReleaseRefusesAnEmptyStagingDirectory();
+  void stagedReleaseRefusesWithoutTheInstallLock();
 };
 
 void UpdaterTests::assetNameMatchesThePublishedPackageName() {
@@ -139,12 +140,15 @@ void UpdaterTests::stagedReleaseInstallsAndRepointsTheLink() {
   QVERIFY(temporary.isValid());
   const InstallLayout layout = InstallLayout::forRoot(
       QDir(temporary.path()).filePath(QStringLiteral("root")));
+  const InstallLock lock =
+      InstallLock::acquire(layout, kInstallLockWaitMs, nullptr);
+  QVERIFY(lock.held());
   QVERIFY(QDir().mkpath(layout.versions));
 
   const QString first = stageRelease(layout.versions, QStringLiteral("1.0.0"));
   QVERIFY(!first.isEmpty());
   const UpdateApplyResult installed =
-      installStagedRelease(configFor(layout, QStringLiteral("1.0.0")),
+      installStagedRelease(lock, configFor(layout, QStringLiteral("1.0.0")),
                            QStringLiteral("1.0.0"), first);
   QVERIFY2(installed.ok, qPrintable(installed.error));
   QCOMPARE(currentVersion(layout), QStringLiteral("1.0.0"));
@@ -155,7 +159,7 @@ void UpdaterTests::stagedReleaseInstallsAndRepointsTheLink() {
   const QString second = stageRelease(layout.versions, QStringLiteral("1.3.1"));
   QVERIFY(!second.isEmpty());
   const UpdateApplyResult upgraded =
-      installStagedRelease(configFor(layout, QStringLiteral("1.0.0")),
+      installStagedRelease(lock, configFor(layout, QStringLiteral("1.0.0")),
                            QStringLiteral("1.3.1"), second);
   QVERIFY2(upgraded.ok, qPrintable(upgraded.error));
   QCOMPARE(upgraded.previous_version, QStringLiteral("1.0.0"));
@@ -180,11 +184,14 @@ void UpdaterTests::stagedReleaseLandsWhileTheOldBuildIsHeldOpen() {
   QVERIFY(temporary.isValid());
   const InstallLayout layout = InstallLayout::forRoot(
       QDir(temporary.path()).filePath(QStringLiteral("root")));
+  const InstallLock lock =
+      InstallLock::acquire(layout, kInstallLockWaitMs, nullptr);
+  QVERIFY(lock.held());
   QVERIFY(QDir().mkpath(layout.versions));
 
   const QString first = stageRelease(layout.versions, QStringLiteral("1.0.0"));
   QVERIFY(!first.isEmpty());
-  QVERIFY(installStagedRelease(configFor(layout, QStringLiteral("1.0.0")),
+  QVERIFY(installStagedRelease(lock, configFor(layout, QStringLiteral("1.0.0")),
                                QStringLiteral("1.0.0"), first)
               .ok);
 
@@ -201,7 +208,7 @@ void UpdaterTests::stagedReleaseLandsWhileTheOldBuildIsHeldOpen() {
   // directory rather than skipping it for being recent.
   config.keep_recent_versions = 0;
   const UpdateApplyResult upgraded =
-      installStagedRelease(config, QStringLiteral("1.3.1"), second);
+      installStagedRelease(lock, config, QStringLiteral("1.3.1"), second);
   QVERIFY2(upgraded.ok, qPrintable(upgraded.error));
   QCOMPARE(currentVersion(layout), QStringLiteral("1.3.1"));
 
@@ -217,12 +224,15 @@ void UpdaterTests::stagedReleaseRefusesAnUnsafeVersionName() {
   QVERIFY(temporary.isValid());
   const InstallLayout layout = InstallLayout::forRoot(
       QDir(temporary.path()).filePath(QStringLiteral("root")));
+  const InstallLock lock =
+      InstallLock::acquire(layout, kInstallLockWaitMs, nullptr);
+  QVERIFY(lock.held());
   QVERIFY(QDir().mkpath(layout.versions));
   const QString staged = stageRelease(layout.versions, QStringLiteral("1.3.1"));
   QVERIFY(!staged.isEmpty());
 
   const UpdateApplyResult result =
-      installStagedRelease(configFor(layout, QStringLiteral("1.0.0")),
+      installStagedRelease(lock, configFor(layout, QStringLiteral("1.0.0")),
                            QStringLiteral("../escape"), staged);
   QVERIFY(!result.ok);
   QVERIFY(result.error.contains(QStringLiteral("unsafe version")));
@@ -235,12 +245,43 @@ void UpdaterTests::stagedReleaseRefusesAnEmptyStagingDirectory() {
   QVERIFY(temporary.isValid());
   const InstallLayout layout = InstallLayout::forRoot(
       QDir(temporary.path()).filePath(QStringLiteral("root")));
+  const InstallLock lock =
+      InstallLock::acquire(layout, kInstallLockWaitMs, nullptr);
+  QVERIFY(lock.held());
   const UpdateApplyResult result = installStagedRelease(
-      configFor(layout, QStringLiteral("1.0.0")), QStringLiteral("1.3.1"),
+      lock, configFor(layout, QStringLiteral("1.0.0")), QStringLiteral("1.3.1"),
       QDir(temporary.path()).filePath(QStringLiteral("absent")));
   QVERIFY(!result.ok);
   QVERIFY(result.error.contains(QStringLiteral("Nothing staged")));
   QVERIFY(currentVersion(layout).isEmpty());
+}
+
+void UpdaterTests::stagedReleaseRefusesWithoutTheInstallLock() {
+  // RED DRILL. This is the step that moves a directory into `versions/` and
+  // then repoints `current` at it. Two of them running at once is exactly the
+  // collision the lock exists to prevent, so running without one must fail --
+  // and must fail before anything is moved, or a refusal would still have left
+  // the install half-changed.
+  QTemporaryDir temporary;
+  QVERIFY(temporary.isValid());
+  const InstallLayout layout = InstallLayout::forRoot(
+      QDir(temporary.path()).filePath(QStringLiteral("root")));
+  QVERIFY(QDir().mkpath(layout.versions));
+  const QString staged = stageRelease(layout.versions, QStringLiteral("1.3.1"));
+  QVERIFY(!staged.isEmpty());
+
+  const InstallLock unheld;
+  const UpdateApplyResult result =
+      installStagedRelease(unheld, configFor(layout, QStringLiteral("1.0.0")),
+                           QStringLiteral("1.3.1"), staged);
+  QVERIFY(!result.ok);
+  QVERIFY2(result.error.contains(QStringLiteral("install lock")),
+           qPrintable(result.error));
+  QVERIFY(currentVersion(layout).isEmpty());
+  QVERIFY(!QFileInfo::exists(layout.versionDirectory(QStringLiteral("1.3.1"))));
+  // The staged tree is still whole, so a caller that takes the lock and
+  // retries has something to install.
+  QCOMPARE(readMarker(staged), QStringLiteral("1.3.1"));
 }
 
 QTEST_MAIN(UpdaterTests)

@@ -4,16 +4,16 @@
 #include "chrome_control_mcp/browser_bridge_pipe.h"
 
 #include "chrome_control_mcp/browser_bridge_security.h"
+#include "chrome_control_mcp/error_out.h"
 #include "chrome_control_mcp/native_messaging.h"
+#include "chrome_control_mcp/posix_process_identity.h"
 
-#include <QCoreApplication>
 #include <QFile>
 #include <QFileInfo>
 #include <QtEndian>
 
 #include <cerrno>
 #include <chrono>
-#include <cstdint>
 #include <cstring>
 #include <system_error>
 #include <thread>
@@ -59,12 +59,6 @@ IoDeadline deadlineAfter(int milliseconds, int cancel_fd) {
   return {.deadline = std::chrono::steady_clock::now() +
                       std::chrono::milliseconds(milliseconds),
           .cancel_fd = cancel_fd};
-}
-
-void setError(QString *error, const QString &message) {
-  if (error != nullptr) {
-    *error = message;
-  }
 }
 
 QString systemError(const QString &operation) {
@@ -220,52 +214,6 @@ AcceptedConnection acceptConnection(int listener_fd, int shutdown_fd) {
   }
 }
 
-struct PeerIdentity {
-  pid_t pid{-1};
-  uid_t uid{static_cast<uid_t>(-1)};
-};
-
-PeerIdentity peerIdentity(int socket_fd) {
-#ifdef Q_OS_LINUX
-  ucred credentials{};
-  socklen_t size = sizeof(credentials);
-  if (getsockopt(socket_fd, SOL_SOCKET, SO_PEERCRED, &credentials, &size) !=
-      0) {
-    return {};
-  }
-  return {.pid = credentials.pid, .uid = credentials.uid};
-#elif defined(Q_OS_MACOS)
-  uid_t uid = static_cast<uid_t>(-1);
-  gid_t gid = static_cast<gid_t>(-1);
-  if (getpeereid(socket_fd, &uid, &gid) != 0) {
-    return {};
-  }
-  pid_t pid = -1;
-  socklen_t size = sizeof(pid);
-  if (getsockopt(socket_fd, SOL_LOCAL, LOCAL_PEERPID, &pid, &size) != 0) {
-    return {};
-  }
-  return {.pid = pid, .uid = uid};
-#else
-  (void)socket_fd;
-  return {};
-#endif
-}
-
-QString processImage(pid_t pid) {
-#ifdef Q_OS_LINUX
-  return QFileInfo(QStringLiteral("/proc/%1/exe").arg(pid)).symLinkTarget();
-#elif defined(Q_OS_MACOS)
-  QByteArray path(PROC_PIDPATHINFO_MAXSIZE, Qt::Uninitialized);
-  const int length =
-      proc_pidpath(pid, path.data(), static_cast<uint32_t>(path.size()));
-  return length > 0 ? QString::fromUtf8(path.constData(), length) : QString();
-#else
-  (void)pid;
-  return {};
-#endif
-}
-
 pid_t parentPid(pid_t pid) {
 #ifdef Q_OS_LINUX
   QFile statFile(QStringLiteral("/proc/%1/stat").arg(pid));
@@ -287,13 +235,6 @@ pid_t parentPid(pid_t pid) {
   const int bytes = proc_pidinfo(pid, PROC_PIDTBSDINFO, 0, &info, sizeof(info));
   return bytes == sizeof(info) ? static_cast<pid_t>(info.pbi_ppid) : -1;
 #endif
-}
-
-bool sameExecutable(pid_t pid) {
-  const QString peer = QFileInfo(processImage(pid)).canonicalFilePath();
-  const QString own =
-      QFileInfo(QCoreApplication::applicationFilePath()).canonicalFilePath();
-  return !peer.isEmpty() && !own.isEmpty() && peer == own;
 }
 
 bool chromeProcessName(const QString &path) {
@@ -321,66 +262,18 @@ bool hasChromeAncestor(pid_t pid) {
   return false;
 }
 
-bool ancestorChainContainsImage(quint64 pid,
-                                const QHash<quint64, quint64> &parent,
-                                const QHash<quint64, QString> &image,
-                                const QString &target_basename_lower,
-                                int max_depth) {
-  quint64 current = pid;
-  for (int depth = 0; depth < max_depth && current != 0; ++depth) {
-    const auto it = parent.constFind(current);
-    if (it == parent.constEnd()) {
-      break;
-    }
-    if (image.value(it.value()) == target_basename_lower) {
-      return true;
-    }
-    current = it.value();
-  }
-  return false;
-}
+} // namespace
 
-// True iff the shared rendezvous record already advertises a DIFFERENT, live
-// server that is our own executable image. The rendezvous path is fixed but the
-// socket name is per-process random, so every non-relay invocation -- including
-// short-lived `mcp list`/`get` and health probes -- would otherwise overwrite
-// and, on exit, delete that record, orphaning the socket the extension's relay
-// is bound to. A second instance that sees a live owner must stand down (serve
-// native tools with browser control off) rather than clobber it. A record whose
-// pid is gone, or resolves to a foreign image (a stale/forged record after pid
-// reuse), is not a live owner and may be taken over.
 bool liveBridgeOwnerExists(const QString &rendezvous_path) {
   RendezvousRecord record;
   if (!readRendezvousRecord(rendezvous_path, &record, nullptr)) {
     return false;
   }
-  if (record.app_pid == static_cast<qint64>(getpid())) {
+  if (record.app_pid == currentProcessId()) {
     return false;
   }
-  return sameExecutable(static_cast<pid_t>(record.app_pid));
+  return isOwnExecutable(static_cast<pid_t>(record.app_pid));
 }
-
-} // namespace
-
-bool BrowserBridgePipeServer::ancestorChainContainsImageForTesting(
-    quint64 pid, const QHash<quint64, quint64> &parent,
-    const QHash<quint64, QString> &image, const QString &target_basename_lower,
-    int max_depth) {
-  return ancestorChainContainsImage(pid, parent, image, target_basename_lower,
-                                    max_depth);
-}
-
-BrowserBridgePipeServer::BrowserBridgePipeServer()
-    : BrowserBridgePipeServer(Options{}) {}
-
-BrowserBridgePipeServer::BrowserBridgePipeServer(Options options)
-    : options_(std::move(options)) {
-  rendezvous_path_ = options_.rendezvous_path.isEmpty()
-                         ? browserBridgeRendezvousPath(&rendezvous_error_)
-                         : options_.rendezvous_path;
-}
-
-BrowserBridgePipeServer::~BrowserBridgePipeServer() { stop(); }
 
 bool BrowserBridgePipeServer::createPipeResources(QString *error) {
   if (rendezvous_path_.isEmpty()) {
@@ -530,52 +423,6 @@ void BrowserBridgePipeServer::stop() {
   QFile::remove(pipe_name_);
 }
 
-bool BrowserBridgePipeServer::ensurePublished(QString *error) {
-  const std::lock_guard<std::mutex> lifecycle(lifecycle_mutex_);
-  {
-    const std::lock_guard<std::mutex> lock(mutex_);
-    if (!running_) {
-      if (error != nullptr) {
-        *error = QStringLiteral("Bridge IPC server is not running");
-      }
-      return false;
-    }
-  }
-  const qint64 self = static_cast<qint64>(getpid());
-  RendezvousRecord current;
-  const bool present =
-      readRendezvousRecord(rendezvous_path_, &current, nullptr);
-  if (present && current.app_pid == self && current.pipe_name == pipe_name_ &&
-      current.token == token_) {
-    return true; // still ours, word for word
-  }
-  // A record naming another LIVE server of our own image is that server's to
-  // keep: overwriting it would steal the relay from the session using it.
-  if (present && liveBridgeOwnerExists(rendezvous_path_)) {
-    if (error != nullptr) {
-      *error = QStringLiteral("Another Chrome Control MCP server (pid %1) owns "
-                              "the browser bridge; close that session, or wait "
-                              "for it to exit, and try again.")
-                   .arg(current.app_pid);
-    }
-    return false;
-  }
-  // Missing, ours but rewritten, or left by a server that has exited: publish
-  // this server's endpoint so the extension's next relay can find it.
-  const RendezvousRecord record{pipe_name_, token_, options_.protocol, self};
-  return writeRendezvousRecord(rendezvous_path_, record, error);
-}
-
-bool BrowserBridgePipeServer::clientConnected() const {
-  const std::lock_guard<std::mutex> lock(mutex_);
-  return connected_;
-}
-
-quint64 BrowserBridgePipeServer::connectionGeneration() const {
-  const std::lock_guard<std::mutex> lock(mutex_);
-  return generation_;
-}
-
 void BrowserBridgePipeServer::run() {
   while (true) {
     {
@@ -662,7 +509,7 @@ bool BrowserBridgePipeServer::verifyPeer(QString *why) const {
     *why = QStringLiteral("client identity does not match the current user");
     return false;
   }
-  if (!sameExecutable(peer.pid)) {
+  if (!isOwnExecutable(peer.pid)) {
     *why = QStringLiteral("client is not the bridge binary");
     return false;
   }

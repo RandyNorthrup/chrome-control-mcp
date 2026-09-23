@@ -43,4 +43,15 @@ inline void closeNativeIpcHandle(NativeIpcHandle handle) {
   return handle != kInvalidNativeIpcHandle;
 }
 
+/// This process's own id, as the rendezvous record spells it. The record stores
+/// a qint64 and both platforms have to widen into it, so the widening lives
+/// here once instead of at every site that writes or compares the field.
+[[nodiscard]] inline qint64 currentProcessId() {
+#ifdef Q_OS_WIN
+  return static_cast<qint64>(GetCurrentProcessId());
+#else
+  return static_cast<qint64>(::getpid());
+#endif
+}
+
 } // namespace chrome_control_mcp

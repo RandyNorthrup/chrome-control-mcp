@@ -4,6 +4,7 @@
 #pragma once
 
 #include "chrome_control_mcp/native_ipc.h"
+#include "chrome_control_mcp/native_messaging.h"
 
 #include <QHash>
 #include <QJsonObject>
@@ -36,10 +37,42 @@ namespace chrome_control_mcp {
 /// Default per read/write deadline for a bridge exchange, in milliseconds.
 inline constexpr int kBrowserBridgeDefaultIoTimeoutMs = 30'000;
 
+/// Whether a DIFFERENT, still-running process of this same program owns the
+/// bridge described by the rendezvous record at @p rendezvous_path.
+///
+/// False when the record is absent, when it names this process, or when its
+/// pid has exited or now resolves to a foreign image. A record a crashed server
+/// left behind is therefore taken over rather than treated as an owner that
+/// will never release it, and a stale or forged record whose pid has since been
+/// reused by some other program does not get to keep the bridge hostage.
+///
+/// Platform-specific, because identifying the program behind a pid is; the
+/// callers are not.
+[[nodiscard]] bool liveBridgeOwnerExists(const QString &rendezvous_path);
+
+/// Climb at most @p max_depth links of the child->parent map @p parent from
+/// @p pid, and report whether any ancestor's lowercased image name (looked up
+/// in @p image) equals @p target_basename_lower. Pure, and bounded so a cyclic
+/// or malformed map terminates rather than spinning.
+///
+/// This is the check behind `require_chrome_ancestor`: binding the peer to a
+/// Chrome-launched process is defence in depth over the handshake token.
+/// Windows drives it from a Toolhelp snapshot, which hands over the whole
+/// process table at once; POSIX has no such snapshot and climbs one step at a
+/// time, so there this is exercised by its tests rather than by the walk.
+[[nodiscard]] bool
+ancestorChainContainsImage(quint64 pid, const QHash<quint64, quint64> &parent,
+                           const QHash<quint64, QString> &image,
+                           const QString &target_basename_lower, int max_depth);
+
 class BrowserBridgePipeServer {
 public:
   struct Options {
-    int protocol{1};                    ///< kBrowserBridgeProtocol.
+    /// The bridge protocol version this server offers in its welcome. It
+    /// takes the value from its one definition rather than repeating it: a
+    /// literal here and a comment claiming the two match is exactly how a
+    /// bumped protocol ends up announced on one side only.
+    int protocol{kBrowserBridgeProtocol};
     bool require_chrome_ancestor{true}; ///< Production; tests relax this.
     int io_timeout_ms{
         kBrowserBridgeDefaultIoTimeoutMs}; ///< Per read/write deadline.
@@ -98,21 +131,6 @@ public:
 
   [[nodiscard]] QString pipeName() const { return pipe_name_; }
   [[nodiscard]] QString token() const { return token_; }
-
-  /// @brief Pure ancestor-chain check extracted from the live Toolhelp walk
-  /// behind
-  ///        require_chrome_ancestor: from @p pid, climb up to @p max_depth
-  ///        ancestors via
-  ///        @p parent (child->parent) and return true iff one's lowercased
-  ///        image (from
-  ///        @p image) equals @p target_basename_lower. Bounded by max_depth so
-  ///        even a cyclic/malformed parent map terminates. Test seam for the
-  ///        Chrome-launched peer bind (defense in depth over the handshake
-  ///        token).
-  [[nodiscard]] static bool ancestorChainContainsImageForTesting(
-      quint64 pid, const QHash<quint64, quint64> &parent,
-      const QHash<quint64, QString> &image,
-      const QString &target_basename_lower, int max_depth);
 
 private:
   // Create the named pipe + shutdown event and publish the rendezvous record.

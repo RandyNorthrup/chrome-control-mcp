@@ -4,7 +4,46 @@ All notable changes are documented here. Project follows [Semantic Versioning](h
 
 ## [Unreleased]
 
-Nothing yet.
+### Fixed
+
+- **Two installs running at once can no longer corrupt each other.** Every step that changes what is
+  installed read the tree and then acted on what it read, with nothing holding the two together. Two
+  updaters would have shared one staging directory name and overwritten each other's partial
+  download -- so the checksum that proved the first could have been checked against the second --
+  and one could have deleted the version directory the other was about to link. An exclusive,
+  cross-process lock on the install root now spans each whole check-and-change. It is an open handle
+  on `<root>/.install.lock`, so the operating system releases it if the holder crashes and there is
+  no stale lock to clear by hand.
+
+  `pointCurrentAtVersion`, `pruneInstalledVersions`, and `installStagedRelease` require that lock and
+  refuse to run without it, which is checked rather than assumed: a lock released early fails loudly
+  instead of quietly reopening the race. A second install does not wait out the first's download; it
+  reports that one is in progress.
+
+### Removed
+
+- The native-messaging handshake unit (`native_host.cpp`). It answered a `ping` with a `pong` and
+  carried a comment promising later message types. It was compiled only into its own test, was
+  absent from the shipping binary, and nothing on either side of the bridge ever sent a `ping`. The
+  real framing and relay behaviour live in the bridge relay, which is tested where it runs.
+
+- The `ancestorChainContainsImageForTesting` wrapper. It existed only because the function it called
+  was file-local; that function is now declared where its callers can reach it, and the tests call
+  it directly.
+
+### Changed
+
+- The bridge's Windows and POSIX halves no longer keep byte-identical copies of the same code. The
+  relay's stdio, frame decode, handshake, and pump are the same everywhere and now live in one
+  translation unit, leaving only connecting and watching an endpoint per platform. The pipe server's
+  constructors, rendezvous publishing, and state accessors likewise. Peer credentials and process
+  images -- three copies between the Linux and macOS halves of two units -- are one unit. Four
+  copies of `setError` are one definition, and the frame header size is defined beside the codec
+  that reads it rather than once per reader.
+
+- `BrowserBridgePipeServer::Options::protocol` defaults to `kBrowserBridgeProtocol` instead of a
+  literal `1` beside a comment claiming the two match, which is how a bumped protocol ends up
+  announced on one side only.
 
 ## [1.4.0] - 2026-09-22
 

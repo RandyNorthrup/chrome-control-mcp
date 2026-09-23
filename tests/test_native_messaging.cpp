@@ -2,15 +2,12 @@
 // SPDX-License-Identifier: MIT
 
 #include "chrome_control_mcp/native_messaging.h"
-#include "chrome_control_mcp/native_host.h"
 
 #include <QJsonObject>
 #include <QtEndian>
 #include <QtTest/QtTest>
 
 using chrome_control_mcp::encodeFrame;
-using chrome_control_mcp::handleNativeMessage;
-using chrome_control_mcp::kBrowserBridgeProtocol;
 using chrome_control_mcp::kMaxNativeMessageBytes;
 using chrome_control_mcp::NativeFrame;
 using chrome_control_mcp::parseFrame;
@@ -27,8 +24,6 @@ private slots:
   void parse_exactlyCapSizedLengthIsAccepted();
   void parse_nonObjectBodyIsError();
   void parse_multipleFramesConsumedIndividually();
-  void handle_pingReturnsPongWithIdentityAndEchoedId();
-  void handle_unknownTypeReturnsError();
 };
 
 void NativeMessagingTests::encode_prefixesLittleEndianLength() {
@@ -133,36 +128,6 @@ void NativeMessagingTests::parse_multipleFramesConsumedIndividually() {
   QCOMPARE(second.status, NativeFrame::Status::Ok);
   QCOMPARE(second.message, b);
   QCOMPARE(second.consumed, buffer.size()); // exactly the remaining frame
-}
-
-void NativeMessagingTests::handle_pingReturnsPongWithIdentityAndEchoedId() {
-  const QJsonObject reply = handleNativeMessage(
-      QJsonObject{{QStringLiteral("type"), QStringLiteral("ping")},
-                  {QStringLiteral("id"), 42}},
-      QStringLiteral("chrome-control-mcp"), QStringLiteral("1.2.3"));
-  QCOMPARE(reply.value(QStringLiteral("type")).toString(),
-           QStringLiteral("pong"));
-  QCOMPARE(reply.value(QStringLiteral("server")).toString(),
-           QStringLiteral("chrome-control-mcp"));
-  QCOMPARE(reply.value(QStringLiteral("version")).toString(),
-           QStringLiteral("1.2.3"));
-  QCOMPARE(reply.value(QStringLiteral("protocol")).toInt(),
-           kBrowserBridgeProtocol);
-  QCOMPARE(reply.value(QStringLiteral("id")).toInt(), 42);
-  QVERIFY(reply.value(QStringLiteral("pid")).toDouble() > 0);
-}
-
-void NativeMessagingTests::handle_unknownTypeReturnsError() {
-  const QJsonObject reply = handleNativeMessage(
-      QJsonObject{{QStringLiteral("type"), QStringLiteral("launch_missiles")},
-                  {QStringLiteral("id"), 9}},
-      QStringLiteral("chrome-control-mcp"), QStringLiteral("1.0.0"));
-  QCOMPARE(reply.value(QStringLiteral("type")).toString(),
-           QStringLiteral("error"));
-  QCOMPARE(reply.value(QStringLiteral("error")).toString(),
-           QStringLiteral("Unsupported message type: 'launch_missiles'"));
-  QCOMPARE(reply.value(QStringLiteral("id")).toInt(),
-           9); // id echoed even on error
 }
 
 QTEST_MAIN(NativeMessagingTests)

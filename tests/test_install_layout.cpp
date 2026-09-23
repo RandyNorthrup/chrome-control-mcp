@@ -48,6 +48,13 @@ QString readMarker(const QString &directory) {
   return QString::fromUtf8(file.readAll());
 }
 
+// Every mutating call needs the lock, so every test that makes one starts
+// here. An uncontended acquire is immediate; the wait only matters when
+// something else holds it, which is what the lock tests exercise directly.
+InstallLock lockFor(const InstallLayout &layout) {
+  return InstallLock::acquire(layout, kInstallLockWaitMs, nullptr);
+}
+
 } // namespace
 
 class InstallLayoutTests : public QObject {
@@ -65,6 +72,9 @@ private slots:
   void currentLinkRefusesToReplaceARealDirectory();
   void aFailedSwapLeavesThePreviousVersionReachable();
   void pruneKeepsCurrentAndTheRequestedRecentVersions();
+  void installLockAdmitsOneHolderAtATime();
+  void mutatingWithoutTheLockChangesNothing();
+  void aLockOnAnotherRootDoesNotGuardThisOne();
 };
 
 void InstallLayoutTests::safeVersionNamesRejectTraversal() {
@@ -150,10 +160,12 @@ void InstallLayoutTests::currentLinkPointsAtRequestedVersion() {
   QTemporaryDir temporary;
   QVERIFY(temporary.isValid());
   const InstallLayout layout = InstallLayout::forRoot(temporary.path());
+  const InstallLock lock = lockFor(layout);
+  QVERIFY(lock.held());
   QVERIFY(makeVersion(layout, QStringLiteral("1.3.1")));
 
   QString error;
-  QVERIFY2(pointCurrentAtVersion(layout, QStringLiteral("1.3.1"), &error),
+  QVERIFY2(pointCurrentAtVersion(lock, layout, QStringLiteral("1.3.1"), &error),
            qPrintable(error));
   QCOMPARE(currentVersion(layout), QStringLiteral("1.3.1"));
   QCOMPARE(currentLinkTarget(layout),
@@ -162,7 +174,8 @@ void InstallLayoutTests::currentLinkPointsAtRequestedVersion() {
   // external to this program reaches the install through it.
   QCOMPARE(readMarker(layout.current), QStringLiteral("1.3.1"));
 
-  QVERIFY(!pointCurrentAtVersion(layout, QStringLiteral("9.9.9"), &error));
+  QVERIFY(
+      !pointCurrentAtVersion(lock, layout, QStringLiteral("9.9.9"), &error));
   QVERIFY(!error.isEmpty());
   QCOMPARE(currentVersion(layout), QStringLiteral("1.3.1"));
 }
@@ -171,11 +184,13 @@ void InstallLayoutTests::currentLinkRepointsWhileAFileIsHeldOpen() {
   QTemporaryDir temporary;
   QVERIFY(temporary.isValid());
   const InstallLayout layout = InstallLayout::forRoot(temporary.path());
+  const InstallLock lock = lockFor(layout);
+  QVERIFY(lock.held());
   QVERIFY(makeVersion(layout, QStringLiteral("1.0.0")));
   QVERIFY(makeVersion(layout, QStringLiteral("1.3.1")));
 
   QString error;
-  QVERIFY2(pointCurrentAtVersion(layout, QStringLiteral("1.0.0"), &error),
+  QVERIFY2(pointCurrentAtVersion(lock, layout, QStringLiteral("1.0.0"), &error),
            qPrintable(error));
 
   // The whole reason this layout exists: a running server holds its own files
@@ -184,7 +199,7 @@ void InstallLayoutTests::currentLinkRepointsWhileAFileIsHeldOpen() {
                  .filePath(executableName()));
   QVERIFY(busy.open(QIODevice::ReadOnly));
 
-  QVERIFY2(pointCurrentAtVersion(layout, QStringLiteral("1.3.1"), &error),
+  QVERIFY2(pointCurrentAtVersion(lock, layout, QStringLiteral("1.3.1"), &error),
            qPrintable(error));
   QCOMPARE(currentVersion(layout), QStringLiteral("1.3.1"));
   QCOMPARE(readMarker(layout.current), QStringLiteral("1.3.1"));
@@ -199,6 +214,8 @@ void InstallLayoutTests::currentLinkRefusesToReplaceARealDirectory() {
   QTemporaryDir temporary;
   QVERIFY(temporary.isValid());
   const InstallLayout layout = InstallLayout::forRoot(temporary.path());
+  const InstallLock lock = lockFor(layout);
+  QVERIFY(lock.held());
   QVERIFY(makeVersion(layout, QStringLiteral("1.3.1")));
   QVERIFY(QDir().mkpath(layout.current));
   QFile precious(QDir(layout.current).filePath(QStringLiteral("mine.txt")));
@@ -206,7 +223,8 @@ void InstallLayoutTests::currentLinkRefusesToReplaceARealDirectory() {
   precious.close();
 
   QString error;
-  QVERIFY(!pointCurrentAtVersion(layout, QStringLiteral("1.3.1"), &error));
+  QVERIFY(
+      !pointCurrentAtVersion(lock, layout, QStringLiteral("1.3.1"), &error));
   QVERIFY(error.contains(QStringLiteral("not a link")));
   QVERIFY(QFileInfo::exists(
       QDir(layout.current).filePath(QStringLiteral("mine.txt"))));
@@ -222,10 +240,12 @@ void InstallLayoutTests::aFailedSwapLeavesThePreviousVersionReachable() {
   QTemporaryDir temporary;
   QVERIFY(temporary.isValid());
   const InstallLayout layout = InstallLayout::forRoot(temporary.path());
+  const InstallLock lock = lockFor(layout);
+  QVERIFY(lock.held());
   QVERIFY(makeVersion(layout, QStringLiteral("1.0.0")));
   QVERIFY(makeVersion(layout, QStringLiteral("1.3.1")));
   QString error;
-  QVERIFY2(pointCurrentAtVersion(layout, QStringLiteral("1.0.0"), &error),
+  QVERIFY2(pointCurrentAtVersion(lock, layout, QStringLiteral("1.0.0"), &error),
            qPrintable(error));
 
   // A non-empty directory where the new link is staged blocks its creation on
@@ -237,7 +257,8 @@ void InstallLayoutTests::aFailedSwapLeavesThePreviousVersionReachable() {
   QVERIFY(blocker.open(QIODevice::WriteOnly));
   blocker.close();
 
-  QVERIFY(!pointCurrentAtVersion(layout, QStringLiteral("1.3.1"), &error));
+  QVERIFY(
+      !pointCurrentAtVersion(lock, layout, QStringLiteral("1.3.1"), &error));
   QVERIFY(!error.isEmpty());
 
   // The previous version is still the one `current` names, and still readable
@@ -248,7 +269,7 @@ void InstallLayoutTests::aFailedSwapLeavesThePreviousVersionReachable() {
   // With the obstruction gone the swap succeeds, so the failure was the staged
   // path and not a layout left in a state that cannot recover.
   QVERIFY(QDir(staged).removeRecursively());
-  QVERIFY2(pointCurrentAtVersion(layout, QStringLiteral("1.3.1"), &error),
+  QVERIFY2(pointCurrentAtVersion(lock, layout, QStringLiteral("1.3.1"), &error),
            qPrintable(error));
   QCOMPARE(currentVersion(layout), QStringLiteral("1.3.1"));
   QCOMPARE(readMarker(layout.current), QStringLiteral("1.3.1"));
@@ -258,16 +279,18 @@ void InstallLayoutTests::pruneKeepsCurrentAndTheRequestedRecentVersions() {
   QTemporaryDir temporary;
   QVERIFY(temporary.isValid());
   const InstallLayout layout = InstallLayout::forRoot(temporary.path());
+  const InstallLock lock = lockFor(layout);
+  QVERIFY(lock.held());
   for (const QString &version :
        {QStringLiteral("1.0.0"), QStringLiteral("1.2.2"),
         QStringLiteral("1.3.0"), QStringLiteral("1.3.1")}) {
     QVERIFY(makeVersion(layout, version));
   }
   QString error;
-  QVERIFY2(pointCurrentAtVersion(layout, QStringLiteral("1.3.1"), &error),
+  QVERIFY2(pointCurrentAtVersion(lock, layout, QStringLiteral("1.3.1"), &error),
            qPrintable(error));
 
-  QCOMPARE(pruneInstalledVersions(layout, QStringLiteral("1.3.1"), 1), 2);
+  QCOMPARE(pruneInstalledVersions(lock, layout, QStringLiteral("1.3.1"), 1), 2);
   const QStringList remaining = installedVersions(layout);
   const QStringList expected{QStringLiteral("1.3.1"), QStringLiteral("1.3.0")};
   QCOMPARE(remaining, expected);
@@ -276,7 +299,105 @@ void InstallLayoutTests::pruneKeepsCurrentAndTheRequestedRecentVersions() {
 
   // Pruning again with nothing left to remove is not an error and removes
   // nothing.
-  QCOMPARE(pruneInstalledVersions(layout, QStringLiteral("1.3.1"), 1), 0);
+  QCOMPARE(pruneInstalledVersions(lock, layout, QStringLiteral("1.3.1"), 1), 0);
+}
+
+void InstallLayoutTests::installLockAdmitsOneHolderAtATime() {
+  QTemporaryDir temporary;
+  QVERIFY(temporary.isValid());
+  const InstallLayout layout = InstallLayout::forRoot(temporary.path());
+
+  QString error;
+  InstallLock first = InstallLock::acquire(layout, 0, &error);
+  QVERIFY2(first.held(), qPrintable(error));
+  QVERIFY(first.guards(layout));
+
+  // The lock lives in the open handle, not in the process, so a second
+  // acquire is refused here exactly as it would be from another installer.
+  // That is what makes this testable without spawning one.
+  const InstallLock second = InstallLock::acquire(layout, 0, &error);
+  QVERIFY(!second.held());
+  QVERIFY(!second.guards(layout));
+  QVERIFY2(error.contains(QStringLiteral("in progress")), qPrintable(error));
+
+  // Releasing hands it on; a lock nobody can ever take again would turn one
+  // failed update into a permanently unupdatable install.
+  first.release();
+  QVERIFY(!first.held());
+  const InstallLock third = InstallLock::acquire(layout, 0, &error);
+  QVERIFY2(third.held(), qPrintable(error));
+}
+
+void InstallLayoutTests::mutatingWithoutTheLockChangesNothing() {
+  // RED DRILL for the requirement itself. The lock is only worth having if
+  // calling without it FAILS rather than proceeding: a mutating function that
+  // quietly ran unlocked would reopen every window the lock closes, and would
+  // do it invisibly, because the successful result would look identical.
+  QTemporaryDir temporary;
+  QVERIFY(temporary.isValid());
+  const InstallLayout layout = InstallLayout::forRoot(temporary.path());
+  QVERIFY(makeVersion(layout, QStringLiteral("1.0.0")));
+  QVERIFY(makeVersion(layout, QStringLiteral("1.2.2")));
+  QVERIFY(makeVersion(layout, QStringLiteral("1.3.1")));
+
+  QString error;
+  {
+    const InstallLock lock = lockFor(layout);
+    QVERIFY(lock.held());
+    QVERIFY2(
+        pointCurrentAtVersion(lock, layout, QStringLiteral("1.0.0"), &error),
+        qPrintable(error));
+  }
+
+  // A default-constructed lock holds nothing -- the state a caller that simply
+  // forgot to acquire one would be in.
+  const InstallLock unheld;
+  QVERIFY(!unheld.held());
+  QVERIFY(!unheld.guards(layout));
+
+  QVERIFY(
+      !pointCurrentAtVersion(unheld, layout, QStringLiteral("1.3.1"), &error));
+  QVERIFY2(error.contains(QStringLiteral("install lock")), qPrintable(error));
+  QCOMPARE(currentVersion(layout), QStringLiteral("1.0.0"));
+  QCOMPARE(readMarker(layout.current), QStringLiteral("1.0.0"));
+
+  QCOMPARE(pruneInstalledVersions(unheld, layout, QStringLiteral("1.0.0"), 0),
+           0);
+  const QStringList expected{QStringLiteral("1.3.1"), QStringLiteral("1.2.2"),
+                             QStringLiteral("1.0.0")};
+  QCOMPARE(installedVersions(layout), expected);
+}
+
+void InstallLayoutTests::aLockOnAnotherRootDoesNotGuardThisOne() {
+  // Holding SOME lock is not the same as holding THIS install's lock. Two
+  // installs under one user are ordinary -- an override root beside the
+  // default -- and a lock that counted for both would serialize unrelated work
+  // while protecting neither.
+  QTemporaryDir mine;
+  QTemporaryDir theirs;
+  QVERIFY(mine.isValid());
+  QVERIFY(theirs.isValid());
+  const InstallLayout layout = InstallLayout::forRoot(mine.path());
+  const InstallLayout elsewhere = InstallLayout::forRoot(theirs.path());
+  QVERIFY(makeVersion(layout, QStringLiteral("1.3.1")));
+
+  const InstallLock foreign = lockFor(elsewhere);
+  QVERIFY(foreign.held());
+  QVERIFY(!foreign.guards(layout));
+
+  QString error;
+  QVERIFY(
+      !pointCurrentAtVersion(foreign, layout, QStringLiteral("1.3.1"), &error));
+  QVERIFY2(error.contains(QStringLiteral("install lock")), qPrintable(error));
+  QVERIFY(currentVersion(layout).isEmpty());
+
+  // And the install's own lock is still free to take, so the foreign holder
+  // did not block it either.
+  const InstallLock own = InstallLock::acquire(layout, 0, &error);
+  QVERIFY2(own.held(), qPrintable(error));
+  QVERIFY2(pointCurrentAtVersion(own, layout, QStringLiteral("1.3.1"), &error),
+           qPrintable(error));
+  QCOMPARE(currentVersion(layout), QStringLiteral("1.3.1"));
 }
 
 QTEST_MAIN(InstallLayoutTests)

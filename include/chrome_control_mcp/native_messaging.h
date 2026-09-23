@@ -18,6 +18,11 @@
 /// lets it be unit-tested with byte buffers and reused by the host loop.
 namespace chrome_control_mcp {
 
+/// Bytes of little-endian length prefix in front of every frame body. Both
+/// ends of the bridge and both platforms size a header buffer with this, so it
+/// is defined beside the codec that reads it rather than once per reader.
+inline constexpr int kNativeFrameHeaderBytes = 4;
+
 /// Hard upper bound on a single decoded frame. Chrome caps host->browser
 /// messages at 1 MiB, but browser->host messages (which may later carry a
 /// screenshot) can be far larger, so the decoder guard is generous; it exists

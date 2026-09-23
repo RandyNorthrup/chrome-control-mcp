@@ -66,13 +66,33 @@ set(CCMCP_CORE_SOURCES
 if(WIN32)
     set(CCMCP_BRIDGE_PIPE_SOURCE src/browser_bridge_pipe.cpp)
     set(CCMCP_BRIDGE_RELAY_SOURCE src/browser_bridge_relay.cpp)
+    set(CCMCP_POSIX_IDENTITY_SOURCE "")
 else()
     set(CCMCP_BRIDGE_PIPE_SOURCE src/browser_bridge_pipe_posix.cpp)
     set(CCMCP_BRIDGE_RELAY_SOURCE src/browser_bridge_relay_posix.cpp)
+    # Peer credentials and process images are POSIX facts that both the pipe
+    # server and the relay ask for. Windows answers the same questions with
+    # different calls on a different handle type, so there is nothing to share
+    # there and this stays out of that build entirely.
+    set(CCMCP_POSIX_IDENTITY_SOURCE src/posix_process_identity.cpp)
 endif()
-list(APPEND CCMCP_CORE_SOURCES
-    ${CCMCP_BRIDGE_PIPE_SOURCE}
+# The relay's stdio, frame decode, handshake and pump are identical on every
+# platform; only connecting and watching the endpoint are not. The common half
+# builds everywhere and the platform half beside it.
+set(CCMCP_BRIDGE_RELAY_SOURCES
     ${CCMCP_BRIDGE_RELAY_SOURCE}
+    src/browser_bridge_relay_common.cpp
+)
+# Likewise for the pipe server: the rendezvous record it publishes and defends,
+# and the state it reports, are the same whatever the endpoint is.
+set(CCMCP_BRIDGE_PIPE_SOURCES
+    ${CCMCP_BRIDGE_PIPE_SOURCE}
+    src/browser_bridge_pipe_common.cpp
+)
+list(APPEND CCMCP_CORE_SOURCES
+    ${CCMCP_BRIDGE_PIPE_SOURCES}
+    ${CCMCP_BRIDGE_RELAY_SOURCES}
+    ${CCMCP_POSIX_IDENTITY_SOURCE}
 )
 
 add_library(chrome_control_mcp_core STATIC ${CCMCP_CORE_SOURCES})
@@ -222,7 +242,6 @@ if(BUILD_TESTING)
     add_executable(test_native_messaging
         tests/test_native_messaging.cpp
         src/native_messaging.cpp
-        src/native_host.cpp
     )
     target_link_libraries(test_native_messaging PRIVATE Qt6::Core Qt6::Test)
     configure_qt_test(test_native_messaging)
@@ -296,7 +315,8 @@ if(BUILD_TESTING)
 
     add_executable(test_browser_bridge_pipe
         tests/test_browser_bridge_pipe.cpp
-        ${CCMCP_BRIDGE_PIPE_SOURCE}
+        ${CCMCP_BRIDGE_PIPE_SOURCES}
+        ${CCMCP_POSIX_IDENTITY_SOURCE}
         src/browser_bridge_security.cpp
         src/native_messaging.cpp
     )
@@ -310,7 +330,8 @@ if(BUILD_TESTING)
 
     add_executable(test_browser_bridge_relay
         tests/test_browser_bridge_relay.cpp
-        ${CCMCP_BRIDGE_RELAY_SOURCE}
+        ${CCMCP_BRIDGE_RELAY_SOURCES}
+        ${CCMCP_POSIX_IDENTITY_SOURCE}
         src/browser_control.cpp
         src/browser_bridge.cpp
         src/browser_contract.cpp
@@ -320,7 +341,7 @@ if(BUILD_TESTING)
         # the installer registers the path that survives an update.
         src/browser_extension_installer.cpp
         src/install_layout.cpp
-        ${CCMCP_BRIDGE_PIPE_SOURCE}
+        ${CCMCP_BRIDGE_PIPE_SOURCES}
         src/browser_bridge_security.cpp
         src/native_messaging.cpp
     )

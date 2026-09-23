@@ -4,14 +4,13 @@
 #include "chrome_control_mcp/browser_bridge_relay.h"
 
 #include "chrome_control_mcp/browser_bridge_security.h"
+#include "chrome_control_mcp/error_out.h"
 #include "chrome_control_mcp/native_messaging.h"
 
 #include <QByteArray>
 #include <QtEndian>
 
 #include <atomic>
-#include <cstdio>
-#include <iostream>
 #include <thread>
 
 namespace chrome_control_mcp {
@@ -25,16 +24,6 @@ constexpr DWORD kCancelPollMs = 25;
 
 // Room for a long \\?\-prefixed image path: twice MAX_PATH wide characters.
 constexpr int kImagePathBufferChars = MAX_PATH * 2;
-
-// A native-messaging frame is prefixed by a 4-byte little-endian uint32 length
-// header.
-constexpr int kNativeFrameHeaderBytes = 4;
-
-void setError(QString *error, const QString &message) {
-  if (error != nullptr) {
-    *error = message;
-  }
-}
 
 // Our own executable image path, lowercased for a case-insensitive compare.
 // Used to verify the recorded server pid is really the bridge binary (not a
@@ -98,70 +87,6 @@ bool pipeWriteAll(HANDLE pipe, const char *buffer, DWORD size) {
   return true;
 }
 
-bool stdinReadExact(char *buffer, int size) {
-  int offset = 0;
-  while (offset < size) {
-    std::cin.read(buffer + offset, size - offset);
-    const std::streamsize got = std::cin.gcount();
-    if (got <= 0) {
-      return false;
-    }
-    offset += static_cast<int>(got);
-  }
-  return true;
-}
-
-// Decode one length-prefixed native-messaging frame after its 4-byte header has
-// been validated and read into @p length. Shared by the pipe and stdin readers.
-bool readBodyFrame(const std::function<bool(char *, int)> &read_exact,
-                   DWORD length, QJsonObject *out) {
-  QByteArray frame(kNativeFrameHeaderBytes, Qt::Uninitialized);
-  qToLittleEndian<quint32>(length, reinterpret_cast<uchar *>(frame.data()));
-  QByteArray body(static_cast<int>(length), Qt::Uninitialized);
-  if (!read_exact(body.data(), static_cast<int>(length))) {
-    return false;
-  }
-  frame.append(body);
-  const NativeFrame parsed = parseFrame(frame);
-  if (parsed.status != NativeFrame::Status::Ok) {
-    return false;
-  }
-  *out = parsed.message;
-  return true;
-}
-
-bool readStdinFrame(QJsonObject *out) {
-  char header[kNativeFrameHeaderBytes];
-  if (!stdinReadExact(header, kNativeFrameHeaderBytes)) {
-    return false;
-  }
-  if (parseFrame(QByteArray(header, kNativeFrameHeaderBytes)).status ==
-      NativeFrame::Status::Error) {
-    return false;
-  }
-  const DWORD length =
-      qFromLittleEndian<quint32>(reinterpret_cast<const uchar *>(header));
-  return readBodyFrame([](char *b, int n) { return stdinReadExact(b, n); },
-                       length, out);
-}
-
-bool writeStdoutFrame(const QJsonObject &message) {
-  const QByteArray frame = encodeFrame(message);
-  // Chrome terminates a native host that emits a host->browser frame over 1
-  // MiB. Refuse to write an oversized frame (report failure so relayPumpOnce
-  // tears the pipe down) rather than letting Chrome kill the host mid-stream.
-  if (frame.size() - kNativeFrameHeaderBytes > kMaxHostToBrowserBytes) {
-    return false;
-  }
-  const size_t wrote = std::fwrite(frame.constData(), 1,
-                                   static_cast<size_t>(frame.size()), stdout);
-  // A short write OR a failed flush means the frame did not reach Chrome
-  // intact; report it so relayPumpOnce tears the pipe down instead of treating
-  // a lost reply as delivered.
-  const bool flushed = std::fflush(stdout) == 0;
-  return wrote == static_cast<size_t>(frame.size()) && flushed;
-}
-
 } // namespace
 
 bool relayReadPipeFrame(HANDLE pipe, QJsonObject *out) {
@@ -173,11 +98,11 @@ bool relayReadPipeFrame(HANDLE pipe, QJsonObject *out) {
       NativeFrame::Status::Error) {
     return false;
   }
-  const DWORD length =
+  const quint32 length =
       qFromLittleEndian<quint32>(reinterpret_cast<const uchar *>(header));
-  return readBodyFrame(
-      [pipe](char *b, int n) {
-        return pipeReadExact(pipe, b, static_cast<DWORD>(n));
+  return readFrameBody(
+      [pipe](char *buffer, qsizetype size) {
+        return pipeReadExact(pipe, buffer, static_cast<DWORD>(size));
       },
       length, out);
 }
@@ -246,63 +171,9 @@ HANDLE relayConnect(const QString &rendezvous_path, QString *token_out,
   return pipe;
 }
 
-bool relayHandshake(HANDLE pipe, const QString &token, int protocol,
-                    QString *error) {
-  const QJsonObject hello{{QStringLiteral("type"), QStringLiteral("hello")},
-                          {QStringLiteral("token"), token},
-                          {QStringLiteral("protocol"), protocol}};
-  if (!relayWritePipeFrame(pipe, hello)) {
-    setError(error, QStringLiteral("Failed to send the bridge hello."));
-    return false;
-  }
-  QJsonObject welcome;
-  if (!relayReadPipeFrame(pipe, &welcome)) {
-    setError(error, QStringLiteral(
-                        "Bridge server closed before welcoming the relay."));
-    return false;
-  }
-  if (welcome.value(QStringLiteral("type")).toString() !=
-      QLatin1String("welcome")) {
-    setError(error,
-             QStringLiteral("Bridge server refused the relay: %1")
-                 .arg(welcome.value(QStringLiteral("error")).toString()));
-    return false;
-  }
-  // The welcome must confirm the SAME protocol version we offered, or the two
-  // sides would pump frames under a version skew. Fail closed on a missing or
-  // mismatched protocol value rather than trusting any frame whose type happens
-  // to be "welcome".
-  if (welcome.value(QStringLiteral("protocol")).toInt(-1) != protocol) {
-    setError(
-        error,
-        QStringLiteral(
-            "Bridge protocol mismatch: relay offered %1, server welcomed %2")
-            .arg(protocol)
-            .arg(welcome.value(QStringLiteral("protocol")).toInt(-1)));
-    return false;
-  }
-  return true;
-}
-
-// Wait for the extension's reply while staying able to see a cancel the server
-// sends mid-exchange.
-//
-// The server abandons an exchange when its own I/O deadline elapses
-// (BrowserBridgePipeServer::serveConnected). A handler that POLLS --
-// browser_wait_for, browser_download -- does not stop when that happens: it
-// keeps driving the page for as long as ITS timeout allows, because a strictly
-// synchronous pump is parked in the extension read and cannot notice anything
-// arriving on the pipe. Forwarding the cancel is what stops it.
-//
-// Ownership is split so no handle has two users: the reply thread is the only
-// code that touches stdin, and this thread is the only code that touches the
-// pipe (and the only caller of browser_write). That is what makes this safe
-// without CancelIoEx on a synchronous handle. The reply thread is ALWAYS joined
-// -- an early return that abandoned a thread still reading stdin would leave it
-// writing into a destroyed frame.
-static bool awaitBrowserReply(HANDLE pipe, const BrowserReadFn &browser_read,
-                              const BrowserWriteFn &browser_write,
-                              QJsonObject *reply) {
+bool awaitBrowserReply(NativeIpcHandle pipe, const BrowserReadFn &browser_read,
+                       const BrowserWriteFn &browser_write,
+                       QJsonObject *reply) {
   std::atomic<bool> finished{false};
   bool read_ok = false;
   std::thread reader([&] {
@@ -345,60 +216,6 @@ static bool awaitBrowserReply(HANDLE pipe, const BrowserReadFn &browser_read,
 
   reader.join();
   return pipe_ok && read_ok;
-}
-
-bool relayPumpOnce(HANDLE pipe, const BrowserReadFn &browser_read,
-                   const BrowserWriteFn &browser_write) {
-  QJsonObject command;
-  if (!relayReadPipeFrame(pipe, &command)) {
-    return false; // the server (MCP process) closed the pipe
-  }
-  if (!browser_write(command)) {
-    return false; // Chrome closed the extension port
-  }
-  QJsonObject reply;
-  if (!awaitBrowserReply(pipe, browser_read, browser_write, &reply)) {
-    return false; // the extension/Chrome went away, or the server abandoned the
-                  // exchange
-  }
-  return relayWritePipeFrame(pipe,
-                             reply); // false if the server reset the connection
-}
-
-int runBrowserRelay() {
-  QString token;
-  int protocol = 0;
-  QString error;
-  const QString rendezvous = browserBridgeRendezvousPath(&error);
-  const HANDLE pipe = rendezvous.isEmpty()
-                          ? INVALID_HANDLE_VALUE
-                          : relayConnect(rendezvous, &token, &protocol, &error);
-  if (pipe == INVALID_HANDLE_VALUE ||
-      !relayHandshake(pipe, token, protocol, &error)) {
-    // Tell the extension the bridge is down so it can surface it, then exit
-    // cleanly; Chrome relaunches the host on the next port connection.
-    writeStdoutFrame(QJsonObject{
-        {QStringLiteral("type"), QStringLiteral("bridge_unavailable")},
-        {QStringLiteral("error"), error}});
-    if (pipe != INVALID_HANDLE_VALUE) {
-      CloseHandle(pipe);
-    }
-    return 0;
-  }
-  writeStdoutFrame(
-      QJsonObject{{QStringLiteral("type"), QStringLiteral("bridge_ready")},
-                  {QStringLiteral("protocol"), protocol}});
-  const BrowserReadFn reader = [](QJsonObject *out) {
-    return readStdinFrame(out);
-  };
-  const BrowserWriteFn writer = [](const QJsonObject &m) {
-    return writeStdoutFrame(m);
-  };
-  while (relayPumpOnce(pipe, reader, writer)) {
-    // keep pumping until either side closes
-  }
-  CloseHandle(pipe);
-  return 0;
 }
 
 } // namespace chrome_control_mcp

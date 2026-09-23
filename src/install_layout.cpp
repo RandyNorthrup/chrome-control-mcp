@@ -29,10 +29,17 @@
 #include <cstdio>
 #include <string>
 #include <system_error>
+
+#include <fcntl.h>
+#include <sys/file.h>
+#include <sys/stat.h>
 #include <unistd.h>
 #endif
 
 #include <algorithm>
+#include <chrono>
+#include <thread>
+#include <utility>
 
 namespace chrome_control_mcp {
 namespace {
@@ -401,13 +408,203 @@ bool currentIsReplaceable(const InstallLayout &layout, QString *error) {
   return false;
 }
 
+// How long to pause between attempts while waiting out a concurrent installer.
+constexpr int kInstallLockRetryMs = 50;
+
+QString installLockPath(const InstallLayout &layout) {
+  return QDir::cleanPath(
+      QDir(layout.root).filePath(QString::fromLatin1(kInstallLockFileName)));
+}
+
+// The reason every mutating function gives when it is called without the lock.
+// It is a programming error rather than a user-facing condition, so it names
+// the function that refused instead of suggesting a remedy.
+QString notLockedError(const char *what) {
+  return QStringLiteral(
+             "%1 requires the install lock for this root; refusing to run "
+             "without it")
+      .arg(QLatin1String(what));
+}
+
 } // namespace
 
-bool pointCurrentAtVersion(const InstallLayout &layout, const QString &version,
-                           QString *error) {
+InstallLock::~InstallLock() { release(); }
+
+InstallLock::InstallLock(InstallLock &&other) noexcept
+    : root_(std::move(other.root_)),
+#ifdef Q_OS_WIN
+      handle_(other.handle_)
+#else
+      descriptor_(other.descriptor_)
+#endif
+{
+  // Leave the source holding nothing: two objects that both believed they held
+  // the lock would release it twice, and the second release would drop a lock
+  // some later acquire had since taken.
+  other.root_.clear();
+#ifdef Q_OS_WIN
+  other.handle_ = nullptr;
+#else
+  other.descriptor_ = -1;
+#endif
+}
+
+InstallLock &InstallLock::operator=(InstallLock &&other) noexcept {
+  if (this != &other) {
+    release();
+    root_ = std::move(other.root_);
+    other.root_.clear();
+#ifdef Q_OS_WIN
+    handle_ = other.handle_;
+    other.handle_ = nullptr;
+#else
+    descriptor_ = other.descriptor_;
+    other.descriptor_ = -1;
+#endif
+  }
+  return *this;
+}
+
+bool InstallLock::held() const {
+#ifdef Q_OS_WIN
+  return handle_ != nullptr;
+#else
+  return descriptor_ >= 0;
+#endif
+}
+
+bool InstallLock::guards(const InstallLayout &layout) const {
+  return held() && !layout.isEmpty() &&
+         layout.root.compare(root_, pathCaseSensitivity()) == 0;
+}
+
+void InstallLock::release() {
+#ifdef Q_OS_WIN
+  if (handle_ != nullptr) {
+    CloseHandle(static_cast<HANDLE>(handle_));
+    handle_ = nullptr;
+  }
+#else
+  if (descriptor_ >= 0) {
+    // Closing the descriptor already drops the flock; unlocking first keeps
+    // the intent on the page and costs nothing.
+    (void)::flock(descriptor_, LOCK_UN);
+    ::close(descriptor_);
+    descriptor_ = -1;
+  }
+#endif
+  root_.clear();
+}
+
+InstallLock InstallLock::acquire(const InstallLayout &layout, int wait_ms,
+                                 QString *error) {
+  InstallLock lock;
+  if (layout.isEmpty()) {
+    if (error != nullptr) {
+      *error = QStringLiteral("No install root to lock");
+    }
+    return lock;
+  }
+  if (!QDir().mkpath(layout.root)) {
+    if (error != nullptr) {
+      *error = QStringLiteral("Could not create the install root at %1")
+                   .arg(QDir::toNativeSeparators(layout.root));
+    }
+    return lock;
+  }
+  const QString path = installLockPath(layout);
+  const auto deadline = std::chrono::steady_clock::now() +
+                        std::chrono::milliseconds(std::max(0, wait_ms));
+#ifdef Q_OS_WIN
+  const std::wstring native = QDir::toNativeSeparators(path).toStdWString();
+  while (true) {
+    // Share nothing: the open handle IS the lock, so a second opener -- in
+    // this process or any other -- is refused until it is closed, and the
+    // operating system closes it if the holder dies.
+    const HANDLE handle =
+        CreateFileW(native.c_str(), GENERIC_READ | GENERIC_WRITE, 0, nullptr,
+                    OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
+    if (handle != INVALID_HANDLE_VALUE) {
+      lock.root_ = layout.root;
+      lock.handle_ = handle;
+      return lock;
+    }
+    // Only a sharing violation means someone else holds it. Anything else is a
+    // real failure to report rather than to wait out.
+    if (GetLastError() != ERROR_SHARING_VIOLATION) {
+      if (error != nullptr) {
+        *error = lastWindowsError(QStringLiteral("Opening the install lock"));
+      }
+      return lock;
+    }
+    if (std::chrono::steady_clock::now() >= deadline) {
+      break;
+    }
+    Sleep(kInstallLockRetryMs);
+  }
+#else
+  const QByteArray native = path.toLocal8Bit();
+  // POSIX open is variadic, and the mode argument is required whenever O_CREAT
+  // is set. There is no non-variadic spelling of it: creat() fixes the flags to
+  // O_WRONLY|O_TRUNC, which would truncate a lock file another process holds.
+  // NOLINTBEGIN(cppcoreguidelines-pro-type-vararg)
+  const int descriptor =
+      ::open(native.constData(), O_RDWR | O_CREAT | O_CLOEXEC, 0600);
+  // NOLINTEND(cppcoreguidelines-pro-type-vararg)
+  if (descriptor < 0) {
+    const int failure = errno;
+    if (error != nullptr) {
+      *error = QStringLiteral("Could not open the install lock at %1: %2")
+                   .arg(QDir::toNativeSeparators(path), describeErrno(failure));
+    }
+    return lock;
+  }
+  while (true) {
+    // flock is tied to the open file description, not to the process, so this
+    // serializes two threads of one process exactly as it does two processes,
+    // and the kernel releases it if the holder dies.
+    if (::flock(descriptor, LOCK_EX | LOCK_NB) == 0) {
+      lock.root_ = layout.root;
+      lock.descriptor_ = descriptor;
+      return lock;
+    }
+    const int failure = errno;
+    if (failure != EWOULDBLOCK && failure != EINTR) {
+      ::close(descriptor);
+      if (error != nullptr) {
+        *error =
+            QStringLiteral("Could not take the install lock at %1: %2")
+                .arg(QDir::toNativeSeparators(path), describeErrno(failure));
+      }
+      return lock;
+    }
+    if (std::chrono::steady_clock::now() >= deadline) {
+      ::close(descriptor);
+      break;
+    }
+    std::this_thread::sleep_for(std::chrono::milliseconds(kInstallLockRetryMs));
+  }
+#endif
+  if (error != nullptr) {
+    *error = QStringLiteral(
+                 "Another Chrome Control MCP install is in progress at %1. "
+                 "Wait for it to finish and try again.")
+                 .arg(QDir::toNativeSeparators(layout.root));
+  }
+  return lock;
+}
+
+bool pointCurrentAtVersion(const InstallLock &lock, const InstallLayout &layout,
+                           const QString &version, QString *error) {
   if (layout.isEmpty()) {
     if (error != nullptr) {
       *error = QStringLiteral("No install root to point at");
+    }
+    return false;
+  }
+  if (!lock.guards(layout)) {
+    if (error != nullptr) {
+      *error = notLockedError("Repointing the current link");
     }
     return false;
   }
@@ -514,9 +711,9 @@ bool pointCurrentAtVersion(const InstallLayout &layout, const QString &version,
 #endif
 }
 
-int pruneInstalledVersions(const InstallLayout &layout,
+int pruneInstalledVersions(const InstallLock &lock, const InstallLayout &layout,
                            const QString &keep_version, int keep_recent) {
-  if (layout.isEmpty()) {
+  if (layout.isEmpty() || !lock.guards(layout)) {
     return 0;
   }
   QStringList candidates = installedVersions(layout);

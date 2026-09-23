@@ -45,6 +45,44 @@ using BrowserReadFn = std::function<bool(QJsonObject *)>;
 /// or return false if the sink is closed.
 using BrowserWriteFn = std::function<bool(const QJsonObject &)>;
 
+/// Fill @p size bytes at @p buffer, or return false once the source closes or
+/// errors. Injected so one frame decoder serves the pipe, the socket, and
+/// stdin.
+using ReadExactFn = std::function<bool(char *buffer, qsizetype size)>;
+
+/// Decode one frame whose 4-byte length prefix has already been read into
+/// @p length, pulling the body through @p read_exact. Every reader in the relay
+/// -- pipe, socket, stdin, on either platform -- ends in this, so the length
+/// check and the JSON validation have one implementation.
+[[nodiscard]] bool readFrameBody(const ReadExactFn &read_exact, quint32 length,
+                                 QJsonObject *out);
+
+/// Wait for the browser's reply to a command already forwarded, while staying
+/// able to see a `cancel` the server sends mid-exchange and pass it on.
+///
+/// The server abandons an exchange when its own I/O deadline elapses. A handler
+/// that POLLS -- browser_wait_for, browser_download -- does not stop when that
+/// happens: it keeps driving the page for as long as ITS timeout allows,
+/// because a strictly synchronous pump is parked in the extension read and
+/// cannot notice anything arriving on the pipe. Forwarding the cancel is what
+/// stops it.
+///
+/// Ownership is split so no handle has two users: the reply thread is the only
+/// code that touches stdin, and the calling thread is the only code that
+/// touches @p pipe (and the only caller of @p browser_write). That is what
+/// makes this safe without cancelling I/O on a synchronous handle. The reply
+/// thread is ALWAYS joined -- an early return that abandoned a thread still
+/// reading stdin would leave it writing into a destroyed frame.
+///
+/// Platform-specific only because watching a named pipe and watching a socket
+/// for readable bytes have nothing in common; the pump around it does not.
+/// Returns false when either side went away, or when the server sent anything
+/// but a cancel mid-exchange (which would desynchronize the one-op pump).
+[[nodiscard]] bool awaitBrowserReply(NativeIpcHandle pipe,
+                                     const BrowserReadFn &browser_read,
+                                     const BrowserWriteFn &browser_write,
+                                     QJsonObject *reply);
+
 /// Connect to the bridge server described by the rendezvous record at @p
 /// rendezvous_path: read the record, verify the recorded pid resolves to OUR
 /// OWN executable image (fail closed on a foreign or missing process, so a

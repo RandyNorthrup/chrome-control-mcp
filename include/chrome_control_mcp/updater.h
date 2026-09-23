@@ -110,12 +110,16 @@ adoptRunningInstall(const UpdaterConfig &config);
 
 /// Install an already-downloaded, already-verified release directory as
 /// @p version and point the stable link at it. Exposed because it is the whole
-/// lock-sensitive half of an update and is worth testing without a network.
+/// file-locking half of an update and is worth testing without a network.
 ///
+/// @param lock must be held on the config's install root; the call refuses
+///        otherwise. It is taken by the caller rather than here because
+///        applyUpdate and adoptRunningInstall stage into the same tree before
+///        calling this, and that staging has to be inside the same lock.
 /// @param staged_directory a directory holding the new release's files; it is
 ///        moved, not copied, so it must sit on the same volume as the install.
 [[nodiscard]] UpdateApplyResult
-installStagedRelease(const UpdaterConfig &config, const QString &version,
-                     const QString &staged_directory);
+installStagedRelease(const InstallLock &lock, const UpdaterConfig &config,
+                     const QString &version, const QString &staged_directory);
 
 } // namespace chrome_control_mcp

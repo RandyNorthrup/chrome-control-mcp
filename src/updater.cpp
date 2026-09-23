@@ -490,7 +490,8 @@ UpdateCheckResult checkForUpdate(const UpdaterConfig &config) {
   return result;
 }
 
-UpdateApplyResult installStagedRelease(const UpdaterConfig &config,
+UpdateApplyResult installStagedRelease(const InstallLock &lock,
+                                       const UpdaterConfig &config,
                                        const QString &version,
                                        const QString &staged_directory) {
   const UpdaterConfig resolved = UpdaterConfig::withDefaults(config);
@@ -504,6 +505,11 @@ UpdateApplyResult installStagedRelease(const UpdaterConfig &config,
                             .arg(QDir::toNativeSeparators(staged_directory)));
   }
   const InstallLayout &layout = resolved.layout;
+  if (!lock.guards(layout)) {
+    return applyFailure(
+        QStringLiteral("Installing a staged release requires the install lock "
+                       "for this root; refusing to run without it"));
+  }
   if (!QDir().mkpath(layout.versions)) {
     return applyFailure(QStringLiteral("Could not create %1")
                             .arg(QDir::toNativeSeparators(layout.versions)));
@@ -526,7 +532,7 @@ UpdateApplyResult installStagedRelease(const UpdaterConfig &config,
   }
 
   QString link_error;
-  if (!pointCurrentAtVersion(layout, version, &link_error)) {
+  if (!pointCurrentAtVersion(lock, layout, version, &link_error)) {
     return applyFailure(link_error);
   }
 
@@ -539,8 +545,8 @@ UpdateApplyResult installStagedRelease(const UpdaterConfig &config,
   // The running process keeps the files it already opened. The new version is
   // what the client will launch next time, not what is answering right now.
   result.restart_required = version != resolved.current_version;
-  result.pruned_versions =
-      pruneInstalledVersions(layout, version, resolved.keep_recent_versions);
+  result.pruned_versions = pruneInstalledVersions(
+      lock, layout, version, resolved.keep_recent_versions);
   return result;
 }
 
@@ -565,6 +571,15 @@ UpdateApplyResult adoptRunningInstall(const UpdaterConfig &config) {
     return applyFailure(
         QStringLiteral("This copy already lives under the install root at %1")
             .arg(QDir::toNativeSeparators(layout.root)));
+  }
+  // Everything from here reads the tree and then changes it, so one lock spans
+  // the whole of it -- including the copy, whose reserved directory name would
+  // otherwise be shared with a second adoption running at the same time.
+  QString lock_error;
+  const InstallLock lock =
+      InstallLock::acquire(layout, kInstallLockWaitMs, &lock_error);
+  if (!lock.held()) {
+    return applyFailure(lock_error);
   }
   if (!QDir().mkpath(layout.versions)) {
     return applyFailure(QStringLiteral("Could not create %1")
@@ -602,7 +617,8 @@ UpdateApplyResult adoptRunningInstall(const UpdaterConfig &config) {
     return applyFailure(error);
   }
 
-  UpdateApplyResult result = installStagedRelease(resolved, version, staging);
+  UpdateApplyResult result =
+      installStagedRelease(lock, resolved, version, staging);
   QDir(staging).removeRecursively();
   if (result.ok) {
     result.adopted = true;
@@ -642,6 +658,17 @@ UpdateApplyResult applyUpdate(const UpdaterConfig &config) {
   // Stage inside the install's own versions directory so the finished release
   // is moved, not copied, onto the volume it will live on.
   const InstallLayout &layout = resolved.layout;
+  // The lock covers the download too. Two updaters fetching the same version
+  // would share one staging directory name and overwrite each other's partial
+  // archive, and the checksum that proved the first download would then be
+  // checked against the second. Serializing costs a second updater a fast,
+  // explicit refusal; the work it wanted is already under way.
+  QString lock_error;
+  const InstallLock lock =
+      InstallLock::acquire(layout, kInstallLockWaitMs, &lock_error);
+  if (!lock.held()) {
+    return applyFailure(lock_error);
+  }
   if (!QDir().mkpath(layout.versions)) {
     return applyFailure(QStringLiteral("Could not create %1")
                             .arg(QDir::toNativeSeparators(layout.versions)));
@@ -715,7 +742,7 @@ UpdateApplyResult applyUpdate(const UpdaterConfig &config) {
   }
 
   UpdateApplyResult result =
-      installStagedRelease(resolved, version, release_root);
+      installStagedRelease(lock, resolved, version, release_root);
   QDir(staging).removeRecursively();
   if (result.ok) {
     result.restart_required = true;

@@ -384,7 +384,6 @@ void BrowserBridgePipeTests::handshake_refusesProtocolMismatch() {
 }
 
 void BrowserBridgePipeTests::ancestorChain_boundsDepthAndMatchesImage() {
-  using Server = BrowserBridgePipeServer;
   // In production the pipe optionally binds the peer to a Chrome-launched
   // process (require_chrome_ancestor) by walking the process tree for
   // chrome.exe within a depth cap. Model a tree: leaf 100 -> 90 -> 80 ->
@@ -397,7 +396,7 @@ void BrowserBridgePipeTests::ancestorChain_boundsDepthAndMatchesImage() {
                                       {70, QStringLiteral("chrome.exe")}};
 
   // Authorized: a generous depth budget reaches the chrome ancestor.
-  QVERIFY(Server::ancestorChainContainsImageForTesting(
+  QVERIFY(chrome_control_mcp::ancestorChainContainsImage(
       100, parent, image, QStringLiteral("chrome.exe"), 12));
 
   // Depth cap (the security bound): a budget too small to reach chrome must NOT
@@ -405,7 +404,7 @@ void BrowserBridgePipeTests::ancestorChain_boundsDepthAndMatchesImage() {
   // sees only the two nearest ancestors (renderer, gpu) and stops before chrome
   // -> refused. This is what stops a peer with a very distant, coincidental
   // chrome.exe ancestor from being bound.
-  QVERIFY(!Server::ancestorChainContainsImageForTesting(
+  QVERIFY(!chrome_control_mcp::ancestorChainContainsImage(
       100, parent, image, QStringLiteral("chrome.exe"), 2));
 
   // No chrome anywhere in the chain -> refused (a non-Chrome-launched peer).
@@ -413,7 +412,7 @@ void BrowserBridgePipeTests::ancestorChain_boundsDepthAndMatchesImage() {
                                          {90, QStringLiteral("renderer.exe")},
                                          {80, QStringLiteral("gpu.exe")},
                                          {70, QStringLiteral("explorer.exe")}};
-  QVERIFY(!Server::ancestorChainContainsImageForTesting(
+  QVERIFY(!chrome_control_mcp::ancestorChainContainsImage(
       100, parent, noChrome, QStringLiteral("chrome.exe"), 12));
 
   // A CYCLE in the parent map (100 -> 90 -> 100) must terminate under the depth
@@ -423,7 +422,7 @@ void BrowserBridgePipeTests::ancestorChain_boundsDepthAndMatchesImage() {
   const QHash<quint64, quint64> cyclic{{100, 90}, {90, 100}};
   const QHash<quint64, QString> cyclicImage{
       {100, QStringLiteral("tab.exe")}, {90, QStringLiteral("renderer.exe")}};
-  QVERIFY(!Server::ancestorChainContainsImageForTesting(
+  QVERIFY(!chrome_control_mcp::ancestorChainContainsImage(
       100, cyclic, cyclicImage, QStringLiteral("chrome.exe"), 12));
 }
 

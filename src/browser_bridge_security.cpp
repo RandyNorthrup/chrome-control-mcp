@@ -3,6 +3,8 @@
 
 #include "chrome_control_mcp/browser_bridge_security.h"
 
+#include "chrome_control_mcp/error_out.h"
+
 #include <QDir>
 #include <QFile>
 #include <QJsonDocument>
@@ -35,12 +37,6 @@ constexpr double kMaxAppPidExactDouble = 9.0e15;
 // under 1 KiB. Cap the read so a corrupt/oversized file cannot force an
 // unbounded allocation before parse.
 constexpr qint64 kMaxRendezvousRecordBytes = qint64{64} * 1024;
-
-void setError(QString *error, const QString &message) {
-  if (error != nullptr) {
-    *error = message;
-  }
-}
 
 #ifdef Q_OS_WIN
 QString lastError(const QString &api) {
