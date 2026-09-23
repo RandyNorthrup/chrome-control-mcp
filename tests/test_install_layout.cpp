@@ -63,6 +63,7 @@ private slots:
   void currentLinkPointsAtRequestedVersion();
   void currentLinkRepointsWhileAFileIsHeldOpen();
   void currentLinkRefusesToReplaceARealDirectory();
+  void aFailedSwapLeavesThePreviousVersionReachable();
   void pruneKeepsCurrentAndTheRequestedRecentVersions();
 };
 
@@ -209,6 +210,48 @@ void InstallLayoutTests::currentLinkRefusesToReplaceARealDirectory() {
   QVERIFY(error.contains(QStringLiteral("not a link")));
   QVERIFY(QFileInfo::exists(
       QDir(layout.current).filePath(QStringLiteral("mine.txt"))));
+}
+
+void InstallLayoutTests::aFailedSwapLeavesThePreviousVersionReachable() {
+  // RED DRILL for the invariant the whole layout exists to hold: everything
+  // outside this program -- the client's command, Chrome's extension folder,
+  // the native-messaging registration -- reaches the install through `current`.
+  // A swap that fails must leave that name pointing at the version that was
+  // working, because losing it breaks all three at once and no amount of
+  // retrying puts them back.
+  QTemporaryDir temporary;
+  QVERIFY(temporary.isValid());
+  const InstallLayout layout = InstallLayout::forRoot(temporary.path());
+  QVERIFY(makeVersion(layout, QStringLiteral("1.0.0")));
+  QVERIFY(makeVersion(layout, QStringLiteral("1.3.1")));
+  QString error;
+  QVERIFY2(pointCurrentAtVersion(layout, QStringLiteral("1.0.0"), &error),
+           qPrintable(error));
+
+  // A non-empty directory where the new link is staged blocks its creation on
+  // both platforms: Windows cannot remove or create over it, and POSIX cannot
+  // unlink or symlink over it either.
+  const QString staged = layout.current + QStringLiteral(".swap");
+  QVERIFY(QDir().mkpath(staged));
+  QFile blocker(QDir(staged).filePath(QStringLiteral("occupied.txt")));
+  QVERIFY(blocker.open(QIODevice::WriteOnly));
+  blocker.close();
+
+  QVERIFY(!pointCurrentAtVersion(layout, QStringLiteral("1.3.1"), &error));
+  QVERIFY(!error.isEmpty());
+
+  // The previous version is still the one `current` names, and still readable
+  // through it.
+  QCOMPARE(currentVersion(layout), QStringLiteral("1.0.0"));
+  QCOMPARE(readMarker(layout.current), QStringLiteral("1.0.0"));
+
+  // With the obstruction gone the swap succeeds, so the failure was the staged
+  // path and not a layout left in a state that cannot recover.
+  QVERIFY(QDir(staged).removeRecursively());
+  QVERIFY2(pointCurrentAtVersion(layout, QStringLiteral("1.3.1"), &error),
+           qPrintable(error));
+  QCOMPARE(currentVersion(layout), QStringLiteral("1.3.1"));
+  QCOMPARE(readMarker(layout.current), QStringLiteral("1.3.1"));
 }
 
 void InstallLayoutTests::pruneKeepsCurrentAndTheRequestedRecentVersions() {

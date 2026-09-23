@@ -128,6 +128,7 @@ bool fetchUrl(const QUrl &url, const UpdaterConfig &config,
   timer.setSingleShot(true);
   bool timed_out = false;
   bool too_large = false;
+  bool write_failed = false;
   qint64 received = 0;
 
   QObject::connect(&timer, &QTimer::timeout, reply, [&timed_out, reply]() {
@@ -143,7 +144,14 @@ bool fetchUrl(const QUrl &url, const UpdaterConfig &config,
       return;
     }
     if (sink != nullptr) {
-      sink->write(chunk);
+      // A short write means the disk refused the bytes. Without this the
+      // download runs to completion and fails its checksum, reporting a
+      // corrupt release when the real answer is that it could not be stored.
+      if (sink->write(chunk) != chunk.size()) {
+        write_failed = true;
+        reply->abort();
+        return;
+      }
     } else if (collected != nullptr) {
       collected->append(chunk);
     }
@@ -163,6 +171,11 @@ bool fetchUrl(const QUrl &url, const UpdaterConfig &config,
   const QString network_message = reply->errorString();
   reply->deleteLater();
 
+  if (write_failed) {
+    *error = QStringLiteral("Could not write the release to disk; it may be "
+                            "full. The download was stopped.");
+    return false;
+  }
   if (too_large) {
     *error = QStringLiteral("Release download exceeded %1 bytes and was "
                             "stopped")

@@ -413,11 +413,30 @@ bool pointCurrentAtVersion(const InstallLayout &layout, const QString &version,
   }
 
 #ifdef Q_OS_WIN
-  // Windows cannot replace one directory entry with another in a single
-  // operation, so the old junction is removed first. RemoveDirectoryW deletes
-  // the junction itself and never the directory it points at.
+  // Build the new junction beside the old one and move it into place, rather
+  // than removing the old one and hoping the new one can be created. Windows
+  // cannot replace a directory entry in a single operation, so something has to
+  // give; what must not give is the link itself. Creating first means a failure
+  // to create leaves the previous version still reachable, where deleting first
+  // would leave the install with no `current` at all -- and everything outside
+  // this program reaches it through that name, so losing it takes the MCP
+  // command, the extension folder, and the native-messaging registration with
+  // it at once.
+  //
+  // The gap is now one MoveFileW between removing the old entry and renaming
+  // the new one in, and a failure there leaves the staged junction on disk,
+  // named in the error, already pointing at the right version.
+  const QString staged = layout.current + QStringLiteral(".swap");
+  const std::wstring staged_native =
+      QDir::toNativeSeparators(staged).toStdWString();
   const std::wstring link_native =
       QDir::toNativeSeparators(layout.current).toStdWString();
+
+  RemoveDirectoryW(staged_native.c_str()); // A crash may have left one behind.
+  if (!writeJunction(staged, target, error)) {
+    return false;
+  }
+
   const QFileInfo existing(layout.current);
   if (existing.isJunction() || existing.isSymLink() || existing.exists()) {
     if (RemoveDirectoryW(link_native.c_str()) == 0) {
@@ -425,10 +444,20 @@ bool pointCurrentAtVersion(const InstallLayout &layout, const QString &version,
         *error = lastWindowsError(
             QStringLiteral("Removing the previous current link"));
       }
+      RemoveDirectoryW(staged_native.c_str());
       return false;
     }
   }
-  return writeJunction(layout.current, target, error);
+  if (MoveFileW(staged_native.c_str(), link_native.c_str()) == 0) {
+    if (error != nullptr) {
+      *error =
+          lastWindowsError(QStringLiteral("Moving the new current link into "
+                                          "place; it is staged at %1")
+                               .arg(QDir::toNativeSeparators(staged)));
+    }
+    return false;
+  }
+  return true;
 #else
   // POSIX can replace a symbolic link atomically: build the new one beside it
   // and rename over the old, so a reader sees either the previous version or
