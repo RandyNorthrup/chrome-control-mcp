@@ -55,6 +55,7 @@ private slots:
   void initializeReportsStandaloneIdentity();
   void fullCatalogContainsEveryBrowserAndInstallerTool();
   void readOnlyCatalogFiltersMutatingTools();
+  void updateToolsAreServedNativelyNotThroughTheBridge();
   void notificationGetsNoResponse();
   void malformedEnvelopeIsRejected();
   void nonObjectArgumentsAreRejected();
@@ -82,7 +83,7 @@ void BrowserMcpServerTests::fullCatalogContainsEveryBrowserAndInstallerTool() {
       handleRequest(request(QStringLiteral("tools/list"), 2), &browser);
   QVERIFY(response.has_value());
   const QSet<QString> names = catalogNames(*response);
-  QCOMPARE(names.size(), 44);
+  QCOMPARE(names.size(), 47);
   for (const QString &expected : {
            QStringLiteral("browser_navigate"),
            QStringLiteral("browser_snapshot"),
@@ -96,9 +97,35 @@ void BrowserMcpServerTests::fullCatalogContainsEveryBrowserAndInstallerTool() {
            QStringLiteral("browser_extension_install"),
            QStringLiteral("browser_extension_uninstall"),
            QStringLiteral("browser_extension_status"),
+           QStringLiteral("browser_update_status"),
+           QStringLiteral("browser_update_check"),
+           QStringLiteral("browser_update_apply"),
        }) {
     QVERIFY2(names.contains(expected), qPrintable(expected));
   }
+}
+
+void BrowserMcpServerTests::updateToolsAreServedNativelyNotThroughTheBridge() {
+  // browser_update_* shares the browser_ prefix but needs no browser. Routed to
+  // the bridge it would answer "browser not connected" for a question about
+  // this program's own install -- which is exactly when someone reaches for it.
+  BrowserControl browser;
+  const auto response = handleRequest(
+      toolCall(QStringLiteral("browser_update_status")), &browser);
+  QVERIFY(response.has_value());
+  const QJsonObject result =
+      response->value(QStringLiteral("result")).toObject();
+  QVERIFY(!result.value(QStringLiteral("isError")).toBool());
+  const QString text = result.value(QStringLiteral("content"))
+                           .toArray()
+                           .at(0)
+                           .toObject()
+                           .value(QStringLiteral("text"))
+                           .toString();
+  const QJsonObject facts = QJsonDocument::fromJson(text.toUtf8()).object();
+  QVERIFY(facts.contains(QStringLiteral("install_root")));
+  QVERIFY(facts.contains(QStringLiteral("installed_versions")));
+  QCOMPARE(facts.value(QStringLiteral("version")).toString(), serverVersion());
 }
 
 void BrowserMcpServerTests::readOnlyCatalogFiltersMutatingTools() {
@@ -109,11 +136,16 @@ void BrowserMcpServerTests::readOnlyCatalogFiltersMutatingTools() {
       handleRequest(request(QStringLiteral("tools/list"), 2), &browser, policy);
   QVERIFY(response.has_value());
   const QSet<QString> names = catalogNames(*response);
-  QCOMPARE(names.size(), 10);
+  QCOMPARE(names.size(), 12);
   QVERIFY(names.contains(QStringLiteral("browser_snapshot")));
   QVERIFY(names.contains(QStringLiteral("browser_extension_status")));
+  QVERIFY(names.contains(QStringLiteral("browser_update_check")));
+  QVERIFY(names.contains(QStringLiteral("browser_update_status")));
   QVERIFY(!names.contains(QStringLiteral("browser_click")));
   QVERIFY(!names.contains(QStringLiteral("browser_extension_install")));
+  // Installing a release is a mutating, process-replacing action, so the
+  // read-only profile must hide it even though its two companions are safe.
+  QVERIFY(!names.contains(QStringLiteral("browser_update_apply")));
   const auto refused = handleRequest(toolCall(QStringLiteral("browser_click")),
                                      &browser, policy);
   QVERIFY(refused.has_value());

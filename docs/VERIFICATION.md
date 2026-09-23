@@ -4,11 +4,11 @@ Evidence recorded 2026-08-20. Commands below ran against repository checkout, no
 
 ## Environments
 
-| Platform | Toolchain                                | Result                                 |
-| -------- | ---------------------------------------- | -------------------------------------- |
-| Windows  | MSVC 19.44, CMake 3.31, Qt 6.10, Node 22 | Build + 9/9 suites + live Chrome pass  |
-| Linux    | GCC 16 and Clang 22, Qt 6.11, Node 24    | Both builds + 9/9 suites + live Chrome |
-| macOS    | Clang + Qt 6.10 GitHub Actions runner    | Build + 9/9 suites                     |
+| Platform | Toolchain                                | Result                                   |
+| -------- | ---------------------------------------- | ---------------------------------------- |
+| Windows  | MSVC 19.44, CMake 3.31, Qt 6.10, Node 22 | Build + 12/12 suites + live Chrome pass  |
+| Linux    | GCC 16 and Clang 22, Qt 6.11, Node 24    | Both builds + 10/10 suites + live Chrome |
+| macOS    | Clang + Qt 6.10 GitHub Actions runner    | Build + 10/10 suites                     |
 
 Live Windows browser: Chrome 151.0.7922.138. Minimum supported manifest version is Chrome 116.
 
@@ -52,8 +52,14 @@ Result: **10/10 passed** under Windows/MSVC, Linux/GCC, Linux/Clang, and macOS/C
 | `test_browser_bridge_security`     | ACL/permissions, nonce, rendezvous, and ownership                      |
 | `test_browser_bridge_pipe`         | Platform IPC handshake, peer verification, timeout, framing, reconnect |
 | `test_browser_bridge_relay`        | End-to-end relay/bridge/session with fake extension                    |
-| `test_browser_mcp_server`          | Identity, 44 tools, profiles, envelopes, schemas, and MCP content      |
+| `test_install_layout`              | Version-directory safety, link swap under an open file, and pruning    |
+| `test_updater`                     | Asset naming, checksum parsing, version order, and staged install      |
+| `test_browser_mcp_server`          | Identity, 47 tools, profiles, envelopes, schemas, and MCP content      |
 | `test_browser_extension_pure`      | 70 service-worker security, storage, geometry, and decision cases      |
+
+The Linux and macOS rows record the last run on those machines, which predates
+`test_install_layout` and `test_updater`. Those two suites are verified on Windows and run on every
+platform in GitHub Actions; a local Linux and macOS re-run is still outstanding.
 
 ## Strict analysis
 
@@ -87,8 +93,8 @@ npm run extension -- status
 Results:
 
 - Initialize protocol `2024-11-05`, server `chrome-control-mcp`
-- Full profile: 44 tools
-- Read-only profile: 10 tools
+- Full profile: 47 tools
+- Read-only profile: 12 tools
 - Staged extension present with pinned ID
 - Linux isolated install → status → uninstall lifecycle passed with generated mode-`0600` manifest
 

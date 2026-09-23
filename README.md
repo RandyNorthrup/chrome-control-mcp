@@ -10,7 +10,7 @@
 ![Platforms](https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20%7C%20macOS-2563eb.svg)
 ![C++20](https://img.shields.io/badge/C%2B%2B-20-00599c.svg)
 ![Chrome 116+](https://img.shields.io/badge/Chrome-116%2B-4285f4.svg)
-![MCP tools](https://img.shields.io/badge/MCP%20tools-44-ff1493.svg)
+![MCP tools](https://img.shields.io/badge/MCP%20tools-47-ff1493.svg)
 
 <p>
   Standalone Model Context Protocol server connecting an AI assistant to your existing Chrome
@@ -40,8 +40,9 @@ page overlay by default; documentation captures can opt in.
 | Browser management  | Navigation, tabs, tab groups, windows, emulation, and waits                                                      |
 | Browser state       | Cookies, local/session storage, permissions, downloads, print, and HTTP auth                                     |
 | Extension lifecycle | Prepare, inspect, and unregister current-user native-host integration                                            |
+| In-place updates    | Check, download, verify, and install a new release without overwriting the running executable                    |
 
-All **44 MCP tools** use strict JSON Schemas. Long-lived MCP process preserves session and
+All **47 MCP tools** use strict JSON Schemas. Long-lived MCP process preserves session and
 element-ref state while Chrome remains an ordinary user-controlled browser.
 
 ## See it work
@@ -137,6 +138,36 @@ claude mcp add --scope local chrome-control -- /absolute/path/chrome_control_mcp
 
 Transport is newline-delimited JSON-RPC over stdio. Server opens no TCP listener.
 
+## Staying up to date
+
+```text
+browser_update_check    what is installed, and what the newest release is
+browser_update_apply    install the newest release
+```
+
+A running executable cannot be overwritten on Windows, so the update never tries to. Each version
+is installed into `<root>/versions/<version>` and a `current` link -- a directory junction on
+Windows, a symbolic link on Linux and macOS -- is repointed at it. The link can be repointed while
+a server started through it keeps serving; the new build takes effect the next time the client
+starts the server.
+
+The MCP command path, Chrome's unpacked-extension folder, and the native-messaging registration all
+point through `current`, so none of them changes when a new version lands. No reconfiguring, and no
+second trip to `chrome://extensions`.
+
+The first `browser_update_apply` from a build tree or an unpacked download moves that copy into the
+managed layout and prints the path to point your client at. That is the only time the path changes.
+
+| Platform | Install root                                         |
+| -------- | ---------------------------------------------------- |
+| Windows  | `%LOCALAPPDATA%\Programs\ChromeControlMCP`           |
+| Linux    | `~/.local/share/ChromeControlMCP/app`                |
+| macOS    | `~/Library/Application Support/ChromeControlMCP/app` |
+
+Set `CHROME_CONTROL_MCP_INSTALL_ROOT` to install somewhere else. Downloads are checked against the
+SHA-256 published with the release, which catches a corrupted or truncated transfer; it is not a
+signature, and this project still ships no signing key.
+
 ## Architecture
 
 ```mermaid
@@ -173,7 +204,7 @@ Read-only profile exposes 10 tools and independently rejects hidden mutating cal
 
 Local Windows and Linux gates currently cover:
 
-- 9/9 native and extension suites with MSVC, GCC, and Clang
+- 12/12 native and extension suites on Windows; 10/10 on Linux and macOS with GCC and Clang
 - Warnings-as-errors plus `clang-tidy` and exhaustive `cppcheck`
 - Separate ASan+UBSan and TSan runs
 - Full-history Gitleaks scan and npm dependency audit

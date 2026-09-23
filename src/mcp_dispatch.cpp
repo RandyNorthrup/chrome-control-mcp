@@ -340,6 +340,8 @@ bool mcpToolIsReadOnly(const QString &tool_name) {
       QStringLiteral("browser_screenshot"),
       QStringLiteral("browser_snapshot"),
       QStringLiteral("browser_tabs"),
+      QStringLiteral("browser_update_check"),
+      QStringLiteral("browser_update_status"),
       QStringLiteral("browser_wait_for"),
       QStringLiteral("browser_windows"),
       QStringLiteral("capture_monitor"),

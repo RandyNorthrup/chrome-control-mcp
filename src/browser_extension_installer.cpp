@@ -3,6 +3,8 @@
 
 #include "chrome_control_mcp/browser_extension_installer.h"
 
+#include "chrome_control_mcp/install_layout.h"
+
 #include <QCoreApplication>
 #include <QDir>
 #include <QFile>
@@ -283,6 +285,12 @@ BrowserExtensionInstaller::BrowserExtensionInstaller(
     config_.host_exe_path =
         QDir::cleanPath(QFileInfo(config_.host_exe_path).absoluteFilePath());
   }
+  // Chrome stores this path and launches it for years. In a managed install the
+  // operating system reports the running image inside versions/<version>, and
+  // registering that would pin Chrome to the version installed today and leave
+  // it launching a pruned directory after the next update. Register the stable
+  // link instead, which every installed version answers.
+  config_.host_exe_path = stableExecutablePath(config_.host_exe_path);
   config_.extension_path =
       resolveExtensionPath(config_.extension_path, config_.host_exe_path);
   if (config_.data_dir.isEmpty()) {

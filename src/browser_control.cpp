@@ -29,13 +29,15 @@ QJsonArray BrowserControl::toolCatalog() {
 }
 
 bool BrowserControl::handles(const QString &name) {
-  // The browser_* tools drive the live extension through the bridge. The
-  // browser_extension_* tools are native installer tools (they set Chrome up)
-  // and must NOT be routed here -- they are served by invokeTool, and routing
-  // them to the bridge would fail with "browser not connected" before Chrome is
-  // even set up.
+  // The browser_* tools drive the live extension through the bridge. Two
+  // families share the prefix but are native tools served by invokeTool, and
+  // routing either here would fail with "browser not connected" for a call that
+  // never needed a browser: browser_extension_* sets Chrome up in the first
+  // place, and browser_update_* inspects and replaces this program's own
+  // install, which has to work whether or not a browser is attached.
   return name.startsWith(QStringLiteral("browser_")) &&
-         !name.startsWith(QStringLiteral("browser_extension_"));
+         !name.startsWith(QStringLiteral("browser_extension_")) &&
+         !name.startsWith(QStringLiteral("browser_update_"));
 }
 
 // Reconcile the single-threaded session with the pipe server's async connection

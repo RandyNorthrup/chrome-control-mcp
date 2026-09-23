@@ -4,7 +4,56 @@ All notable changes are documented here. Project follows [Semantic Versioning](h
 
 ## [Unreleased]
 
-Nothing yet.
+### Added
+
+- **This server can update itself, and the update no longer fights the operating system.** The
+  files it would have to replace are the ones it is executing, and Windows does not allow that, so
+  updating meant closing the client, replacing files by hand, and repairing whatever the new path
+  broke. Three tools replace that:
+  - `browser_update_status` answers where this build is installed, which versions are present, and
+    what the stable link points at. No network.
+  - `browser_update_check` asks GitHub which release is newest.
+  - `browser_update_apply` installs it.
+
+  Nothing locked is ever written. Each version is installed into `<root>/versions/<version>` and a
+  `current` link -- a directory junction on Windows, a symbolic link on Linux and macOS -- is
+  repointed at it. Repointing that link is proven to work while a server launched through it keeps
+  serving, and that server exits cleanly afterwards; the new build takes effect the next time the
+  client starts one.
+
+- **An update no longer invalidates the three things that point at this program.** The MCP client's
+  command, Chrome's unpacked-extension folder, and the native-messaging registration now all name a
+  path under `current`, so a new version changes none of them. Previously each of those named a
+  version-stamped directory, and every upgrade silently broke all three at once -- including the one
+  that costs a trip through `chrome://extensions`.
+
+- A copy running from a build tree or an unpacked download is moved into the managed layout by the
+  first `browser_update_apply`, which then installs the newest release on top of it. That move is
+  the only time the client's command path changes.
+
+- Install root is `%LOCALAPPDATA%\Programs\ChromeControlMCP` on Windows, and under the per-user
+  data directory on Linux and macOS. `CHROME_CONTROL_MCP_INSTALL_ROOT` overrides it. Nothing needs
+  administrator rights: a junction is used rather than a symbolic link precisely because Windows
+  asks for elevation or Developer Mode for the latter.
+
+- Downloads are verified against the SHA-256 published beside them in the same release, and a
+  mismatch is discarded rather than installed. That is transport integrity, not a signature --
+  archive and checksum come from one origin -- and this project still ships no signing key.
+
+### Fixed
+
+- `browser_update_*` would have been routed to the browser bridge, because everything named
+  `browser_*` was. A question about this program's own install would have answered "the extension
+  is not attached", which is exactly the state someone is in when they reach for it.
+
+### Changed
+
+- Release archives now carry the Qt Network runtime and the platform's Qt TLS backend, which the
+  update path needs to reach the release host. The SPDX inventory is unchanged: both come from the
+  qtbase source already recorded.
+- The version number has one home. The server, the updater, and the packaged archive all read the
+  CMake project version instead of keeping separate copies that can drift -- a stale copy in an
+  updater being the one place that silently does the wrong thing.
 
 ## [1.3.1] - 2026-09-22
 

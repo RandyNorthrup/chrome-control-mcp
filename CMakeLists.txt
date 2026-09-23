@@ -47,7 +47,7 @@ function(enable_project_quality target)
     endif()
 endfunction()
 
-find_package(Qt6 6.5 REQUIRED COMPONENTS Core)
+find_package(Qt6 6.5 REQUIRED COMPONENTS Core Network)
 find_package(Threads REQUIRED)
 
 set(CCMCP_INCLUDE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/include")
@@ -58,7 +58,9 @@ set(CCMCP_CORE_SOURCES
     src/browser_control.cpp
     src/browser_extension_installer.cpp
     src/browser_uploads.cpp
+    src/install_layout.cpp
     src/native_messaging.cpp
+    src/updater.cpp
 )
 
 if(WIN32)
@@ -75,7 +77,13 @@ list(APPEND CCMCP_CORE_SOURCES
 
 add_library(chrome_control_mcp_core STATIC ${CCMCP_CORE_SOURCES})
 target_include_directories(chrome_control_mcp_core PUBLIC ${CCMCP_INCLUDE_DIR})
-target_link_libraries(chrome_control_mcp_core PUBLIC Qt6::Core Threads::Threads)
+target_link_libraries(chrome_control_mcp_core PUBLIC Qt6::Core Qt6::Network Threads::Threads)
+# The updater compares itself against published releases, so the version it
+# reports has to be the one this build was cut from rather than a second copy
+# of the number that someone can forget to raise.
+target_compile_definitions(chrome_control_mcp_core PUBLIC
+    CHROME_CONTROL_MCP_VERSION="${PROJECT_VERSION}"
+)
 enable_project_quality(chrome_control_mcp_core)
 if(WIN32)
     target_link_libraries(chrome_control_mcp_core PUBLIC advapi32 shell32 user32)
@@ -117,20 +125,56 @@ add_custom_target(stage_browser_extension ALL
     COMMENT "Staging unpacked browser extension"
 )
 add_dependencies(stage_browser_extension chrome_control_mcp)
+# The updater fetches releases over HTTPS, so the Qt TLS backend plugin has to
+# travel with the executable. Which backend exists depends on how Qt was built
+# (Schannel on Windows, SecureTransport on macOS, OpenSSL elsewhere), so ask the
+# Qt package which ones it provides rather than hard-coding one and shipping an
+# executable that cannot open a connection.
+set(CCMCP_TLS_PLUGIN_TARGETS "")
+foreach(candidate
+        Qt6::QSchannelBackendPlugin
+        Qt6::QSecureTransportBackendPlugin
+        Qt6::QTlsBackendOpenSSLPlugin
+        Qt6::QOpenSSLBackendPlugin)
+    if(TARGET ${candidate})
+        list(APPEND CCMCP_TLS_PLUGIN_TARGETS ${candidate})
+    endif()
+endforeach()
+if(NOT CCMCP_TLS_PLUGIN_TARGETS)
+    message(WARNING
+        "No Qt TLS backend plugin target was found; browser_update_check and "
+        "browser_update_apply will not be able to reach the release host.")
+endif()
+
 if(WIN32)
     add_custom_command(TARGET chrome_control_mcp POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy_if_different
                 "$<TARGET_FILE:Qt6::Core>"
+                "$<TARGET_FILE:Qt6::Network>"
                 "$<TARGET_FILE_DIR:chrome_control_mcp>"
         COMMENT "Staging Qt runtime"
     )
 endif()
+foreach(plugin ${CCMCP_TLS_PLUGIN_TARGETS})
+    add_custom_command(TARGET chrome_control_mcp POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E make_directory
+                "$<TARGET_FILE_DIR:chrome_control_mcp>/tls"
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                "$<TARGET_FILE:${plugin}>"
+                "$<TARGET_FILE_DIR:chrome_control_mcp>/tls"
+        COMMENT "Staging Qt TLS backend"
+    )
+endforeach()
 
 install(TARGETS chrome_control_mcp RUNTIME DESTINATION .)
 install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/LICENSE" DESTINATION .)
 if(WIN32)
-    install(FILES "$<TARGET_FILE:Qt6::Core>" DESTINATION .)
+    install(FILES "$<TARGET_FILE:Qt6::Core>" "$<TARGET_FILE:Qt6::Network>"
+            DESTINATION .)
 endif()
+foreach(plugin ${CCMCP_TLS_PLUGIN_TARGETS})
+    install(FILES "$<TARGET_FILE:${plugin}>" DESTINATION tls)
+endforeach()
 install(DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/browser/extension/" DESTINATION extension)
 
 include(CTest)
@@ -180,9 +224,38 @@ if(BUILD_TESTING)
     target_link_libraries(test_browser_bridge PRIVATE Qt6::Core Qt6::Test)
     configure_qt_test(test_browser_bridge)
 
+    add_executable(test_install_layout
+        tests/test_install_layout.cpp
+        src/install_layout.cpp
+    )
+    target_link_libraries(test_install_layout PRIVATE Qt6::Core Qt6::Test)
+    configure_qt_test(test_install_layout)
+
+    add_executable(test_updater
+        tests/test_updater.cpp
+        src/updater.cpp
+        src/install_layout.cpp
+        src/browser_extension_installer.cpp
+    )
+    target_link_libraries(test_updater PRIVATE Qt6::Core Qt6::Network Qt6::Test)
+    if(WIN32)
+        target_link_libraries(test_updater PRIVATE advapi32)
+    endif()
+    target_compile_definitions(test_updater PRIVATE
+        CHROME_CONTROL_MCP_VERSION="${PROJECT_VERSION}"
+    )
+    configure_qt_test(test_updater)
+    if(WIN32)
+        add_custom_command(TARGET test_updater POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                    "$<TARGET_FILE:Qt6::Network>" "$<TARGET_FILE_DIR:test_updater>"
+        )
+    endif()
+
     add_executable(test_browser_extension_installer
         tests/test_browser_extension_installer.cpp
         src/browser_extension_installer.cpp
+        src/install_layout.cpp
     )
     target_link_libraries(test_browser_extension_installer PRIVATE Qt6::Core Qt6::Test)
     if(WIN32)
@@ -232,8 +305,10 @@ if(BUILD_TESTING)
         src/browser_contract.cpp
         src/browser_uploads.cpp
         # browser_control diagnoses a native-host registration that names another
-        # copy of this program, which is the installer's knowledge to give.
+        # copy of this program, which is the installer's knowledge to give, and
+        # the installer registers the path that survives an update.
         src/browser_extension_installer.cpp
+        src/install_layout.cpp
         ${CCMCP_BRIDGE_PIPE_SOURCE}
         src/browser_bridge_security.cpp
         src/native_messaging.cpp

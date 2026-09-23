@@ -73,7 +73,7 @@ if ($initialize.result.serverInfo.name -ne 'chrome-control-mcp') {
 }
 
 $catalog = $responses | Where-Object id -EQ 2
-$expectedTools = if ($ReadOnly) { 10 } else { 43 }
+$expectedTools = if ($ReadOnly) { 12 } else { 47 }
 if (@($catalog.result.tools).Count -ne $expectedTools) {
     throw "Expected $expectedTools tools; received $(@($catalog.result.tools).Count)."
 }

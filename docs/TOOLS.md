@@ -1,6 +1,7 @@
 # Tool catalog
 
-Full profile advertises 44 tools: 41 live browser tools and 3 extension lifecycle tools.
+Full profile advertises 47 tools: 41 live browser tools, 3 extension lifecycle tools, and 3
+self-update tools.
 
 ## Navigation and capture
 
@@ -112,6 +113,44 @@ clicks rather than search for a way around it. `browser_extension_uninstall` rem
 registration; Chrome extension removal remains manual. No private key or packaged extension is
 used.
 
+## Updating this server
+
+- `browser_update_status`
+- `browser_update_check`
+- `browser_update_apply`
+
+`browser_update_status` answers where this build is installed and needs no network.
+`browser_update_check` asks GitHub which release is newest. `browser_update_apply` installs it.
+
+A running executable cannot be overwritten on Windows, so the update never tries. Each version is
+installed into `<root>/versions/<version>` and a `current` link -- a directory junction on Windows,
+a symbolic link elsewhere -- is repointed at it. Nothing the operating system has locked is
+touched, and the link can be repointed while a server launched through it keeps serving.
+
+Everything outside this program names a path under `current`: the MCP client's command, Chrome's
+unpacked-extension folder, and the native-messaging registration. None of them changes when a new
+version is installed.
+
+A copy running from a build tree or an unpacked download cannot update in place, because the file
+that would have to be replaced is the one executing. `browser_update_apply` moves such a copy into
+the managed layout first and then installs the newest release on top of it. That move is the only
+time the client's command path changes.
+
+Install root, unless `CHROME_CONTROL_MCP_INSTALL_ROOT` names another:
+
+| Platform | Root                                                 |
+| -------- | ---------------------------------------------------- |
+| Windows  | `%LOCALAPPDATA%\Programs\ChromeControlMCP`           |
+| Linux    | `~/.local/share/ChromeControlMCP/app`                |
+| macOS    | `~/Library/Application Support/ChromeControlMCP/app` |
+
+The downloaded archive is checked against the SHA-256 published beside it in the same release. That
+catches a truncated or corrupted download. It is not a signature: checksum and archive come from the
+same origin over the same transport, and this project ships no signing key.
+
+Unpacking uses the system `tar`, which reads both the zip shipped for Windows and the gzipped tar
+shipped elsewhere. Windows 10 1803 and later include one.
+
 Every tool advertises strict JSON Schema with `additionalProperties: false`. Exact descriptions,
 argument types, enums, bounds, and defaults come from live `tools/list`; this avoids duplicating a
 large schema that could drift from source.
@@ -128,7 +167,12 @@ large schema that could drift from source.
 - `browser_screenshot`
 - `browser_snapshot`
 - `browser_tabs`
+- `browser_update_check`
+- `browser_update_status`
 - `browser_wait_for`
 - `browser_windows`
+
+`browser_update_apply` is absent by design: it replaces the program on disk, which is a mutation
+whatever the browser profile says.
 
 Server also refuses non-read-only calls if a client invokes hidden tool names directly.
