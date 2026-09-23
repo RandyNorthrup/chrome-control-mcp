@@ -565,6 +565,27 @@ UpdateApplyResult adoptRunningInstall(const UpdaterConfig &raw_config) {
                             .arg(QDir::toNativeSeparators(layout.versions)));
   }
 
+  // This version is already installed and already current. Copying it again
+  // would be pure work, and this path runs on every editor start for the VS
+  // Code extension, so say so instead.
+  const QString existing = layout.versionDirectory(version);
+  if (QFileInfo(QDir(existing).filePath(executableFileName())).isFile() &&
+      currentVersion(layout) == version) {
+    UpdateApplyResult unchanged;
+    unchanged.ok = true;
+    unchanged.adopted = true;
+    unchanged.adopted_from = source;
+    unchanged.previous_version = version;
+    unchanged.installed_version = version;
+    unchanged.executable_path =
+        QDir::cleanPath(QDir(layout.current).filePath(executableFileName()));
+    unchanged.extension_path = QDir::cleanPath(
+        QDir(layout.current)
+            .filePath(QString::fromLatin1(kBrowserExtensionDirectoryName)));
+    unchanged.restart_required = true;
+    return unchanged;
+  }
+
   // Build the copy under a reserved name and hand the finished tree to the same
   // install step a downloaded release uses, so a copy interrupted halfway never
   // becomes a version the link can point at.

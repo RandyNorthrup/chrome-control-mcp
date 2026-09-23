@@ -6,6 +6,22 @@ All notable changes are documented here. Project follows [Semantic Versioning](h
 
 ### Added
 
+- **Chrome Control MCP is a VS Code extension.** It publishes to the marketplace as four
+  platform-specific packages, each carrying the build for that platform, so installing it needs no
+  download afterwards and no path to configure. On activation it installs the server into the
+  managed layout and registers it with the editor through the MCP server provider API. Two commands
+  cover the rest: one repairs the install and its native-host registration, the other copies and
+  opens the folder Chrome has to be pointed at.
+
+  Marketplace updates and the server updating itself land in the same managed install, so they do
+  not fight: whichever version is newer is the one that runs.
+
+- `--install` puts a copy of this program into the managed layout, registers the native host, and
+  prints the command path and the Chrome extension folder as one line of JSON. It is how an
+  unpacked release archive becomes an install without first configuring an MCP client, and running
+  it on a copy that is already installed repairs a registration another copy overwrote. `--version`
+  prints the build.
+
 - **This server can update itself, and the update no longer fights the operating system.** The
   files it would have to replace are the ones it is executing, and Windows does not allow that, so
   updating meant closing the client, replacing files by hand, and repairing whatever the new path
@@ -48,6 +64,8 @@ All notable changes are documented here. Project follows [Semantic Versioning](h
 
 ### Changed
 
+- Releases now publish a `.vsix` per platform beside the archives, and the checksums file covers
+  them too.
 - Release archives now carry the Qt Network runtime and the platform's Qt TLS backend, which the
   update path needs to reach the release host. The SPDX inventory is unchanged: both come from the
   qtbase source already recorded.

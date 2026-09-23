@@ -1,6 +1,8 @@
 build*/
 dist/
 node_modules/
+vscode/out/
+vscode/bin/
 coverage/
 docs/assets/
 package-lock.json

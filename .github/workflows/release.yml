@@ -25,24 +25,28 @@ jobs:
             os: windows-latest
             qt-arch: win64_msvc2022_64
             package: windows-x64
+            vsce-target: win32-x64
             archive: zip
             cmake-args: -A x64
           - name: Linux x64
             os: ubuntu-latest
             qt-arch: linux_gcc_64
             package: linux-x64
+            vsce-target: linux-x64
             archive: tar.gz
             cmake-args: -G Ninja -DCMAKE_BUILD_TYPE=Release
           - name: macOS ARM64
             os: macos-15
             qt-arch: clang_64
             package: macos-arm64
+            vsce-target: darwin-arm64
             archive: tar.gz
             cmake-args: -G Ninja -DCMAKE_BUILD_TYPE=Release
           - name: macOS x64
             os: macos-15-intel
             qt-arch: clang_64
             package: macos-x64
+            vsce-target: darwin-x64
             archive: tar.gz
             cmake-args: -G Ninja -DCMAKE_BUILD_TYPE=Release
 
@@ -158,6 +162,25 @@ jobs:
             otool -L "$executable"
           fi
 
+      - name: Package VS Code extension
+        shell: pwsh
+        run: |
+          $cmake = Get-Content CMakeLists.txt -Raw
+          $null = $cmake -match 'project\(chrome_control_mcp VERSION ([0-9]+\.[0-9]+\.[0-9]+)'
+          $version = $Matches[1]
+          $extension = Get-Content vscode/package.json -Raw | ConvertFrom-Json
+          if ($extension.version -ne $version) {
+            throw ("vscode/package.json version $($extension.version) does not " +
+                   "match project version $version; the marketplace package and " +
+                   "the release archive must be the same build")
+          }
+          $stagePath = Join-Path 'package' "chrome-control-mcp-v$version-${{ matrix.package }}"
+          npm ci --prefix vscode
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node vscode/scripts/package.mjs --target ${{ matrix.vsce-target }} --payload $stagePath
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Copy-Item dist/*.vsix release-assets/
+
       - uses: actions/upload-artifact@v4
         with:
           name: release-${{ matrix.package }}
@@ -180,7 +203,10 @@ jobs:
 
       - name: Create checksums
         working-directory: release-assets
-        run: sha256sum chrome-control-mcp-v* > SHA256SUMS.txt
+        run: |
+          # The updater looks its archive up by name in this file, so it covers
+          # every published artifact, marketplace packages included.
+          sha256sum chrome-control-mcp-* > SHA256SUMS.txt
 
       - name: Publish release
         env:
@@ -193,3 +219,37 @@ jobs:
             --verify-tag \
             --title "Chrome Control MCP ${GITHUB_REF_NAME}" \
             --notes-file "$notes"
+
+  marketplace:
+    name: Publish to VS Code Marketplace
+    if: github.ref_type == 'tag'
+    needs: publish
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: release-*
+          path: release-assets
+          merge-multiple: true
+
+      - name: Publish extension
+        working-directory: vscode
+        env:
+          VSCE_PAT: ${{ secrets.VSCE_PAT }}
+        run: |
+          if [ -z "$VSCE_PAT" ]; then
+            echo "::notice::VSCE_PAT is not configured, so the marketplace step
+              was skipped. The GitHub release is published either way."
+            exit 0
+          fi
+          npm ci
+          # One call for all four targets. A partial publish would leave the
+          # marketplace serving this version to some platforms and the previous
+          # one to the rest.
+          npx vsce publish --pat "$VSCE_PAT"             $(for f in ../release-assets/*.vsix; do printf -- '--packagePath %s ' "$f"; done)

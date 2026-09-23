@@ -130,14 +130,25 @@ add_dependencies(stage_browser_extension chrome_control_mcp)
 # (Schannel on Windows, SecureTransport on macOS, OpenSSL elsewhere), so ask the
 # Qt package which ones it provides rather than hard-coding one and shipping an
 # executable that cannot open a connection.
+# Preference order per platform, most native first. Only ONE backend is shipped:
+# the others carry runtime dependencies this package does not include -- the
+# OpenSSL backend needs libssl, which is not staged on Windows or macOS -- and a
+# plugin that cannot load is a confusing failure rather than a fallback.
+if(WIN32)
+    set(CCMCP_TLS_CANDIDATES
+        Qt6::QSchannelBackendPlugin Qt6::QOpenSSLBackendPlugin)
+elseif(APPLE)
+    set(CCMCP_TLS_CANDIDATES
+        Qt6::QSecureTransportBackendPlugin Qt6::QOpenSSLBackendPlugin)
+else()
+    set(CCMCP_TLS_CANDIDATES
+        Qt6::QOpenSSLBackendPlugin Qt6::QTlsBackendOpenSSLPlugin)
+endif()
 set(CCMCP_TLS_PLUGIN_TARGETS "")
-foreach(candidate
-        Qt6::QSchannelBackendPlugin
-        Qt6::QSecureTransportBackendPlugin
-        Qt6::QTlsBackendOpenSSLPlugin
-        Qt6::QOpenSSLBackendPlugin)
+foreach(candidate ${CCMCP_TLS_CANDIDATES})
     if(TARGET ${candidate})
-        list(APPEND CCMCP_TLS_PLUGIN_TARGETS ${candidate})
+        set(CCMCP_TLS_PLUGIN_TARGETS ${candidate})
+        break()
     endif()
 endforeach()
 if(NOT CCMCP_TLS_PLUGIN_TARGETS)

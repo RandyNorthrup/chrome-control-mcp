@@ -70,7 +70,38 @@ All artifacts are intentionally unsigned and unnotarized; this project has no si
 not require one. See the [release guide](docs/RELEASES.md) for verification, platform warnings, and
 the exact packaging boundary.
 
-## Quick start
+## Install
+
+### From the VS Code Marketplace
+
+Install **Chrome Control MCP** from the marketplace, or:
+
+```shell
+code --install-extension RandyNorthrup.chrome-control-mcp
+```
+
+The marketplace serves the build for your platform. The extension installs the server, registers it
+with the editor through the MCP server provider API, and keeps it updated. Nothing to configure and
+no path to know; the one manual step is pointing Chrome at the extension folder once, described
+below.
+
+### From a release archive
+
+[Download the latest release](https://github.com/RandyNorthrup/chrome-control-mcp/releases/latest)
+for Windows x64, Linux x64, Apple silicon macOS, or Intel macOS, unpack it, and run:
+
+```shell
+# Windows
+.\chrome_control_mcp.exe --install
+
+# Linux / macOS
+./chrome_control_mcp --install
+```
+
+That installs the server where it can update itself and prints the command path to give your
+assistant, plus the folder to load into Chrome. Both stay the same through every later update.
+
+## Quick start (from source)
 
 ### 1. Install build requirements
 
@@ -135,6 +166,9 @@ Claude Code uses same executable:
 ```shell
 claude mcp add --scope local chrome-control -- /absolute/path/chrome_control_mcp
 ```
+
+Prefer the path `--install` prints over a build-directory path: only the former survives an
+update.
 
 Transport is newline-delimited JSON-RPC over stdio. Server opens no TCP listener.
 

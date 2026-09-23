@@ -41,6 +41,18 @@ jobs:
       - name: Audit JavaScript dependencies
         run: npm audit --audit-level=low
 
+      - name: Install VS Code extension tools
+        run: npm ci --prefix vscode
+
+      - name: Audit VS Code extension dependencies
+        run: npm audit --audit-level=low --prefix vscode
+
+      # The extension is TypeScript under strict compiler settings, so type
+      # checking is its lint: nothing else in this repository would catch a
+      # broken call into the editor API before the marketplace build.
+      - name: Type-check VS Code extension
+        run: npm run lint --prefix vscode
+
       - name: Run quality gates
         env:
           SKIP: psscriptanalyzer

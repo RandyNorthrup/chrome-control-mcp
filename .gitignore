@@ -1,6 +1,10 @@
 /build*/
 /dist/
 /node_modules/
+vscode/node_modules/
+vscode/out/
+# Staged at package time from a platform's build; never a source file.
+vscode/bin/
 /coverage/
 /.cache/
 /.eslintcache

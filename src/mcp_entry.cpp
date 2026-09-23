@@ -8,12 +8,18 @@
 #include "chrome_control_mcp/mcp_entry.h"
 
 #include "chrome_control_mcp/mcp_jsonrpc.h"
+#include "chrome_control_mcp/install_layout.h"
+#include "chrome_control_mcp/updater.h"
 #include "chrome_control_mcp/browser_bridge_relay.h"
+#include "chrome_control_mcp/browser_extension_installer.h"
 #include "chrome_control_mcp/browser_control.h"
 #include "chrome_control_mcp/mcp_dispatch.h"
 #include "chrome_control_mcp/mcp_tools.h"
 
 #include <QByteArray>
+#include <QCoreApplication>
+#include <QDir>
+#include <QJsonDocument>
 #include <QJsonObject>
 
 #include <cstdio>
@@ -128,6 +134,73 @@ bool wantsRelayMode(int argc, char **argv) {
   return false;
 }
 
+bool wantsFlag(int argc, char **argv, const char *flag) {
+  for (int i = 1; i < argc; ++i) {
+    if (std::strcmp(argv[i], flag) == 0) {
+      return true;
+    }
+  }
+  return false;
+}
+
+// `--install`: put this copy into the managed layout and register the native
+// host, then print the two paths that everything else has to name. It exists
+// because the first install is the one step an MCP client cannot drive -- the
+// client has to be told a command path before it can call a tool -- and because
+// a person who downloaded an archive should not have to start a JSON-RPC
+// session to install it.
+int runInstall() {
+  const QString executable =
+      QDir::cleanPath(QCoreApplication::applicationFilePath());
+  // A copy already inside the managed layout has nothing to move, but asking it
+  // to install is still a reasonable thing to do: it is how a registration that
+  // was overwritten by another copy of this program gets repaired. Treat it as
+  // "make the registrations name me", not as an error.
+  UpdateApplyResult result;
+  if (installRootForExecutable(executable).isEmpty()) {
+    result = adoptRunningInstall({});
+  } else {
+    const InstallLayout layout = InstallLayout::resolved(executable);
+    result.ok = true;
+    result.installed_version = serverVersion();
+    result.executable_path = stableExecutablePath(executable);
+    result.extension_path = QDir::cleanPath(
+        QDir(layout.current)
+            .filePath(QString::fromLatin1(kBrowserExtensionDirectoryName)));
+  }
+  QJsonObject payload;
+  if (!result.ok) {
+    payload.insert(QStringLiteral("ok"), false);
+    payload.insert(QStringLiteral("error"), result.error);
+  } else {
+    BrowserExtensionInstaller installer(
+        ExtensionInstallConfig{.extension_path = {},
+                               .data_dir = {},
+                               .host_exe_path = result.executable_path,
+                               .native_host_key_path = {},
+                               .native_host_manifest_dir = {}});
+    const ExtensionInstallResult registered = installer.install();
+    payload.insert(QStringLiteral("ok"), registered.ok);
+    payload.insert(QStringLiteral("version"), result.installed_version);
+    payload.insert(QStringLiteral("command"),
+                   QDir::toNativeSeparators(result.executable_path));
+    payload.insert(QStringLiteral("extension_path"),
+                   QDir::toNativeSeparators(result.extension_path));
+    payload.insert(QStringLiteral("native_host"), registered.summary);
+    if (!registered.ok) {
+      payload.insert(QStringLiteral("error"), registered.detail);
+    }
+  }
+  std::fwrite(QJsonDocument(payload).toJson(QJsonDocument::Compact).constData(),
+              1,
+              static_cast<size_t>(
+                  QJsonDocument(payload).toJson(QJsonDocument::Compact).size()),
+              stdout);
+  std::fputc('\n', stdout);
+  std::fflush(stdout);
+  return payload.value(QStringLiteral("ok")).toBool() ? 0 : 1;
+}
+
 } // namespace
 
 int runMcpProcess(int argc, char **argv) {
@@ -167,6 +240,17 @@ int runMcpProcess(int argc, char **argv) {
   // JSON-RPC.
   if (wantsRelayMode(argc, argv)) {
     return chrome_control_mcp::runBrowserRelay();
+  }
+
+  // Install mode: no stdio protocol, one line of JSON, then exit.
+  if (wantsFlag(argc, argv, "--install")) {
+    return runInstall();
+  }
+  if (wantsFlag(argc, argv, "--version")) {
+    std::fprintf(stdout, "%s %s\n",
+                 qUtf8Printable(chrome_control_mcp::serverName()),
+                 qUtf8Printable(chrome_control_mcp::serverVersion()));
+    return 0;
   }
 
   // MCP server mode: own the browser authority (pipe server + session) so a
