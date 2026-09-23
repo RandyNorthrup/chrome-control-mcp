@@ -126,6 +126,23 @@ jobs:
               }
               Copy-Item $library.FullName (Join-Path $stagePath $name)
             }
+            # Qt Core links ICU on Linux, and the archive has to carry it: a
+            # machine with a different ICU major version, or none, cannot start
+            # the executable otherwise. The files are copied under the soname
+            # the loader asks for, resolving the symlink to real content.
+            Get-ChildItem (Join-Path $env:QT_ROOT_DIR 'lib') -Filter 'libicu*' |
+              Where-Object { $_.Name -match '^libicu[a-z]+\.so\.[0-9]+$' } |
+              ForEach-Object {
+                $source = if ($_.LinkType) {
+                  $_.ResolveLinkTarget($true).FullName
+                } else {
+                  $_.FullName
+                }
+                Copy-Item $source (Join-Path $stagePath $_.Name)
+              }
+            Invoke-WebRequest `
+              'https://raw.githubusercontent.com/unicode-org/icu/release-73-2/icu4c/LICENSE' `
+              -OutFile (Join-Path $licenses 'icu4c-LICENSE.txt')
           } elseif ($IsMacOS) {
             $frameworks = Join-Path $stagePath 'Frameworks'
             New-Item -ItemType Directory -Force -Path $frameworks | Out-Null

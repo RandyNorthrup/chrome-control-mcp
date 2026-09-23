@@ -81,7 +81,13 @@ if (!fs.existsSync(path.join(payloadRoot, "extension", "manifest.json"))) {
 // cherry-picked.
 const binary = path.join(extensionRoot, "bin");
 fs.rmSync(binary, { recursive: true, force: true });
-fs.cpSync(payloadRoot, binary, { recursive: true });
+// dereference: a macOS payload carries Qt frameworks, which are directories of
+// symlinks (QtCore.framework/QtCore -> Versions/Current/QtCore). Packaging
+// those as links makes vsce's secret scanner fail outright, and a VSIX is a zip
+// whose link handling is not worth depending on. Copying the real files costs a
+// few megabytes and leaves the paths dyld actually resolves -- the versioned
+// ones named by the install_name -- as ordinary files.
+fs.cpSync(payloadRoot, binary, { recursive: true, dereference: true });
 // A VSIX is a zip and the executable bit does not survive it reliably; the
 // extension re-applies it at runtime. Set it here too so a locally installed
 // VSIX works even if that ever regresses.
