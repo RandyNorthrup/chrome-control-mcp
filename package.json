@@ -1,6 +1,6 @@
 {
   "name": "chrome-control-mcp-quality",
-  "version": "1.3.1",
+  "version": "1.4.0",
   "private": true,
   "description": "Deterministic JavaScript quality tooling for Chrome Control MCP",
   "license": "MIT",

@@ -4,6 +4,10 @@ All notable changes are documented here. Project follows [Semantic Versioning](h
 
 ## [Unreleased]
 
+Nothing yet.
+
+## [1.4.0] - 2026-09-22
+
 ### Added
 
 - **Chrome Control MCP is a VS Code extension.** It publishes to the marketplace as four

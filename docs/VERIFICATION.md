@@ -16,7 +16,7 @@ Live Windows browser: Chrome 151.0.7922.138. Minimum supported manifest version 
 
 - Extension ID: `iojehhmnaigcejfcpmilpclmeljhlkaa`
 - Native host: `com.chromecontrolmcp.browser`
-- Extension version: `1.3.1`
+- Extension version: `1.4.0`
 - Delivery: unpacked extension directory
 - Public manifest identity derives pinned extension ID
 - No private key, packaged browser artifact, store account, or enterprise policy
