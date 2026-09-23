@@ -81,32 +81,49 @@ if (!fs.existsSync(path.join(payloadRoot, "extension", "manifest.json"))) {
 // cherry-picked.
 const binary = path.join(extensionRoot, "bin");
 fs.rmSync(binary, { recursive: true, force: true });
-// dereference: a macOS payload carries Qt frameworks, which are directories of
-// symlinks (QtCore.framework/QtCore -> Versions/Current/QtCore). Packaging
-// those as links makes vsce's secret scanner fail outright, and a VSIX is a zip
-// whose link handling is not worth depending on. Copying the real files costs a
-// few megabytes and leaves the paths dyld actually resolves -- the versioned
-// ones named by the install_name -- as ordinary files.
-fs.cpSync(payloadRoot, binary, { recursive: true, dereference: true });
-// Qt frameworks ship their headers, and a framework's Headers directory is
-// hundreds of text files that nothing at runtime reads. They are dead weight in
-// a VSIX and they are what the marketplace secret scanner spends its time on,
-// so drop them along with the other build-time leftovers.
+fs.cpSync(payloadRoot, binary, { recursive: true });
+// A VSIX is a zip, and the packer has no representation for a link: handed the
+// directory symlink at QtNetwork.framework/Resources it fails with
+// "not a file". A macOS Qt framework is full of them -- Versions/Current -> A,
+// Resources -> Versions/Current/Resources, QtNetwork -> Versions/Current/
+// QtNetwork -- and they are conveniences, not load paths. Qt's install_name
+// names the versioned file directly (@rpath/QtNetwork.framework/Versions/A/
+// QtNetwork), so dropping every link leaves what dyld actually opens and is
+// smaller than resolving each one into a duplicate copy.
+//
+// The headers go the same way: hundreds of text files no runtime reads.
 function prune(directory) {
   for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
     const full = path.join(directory, entry.name);
-    if (entry.isDirectory()) {
+    if (entry.isSymbolicLink()) {
+      fs.rmSync(full, { force: true });
+    } else if (entry.isDirectory()) {
       if (entry.name === "Headers" || entry.name.endsWith(".dSYM")) {
         fs.rmSync(full, { recursive: true, force: true });
-        continue;
+      } else {
+        prune(full);
       }
-      prune(full);
     } else if (entry.name.endsWith(".prl") || entry.name.endsWith(".la")) {
       fs.rmSync(full, { force: true });
     }
   }
 }
 prune(binary);
+
+// Nothing may survive that walk as a link: one left behind fails the pack with
+// a message that names the file and not the reason, which is how this cost a
+// build once already.
+function assertNoLinks(directory) {
+  for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
+    if (entry.isSymbolicLink()) {
+      fail(`${path.join(directory, entry.name)} is still a link`);
+    }
+    if (entry.isDirectory()) {
+      assertNoLinks(path.join(directory, entry.name));
+    }
+  }
+}
+assertNoLinks(binary);
 
 // A VSIX is a zip and the executable bit does not survive it reliably; the
 // extension re-applies it at runtime. Set it here too so a locally installed

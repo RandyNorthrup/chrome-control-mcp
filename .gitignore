@@ -25,3 +25,7 @@ Testing/
 
 # Local unpacked release archives (extracted beside the repo for use as the MCP path)
 release/
+
+
+# Temporary files created by editors
+temp
