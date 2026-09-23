@@ -1431,7 +1431,25 @@ async function sessionWindow(session) {
       }
     }
   }
-  return (await activeTab(session)).windowId;
+  // A window id is all any caller wants here: which window to list, to resolve
+  // an index against, or to open a tab in. Going through activeTab() would
+  // ADOPT the user's active tab as this session's, and refuse when another
+  // session is already driving it -- so a second session could neither list
+  // tabs nor open one of its own while the first held the tab in front, and
+  // the refusal advised opening a new tab, which failed the same way. Reading
+  // the window costs no tab and takes nothing from anyone.
+  const front = await chrome.tabs.query({
+    active: true,
+    lastFocusedWindow: true,
+  });
+  if (front && front.length) {
+    return front[0].windowId;
+  }
+  const lastFocused = await chrome.windows.getLastFocused().catch(() => null);
+  if (lastFocused && typeof lastFocused.id === "number") {
+    return lastFocused.id;
+  }
+  throw new Error("No active tab.");
 }
 
 // A foreground tab opened BY the session's page (a target=_blank link, window.open) is where the
@@ -5465,7 +5483,12 @@ function waitForComplete(tabId, priorUrl) {
   });
 }
 
-async function handleNavigate(tabId, args) {
+// Takes the session it is acting for like every other handler, even though it
+// needs nothing from it: dispatchCommand passes it positionally, so a handler
+// that omits it receives the session as its tabId and the tab id as its args.
+// That is not a type error in JavaScript -- it surfaces as args.url being
+// undefined, and the caller is told its perfectly good URL is not http(s).
+async function handleNavigate(_session, tabId, args) {
   const url = normalizeUrl(args && args.url);
   if (!url) {
     throw new Error("navigate requires an http(s) URL.");

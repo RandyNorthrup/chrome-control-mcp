@@ -6,7 +6,7 @@ Evidence recorded 2026-08-20. Commands below ran against repository checkout, no
 
 | Platform | Toolchain                                | Result                                   |
 | -------- | ---------------------------------------- | ---------------------------------------- |
-| Windows  | MSVC 19.50, CMake 3.31, Qt 6.10, Node 24 | Build + 18/18 suites + live Chrome pass  |
+| Windows  | MSVC 19.50, CMake 3.31, Qt 6.10, Node 24 | Build + 19/19 suites + live Chrome pass  |
 | Linux    | GCC 16 and Clang 22, Qt 6.11, Node 24    | Both builds + 17/17 suites + live Chrome |
 | macOS    | Clang + Qt 6.10 GitHub Actions runner    | Build + 17/17 suites                     |
 
@@ -40,30 +40,31 @@ Windows generator may add `-A x64`; multi-config builds place executable under `
 
 ## Automated tests
 
-Result: **18/18 passed** under Windows/MSVC and **17/17** under Linux/GCC, Linux/Clang, and
+Result: **19/19 passed** under Windows/MSVC and **18/18** under Linux/GCC, Linux/Clang, and
 macOS/Clang. The counts differ by one because `test_windows_process_identity` builds only on
 Windows.
 
-| Test                                  | Coverage                                                                    |
-| ------------------------------------- | --------------------------------------------------------------------------- |
-| `test_browser_contract`               | 40 browser-tool schemas, translation, refs, bounds, and validation          |
-| `test_native_messaging`               | Native frame codec and host handshake                                       |
-| `test_browser_bridge`                 | Session, reply correlation, snapshots, and stale refs                       |
-| `test_browser_extension_installer`    | Public identity and isolated native-host lifecycle                          |
-| `test_browser_uploads`                | Upload path rules, roots confinement, and byte-exact chunking               |
-| `test_browser_bridge_security`        | ACL/permissions, nonce, rendezvous, and ownership                           |
-| `test_browser_bridge_pipe`            | Platform IPC handshake, peer verification, timeout, framing, reconnect      |
-| `test_browser_bridge_relay`           | End-to-end relay/bridge/session with fake extension                         |
-| `test_install_layout`                 | Version-directory safety, link swap under an open file, and pruning         |
-| `test_updater`                        | Asset naming, checksum parsing, version order, and staged install           |
-| `test_browser_mcp_server`             | Identity, 49 tools, profiles, envelopes, schemas, and MCP content           |
-| `test_browser_extension_pure`         | 69 service-worker security, storage, geometry, and decision cases           |
-| `test_browser_extension_transport`    | Native port, readiness handshake, and how a command is refused              |
-| `test_browser_extension_session`      | What a session releases when its debugger attachment ends                   |
-| `test_browser_extension_multisession` | One port per server, and the tab leases that keep sessions apart            |
-| `test_browser_extension_recording`    | Recording refusals, the timeline, and discard on a session's death          |
-| `test_vscode_payload`                 | VSIX payload rules, with red drills for a link that survives pruning        |
-| `test_windows_process_identity`       | Windows only: identity across a junction, from a child launched through one |
+| Test                                  | Coverage                                                                        |
+| ------------------------------------- | ------------------------------------------------------------------------------- |
+| `test_browser_contract`               | 40 browser-tool schemas, translation, refs, bounds, and validation              |
+| `test_native_messaging`               | Native frame codec and host handshake                                           |
+| `test_browser_bridge`                 | Session, reply correlation, snapshots, and stale refs                           |
+| `test_browser_extension_installer`    | Public identity and isolated native-host lifecycle                              |
+| `test_browser_uploads`                | Upload path rules, roots confinement, and byte-exact chunking                   |
+| `test_browser_bridge_security`        | ACL/permissions, nonce, rendezvous, and ownership                               |
+| `test_browser_bridge_pipe`            | Platform IPC handshake, peer verification, timeout, framing, reconnect          |
+| `test_browser_bridge_relay`           | End-to-end relay/bridge/session with fake extension                             |
+| `test_install_layout`                 | Version-directory safety, link swap under an open file, and pruning             |
+| `test_updater`                        | Asset naming, checksum parsing, version order, and staged install               |
+| `test_browser_mcp_server`             | Identity, 49 tools, profiles, envelopes, schemas, and MCP content               |
+| `test_browser_extension_pure`         | 69 service-worker security, storage, geometry, and decision cases               |
+| `test_browser_extension_transport`    | Native port, readiness handshake, and how a command is refused                  |
+| `test_browser_extension_session`      | What a session releases when its debugger attachment ends                       |
+| `test_browser_extension_multisession` | One port per server, and the tab leases that keep sessions apart                |
+| `test_browser_extension_recording`    | Recording refusals, the timeline, and discard on a session's death              |
+| `test_vscode_payload`                 | VSIX payload rules, with red drills for a link that survives pruning            |
+| `test_windows_process_identity`       | Windows only: identity across a junction, from a child launched through one     |
+| `test_browser_extension_offscreen`    | The recorder host loaded for real, against a captureStream-less OffscreenCanvas |
 
 `test_install_layout` and `test_updater` are newer than the local Linux and macOS desktop runs
 recorded above, but both have since passed on all three platforms in GitHub Actions, which is where
@@ -283,6 +284,32 @@ one-pixel screencast running, which makes Chrome composite the tab:
 The forced path returns the same image, not a different one: at 2x, foreground plain capture and
 background screencast-forced capture were byte-identical, 114,526 bytes for the viewport and
 178,520 for the full page.
+
+## Live Chrome, 1.5.2
+
+Evidence recorded 2026-09-23 on Windows 11 Pro 26200, Chrome with the unpacked
+extension loaded from the managed install. Every line below is a real call
+against a real browser; each of the four faults was found this way and none of
+them was visible to the suites before it.
+
+| Checked                                   | Result                                                                  |
+| ----------------------------------------- | ----------------------------------------------------------------------- |
+| Bridge attaches after an extension reload | Attached with no intervention                                           |
+| `browser_navigate`, https                 | `https://example.org/` loaded                                           |
+| `browser_navigate`, http                  | `http://uitestingplayground.com/textinput` loaded                       |
+| Snapshot / type / click                   | 11 refs; 14 characters typed; click landed at (458, 462)                |
+| `browser_record_start` / `_stop`          | 886,899-byte `.webm`, EBML magic `1a45dfa3`, 6 commands in the timeline |
+| Recording timeline tracks the DOM         | `dom_epoch` 0 -> 1 -> 2 across two navigations                          |
+| Orphaned relay after an extension reload  | The relay exited on its own; the bridge recovered with nothing killed   |
+| Two servers at once                       | Both rendezvous records present; neither swept the other                |
+| Second session opens its own tab          | Opened, snapshotted and closed its own tab while the first held another |
+| A tab held elsewhere                      | Listed and flagged `controlled_by_other_session`, not hidden            |
+| Lease refusal                             | Named the holding server by pid                                         |
+
+The recording figure is what makes `browser_record_start` and
+`browser_record_stop` verified at all: they shipped in 1.5.0 and failed on their
+first real start, because the file that encodes the video was the one shipped
+file no test loaded.
 
 ## Claim boundary
 

@@ -42,10 +42,14 @@ function startRecording(message) {
   if (recorders.has(message.session)) {
     return { ok: false, error: "already recording" };
   }
-  const canvas = new OffscreenCanvas(
-    message.width || 1280,
-    message.height || 800,
-  );
+  // A DOM canvas, not an OffscreenCanvas: captureStream() is defined on
+  // HTMLCanvasElement and does not exist on OffscreenCanvas, so an
+  // OffscreenCanvas here fails with "canvas.captureStream is not a function"
+  // the first time a recording starts. Having a DOM is the whole reason this
+  // document exists -- the service worker has none -- so use it.
+  const canvas = document.createElement("canvas");
+  canvas.width = message.width || 1280;
+  canvas.height = message.height || 800;
   const context = canvas.getContext("2d");
   const stream = canvas.captureStream(message.fps || 10);
   const recorder = new MediaRecorder(stream, { mimeType: "video/webm" });

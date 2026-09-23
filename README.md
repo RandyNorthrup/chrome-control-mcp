@@ -265,7 +265,7 @@ whatever the browser profile says.
 
 Local gates currently cover:
 
-- 18/18 native and extension suites on Windows and 17/17 on Linux and macOS, with MSVC, GCC,
+- 19/19 native and extension suites on Windows and 18/18 on Linux and macOS, with MSVC, GCC,
   and Clang. One suite is Windows-only: it asks whether a directory junction can make one file
   look like two processes, which is a question the POSIX symbolic link does not raise.
 - Warnings-as-errors plus `clang-tidy` and exhaustive `cppcheck`
@@ -273,8 +273,9 @@ Local gates currently cover:
 - Full-history Gitleaks scan and npm dependency audit
 - 44/44 live browser and extension tools through real Chrome on Windows. The three
   `browser_update_*` tools are not browser tools and are not part of that run; their evidence is
-  below. The two `browser_record_*` tools are not in that figure either: they are covered by unit
-  suites and have not yet been exercised against real Chrome.
+  below. The two `browser_record_*` tools are not in that figure, which predates them; they were
+  exercised against real Chrome on 2026-09-23, producing a playable `.webm` and the sidecar
+  timeline beside it.
 - 35/35 display configurations on Windows and macOS: scales 1x to 3x, zoom 25% to 500%, pinch, and
   both scrollbar kinds, each coordinate proven by where its click landed
 - Public UI Playground navigation, snapshot, typing, click, and PNG capture

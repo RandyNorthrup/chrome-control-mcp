@@ -66,6 +66,12 @@ struct UpdateApplyResult {
   // to be repointed once when this happens, and never again.
   bool adopted{false};
   QString adopted_from;
+  // True when this call changed nothing because the version was already
+  // installed and already current. Reported rather than inferred: an
+  // install that copied nothing and an install that replaced the tree both
+  // answer ok, and a caller that cannot tell them apart will believe a
+  // rebuilt same-version tree landed when it did not.
+  bool unchanged{false};
 };
 
 /// The release-asset base name this build needs, for @p version: the operating

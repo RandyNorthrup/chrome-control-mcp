@@ -55,6 +55,23 @@ bool pipeWriteAll(HANDLE pipe, const char *buffer, DWORD size) {
 
 } // namespace
 
+NativeIpcHandle browserStdInHandle() { return GetStdHandle(STD_INPUT_HANDLE); }
+
+bool browserInputClosed(NativeIpcHandle input) {
+  if (input == nullptr || input == INVALID_HANDLE_VALUE) {
+    return true;
+  }
+  DWORD available = 0;
+  if (PeekNamedPipe(input, nullptr, 0, nullptr, &available, nullptr) != FALSE) {
+    return false; // still connected, with or without bytes waiting
+  }
+  // Only a hangup counts. Run from a console or with stdin redirected from a
+  // file, PeekNamedPipe fails with something else entirely (the handle is not
+  // a pipe), and answering "closed" there would end a relay that is fine.
+  const DWORD reason = GetLastError();
+  return reason == ERROR_BROKEN_PIPE || reason == ERROR_PIPE_NOT_CONNECTED;
+}
+
 bool relayReadPipeFrame(HANDLE pipe, QJsonObject *out) {
   char header[kNativeFrameHeaderBytes];
   if (!pipeReadExact(pipe, header, kNativeFrameHeaderBytes)) {

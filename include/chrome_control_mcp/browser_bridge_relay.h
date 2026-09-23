@@ -140,6 +140,42 @@ inline constexpr int kRelayAttachTimeoutMs = 5000;
 [[nodiscard]] bool relayWritePipeFrame(NativeIpcHandle pipe,
                                        const QJsonObject &message);
 
+/// How often the relay asks whether Chrome is still on the other end of its
+/// stdio. Short enough that a reloaded extension frees the server's pipe before
+/// the next command needs it, long enough to cost nothing while idle.
+inline constexpr int kBrowserPresencePollMs = 250;
+
+/// This process's standard input, as the handle type the presence check takes.
+[[nodiscard]] NativeIpcHandle browserStdInHandle();
+
+/// Whether the browser end of @p input has gone away -- Chrome closed the port,
+/// or exited.
+///
+/// PEEKS ONLY: it never consumes a byte, so it is safe to call while the pump
+/// is reading the same descriptor on another thread. It is also deliberately
+/// one-sided: only a definite hangup answers true, and anything it cannot
+/// interpret answers false. Exiting on a guess would kill a working relay,
+/// which is worse than the leak this exists to stop.
+[[nodiscard]] bool browserInputClosed(NativeIpcHandle input);
+
+/// Poll browserInputClosed() on a detached thread and end this process once it
+/// answers true.
+///
+/// The relay spends nearly all its life blocked reading the pipe, waiting for
+/// the server to send a command. Chrome closing the port -- which an extension
+/// reload does every time -- is invisible from there: nothing wakes that read.
+/// The relay stayed alive holding its end of a pipe created with
+/// nMaxInstances = 1, so every relay Chrome started afterwards was refused with
+/// ERROR_PIPE_BUSY and the bridge could not come back until the orphan was
+/// killed by hand.
+///
+/// Ending the process is the whole repair: the relay holds no state worth
+/// saving -- every id, ref and session lives in the MCP process -- and Chrome
+/// starts a new one on the next port connection. The exit skips static
+/// destructors on purpose, because another thread may be mid-write on the pipe
+/// and running them underneath it would be the only way this could crash.
+void watchForBrowserExit();
+
 /// Run the full relay against Chrome's stdio. The sequence is:
 ///
 ///   1. list the published rendezvous records and offer them to the extension

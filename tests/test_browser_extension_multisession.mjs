@@ -220,3 +220,125 @@ test("a tab held by another session is marked in the listing, not hidden", async
   const [first] = [...worker.sessions];
   assert.equal(worker.leaseHolder(7, first), null, "not held against itself");
 });
+
+// -- The dispatcher contract -------------------------------------------------
+//
+// dispatchCommand builds its argument list positionally:
+//
+//   const params = [session];
+//   if (entry.tab) params.push(await activeTabId(session));
+//   if (entry.args) params.push(args);
+//
+// so every handler must declare exactly those parameters, session first. A
+// handler that omits it still runs: it receives the session as its tabId and
+// the tab id as its args, and JavaScript reports nothing. browser_navigate
+// shipped that way in 1.5.0 -- handleNavigate(tabId, args) read args.url off a
+// tab id, found undefined, and told the caller its URL was not http(s).
+//
+// ESLint cannot see it. A handler that never mentions `session` has no
+// undefined reference for no-undef to catch, which is exactly the case that
+// went out. This check is structural instead: it compares each entry's
+// declared arity against what the dispatcher will hand it.
+
+const EXPECTED_ARITY_EXPORTS = ["COMMAND_TABLE"];
+
+function commandTable() {
+  return loadWorker(EXPECTED_ARITY_EXPORTS, {
+    "runtime.connectNative": () => makeFakePort(),
+  }).COMMAND_TABLE;
+}
+
+test("every command handler takes exactly what the dispatcher passes it", () => {
+  const table = commandTable();
+  const wrong = [];
+  for (const [cmd, entry] of table) {
+    const expected = 1 + (entry.tab ? 1 : 0) + (entry.args ? 1 : 0);
+    if (entry.fn.length !== expected) {
+      wrong.push(
+        `${cmd}: dispatcher passes ${expected} argument(s), handler declares ${entry.fn.length}`,
+      );
+    }
+  }
+  assert.deepEqual(wrong, [], wrong.join("; "));
+});
+
+test("the command table is not empty, so the check above cannot pass vacuously", () => {
+  const table = commandTable();
+  assert.ok(table.size > 30, `only ${table.size} commands in the table`);
+  assert.ok(table.has("navigate"));
+});
+
+// -- Asking which window must not take a tab ---------------------------------
+//
+// sessionWindow() answers "which window is this session working in". Every
+// caller -- listing tabs, resolving an index, opening a tab -- wants only the
+// id. It used to get one by calling activeTab(), which ADOPTS the user's
+// active tab as the session's and refuses when another session already holds
+// it. So while one session drove the tab in front, a second could not list
+// tabs and could not open one of its own: browser_new_tab failed with "that
+// tab is being driven by another session", advising the caller to open a new
+// tab, which is what it had just refused.
+
+const WINDOW_EXPORTS = ["connect", "sessionWindow", "leaseHolder", "sessions"];
+
+function bootWithFrontTab(frontTab) {
+  const opened = [];
+  const worker = loadWorker(
+    WINDOW_EXPORTS,
+    {
+      "runtime.connectNative": () => {
+        const port = makeFakePort();
+        opened.push(port);
+        return port;
+      },
+      "debugger.attach": () => Promise.resolve(),
+      "debugger.detach": () => Promise.resolve(),
+      "tabs.query": () => Promise.resolve([frontTab]),
+      "tabs.get": (id) =>
+        id === frontTab.id
+          ? Promise.resolve(frontTab)
+          : Promise.reject(new Error("gone")),
+      "windows.getLastFocused": () =>
+        Promise.resolve({ id: frontTab.windowId }),
+    },
+    LIVE,
+  );
+  return { worker, opened };
+}
+
+test("a session can name its window while another session holds the tab in front", async () => {
+  const front = { id: 7, windowId: 42, url: "https://example.com/", index: 0 };
+  const { worker, opened } = bootWithFrontTab(front);
+
+  offer(opened[0], ["100", "200"]);
+  await settle();
+  offer(opened[1], ["100", "200"]);
+  await settle();
+  assert.equal(worker.sessions.size, 2);
+
+  const [first, second] = [...worker.sessions];
+  // The first session is driving the tab the user is looking at.
+  first.sessionTabId = front.id;
+  first.sessionWindowId = front.windowId;
+  assert.equal(worker.leaseHolder(front.id, second), first);
+
+  // The second session has no tab of its own yet, which is exactly when it
+  // needs to open one.
+  assert.equal(second.sessionTabId, null);
+  assert.equal(
+    await worker.sessionWindow(second),
+    front.windowId,
+    "asking which window must not be refused over a tab it is not taking",
+  );
+  // And asking must not have quietly taken the tab either.
+  assert.equal(
+    second.sessionTabId,
+    null,
+    "the session adopted a tab it was not given",
+  );
+  assert.equal(
+    worker.leaseHolder(front.id, second),
+    first,
+    "the lease changed hands",
+  );
+});

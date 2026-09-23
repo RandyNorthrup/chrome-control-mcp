@@ -19,6 +19,7 @@
 using chrome_control_mcp::bridgeImageMismatchText;
 using chrome_control_mcp::BrowserBridgePipeServer;
 using chrome_control_mcp::BrowserControl;
+using chrome_control_mcp::browserInputClosed;
 using chrome_control_mcp::closeNativeIpcHandle;
 using chrome_control_mcp::kInvalidNativeIpcHandle;
 using chrome_control_mcp::NativeIpcHandle;
@@ -130,6 +131,11 @@ private slots:
   void relay_forwardsCancelToAPollingExtensionWhenTheServerAbandons();
   void control_notConnectedReportsError();
   void control_snapshotRoundTripsThroughRelay();
+  void browserPresence_openInputIsNotClosed();
+  void browserPresence_waitingBytesAreNotAHangup();
+  void browserPresence_closedWriteEndIsAHangup();
+  void browserPresence_peekDoesNotConsume();
+  void browserPresence_invalidInputIsClosed();
 };
 
 void BrowserBridgeRelayTests::relayConnect_rejectsForeignServerPid() {
@@ -434,6 +440,124 @@ void BrowserBridgeRelayTests::
   QVERIFY(chrome_control_mcp::selectRendezvousRecord({}, QStringLiteral("100"))
               .isEmpty());
   QVERIFY(chrome_control_mcp::selectRendezvousRecord({}, QString{}).isEmpty());
+}
+
+// -- Chrome going away while the relay is blocked on the pipe ----------------
+//
+// The relay spends nearly all its life waiting for the server to send a
+// command. Chrome closing the port is invisible from there, so the relay used
+// to stay alive holding its end of a pipe created with nMaxInstances = 1: every
+// relay Chrome started afterwards was refused with ERROR_PIPE_BUSY, and the
+// bridge stayed down until the orphan was killed by hand. These pin the check
+// that ends it -- including that it never eats a byte the pump is owed.
+
+namespace {
+
+// A pipe standing in for the one Chrome hands a native host.
+struct StdioPipe {
+  NativeIpcHandle read_end{kInvalidNativeIpcHandle};
+  NativeIpcHandle write_end{kInvalidNativeIpcHandle};
+
+  StdioPipe() {
+#ifdef Q_OS_WIN
+    HANDLE r = nullptr;
+    HANDLE w = nullptr;
+    if (CreatePipe(&r, &w, nullptr, 0) != FALSE) {
+      read_end = r;
+      write_end = w;
+    }
+#else
+    int fds[2] = {-1, -1};
+    if (::pipe(fds) == 0) {
+      read_end = fds[0];
+      write_end = fds[1];
+    }
+#endif
+  }
+  ~StdioPipe() {
+    closeWriteEnd();
+    if (read_end != kInvalidNativeIpcHandle) {
+      closeNativeIpcHandle(read_end);
+    }
+  }
+  StdioPipe(const StdioPipe &) = delete;
+  StdioPipe &operator=(const StdioPipe &) = delete;
+  StdioPipe(StdioPipe &&) = delete;
+  StdioPipe &operator=(StdioPipe &&) = delete;
+
+  bool valid() const {
+    return read_end != kInvalidNativeIpcHandle &&
+           write_end != kInvalidNativeIpcHandle;
+  }
+  void closeWriteEnd() {
+    if (write_end != kInvalidNativeIpcHandle) {
+      closeNativeIpcHandle(write_end);
+      write_end = kInvalidNativeIpcHandle;
+    }
+  }
+  bool put(const char *bytes, int size) {
+#ifdef Q_OS_WIN
+    DWORD written = 0;
+    return WriteFile(write_end, bytes, static_cast<DWORD>(size), &written,
+                     nullptr) != FALSE;
+#else
+    return ::write(write_end, bytes, static_cast<size_t>(size)) == size;
+#endif
+  }
+  int take(char *bytes, int size) {
+#ifdef Q_OS_WIN
+    DWORD got = 0;
+    if (ReadFile(read_end, bytes, static_cast<DWORD>(size), &got, nullptr) ==
+        FALSE) {
+      return -1;
+    }
+    return static_cast<int>(got);
+#else
+    return static_cast<int>(::read(read_end, bytes, static_cast<size_t>(size)));
+#endif
+  }
+};
+
+} // namespace
+
+void BrowserBridgeRelayTests::browserPresence_openInputIsNotClosed() {
+  StdioPipe stdio;
+  QVERIFY(stdio.valid());
+  QVERIFY(!browserInputClosed(stdio.read_end));
+}
+
+void BrowserBridgeRelayTests::browserPresence_waitingBytesAreNotAHangup() {
+  StdioPipe stdio;
+  QVERIFY(stdio.valid());
+  QVERIFY(stdio.put("hello", 5));
+  // Readable is not closed. Confusing the two would end the relay exactly when
+  // the browser was talking to it.
+  QVERIFY(!browserInputClosed(stdio.read_end));
+}
+
+void BrowserBridgeRelayTests::browserPresence_closedWriteEndIsAHangup() {
+  StdioPipe stdio;
+  QVERIFY(stdio.valid());
+  stdio.closeWriteEnd();
+  QVERIFY(browserInputClosed(stdio.read_end));
+}
+
+void BrowserBridgeRelayTests::browserPresence_peekDoesNotConsume() {
+  StdioPipe stdio;
+  QVERIFY(stdio.valid());
+  QVERIFY(stdio.put("frame", 5));
+  // The watchdog runs on its own thread while the pump reads this same
+  // descriptor, so a check that consumed would steal part of a frame.
+  for (int i = 0; i < 5; ++i) {
+    QVERIFY(!browserInputClosed(stdio.read_end));
+  }
+  char buffer[5] = {0};
+  QCOMPARE(stdio.take(buffer, 5), 5);
+  QCOMPARE(QByteArray(buffer, 5), QByteArray("frame"));
+}
+
+void BrowserBridgeRelayTests::browserPresence_invalidInputIsClosed() {
+  QVERIFY(browserInputClosed(kInvalidNativeIpcHandle));
 }
 
 QTEST_MAIN(BrowserBridgeRelayTests)

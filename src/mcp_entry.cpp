@@ -171,6 +171,10 @@ int runInstall() {
   } else {
     const InstallLayout layout = InstallLayout::resolved(executable);
     result.ok = true;
+    // Nothing is copied on this path either: it repairs the registration so
+    // it names this copy, which is what a person asking an already-installed
+    // build to install itself wants.
+    result.unchanged = true;
     result.installed_version = serverVersion();
     result.executable_path = stableExecutablePath(executable);
     result.extension_path = currentExtensionDirectory(layout);
@@ -194,6 +198,22 @@ int runInstall() {
     payload.insert(QStringLiteral("extension_path"),
                    QDir::toNativeSeparators(result.extension_path));
     payload.insert(QStringLiteral("native_host"), registered.summary);
+    // Say whether anything was actually copied. This path is a no-op when
+    // the version is already installed and already current, which is the
+    // normal case on every editor start -- but it is also what a rebuilt
+    // tree of the SAME version hits, and reporting that as an install
+    // sends the reader looking for their change in a copy that never
+    // received it.
+    payload.insert(QStringLiteral("installed"), !result.unchanged);
+    if (result.unchanged) {
+      payload.insert(
+          QStringLiteral("note"),
+          QStringLiteral("Version %1 was already installed and already "
+                         "current, so nothing was copied. A rebuilt tree of "
+                         "the same version needs a new version number; the "
+                         "running executable cannot be replaced in place.")
+              .arg(result.installed_version));
+    }
     if (!registered.ok) {
       payload.insert(QStringLiteral("error"), registered.detail);
     }

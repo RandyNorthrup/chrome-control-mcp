@@ -114,6 +114,25 @@ bool awaitBrowserReply(NativeIpcHandle pipe, const BrowserReadFn &browser_read,
   return socketOk && readOk;
 }
 
+NativeIpcHandle browserStdInHandle() { return STDIN_FILENO; }
+
+bool browserInputClosed(NativeIpcHandle input) {
+  if (input < 0) {
+    return true;
+  }
+  pollfd watched{};
+  watched.fd = input;
+  // No events requested: POLLHUP, POLLERR and POLLNVAL are reported whether or
+  // not they were asked for, and asking for POLLIN would report a readable
+  // descriptor the pump is about to consume. This must never look like a
+  // reader.
+  watched.events = 0;
+  if (::poll(&watched, 1, 0) <= 0) {
+    return false;
+  }
+  return (watched.revents & (POLLHUP | POLLERR | POLLNVAL)) != 0;
+}
+
 bool relayReadPipeFrame(NativeIpcHandle pipe, QJsonObject *out) {
   char header[kNativeFrameHeaderBytes];
   if (!socketReadExact(pipe, header, kNativeFrameHeaderBytes) ||

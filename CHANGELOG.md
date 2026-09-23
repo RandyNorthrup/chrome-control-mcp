@@ -6,6 +6,70 @@ All notable changes are documented here. Project follows [Semantic Versioning](h
 
 Nothing yet.
 
+## [1.5.2] - 2026-09-23
+
+Three faults that only a real browser could find. 1.5.1 fixed the identity
+check that stopped the bridge attaching; with it attaching, the first things it
+tried were broken.
+
+### Fixed
+
+- **`browser_navigate` did nothing but report that your URL was not http(s).**
+  `dispatchCommand` passes the session it is acting for as every handler's first
+  argument, and `handleNavigate` was still declared `(tabId, args)`. It read
+  `args.url` off a tab id, found `undefined`, and refused a perfectly good URL.
+  Broken since 1.5.0, when the session was threaded through the worker.
+
+  ESLint could not see it. `no-undef` made that refactor verifiable by failing
+  on any function that USED a binding it no longer had, and `handleNavigate`
+  never mentions `session` -- a missing parameter is silent in JavaScript. All
+  41 handlers that the command table names directly were audited the same way;
+  `navigate` was the only one. A test now compares every entry's declared arity
+  against what the dispatcher passes it.
+
+- **Recording never worked.** `browser_record_start` failed on its first real
+  start with "canvas.captureStream is not a function": the offscreen document
+  built an `OffscreenCanvas`, and `captureStream()` exists on
+  `HTMLCanvasElement` only. Having a DOM is the entire reason that document
+  exists, so it now creates a canvas element.
+
+  `browser/extension/offscreen.js` was the one shipped file no test loaded --
+  the recording suite stubs the document out and tests the worker's side of the
+  conversation. It has a suite of its own now, whose harness gives the context
+  an `OffscreenCanvas` with no `captureStream`, exactly as Chrome does.
+
+- **A second session could neither list tabs nor open one of its own while the
+  first held the tab in front.** `sessionWindow()` answers which window a
+  session is working in, and every caller of it -- listing tabs, resolving an
+  index, opening a tab -- wants only the id. It got one by calling
+  `activeTab()`, which ADOPTS the user's active tab as the session's and
+  refuses when another session already holds it. So a second editor was told
+  "that tab is being driven by another Chrome Control MCP session", and advised
+  to open a new tab, which failed the same way. Asking which window now reads
+  the window and takes no tab from anyone.
+
+  This is the case multi-session exists for, and it worked only while the first
+  session happened not to hold the tab in front.
+
+- **An orphaned relay left the bridge unreachable until it was killed by hand.**
+  Reloading the extension closes the relay's port, but the relay spends nearly
+  all its life blocked reading the pipe, where that is invisible. It stayed
+  alive holding its end of a pipe created with `nMaxInstances = 1`, so every
+  relay Chrome started afterwards was refused with `ERROR_PIPE_BUSY`.
+
+  The relay now watches its own standard input and ends the process when Chrome
+  lets go. The check peeks and never consumes, because the pump reads the same
+  descriptor on another thread; only a definite hangup counts, so a relay run
+  from a console is not killed by a check that cannot interpret its stdin.
+
+### Changed
+
+- `--install` reports whether it copied anything. It is a no-op when the version
+  is already installed and already current -- which is right, because the VS
+  Code extension calls it on every activation -- but it answered `ok` either
+  way, so a rebuilt tree of the same version looked installed when nothing had
+  moved.
+
 ## [1.5.1] - 2026-09-23
 
 ### Fixed

@@ -25,6 +25,7 @@
 #include <atomic>
 #include <chrono>
 #include <cstdio>
+#include <cstdlib>
 #include <iostream>
 #include <memory>
 #include <thread>
@@ -216,7 +217,31 @@ bool relayPumpOnce(NativeIpcHandle pipe, const BrowserReadFn &browser_read,
                              reply); // false if the server reset the connection
 }
 
+void watchForBrowserExit() {
+  std::thread([] {
+    const NativeIpcHandle input = browserStdInHandle();
+    for (;;) {
+      std::this_thread::sleep_for(
+          std::chrono::milliseconds(kBrowserPresencePollMs));
+      if (browserInputClosed(input)) {
+        // Flush what is already buffered, then leave without unwinding: the
+        // pump thread may be mid-write on the pipe, and running static
+        // destructors underneath it is the one way this could turn a clean
+        // exit into a crash. The server sees its client drop, which is exactly
+        // what happened.
+        std::fflush(nullptr);
+        std::_Exit(0);
+      }
+    }
+  }).detach();
+}
+
 int runBrowserRelay() {
+  // Armed before anything else. The pump is where an unnoticed Chrome is
+  // fatal -- that read blocks forever -- but every earlier phase can strand a
+  // process too, and there is no phase in which carrying on without a browser
+  // is the right answer.
+  watchForBrowserExit();
   QString token;
   int protocol = 0;
   QString error;

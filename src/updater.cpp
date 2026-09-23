@@ -595,6 +595,7 @@ UpdateApplyResult adoptRunningInstall(const UpdaterConfig &config) {
     UpdateApplyResult unchanged;
     unchanged.ok = true;
     unchanged.adopted = true;
+    unchanged.unchanged = true;
     unchanged.adopted_from = source;
     unchanged.previous_version = version;
     unchanged.installed_version = version;
