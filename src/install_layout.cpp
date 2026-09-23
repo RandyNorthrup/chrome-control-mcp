@@ -23,6 +23,9 @@
 #include <vector>
 #else
 #include <cerrno>
+// rename() is declared in <cstdio>, not <unistd.h>; relying on the latter to
+// pull it in transitively builds on some libcs and not others.
+#include <cstdio>
 #include <cstring>
 #include <unistd.h>
 #endif
@@ -64,14 +67,6 @@ QString parentPath(const QString &path) {
     return {};
   }
   return QDir::cleanPath(parent);
-}
-
-QString currentExecutableName() {
-#ifdef Q_OS_WIN
-  return QStringLiteral("chrome_control_mcp.exe");
-#else
-  return QStringLiteral("chrome_control_mcp");
-#endif
 }
 
 } // namespace
