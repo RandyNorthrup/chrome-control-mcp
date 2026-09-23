@@ -4,6 +4,10 @@ All notable changes are documented here. Project follows [Semantic Versioning](h
 
 ## [Unreleased]
 
+Nothing yet.
+
+## [1.5.3] - 2026-09-23
+
 ### Fixed
 
 - `browser_record_start` told assistants that "Chrome shows its own recording indicator while this
