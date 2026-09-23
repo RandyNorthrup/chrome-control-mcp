@@ -55,6 +55,11 @@ reports which pid holds the bridge. The extension retries the native connection 
 its service worker is alive and from a 30 s alarm otherwise, so it lands on the published server
 without a browser restart.
 
+Running several agents against one browser at the same time -- two VS Code windows on two projects
+-- would need more than a second connection: the extension's correctness guards are single globals,
+so two sessions sharing them would invalidate each other's view of the page without failing.
+[MULTI_SESSION.md](MULTI_SESSION.md) sets out what the change would involve. It is not implemented.
+
 ## Extension preparation
 
 `browser_extension_install` verifies staged extension files and executable, then installs only
