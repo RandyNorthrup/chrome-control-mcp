@@ -1002,8 +1002,11 @@ void appendActionTools(QJsonArray &tools) {
       QStringLiteral(
           "Scroll the page, or the element with [ref] if given (brought into "
           "view first if needed). Replies once the scroll has come to rest, "
-          "with how far that scroll moved the content (scrolled; 0 at an "
-          "edge)."),
+          "with how far that scroll moved the content (scrolled), what the "
+          "wheel landed on (hit), and how far the scrollers under it could "
+          "still travel that way when it did (room). scrolled 0 with room 0 "
+          "is an edge already reached; scrolled 0 with room left means the "
+          "wheel never reached the scroller."),
       toolSchema(
           QJsonObject{{QStringLiteral("ref"),
                        stringProperty(QStringLiteral(

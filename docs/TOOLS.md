@@ -122,8 +122,12 @@ and the image's origin is the visual viewport's.
   overlay scrollbar, which shows over the page's edge while the page scrolls, is given up to a
   second to fade. If no point of the element takes a click, the call is refused and says so.
 - `browser_scroll` replies once the scroll has come to rest, with `scrolled`, how far the content
-  actually moved (0 at an edge) -- a wheel scroll is animated and is still moving when the event is
-  acknowledged.
+  actually moved -- a wheel scroll is animated and is still moving when the event is acknowledged.
+  A scroll that moved nothing is reported with the two things that tell its causes apart: `hit`,
+  the element the wheel landed on, and `room`, how far the scrollers under that point could still
+  travel that way when it was dispatched. `scrolled` 0 with `room` 0 is an edge already reached;
+  `scrolled` 0 with room left means the wheel never reached the scroller, which is a fault worth
+  reporting rather than an answer.
 - `browser_screenshot` with `full_page: true` captures the whole document, rounded up to Chrome's
   whole-DIP clip. On a pinch-zoomed page it is refused: capturing beyond the viewport resets the
   pinch and moves the page, and nothing can put the pinch's offset back.

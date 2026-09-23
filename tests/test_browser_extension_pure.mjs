@@ -47,6 +47,8 @@ const EXPORTED = [
   "quadPoint",
   "quadCenter",
   "scrollDistance",
+  "scrollRoom",
+  "scrollContextFn",
   "boundedMs",
   "boundedCount",
   "CLICK_SAMPLES",
@@ -360,6 +362,109 @@ test("scrollDistance matches scrollers by name, and counts each once", () => {
     ),
     { x: 0, y: 300 },
   );
+});
+
+// The reply's own diagnosis. A scroll that moved nothing is either an edge already reached or a
+// wheel that never landed on the scroller, and before `room` the reply said "scrolled 0" for both.
+test("scrollRoom counts the travel left the way the wheel is pushing", () => {
+  // [name, scrollTop, maximum scrollTop]
+  const context = {
+    hit: "DIV#region",
+    scrollers: [
+      ["scroller-0:DIV#region", 40, 600],
+      ["page", 200, 1000],
+    ],
+  };
+  // Downwards (positive delta) what is left is max - top, summed over the chain.
+  assert.equal(w.scrollRoom(context, 180), 560 + 800);
+  // Upwards it is what has already been scrolled past.
+  assert.equal(w.scrollRoom(context, -180), 40 + 200);
+  // At the bottom of everything, a downward wheel has nowhere to go -- and THAT is what makes
+  // "scrolled 0" an answer rather than a fault.
+  assert.equal(
+    w.scrollRoom(
+      { hit: null, scrollers: [["scroller-0:DIV#region", 600, 600]] },
+      180,
+    ),
+    0,
+  );
+  // An overscrolled offset (a rubber-band, a stale read) must not report negative room and
+  // cancel out another scroller's real travel.
+  assert.equal(
+    w.scrollRoom(
+      {
+        hit: null,
+        scrollers: [
+          ["scroller-0:DIV#over", 700, 600],
+          ["page", 0, 300],
+        ],
+      },
+      180,
+    ),
+    300,
+  );
+  // Nothing scrollable under the point at all.
+  assert.equal(w.scrollRoom({ hit: "BODY", scrollers: [] }, 180), 0);
+});
+
+// scrollContextFn is serialized into the page, so it is tested against a DOM shaped like the one
+// it meets there rather than against the worker's globals.
+test("scrollContextFn names what the wheel lands on and the chain under it", () => {
+  const make = (tag, id, overflow, scrollTop, scrollHeight, clientHeight) => ({
+    tagName: tag,
+    id,
+    overflow,
+    scrollTop,
+    scrollHeight,
+    clientHeight,
+    scrollLeft: 0,
+    scrollWidth: 0,
+    clientWidth: 0,
+    parentElement: null,
+    getRootNode: () => null,
+  });
+  const region = make("DIV", "region", "auto", 40, 756, 142);
+  const outer = make("DIV", "", "visible", 0, 100, 100);
+  const body = make("BODY", "", "visible", 0, 100, 100);
+  const page = make("HTML", "", "visible", 200, 2000, 800);
+  region.parentElement = outer;
+  outer.parentElement = body;
+  body.parentElement = null;
+
+  const sandbox = {
+    window: { visualViewport: { offsetLeft: 0, offsetTop: 0 } },
+    document: {
+      elementFromPoint: () => region,
+      scrollingElement: page,
+    },
+    getComputedStyle: (e) => ({ overflowX: e.overflow, overflowY: e.overflow }),
+  };
+  const run = new Function(
+    "window",
+    "document",
+    "getComputedStyle",
+    `return (${w.scrollContextFn.toString()})(10, 20);`,
+  );
+  const context = crossRealm(
+    run(sandbox.window, sandbox.document, sandbox.getComputedStyle),
+  );
+  assert.equal(context.hit, "DIV#region");
+  // The scrollable region under the point, and the page scroller, each once; the non-scrolling
+  // ancestors in between are not scrollers and must not appear.
+  assert.deepEqual(context.scrollers, [
+    ["scroller-0:DIV#region", 40, 756 - 142],
+    ["page", 200, 2000 - 800],
+  ]);
+  // A point over nothing at all still reports the page, and says it hit nothing.
+  const empty = crossRealm(
+    run(
+      sandbox.window,
+      { elementFromPoint: () => null, scrollingElement: page },
+      sandbox.getComputedStyle,
+    ),
+  );
+  assert.equal(empty.hit, null);
+  assert.deepEqual(empty.scrollers, [["page", 200, 1200]]);
 });
 
 test("boundedMs and boundedCount refuse what they cannot honour", () => {

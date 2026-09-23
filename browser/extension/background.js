@@ -5254,6 +5254,66 @@ function armScrollEnd(tabId, x, y, before) {
   );
 }
 
+// Where the wheel will actually land, and how far the scrollers under that point can still
+// travel. A scroll that moves nothing is either an edge already reached or a wheel that never
+// reached the scroller at all, and those want opposite fixes -- without the room left, the reply
+// says "scrolled 0" for both and a model cannot tell which it got.
+function scrollContextFn(x, y) {
+  const vv = window.visualViewport;
+  const target = document.elementFromPoint(x + vv.offsetLeft, y + vv.offsetTop);
+  const name = (e) => (e ? e.tagName + (e.id ? "#" + e.id : "") : null);
+  const seen = [];
+  const scrollers = [];
+  const add = (e, label) => {
+    if (seen.indexOf(e) >= 0) {
+      return; // one entry per scroller, as scrollOffsetsFn does
+    }
+    seen.push(e);
+    scrollers.push([label, e.scrollTop, e.scrollHeight - e.clientHeight]);
+  };
+  let e = target;
+  let depth = 0;
+  while (e) {
+    const style = getComputedStyle(e);
+    if (
+      /(auto|scroll|overlay)/.test(style.overflowX + " " + style.overflowY) &&
+      (e.scrollHeight > e.clientHeight || e.scrollWidth > e.clientWidth)
+    ) {
+      add(e, "scroller-" + depth + ":" + name(e));
+    }
+    depth += 1;
+    const root = e.getRootNode();
+    e = e.parentElement || (root && root.host) || null;
+  }
+  const page = document.scrollingElement;
+  if (page) {
+    add(page, "page");
+  }
+  return { hit: name(target), scrollers };
+}
+
+// The context above, read in the page. Never throws the scroll away: a context that cannot be
+// read leaves the reply's diagnosis blank rather than failing a scroll that otherwise worked.
+async function scrollContext(tabId, x, y) {
+  const read = await sendCdp(tabId, "Runtime.evaluate", {
+    expression: `(${scrollContextFn.toString()})(${Number(x)}, ${Number(y)})`,
+    returnByValue: true,
+  }).catch(() => null);
+  const value = read && read.result && read.result.value;
+  return value && Array.isArray(value.scrollers)
+    ? value
+    : { hit: null, scrollers: [] };
+}
+
+// How far the chain under the point can still travel the way the wheel is about to push it.
+function scrollRoom(context, deltaY) {
+  return context.scrollers.reduce(
+    (total, [, top, max]) =>
+      total + (deltaY > 0 ? Math.max(0, max - top) : Math.max(0, top)),
+    0,
+  );
+}
+
 async function scrollOffsets(tabId, x, y) {
   const read = await sendCdp(tabId, "Runtime.evaluate", {
     expression: `(${scrollOffsetsFn.toString()})(${Number(x)}, ${Number(y)})`,
@@ -5308,6 +5368,9 @@ async function handleScroll(session, tabId, args) {
     point = { x: vp.clientWidth / 2, y: vp.clientHeight / 2 };
   }
   const before = await scrollOffsets(tabId, point.x, point.y);
+  // Read before the wheel: afterwards the room has already been spent and cannot say what the
+  // wheel had to work with.
+  const context = await scrollContext(tabId, point.x, point.y);
   await moveAgentCursor(tabId, point.x, point.y);
   // Armed before the wheel so the listener is in place when the scroll starts: the debugger
   // delivers commands in the order they are sent.
@@ -5335,6 +5398,11 @@ async function handleScroll(session, tabId, args) {
     scrolled: scrollDistance(before, after),
     settled: Boolean(rested) || !moved,
     waited_ms: Date.now() - started,
+    // What the wheel was aimed at and what it had to work with. scrolled 0 with room left is a
+    // wheel that never reached the scroller; scrolled 0 with no room is an edge already reached.
+    point: { x: Math.round(point.x), y: Math.round(point.y) },
+    hit: context.hit,
+    room: scrollRoom(context, deltaY),
   };
 }
 
