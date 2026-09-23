@@ -4,6 +4,7 @@
 #pragma once
 
 #include <QString>
+#include <QStringList>
 
 #ifdef Q_OS_WIN
 #ifndef WIN32_LEAN_AND_MEAN
@@ -67,10 +68,35 @@ struct RendezvousRecord {
 inline constexpr char kBrowserBridgeRuntimeDirVariable[] =
     "CHROME_CONTROL_MCP_RUNTIME_DIR";
 
-/// Absolute path of the rendezvous record file: in the directory
+/// Absolute path of THIS process's rendezvous record: in the directory
 /// kBrowserBridgeRuntimeDirVariable names when it is set, else under the
 /// user's local app data. Empty on failure with @p error set.
+///
+/// The file carries the publishing pid in its name --
+/// `browser_bridge-<pid>.json`
+/// -- so several servers can advertise at once without overwriting each other.
+/// The identity is in the name rather than in a subdirectory because the same
+/// directory holds the POSIX socket, whose path has to fit `sockaddr_un`, and a
+/// nesting level spends that budget for nothing.
 [[nodiscard]] QString browserBridgeRendezvousPath(QString *error = nullptr);
+
+/// Absolute paths of every rendezvous record present, most recently published
+/// first. Empty when the directory holds none, or on failure with @p error set
+/// -- callers distinguish the two by whether @p error was written.
+///
+/// This is a listing of files, not of live servers: a record naming a process
+/// that has exited looks exactly like one naming a running server here.
+/// Deciding which is which needs the pid-to-image check that lives with the
+/// bridge server, so the caller does it.
+[[nodiscard]] QStringList
+browserBridgeRendezvousRecords(QString *error = nullptr);
+
+/// The same listing for one named @p directory, so a caller that already knows
+/// where its own record sits looks for its peers beside it rather than in the
+/// default location. That is also what lets a test point a server at a
+/// temporary directory and have it see only what the test put there.
+[[nodiscard]] QStringList
+browserBridgeRendezvousRecordsIn(const QString &directory);
 
 /// Write / read the rendezvous record as JSON at @p path. The file-I/O core is
 /// split out (path-parameterized) so it is unit-testable without touching the

@@ -50,6 +50,27 @@ inline constexpr int kBrowserBridgeDefaultIoTimeoutMs = 30'000;
 /// callers are not.
 [[nodiscard]] bool liveBridgeOwnerExists(const QString &rendezvous_path);
 
+/// The pid of a still-running instance of this program advertising a rendezvous
+/// record OTHER than @p own_path, or 0 when there is none.
+///
+/// Records are per-pid, so a server no longer learns about its peers by reading
+/// the one file it would itself write; it has to look at the ones beside it.
+/// This is the single-owner check expressed over that layout, and it answers
+/// with the pid rather than a bool because the refusal names who holds the
+/// bridge -- which is the only actionable part of that message.
+[[nodiscard]] qint64 otherLiveBridgeOwnerPid(const QString &own_path);
+
+/// Delete rendezvous records left behind by servers that are gone: a pid that
+/// has exited, or one that now resolves to a different program after reuse.
+/// Never touches @p own_path, and never touches a record naming a live instance
+/// of this program -- that one is its owner's to remove.
+///
+/// With one shared record a dead server's entry was simply overwritten by the
+/// next one, so nothing ever had to be cleaned up. Per-pid records accumulate
+/// instead, and a directory filling with dead servers would eventually be what
+/// a relay has to search. Returns the number removed.
+int sweepStaleRendezvousRecords(const QString &own_path);
+
 /// Climb at most @p max_depth links of the child->parent map @p parent from
 /// @p pid, and report whether any ancestor's lowercased image name (looked up
 /// in @p image) equals @p target_basename_lower. Pure, and bounded so a cyclic

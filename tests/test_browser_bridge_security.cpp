@@ -3,6 +3,8 @@
 
 #include "chrome_control_mcp/browser_bridge_security.h"
 
+#include "chrome_control_mcp/native_ipc.h"
+
 #include <QFile>
 #include <QTemporaryDir>
 #include <QtTest/QtTest>
@@ -15,6 +17,8 @@
 
 using chrome_control_mcp::browserBridgePipeName;
 using chrome_control_mcp::browserBridgeRendezvousPath;
+using chrome_control_mcp::browserBridgeRendezvousRecordsIn;
+using chrome_control_mcp::currentProcessId;
 using chrome_control_mcp::currentUserSidString;
 using chrome_control_mcp::generateBridgeToken;
 using chrome_control_mcp::kBrowserBridgeRuntimeDirVariable;
@@ -68,6 +72,8 @@ private slots:
   void rendezvous_overCapFileFailsClosed();   // R5-G10-9
   void rendezvous_malformedJsonFailsClosed(); // R5-G10-9
   void runtimeDir_overrideHoldsTheRecordAndSocket();
+  void rendezvous_recordIsNamedForItsPublisher();
+  void rendezvous_recordsListsEveryPublisher();
   void runtimeDir_relativeOverrideIsRefusedNotReplaced();
   void security_daclIsCurrentUserOnlyWithMediumLabel();
 };
@@ -221,12 +227,64 @@ void BrowserBridgeSecurityTests::runtimeDir_overrideHoldsTheRecordAndSocket() {
   const QString record = browserBridgeRendezvousPath(&error);
   const QString pipe = browserBridgePipeName(&error);
   qunsetenv(kBrowserBridgeRuntimeDirVariable);
-  QCOMPARE(record, QDir(root).filePath(QStringLiteral("browser_bridge.json")));
+  QCOMPARE(QFileInfo(record).absolutePath(), root);
 #ifndef Q_OS_WIN
   QVERIFY2(!pipe.isEmpty(), qPrintable(error));
   QCOMPARE(QFileInfo(pipe).absolutePath(), root);
 #endif
   QVERIFY(browserBridgeRendezvousPath() != record);
+}
+
+// One file per server, named for the process that published it. A shared name
+// meant a second server could only advertise by overwriting the first.
+void BrowserBridgeSecurityTests::rendezvous_recordIsNamedForItsPublisher() {
+  QTemporaryDir dir;
+  QVERIFY(dir.isValid());
+  qputenv(kBrowserBridgeRuntimeDirVariable, dir.path().toLocal8Bit());
+  const QString record = browserBridgeRendezvousPath();
+  qunsetenv(kBrowserBridgeRuntimeDirVariable);
+
+  const QString name = QFileInfo(record).fileName();
+  QCOMPARE(name,
+           QStringLiteral("browser_bridge-%1.json").arg(currentProcessId()));
+  // The identity is in the file name, not in a directory below the runtime
+  // directory: the POSIX socket lives beside it and its path has to fit
+  // sockaddr_un, so a nesting level would be spent for nothing.
+  QCOMPARE(QFileInfo(record).absolutePath(), QDir::cleanPath(dir.path()));
+}
+
+void BrowserBridgeSecurityTests::rendezvous_recordsListsEveryPublisher() {
+  QTemporaryDir dir;
+  QVERIFY(dir.isValid());
+  const QString root = QDir::cleanPath(dir.path());
+
+  // Nothing published yet is not a failure; it is an empty answer.
+  QString error;
+  QVERIFY(browserBridgeRendezvousRecordsIn(root).isEmpty());
+  QVERIFY(error.isEmpty());
+
+  const RendezvousRecord first{QStringLiteral("endpoint-a"),
+                               QStringLiteral("token-a"), 1, 4242};
+  const RendezvousRecord second{QStringLiteral("endpoint-b"),
+                                QStringLiteral("token-b"), 1, 4243};
+  const QString path_a =
+      QDir(root).filePath(QStringLiteral("browser_bridge-4242.json"));
+  const QString path_b =
+      QDir(root).filePath(QStringLiteral("browser_bridge-4243.json"));
+  QVERIFY2(writeRendezvousRecord(path_a, first, &error), qPrintable(error));
+  QVERIFY2(writeRendezvousRecord(path_b, second, &error), qPrintable(error));
+
+  // Files that are not records must not be offered to a relay to try.
+  QFile stray(QDir(root).filePath(QStringLiteral("browser_bridge.json")));
+  QVERIFY(stray.open(QIODevice::WriteOnly));
+  stray.write("{}");
+  stray.close();
+  QVERIFY(QDir().mkpath(QDir(root).filePath(QStringLiteral("notes"))));
+
+  const QStringList found = browserBridgeRendezvousRecordsIn(root);
+  QCOMPARE(found.size(), 2);
+  QVERIFY(found.contains(QDir::cleanPath(path_a)));
+  QVERIFY(found.contains(QDir::cleanPath(path_b)));
 }
 
 // An unusable override is refused, never replaced by the shared location: that

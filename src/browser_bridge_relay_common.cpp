@@ -17,6 +17,7 @@
 #include "chrome_control_mcp/native_messaging.h"
 
 #include <QByteArray>
+#include <QStringList>
 #include <QtEndian>
 
 #include <cstdio>
@@ -148,11 +149,31 @@ int runBrowserRelay() {
   QString token;
   int protocol = 0;
   QString error;
-  const QString rendezvous = browserBridgeRendezvousPath(&error);
-  const NativeIpcHandle pipe =
-      rendezvous.isEmpty()
-          ? kInvalidNativeIpcHandle
-          : relayConnect(rendezvous, &token, &protocol, &error);
+  // Records are per-server now, so the relay searches rather than computing one
+  // path. It tries them newest first and stops at the first that answers: a
+  // record whose server has exited fails its own pid-to-image check inside
+  // relayConnect, so a stale one costs an attempt and is skipped rather than
+  // being mistaken for the bridge.
+  //
+  // Which server a relay SHOULD reach is not yet something it is told -- the
+  // extension names no session, so there is nothing to select on. While one
+  // server publishes at a time, newest-first is that answer.
+  const QStringList records = browserBridgeRendezvousRecords(&error);
+  NativeIpcHandle pipe = kInvalidNativeIpcHandle;
+  for (const QString &record : records) {
+    QString attempt;
+    pipe = relayConnect(record, &token, &protocol, &attempt);
+    if (nativeIpcHandleIsValid(pipe)) {
+      break;
+    }
+    if (error.isEmpty()) {
+      error = attempt; // the first refusal is the one worth reporting
+    }
+  }
+  if (!nativeIpcHandleIsValid(pipe) && error.isEmpty()) {
+    error = QStringLiteral(
+        "No Chrome Control MCP server has published a bridge record.");
+  }
   if (!nativeIpcHandleIsValid(pipe) ||
       !relayHandshake(pipe, token, protocol, &error)) {
     // Tell the extension the bridge is down so it can surface it, then exit

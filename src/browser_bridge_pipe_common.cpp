@@ -16,9 +16,26 @@
 #include "chrome_control_mcp/error_out.h"
 #include "chrome_control_mcp/native_ipc.h"
 
+#include <QFile>
+#include <QFileInfo>
+#include <QStringList>
+
 #include <utility>
 
 namespace chrome_control_mcp {
+namespace {
+
+// Windows compares paths case-insensitively; everywhere else "Record.json" and
+// "record.json" are different files. Telling our own advertisement from a
+// rival's has to follow the platform's own rule.
+constexpr Qt::CaseSensitivity kRendezvousPathCase =
+#ifdef Q_OS_WIN
+    Qt::CaseInsensitive;
+#else
+    Qt::CaseSensitive;
+#endif
+
+} // namespace
 
 bool ancestorChainContainsImage(quint64 pid,
                                 const QHash<quint64, quint64> &parent,
@@ -51,6 +68,47 @@ BrowserBridgePipeServer::BrowserBridgePipeServer(Options options)
 
 BrowserBridgePipeServer::~BrowserBridgePipeServer() { stop(); }
 
+namespace {
+
+// The records sitting beside @p own_path, which is where a server's peers are.
+// Looking in the default location instead would make an injected path -- the
+// seam every pipe test uses -- see the real per-user directory.
+QStringList peerRecords(const QString &own_path) {
+  return browserBridgeRendezvousRecordsIn(QFileInfo(own_path).absolutePath());
+}
+
+} // namespace
+
+qint64 otherLiveBridgeOwnerPid(const QString &own_path) {
+  for (const QString &record : peerRecords(own_path)) {
+    if (record.compare(own_path, kRendezvousPathCase) == 0) {
+      continue; // our own advertisement is not a rival
+    }
+    RendezvousRecord found;
+    if (readRendezvousRecord(record, &found, nullptr) &&
+        liveBridgeOwnerExists(record)) {
+      return found.app_pid;
+    }
+  }
+  return 0;
+}
+
+int sweepStaleRendezvousRecords(const QString &own_path) {
+  int removed = 0;
+  for (const QString &record : peerRecords(own_path)) {
+    if (record.compare(own_path, kRendezvousPathCase) == 0) {
+      continue;
+    }
+    if (liveBridgeOwnerExists(record)) {
+      continue; // still somebody's; only its owner may withdraw it
+    }
+    if (QFile::remove(record)) {
+      ++removed;
+    }
+  }
+  return removed;
+}
+
 bool BrowserBridgePipeServer::ensurePublished(QString *error) {
   const std::lock_guard<std::mutex> lifecycle(lifecycle_mutex_);
   {
@@ -68,14 +126,16 @@ bool BrowserBridgePipeServer::ensurePublished(QString *error) {
       current.token == token_) {
     return true; // still ours, word for word
   }
-  // A record naming another LIVE server of our own image is that server's to
-  // keep: overwriting it would steal the relay from the session using it.
-  if (present && liveBridgeOwnerExists(rendezvous_path_)) {
+  // A LIVE server of our own image advertising beside us is the one using the
+  // browser: publishing over it would steal the relay from that session. Its
+  // record is its own to withdraw, so we stand down instead.
+  const qint64 rival = otherLiveBridgeOwnerPid(rendezvous_path_);
+  if (rival != 0) {
     setError(error,
              QStringLiteral("Another Chrome Control MCP server (pid %1) owns "
                             "the browser bridge; close that session, or wait "
                             "for it to exit, and try again.")
-                 .arg(current.app_pid));
+                 .arg(rival));
     return false;
   }
   // Missing, ours but rewritten, or left by a server that has exited: publish

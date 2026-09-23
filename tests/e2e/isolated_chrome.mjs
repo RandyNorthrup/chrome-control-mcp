@@ -17,7 +17,14 @@
 
 import { execFileSync, spawn } from "node:child_process";
 import fs from "node:fs";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import {
+  mkdir,
+  mkdtemp,
+  readdir,
+  readFile,
+  rm,
+  writeFile,
+} from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import readline from "node:readline";
@@ -214,10 +221,17 @@ export async function prepareIsolatedChrome({
     });
   };
   const launch = async () => {
-    const record = path.join(runtime, "browser_bridge.json");
+    // Records are named for the process that published them, so the wait is for
+    // any of them rather than for one known filename.
+    const published_record = async () => {
+      const entries = await readdir(runtime).catch(() => []);
+      return entries.some(
+        (name) => name.startsWith("browser_bridge-") && name.endsWith(".json"),
+      );
+    };
     let published = false;
     for (let attempt = 0; attempt < 120 && !published; attempt += 1) {
-      published = Boolean(await readFile(record, "utf8").catch(() => null));
+      published = await published_record();
       if (!published) {
         await sleep(250);
       }

@@ -4,6 +4,7 @@
 #include "chrome_control_mcp/browser_bridge_security.h"
 
 #include "chrome_control_mcp/error_out.h"
+#include "chrome_control_mcp/native_ipc.h"
 
 #include <QDir>
 #include <QFile>
@@ -11,6 +12,7 @@
 #include <QJsonObject>
 #include <QRandomGenerator>
 #include <QStandardPaths>
+#include <QStringList>
 #include <QVector>
 
 #include <cmath>
@@ -178,28 +180,77 @@ QString generateBridgeToken() {
   return randomHex64() + randomHex64(); // 128-bit
 }
 
-QString browserBridgeRendezvousPath(QString *error) {
+namespace {
+
+// Records are named for the process that published them, so two servers never
+// contend for one filename and neither has to overwrite the other to advertise.
+constexpr char kRendezvousPrefix[] = "browser_bridge-";
+constexpr char kRendezvousSuffix[] = ".json";
+
+// The directory holding every rendezvous record and, off Windows, the sockets
+// beside them. Empty on failure, with @p error set.
+QString rendezvousDirectory(QString *error) {
 #ifdef Q_OS_WIN
   QString configured;
   if (runtimeDirectoryOverride(&configured, error)) {
-    return configured.isEmpty()
-               ? QString()
-               : QDir(configured)
-                     .filePath(QStringLiteral("browser_bridge.json"));
+    // Used as given or not at all: falling back to the shared location would
+    // pair this process with whichever browser answers there.
+    return configured;
   }
   QString base = qEnvironmentVariable("LOCALAPPDATA");
   if (base.isEmpty()) {
     base =
         QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation);
   }
-  return QDir(base).filePath(
-      QStringLiteral("ChromeControlMCP/browser_bridge.json"));
+  return QDir(base).filePath(QStringLiteral("ChromeControlMCP"));
 #else
-  const QString directory = bridgeRuntimeDirectory(error);
-  return directory.isEmpty()
-             ? QString()
-             : QDir(directory).filePath(QStringLiteral("browser_bridge.json"));
+  return bridgeRuntimeDirectory(error);
 #endif
+}
+
+} // namespace
+
+QString browserBridgeRendezvousPath(QString *error) {
+  const QString directory = rendezvousDirectory(error);
+  if (directory.isEmpty()) {
+    return {};
+  }
+  return QDir::cleanPath(
+      QDir(directory).filePath(QString::fromLatin1(kRendezvousPrefix) +
+                               QString::number(currentProcessId()) +
+                               QString::fromLatin1(kRendezvousSuffix)));
+}
+
+QStringList browserBridgeRendezvousRecords(QString *error) {
+  const QString directory = rendezvousDirectory(error);
+  if (directory.isEmpty()) {
+    return {};
+  }
+  return browserBridgeRendezvousRecordsIn(directory);
+}
+
+QStringList browserBridgeRendezvousRecordsIn(const QString &directory) {
+  if (directory.isEmpty()) {
+    return {};
+  }
+  const QDir folder(directory);
+  if (!folder.exists()) {
+    return {}; // nothing published yet is not a failure
+  }
+  const QString pattern = QString::fromLatin1(kRendezvousPrefix) +
+                          QStringLiteral("*") +
+                          QString::fromLatin1(kRendezvousSuffix);
+  QStringList paths;
+  // Newest first. With one server there is one record; when there are several,
+  // the most recently published is the one a relay with no other instruction
+  // should reach for first.
+  const QFileInfoList entries =
+      folder.entryInfoList({pattern}, QDir::Files, QDir::Time);
+  paths.reserve(entries.size());
+  for (const QFileInfo &entry : entries) {
+    paths.append(QDir::cleanPath(entry.absoluteFilePath()));
+  }
+  return paths;
 }
 
 bool writeRendezvousRecord(const QString &path, const RendezvousRecord &record,

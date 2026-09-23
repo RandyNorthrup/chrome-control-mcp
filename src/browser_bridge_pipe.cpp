@@ -272,10 +272,14 @@ bool BrowserBridgePipeServer::createPipeResources(QString *error) {
     }
     return false;
   }
+  // Records a departed server left behind are nobody's, and a relay searching
+  // them wastes a connection attempt on each. Clear them before deciding
+  // whether anyone is actually here.
+  (void)sweepStaleRendezvousRecords(rendezvous_path_);
   // Stand down if a live server instance already owns the browser bridge, so a
-  // concurrent short-lived process cannot clobber the shared rendezvous record
-  // the persistent server (and thus the extension relay) depends on.
-  if (liveBridgeOwnerExists(rendezvous_path_)) {
+  // concurrent short-lived process cannot take the browser from the persistent
+  // server (and thus from the extension relay) that is using it.
+  if (otherLiveBridgeOwnerPid(rendezvous_path_) != 0) {
     if (error != nullptr) {
       *error = QStringLiteral(
           "Another Chrome Control MCP server already owns the browser bridge; "
