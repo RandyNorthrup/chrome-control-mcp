@@ -67,6 +67,24 @@ const EXPECTED_TOOLS = [
   "browser_upload",
 ];
 
+// Advertised, and deliberately NOT driven here. Kept as an explicit list rather
+// than a loosened assertion: a tool that appears in neither list is one nobody
+// decided about, and that still fails this suite.
+//
+// This list is the reason the suite exists in its current shape. It used to
+// demand that the live catalog equal EXPECTED_TOOLS exactly, so adding a tool
+// without driving it aborted the run at its first assertion, before a single
+// tool was exercised. That is what the update tools and then the recording
+// tools did -- and the CI step piped this suite into tee without pipefail, so
+// the failure was reported as success for every release since.
+const NOT_EXERCISED_HERE = new Map([
+  ["browser_update_check", "reaches the network; covered by test_updater"],
+  ["browser_update_status", "reads the install layout, not the browser"],
+  ["browser_update_apply", "replaces the program on disk; never in a test run"],
+  ["browser_record_start", "needs its own live coverage; not written yet"],
+  ["browser_record_stop", "needs its own live coverage; not written yet"],
+]);
+
 const sleep = (milliseconds) =>
   new Promise((resolve) => setTimeout(resolve, milliseconds));
 
@@ -228,10 +246,20 @@ async function main() {
 
     const catalog = await client.request("tools/list");
     const names = catalog.tools.map((tool) => tool.name).sort();
+    // Everything this suite drives must still be there,
     assert.deepEqual(
-      names,
+      names.filter((name) => !NOT_EXERCISED_HERE.has(name)),
       [...EXPECTED_TOOLS].sort(),
       "Live tool catalog drifted",
+    );
+    // and every tool the server offers must be one somebody decided about.
+    assert.deepEqual(
+      names.filter(
+        (name) =>
+          !EXPECTED_TOOLS.includes(name) && !NOT_EXERCISED_HERE.has(name),
+      ),
+      [],
+      "A tool is advertised that this suite neither drives nor excuses",
     );
     attachMilliseconds = await waitForExtensionAttached(async (name, args) => {
       const result = await client.request("tools/call", {

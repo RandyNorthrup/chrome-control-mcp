@@ -29,3 +29,6 @@ release/
 
 # Temporary files created by editors
 temp
+
+# Chrome for Testing, downloaded on demand for the live browser suites.
+.chrome-for-testing/
