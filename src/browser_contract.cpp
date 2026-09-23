@@ -1665,8 +1665,10 @@ void appendRecordTools(QJsonArray &tools) {
           "video never comes back through a tool reply. filename is optional "
           "and must be a relative name (no absolute path, no \"..\"). "
           "Starting a second recording for the same session is refused; stop "
-          "the first. Chrome shows its own recording indicator while this "
-          "runs."),
+          "the first. Frames come from the debugger this session already "
+          "holds, so Chrome raises no separate recording indicator: what "
+          "it shows is the debugging banner that is up for the whole "
+          "session, recording or not."),
       toolSchema(
           QJsonObject{
               {QStringLiteral("filename"),

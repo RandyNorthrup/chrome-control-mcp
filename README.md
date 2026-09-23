@@ -31,33 +31,55 @@ page overlay by default; documentation captures can opt in.
 
 ## Why this project
 
-| Capability           | Included                                                                                                         |
-| -------------------- | ---------------------------------------------------------------------------------------------------------------- |
-| Works beside you     | Session drives its own visible tab; never changes which tab is in front, raises a window, or takes your OS focus |
-| Semantic control     | Accessibility-tree snapshots with stable element refs                                                            |
-| Real input           | Click, type, keys, hover, drag, select, scroll, dialogs, and media                                               |
-| File upload          | Attach local files to a page's file input, as the user's own picker would                                        |
-| Visual reasoning     | Viewport/full-page PNG capture and guarded coordinate clicks                                                     |
-| Browser management   | Navigation, tabs, tab groups, windows, emulation, and waits                                                      |
-| Browser state        | Cookies, local/session storage, permissions, downloads, print, and HTTP auth                                     |
-| A session per editor | Several editors drive Chrome at once, each owning its own tab and unable to touch another's                      |
-| Tab recording        | Record the session's tab to a `.webm` with a machine-readable timeline of the commands that ran                  |
-| Extension lifecycle  | Prepare, inspect, and unregister current-user native-host integration                                            |
-| In-place updates     | Check, download, verify, and install a new release without overwriting the running executable                    |
+| Capability           | Included                                                                                                                                                                                                            |
+| -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Works beside you     | Session drives its own visible tab and never changes which tab is in front, raises a window, or asks for OS focus. `browser_window new` reports `took_os_focus` when a compositor focuses the new window regardless |
+| Semantic control     | Accessibility-tree snapshots with stable element refs                                                                                                                                                               |
+| Real input           | Click, type, keys, hover, drag, select, scroll, dialogs, and media                                                                                                                                                  |
+| File upload          | Attach local files to a page's file input, as the user's own picker would                                                                                                                                           |
+| Visual reasoning     | Viewport/full-page PNG capture and guarded coordinate clicks                                                                                                                                                        |
+| Browser management   | Navigation, tabs, tab groups, windows, emulation, and waits                                                                                                                                                         |
+| Browser state        | Cookies, local/session storage, permissions, downloads, print, and HTTP auth                                                                                                                                        |
+| A session per editor | Several editors drive Chrome at once, each owning its own tab and unable to touch another's                                                                                                                         |
+| Tab recording        | Record the session's tab to a `.webm` with a machine-readable timeline of the commands that ran                                                                                                                     |
+| Extension lifecycle  | Prepare, inspect, and unregister current-user native-host integration                                                                                                                                               |
+| In-place updates     | Check, download, verify, and install a new release without overwriting the running executable                                                                                                                       |
 
 All **49 MCP tools** use strict JSON Schemas. Long-lived MCP process preserves session and
-element-ref state while Chrome remains an ordinary user-controlled browser. Since 1.5.0 several
-servers run side by side -- one per editor window -- and each gets its own session, its own tab, and
-no way to reach another session's tab.
+element-ref state while Chrome remains an ordinary user-controlled browser.
+
+Since 1.5.0 several servers run side by side -- one per editor window -- and each gets its own
+session, its own tab, and no way to reach another session's tab. A second editor takes a tab the
+normal way: `browser_new_tab` opens one in the background and makes it that session's. Asking for a
+tab another session is driving is refused by name, so "busy" reads differently from "gone", and
+`browser_tabs` marks such a tab `controlled_by_other_session` rather than hiding it -- the operator
+sees the whole window either way. The constraints that shaped this, and the ones that ruled other
+designs out, are in [docs/MULTI_SESSION.md](docs/MULTI_SESSION.md).
+
+Recording a run is two tools:
+
+```text
+browser_record_start    begin recording the session's tab to a .webm
+browser_record_stop     end it, and return the saved path and a command timeline
+```
+
+The video never comes back through a tool reply -- the bridge is one command, one reply, with hard
+caps on the reply -- so stop returns a path. Beside the `.webm` it writes a `.timeline.json` naming
+every command that ran while recording, with its offset in milliseconds, so the video can be read
+against what drove it.
 
 ## See it work
 
-| Public UI test site                                                                                         | Responsive E2E fixture                                                                                                                        |
-| ----------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
-| ![Text Input test controlled through Chrome Control MCP](docs/assets/chrome-control-overlay-playground.png) | ![Chrome Control MCP exercising form, pointer, and dialog controls in its local test fixture](docs/assets/chrome-control-overlay-fixture.png) |
-| Navigation, snapshot, typing, read-back, ref click, and screenshot                                          | Form state, coordinate click, hover, drag, dialog handling, and control presence                                                              |
+![Chrome Control MCP driving its local E2E fixture from a second session, with the same pink frame and AI CONTROL badge](docs/assets/chrome-control-overlay-fixture.png)
 
-Both images are direct `browser_screenshot` results from live extension, not mockups.
+The two captures on this page were taken **at the same time, by two different MCP servers**. The
+first drove the public playground: navigation, snapshot, typing, read-back, a ref click, and the
+screenshot itself. The second opened a tab of its own on the local E2E fixture and typed into it —
+the text reading `second session` is its work — while the first went on driving the playground and
+neither could touch the other's tab.
+
+Both are direct `browser_screenshot` results from the live extension with
+`include_control_overlay`, not mockups.
 
 > **Testing shout-out:** Inflectra's [UI Test Automation Playground](http://uitestingplayground.com/)
 > and [open-source repository](https://github.com/inflectra/ui-test-automation-playground) provide
@@ -191,7 +213,10 @@ browser_update_apply    install it
 ```
 
 `browser_update_status` touches no network. The executable also answers `--version`, and `--install`
-puts a copy into the managed layout without an MCP client in the loop.
+puts a copy into the managed layout without an MCP client in the loop. `--install` reports
+`installed: true` or `false`: it copies nothing when that version is already installed and already
+current, which is the normal case on every editor start, and a rebuilt tree of the same version
+needs a new version number rather than a second install.
 
 A running executable cannot be overwritten on Windows, so the update never tries to. Each version
 is installed into `<root>/versions/<version>` and a `current` link -- a directory junction on
@@ -260,6 +285,15 @@ CHROME_CONTROL_MCP_REDACT_SENSITIVE_OUTPUT=true
 Read-only profile exposes 12 tools and independently rejects hidden mutating calls.
 `browser_update_apply` is not among them: it replaces the program on disk, which is a mutation
 whatever the browser profile says.
+
+Recording is not an escalation. `browser_record_start` captures frames through the `debugger`
+permission the extension already holds and already uses for every click and snapshot, not through
+`tabCapture`, and it grants nothing the session could not already do. It records the session's own
+tab only, and a session that ends mid-recording has its partial file discarded rather than finished
+-- a truncated video presented as a complete one would be worse than no file. There is no separate
+recording indicator, because the frames come from the debugger rather than from `tabCapture`; what
+Chrome shows is the debugging banner that is up for the whole session, recording or not. The permission set is documented in
+[docs/SECURITY.md](docs/SECURITY.md).
 
 ## Verification
 

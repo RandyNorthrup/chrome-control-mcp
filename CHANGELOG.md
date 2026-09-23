@@ -4,7 +4,23 @@ All notable changes are documented here. Project follows [Semantic Versioning](h
 
 ## [Unreleased]
 
-Nothing yet.
+### Fixed
+
+- `browser_record_start` told assistants that "Chrome shows its own recording indicator while this
+  runs". It does not, and never did on the path that shipped: the note survived from the
+  `tabCapture` design that was ruled out before any code was written. Frames come from the debugger
+  the session already holds, so there is no separate recording indicator -- what Chrome shows is the
+  debugging banner that is up for the whole session, recording or not. `docs/SECURITY.md` had this
+  right; the tool description a model reads did not.
+
+### Changed
+
+- README: the claim that a session "never takes your OS focus" is now what the code actually
+  promises -- it never asks for focus, and `browser_window new` reports `took_os_focus` when a
+  compositor focuses the new window regardless, which `docs/VERIFICATION.md` has recorded on
+  Hyprland since 2026-09-18. Recording and multi-session gained the tool names and behaviour the
+  capability table only alluded to, and the two screenshots were retaken -- concurrently, by two
+  servers, which is what makes them evidence of multi-session rather than two separate captures.
 
 ## [1.5.2] - 2026-09-23
 
