@@ -263,9 +263,17 @@ function geometryPage(classicScrollbar) {
       }
     }, { capture: true });
     // How far the page's content reaches on one axis, from the root and body (whose own min-height
-    // makes this page tall) down through every element, and never less than the viewport.
-    const extent = (edge, viewport, scrolled) => Math.max(
-      document.documentElement[viewport],
+    // makes this page tall) down through every element.
+    //
+    // floorAtViewport is false for the WIDTH. A full-page capture is clipped by Chrome to its own
+    // content area, and where the scrollbar is an overlay that area can be narrower than
+    // documentElement.clientWidth: measured 1335 against a clientWidth of 1350, with the capture
+    // staying 1335 even when the clip was raised to 1350, so the browser and not the extension
+    // decides it. Flooring the expected width at the viewport therefore demanded an image Chrome
+    // will not produce. Height keeps its floor: a short page must still capture the whole
+    // viewport, and nothing clips that.
+    const extent = (edge, viewport, scrolled, floorAtViewport = true) => Math.max(
+      floorAtViewport ? document.documentElement[viewport] : 0,
       ...[document.documentElement, document.body, ...document.querySelectorAll('body *')]
         .map((e) => Math.round(e.getBoundingClientRect()[edge] + scrolled)),
     );
@@ -282,7 +290,7 @@ function geometryPage(classicScrollbar) {
         // How far the page's own content actually reaches, which is what a full-page capture must
         // cover: scrollWidth is inflated by the gutter a classic scrollbar reserves on some
         // machines and reflects real overflow on others, so it cannot stand in for it.
-        ' ew=' + extent('right', 'clientWidth', window.scrollX) +
+        ' ew=' + extent('right', 'clientWidth', window.scrollX, false) +
         ' eh=' + extent('bottom', 'clientHeight', window.scrollY) + ' end';
       document.getElementById('scrolls').textContent = 'scrolls ' + scrollLog.join(' ') + ' end';
       document.getElementById('rects').textContent = 'rects ' + [...document.querySelectorAll('.t')].map((e) => {

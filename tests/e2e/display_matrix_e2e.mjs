@@ -495,13 +495,20 @@ async function runConfig(config, { chrome, executable, fixture, extraArgs }) {
     // reserves on one machine and reflects real overflow on another, so it cannot stand in for it.
     // The numbers come in whole CSS pixels, and Chrome clips in whole DIPs, so the image may run
     // up to one DIP (the display's scale in device pixels) past the end.
+    // Chrome clips a full-page capture to its own content area, and that area can be
+    // one scrollbar narrower than the width the page lays its content out in: measured
+    // 1335 against content reaching 1350, with the image staying 1335 when the clip was
+    // raised to 1350, so the browser decides it and no clip arithmetic moves it. The
+    // width may therefore fall short by up to one scrollbar -- and by no more, which is
+    // what keeps this a bound rather than a blanket. Height has no such gutter.
+    const SCROLLBAR_GUTTER_CSS = 17;
     const holdsDocument = (image, metrics) =>
       [
-        [image.width, metrics.ew],
-        [image.height, metrics.eh],
+        [image.width, metrics.ew, SCROLLBAR_GUTTER_CSS],
+        [image.height, metrics.eh, 0],
       ].every(
-        ([pixels, css]) =>
-          pixels >= (css - 0.5) * dpr - 1 &&
+        ([pixels, css, shortfall]) =>
+          pixels >= (css - shortfall - 0.5) * dpr - 1 &&
           pixels <= (css + 0.5) * dpr + config.scaleFactor + 1,
       );
     check(

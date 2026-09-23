@@ -9,3 +9,4 @@ package-lock.json
 .clang-format
 .clang-tidy
 release/
+.chrome-for-testing/

@@ -24,6 +24,10 @@ export default [
   {
     ignores: [
       "build*/**",
+      // The browser the live suites download on demand. CI never sees it -- the
+      // lint job installs no Chrome -- so only a local run trips over its
+      // bundled resource scripts.
+      ".chrome-for-testing/**",
       "coverage/**",
       "dist/**",
       "**/node_modules/**",
