@@ -399,6 +399,14 @@ function makeSession() {
 
     port: null,
 
+    // The recording this session is making, or null. Holding it here rather
+    // than in the offscreen document is what makes a session's death able to
+    // clean it up: releaseAttachedState finds it because it is session state
+    // like any other.
+    //
+    // { id, tabId, startedAt, filename, timeline: [...] }
+    recording: null,
+
     // True when this port was opened to look for a server and every one that
     // was offered is already held. Losing such a port must not start the
     // reconnect cycle, which would open a surplus port every two seconds.
@@ -727,6 +735,240 @@ function send(session, reply) {
   }
 }
 
+// -- Recording ---------------------------------------------------------------
+
+// Chrome allows exactly one offscreen document per extension, so this is shared
+// by every session; the recorders inside it are keyed by session id.
+const OFFSCREEN_PATH = "offscreen.html";
+const OFFSCREEN_TARGET = "chrome_control_mcp.offscreen";
+
+let offscreenReady = null;
+
+async function ensureOffscreen() {
+  if (!offscreenReady) {
+    offscreenReady = (async () => {
+      const existing = await chrome.runtime
+        .getContexts({ contextTypes: ["OFFSCREEN_DOCUMENT"] })
+        .catch(() => []);
+      if (!existing || existing.length === 0) {
+        await chrome.offscreen.createDocument({
+          url: OFFSCREEN_PATH,
+          reasons: ["USER_MEDIA"],
+          justification:
+            "Encoding a tab recording to webm, which needs a DOM the service worker does not have.",
+        });
+      }
+    })();
+    // A failed creation must not be remembered as success, or every later
+    // recording would skip straight to messaging a document that is not there.
+    offscreenReady = offscreenReady.catch((e) => {
+      offscreenReady = null;
+      throw e;
+    });
+  }
+  return offscreenReady;
+}
+
+async function toOffscreen(message) {
+  await ensureOffscreen();
+  const reply = await chrome.runtime.sendMessage({
+    ...message,
+    target: OFFSCREEN_TARGET,
+  });
+  if (!reply || reply.ok !== true) {
+    throw new Error((reply && reply.error) || "The recorder did not answer.");
+  }
+  return reply;
+}
+
+// A screencast frame for a session that is recording. Acknowledged either way:
+// CDP stops sending frames until the last one is acked, so a dropped ack stalls
+// the capture rather than merely losing a frame.
+async function onScreencastFrame(session, tabId, params) {
+  const sessionId = session.recording && session.recording.id;
+  try {
+    if (sessionId && params && params.data) {
+      await toOffscreen({
+        type: "record.frame",
+        session: sessionId,
+        data: params.data,
+      });
+    }
+  } catch (_e) {
+    // A frame that could not be drawn is a gap in the video, not a reason to
+    // tear the session down.
+  }
+  if (params && typeof params.sessionId === "number") {
+    await sendCdp(tabId, "Page.screencastFrameAck", {
+      sessionId: params.sessionId,
+    }).catch(() => undefined);
+  }
+}
+
+// Every command that runs while recording, with the moment it ran and the DOM
+// generation it ran against. This is the machine-readable half of a recording:
+// it needs no second encoder, and it is what lets the video be read against
+// what drove it.
+function noteCommandForRecording(session, id, cmd) {
+  const recording = session.recording;
+  if (!recording || recording.timeline.length >= MAX_TIMELINE_ENTRIES) {
+    return;
+  }
+  recording.timeline.push({
+    id,
+    cmd,
+    offset_ms: Date.now() - recording.startedAt,
+    dom_epoch: session.domEpoch,
+  });
+}
+
+// Enough for a long run; a cap because the timeline is held in memory and a
+// runaway loop must not be able to grow it without bound.
+const MAX_TIMELINE_ENTRIES = 5000;
+
+function relativeName(name, fallback) {
+  const trimmed = typeof name === "string" ? name.trim() : "";
+  if (trimmed.length === 0) {
+    return fallback;
+  }
+  if (/^([a-zA-Z]:|\\|\/)/.test(trimmed) || trimmed.indexOf("..") >= 0) {
+    throw new Error(
+      'browser_record_start filename must be a relative name without "..".',
+    );
+  }
+  return trimmed;
+}
+
+// A recording is of ONE tab, so a command that would move the session off it is
+// refused while recording rather than silently ending the video.
+//
+// The involuntary cases are different and are not routed here: a tab that
+// closes, or DevTools detaching us, ends the attachment and there is nothing
+// left to record, so those discard. What must not happen is losing a recording
+// to an action the operator could simply have done in the other order.
+function requireNotRecording(session, what) {
+  if (session.recording) {
+    throw new Error(
+      what +
+        " is refused while this session is recording: a recording follows one " +
+        "tab. Call browser_record_stop first.",
+    );
+  }
+}
+
+async function handleRecordStart(session, tabId, args) {
+  if (session.recording) {
+    // Refused rather than restarted: a start that silently discarded the first
+    // recording would lose work with no way to tell it had happened.
+    throw new Error(
+      "This session is already recording. Call browser_record_stop first.",
+    );
+  }
+  await ensureAttached(session, tabId);
+  const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+  const filename = relativeName(
+    args && args.filename,
+    "chrome-control-mcp/recording-" + stamp + ".webm",
+  );
+  if (!/\.webm$/i.test(filename)) {
+    throw new Error("browser_record_start filename must end in .webm.");
+  }
+  const id = "rec-" + stamp + "-" + Math.random().toString(16).slice(2, 10);
+  await toOffscreen({ type: "record.start", session: id });
+  session.recording = {
+    id,
+    tabId,
+    startedAt: Date.now(),
+    filename,
+    timeline: [],
+  };
+  try {
+    await sendCdp(tabId, "Page.startScreencast", RECORDING_SCREENCAST);
+  } catch (e) {
+    // The encoder is already up; leaving it running with nothing feeding it
+    // would leak it for the life of the worker.
+    discardRecording(session);
+    throw e;
+  }
+  return { ok: true, recording: true, filename };
+}
+
+// Screencast settings for a recording, as opposed to the single-frame forcing
+// used by screenshots: JPEG because it is what the protocol offers, and a
+// bounded size so a large page does not make every frame enormous.
+const RECORDING_SCREENCAST = {
+  format: "jpeg",
+  quality: 80,
+  maxWidth: 1280,
+  maxHeight: 800,
+  everyNthFrame: 1,
+};
+
+async function handleRecordStop(session) {
+  const recording = session.recording;
+  if (!recording) {
+    throw new Error("This session is not recording.");
+  }
+  session.recording = null;
+  await sendCdp(recording.tabId, "Page.stopScreencast", {}).catch(
+    () => undefined,
+  );
+  const finished = await toOffscreen({
+    type: "record.stop",
+    session: recording.id,
+  });
+  const durationMs = Date.now() - recording.startedAt;
+  const videoPath = await saveRecordingFile(finished.url, recording.filename);
+  const timelineName = recording.filename.replace(/\.webm$/i, ".timeline.json");
+  const timeline = {
+    recording: recording.id,
+    started_at: new Date(recording.startedAt).toISOString(),
+    duration_ms: durationMs,
+    commands: recording.timeline,
+  };
+  const timelinePath = await saveRecordingFile(
+    "data:application/json;base64," +
+      btoa(unescape(encodeURIComponent(JSON.stringify(timeline, null, 2)))),
+    timelineName,
+  );
+  return {
+    ok: true,
+    path: videoPath,
+    bytes: finished.bytes,
+    duration_ms: durationMs,
+    commands: recording.timeline.length,
+    timeline_path: timelinePath,
+  };
+}
+
+// Land a data: url on disk and report where it went. The video never comes back
+// through a tool reply: the bridge is one command, one reply, with hard caps on
+// the reply, so a path is the only thing a video can be reported as.
+async function saveRecordingFile(url, filename) {
+  const id = await chrome.downloads.download({
+    url,
+    filename,
+    conflictAction: "uniquify",
+    saveAs: false,
+  });
+  if (typeof id !== "number") {
+    throw new Error("The recording could not be saved.");
+  }
+  for (let attempt = 0; attempt < 100; attempt += 1) {
+    const [item] = await chrome.downloads.search({ id });
+    if (item && item.state === "complete") {
+      return item.filename;
+    }
+    if (item && item.state === "interrupted") {
+      throw new Error(
+        "Saving the recording was interrupted: " + (item.error || "unknown"),
+      );
+    }
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+  throw new Error("Saving the recording did not finish in time.");
+}
+
 // -- Frame dispatch ----------------------------------------------------------
 
 function onHostMessage(session, msg) {
@@ -856,6 +1098,10 @@ async function handleCommand(session, msg) {
   // and re-reads it each iteration, so a loop whose command is no longer the live one stops
   // instead of running on against a page (and a relay) that has moved on without it.
   session.commandGeneration++;
+  // A recording is a video of commands running, so the commands are recorded
+  // too -- before the work, so the offset is when it started rather than when
+  // it finished.
+  noteCommandForRecording(session, id, cmd);
   try {
     const payload = await runCommand(session, cmd, msg);
     send(session, {
@@ -965,6 +1211,8 @@ const COMMAND_TABLE = new Map([
   ["cookies", { fn: handleCookies, tab: false, args: true }],
   // Given the tab so its poll is timed by that page's clock, not this worker's.
   ["download", { fn: handleDownload, tab: true, args: true }],
+  ["recordStart", { fn: handleRecordStart, tab: true, args: true }],
+  ["recordStop", { fn: handleRecordStop, tab: false, args: false }],
   ["httpAuth", { fn: handleHttpAuth, tab: true, args: true }],
   // Carries bytes only: it names no element and touches no page, so it needs no tab.
   [
@@ -1345,6 +1593,29 @@ function releaseAttachedState(session) {
   session.httpAuthCreds = null; // armed HTTP-auth credentials do not carry across sessions
   session.lastFetchError = null; // nor does an interception failure from a page we no longer drive
   clearUploads(session); // a half-delivered file belongs to the session that is ending, not the next one
+  discardRecording(session); // an unfinished video is not a video
+}
+
+// Drop a recording without producing a file.
+//
+// A session whose attachment ended cannot finish what it was recording: the
+// frames stop arriving, and the bytes already encoded cover only part of what
+// was asked for. Writing them out as a .webm would hand back a file that looks
+// complete and is not, so the encoder is released and the partial bytes go.
+//
+// Fire-and-forget by construction: this runs on teardown paths that cannot
+// wait, including one the browser initiated. The offscreen document answers
+// "nothing to discard" when there was no recording, so calling it always is
+// safe.
+function discardRecording(session) {
+  if (!session.recording) {
+    return;
+  }
+  const id = session.recording.id;
+  session.recording = null;
+  toOffscreen({ type: "record.discard", session: id }).catch(() => {
+    // The document may already be gone, which is the same outcome.
+  });
 }
 
 async function detachAll(session, _reason) {
@@ -1417,6 +1688,13 @@ chrome.debugger.onEvent.addListener((source, method, params) => {
   // callbacks below that run after this listener has returned.
   const session = sessionForAttachedTab(source.tabId);
   if (!session) {
+    return;
+  }
+  // Screencast frames feed a recording, and nothing else: a frame arriving for
+  // a session that is not recording is still acknowledged, because CDP holds
+  // the next one until the last is acked.
+  if (method === "Page.screencastFrame") {
+    void onScreencastFrame(session, source.tabId, params);
     return;
   }
   // Network-activity tracking for browser_wait_for network_idle. A request starting records its
@@ -5425,6 +5703,7 @@ async function tabByIndex(session, index) {
 }
 
 async function handleSelectTab(session, args) {
+  requireNotRecording(session, "browser_select_tab");
   const index = Number(args && args.index);
   const tab = await tabByIndex(session, index);
   requireUnleasedTab(session, tab);
@@ -5437,6 +5716,7 @@ async function handleSelectTab(session, args) {
 }
 
 async function handleNewTab(session, args) {
+  requireNotRecording(session, "browser_new_tab");
   // A supplied url must be usable. Letting a blank one through opens a blank tab under the guise
   // of having honored the request, which is not the tab the caller asked for.
   if (args && typeof args.url === "string" && args.url.trim().length === 0) {
@@ -5611,6 +5891,10 @@ async function handleWindow(session, args) {
   const action = String((args && args.action) || "").toLowerCase();
   if (action !== "new" && action !== "focus" && action !== "close") {
     throw new Error("browser_window action must be new, focus, or close.");
+  }
+  if (action !== "close") {
+    // new and focus both retarget the session; close does not.
+    requireNotRecording(session, "browser_window " + action);
   }
   if (action === "new") {
     // A standard browser window (Chrome's extension API does not reliably honor a popup type

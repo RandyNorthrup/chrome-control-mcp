@@ -6,9 +6,9 @@ Evidence recorded 2026-08-20. Commands below ran against repository checkout, no
 
 | Platform | Toolchain                                | Result                                   |
 | -------- | ---------------------------------------- | ---------------------------------------- |
-| Windows  | MSVC 19.44, CMake 3.31, Qt 6.10, Node 22 | Build + 13/13 suites + live Chrome pass  |
-| Linux    | GCC 16 and Clang 22, Qt 6.11, Node 24    | Both builds + 13/13 suites + live Chrome |
-| macOS    | Clang + Qt 6.10 GitHub Actions runner    | Build + 13/13 suites                     |
+| Windows  | MSVC 19.50, CMake 3.31, Qt 6.10, Node 24 | Build + 17/17 suites + live Chrome pass  |
+| Linux    | GCC 16 and Clang 22, Qt 6.11, Node 24    | Both builds + 17/17 suites + live Chrome |
+| macOS    | Clang + Qt 6.10 GitHub Actions runner    | Build + 17/17 suites                     |
 
 Live Windows browser: Chrome 151.0.7922.138. Minimum supported manifest version is Chrome 116.
 
@@ -40,27 +40,31 @@ Windows generator may add `-A x64`; multi-config builds place executable under `
 
 ## Automated tests
 
-Result: **13/13 passed** under Windows/MSVC, Linux/GCC, Linux/Clang, and macOS/Clang.
+Result: **17/17 passed** under Windows/MSVC, Linux/GCC, Linux/Clang, and macOS/Clang.
 
-| Test                               | Coverage                                                               |
-| ---------------------------------- | ---------------------------------------------------------------------- |
-| `test_browser_contract`            | 40 browser-tool schemas, translation, refs, bounds, and validation     |
-| `test_native_messaging`            | Native frame codec and host handshake                                  |
-| `test_browser_bridge`              | Session, reply correlation, snapshots, and stale refs                  |
-| `test_browser_extension_installer` | Public identity and isolated native-host lifecycle                     |
-| `test_browser_uploads`             | Upload path rules, roots confinement, and byte-exact chunking          |
-| `test_browser_bridge_security`     | ACL/permissions, nonce, rendezvous, and ownership                      |
-| `test_browser_bridge_pipe`         | Platform IPC handshake, peer verification, timeout, framing, reconnect |
-| `test_browser_bridge_relay`        | End-to-end relay/bridge/session with fake extension                    |
-| `test_install_layout`              | Version-directory safety, link swap under an open file, and pruning    |
-| `test_updater`                     | Asset naming, checksum parsing, version order, and staged install      |
-| `test_browser_mcp_server`          | Identity, 47 tools, profiles, envelopes, schemas, and MCP content      |
-| `test_browser_extension_pure`      | 70 service-worker security, storage, geometry, and decision cases      |
-| `test_vscode_payload`              | VSIX payload rules, with red drills for a link that survives pruning   |
+| Test                                  | Coverage                                                               |
+| ------------------------------------- | ---------------------------------------------------------------------- |
+| `test_browser_contract`               | 40 browser-tool schemas, translation, refs, bounds, and validation     |
+| `test_native_messaging`               | Native frame codec and host handshake                                  |
+| `test_browser_bridge`                 | Session, reply correlation, snapshots, and stale refs                  |
+| `test_browser_extension_installer`    | Public identity and isolated native-host lifecycle                     |
+| `test_browser_uploads`                | Upload path rules, roots confinement, and byte-exact chunking          |
+| `test_browser_bridge_security`        | ACL/permissions, nonce, rendezvous, and ownership                      |
+| `test_browser_bridge_pipe`            | Platform IPC handshake, peer verification, timeout, framing, reconnect |
+| `test_browser_bridge_relay`           | End-to-end relay/bridge/session with fake extension                    |
+| `test_install_layout`                 | Version-directory safety, link swap under an open file, and pruning    |
+| `test_updater`                        | Asset naming, checksum parsing, version order, and staged install      |
+| `test_browser_mcp_server`             | Identity, 49 tools, profiles, envelopes, schemas, and MCP content      |
+| `test_browser_extension_pure`         | 69 service-worker security, storage, geometry, and decision cases      |
+| `test_browser_extension_transport`    | Native port, readiness handshake, and how a command is refused         |
+| `test_browser_extension_session`      | What a session releases when its debugger attachment ends              |
+| `test_browser_extension_multisession` | One port per server, and the tab leases that keep sessions apart       |
+| `test_browser_extension_recording`    | Recording refusals, the timeline, and discard on a session's death     |
+| `test_vscode_payload`                 | VSIX payload rules, with red drills for a link that survives pruning   |
 
 `test_install_layout` and `test_updater` are newer than the local Linux and macOS desktop runs
 recorded above, but both have since passed on all three platforms in GitHub Actions, which is where
-the 13/13 figures for Linux and macOS come from.
+the 17/17 figures for Linux and macOS come from.
 
 The update path itself has been exercised end to end on Windows and on macOS 15.7.4, where a
 published archive installs and `browser_update_check` reaches the release host over HTTPS through
@@ -87,8 +91,8 @@ the bundled TLS backend. No Linux machine has installed a release through `brows
 
 | Gate       | Result | Where                                           |
 | ---------- | ------ | ----------------------------------------------- |
-| ASan+UBSan | 13/13  | GitHub Actions, and locally on Arch, GCC 16.2.1 |
-| TSan       | 13/13  | GitHub Actions (Qt 6.10.0)                      |
+| ASan+UBSan | 17/17  | GitHub Actions, and locally on Arch, GCC 16.2.1 |
+| TSan       | 17/17  | GitHub Actions (Qt 6.10.0)                      |
 
 ASan+UBSan was re-run locally against this release on Arch with GCC 16.2.1 and Qt 6.11.2: thirteen
 suites pass and neither sanitizer reports anything, including the bridge pipe, relay, and security
@@ -116,7 +120,7 @@ npm run extension -- status
 Results:
 
 - Initialize protocol `2024-11-05`, server `chrome-control-mcp`
-- Full profile: 47 tools
+- Full profile: 49 tools
 - Read-only profile: 12 tools
 - Staged extension present with pinned ID
 - Linux isolated install → status → uninstall lifecycle passed with generated mode-`0600` manifest

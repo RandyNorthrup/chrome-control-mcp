@@ -19,6 +19,48 @@ redaction.
 Redaction is best-effort text masking. Screenshots and unmodeled secret shapes remain outside its
 guarantee.
 
+## Extension permissions
+
+The extension asks for exactly what it uses, and the set is chosen rather than accumulated:
+
+| Permission        | What it is for                                                 |
+| ----------------- | -------------------------------------------------------------- |
+| `nativeMessaging` | the bridge to the MCP server                                   |
+| `debugger`        | every page action, over the DevTools protocol                  |
+| `tabs`            | resolving and listing tabs                                     |
+| `tabGroups`       | the tab-strip mark that shows which tab is under control       |
+| `contentSettings` | `browser_permission`                                           |
+| `cookies`         | `browser_cookies`                                              |
+| `downloads`       | `browser_download`, and landing a recording as a file          |
+| `offscreen`       | a hidden document to run the video encoder in                  |
+| `alarms`          | re-arming the bridge after the service worker is retired       |
+| `<all_urls>`      | the assistant can be asked to drive any page the user can open |
+
+### Recording is not an escalation
+
+`browser_record_start` records the session's tab by taking frames from the DevTools protocol
+(`Page.startScreencast`) — the same channel already used for every click, every snapshot and every
+screenshot. It captures video only; there is no audio.
+
+It deliberately does NOT use `chrome.tabCapture`, which would be the obvious API for it. Chrome
+requires the `activeTab` grant for tab capture, and that grant comes only from a user invoking the
+extension on that specific tab — a toolbar click, a context menu, a keyboard shortcut. An
+agent-driven start has no such invocation, so tabCapture could not work here without asking the
+user to click something before every recording. `activeTab` is therefore not requested either.
+
+The only permission recording adds is `offscreen`, which creates a hidden extension page. It grants
+no access to the user's browsing; `MediaRecorder` needs a DOM and the service worker has none.
+
+`debugger` is already held and is strictly more powerful than `tabCapture` would be: anything that
+can read the page and synthesize input can already reconstruct what a recording would show. Chrome
+displays its own indicator while a tab is being debugged, so the user can see that the session is
+attached.
+
+Recordings are written through `chrome.downloads` to a relative path under the user's downloads
+folder, validated the same way `browser_download` validates a filename: no absolute path, no `..`.
+The video never travels back through the bridge — a reply is capped far below the size of any real
+recording — so `browser_record_stop` returns a path.
+
 ## Uploads
 
 `browser_upload` is the one tool that reads the user's disk, so it is also the one tool that can
@@ -58,6 +100,10 @@ project works to, but it is worth choosing deliberately.
 - Storage operations use isolated world, verify live origin, and call pristine Storage methods.
 - Dialog defaults reject confirm/prompt; explicit response is one-shot.
 - Download URL and relative filename validation fail closed.
+- Recording filenames are validated the same way, and a recording is refused a second
+  start or a tab change rather than silently replacing or ending the first.
+- A session that ends mid-recording discards the encoder and the partial bytes rather than
+  writing a truncated file that would read as a finished one.
 - Strict schemas reject unknown arguments and wrong types.
 - Compiler warnings are errors; static analysis, secret scan, dependency audit, and sanitizers run as
   release gates.

@@ -490,6 +490,12 @@ QHash<QString, CmdSpec> infraCommandSpecs() {
         {{QStringLiteral("url"), QStringLiteral("string"), true},
          {QStringLiteral("filename"), QStringLiteral("string"), false},
          {QStringLiteral("timeout_ms"), QStringLiteral("int"), false}}}},
+      {QStringLiteral("browser_record_start"),
+       {QStringLiteral("recordStart"),
+        QStringLiteral("none"),
+        {{QStringLiteral("filename"), QStringLiteral("string"), false}}}},
+      {QStringLiteral("browser_record_stop"),
+       {QStringLiteral("recordStop"), QStringLiteral("none"), {}}},
       {QStringLiteral("browser_http_auth"),
        {QStringLiteral("httpAuth"),
         QStringLiteral("none"),
@@ -1649,6 +1655,37 @@ void appendDownloadTool(QJsonArray &tools) {
           QJsonArray{QStringLiteral("url")})));
 }
 
+void appendRecordTools(QJsonArray &tools) {
+  tools.append(toolEntry(
+      QStringLiteral("browser_record_start"),
+      QStringLiteral(
+          "Start recording the session's tab to a .webm video. Video only -- "
+          "no audio is captured. Recording continues until "
+          "browser_record_stop, which is what returns the saved path: the "
+          "video never comes back through a tool reply. filename is optional "
+          "and must be a relative name (no absolute path, no \"..\"). "
+          "Starting a second recording for the same session is refused; stop "
+          "the first. Chrome shows its own recording indicator while this "
+          "runs."),
+      toolSchema(
+          QJsonObject{
+              {QStringLiteral("filename"),
+               stringProperty(QStringLiteral(
+                   "Relative name for the .webm, e.g. \"runs/login.webm\". "
+                   "Omit to have one derived from the time."))}},
+          {})));
+  tools.append(toolEntry(
+      QStringLiteral("browser_record_stop"),
+      QStringLiteral(
+          "Stop the recording started by browser_record_start and return the "
+          "saved video path, its duration, and the path of a JSON timeline "
+          "written beside it. The timeline lists every command that ran while "
+          "recording -- its id, name, offset in milliseconds, and the DOM "
+          "generation at that moment -- so the video can be read against what "
+          "drove it."),
+      toolSchema(QJsonObject{}, {})));
+}
+
 void appendHttpAuthTool(QJsonArray &tools) {
   tools.append(toolEntry(
       QStringLiteral("browser_http_auth"),
@@ -1837,6 +1874,7 @@ QJsonArray browserToolCatalog() {
   appendStorageTool(tools);
   appendCookiesTool(tools);
   appendDownloadTool(tools);
+  appendRecordTools(tools);
   appendHttpAuthTool(tools);
   appendAdvancedInputTools(tools);
   return tools;

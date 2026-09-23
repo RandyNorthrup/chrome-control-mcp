@@ -362,11 +362,11 @@ void BrowserContractTests::catalog_advertisesDomFirstToolsWithStrictSchemas() {
   // Pin the full advertised catalog size. browserToolCatalog() appends a fixed
   // set unconditionally
   // (nav/action/pointer/form/tab/wait/inspection/window/infra/print/
-  // permission/storage/cookies/download/upload/http-auth/advanced-input), 41
-  // tools in all.
+  // permission/storage/cookies/download/record/upload/http-auth/
+  // advanced-input), 43 tools in all.
   // `>= 15` could not catch a tool silently dropped from or duplicated into the
   // catalog.
-  QCOMPARE(tools.size(), 41);
+  QCOMPARE(tools.size(), 43);
 
   QStringList names;
   for (const QJsonValue &value : tools) {

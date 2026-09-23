@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.25)
 
-project(chrome_control_mcp VERSION 1.4.0 LANGUAGES CXX)
+project(chrome_control_mcp VERSION 1.5.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -369,6 +369,12 @@ if(BUILD_TESTING)
                 "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_browser_extension_pure.mjs"
     )
     set_tests_properties(test_browser_extension_pure PROPERTIES TIMEOUT 120)
+
+    add_test(NAME test_browser_extension_recording
+        COMMAND "${NODE_EXECUTABLE}" --test
+                "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_browser_extension_recording.mjs"
+    )
+    set_tests_properties(test_browser_extension_recording PROPERTIES TIMEOUT 120)
 
     add_test(NAME test_browser_extension_multisession
         COMMAND "${NODE_EXECUTABLE}" --test

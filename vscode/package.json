@@ -2,7 +2,7 @@
   "name": "chrome-control-mcp",
   "displayName": "Chrome Control MCP",
   "description": "Visible, precise Chrome control for AI assistants, as a Model Context Protocol server. Local by design.",
-  "version": "1.4.0",
+  "version": "1.5.0",
   "publisher": "RandyNorthrup",
   "license": "MIT",
   "author": "Randy Northrup",

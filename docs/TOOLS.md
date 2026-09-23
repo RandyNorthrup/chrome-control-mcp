@@ -1,6 +1,6 @@
 # Tool catalog
 
-Full profile advertises 47 tools: 41 live browser tools, 3 extension lifecycle tools, and 3
+Full profile advertises 49 tools: 43 live browser tools, 3 extension lifecycle tools, and 3
 self-update tools.
 
 ## Navigation and capture
@@ -69,7 +69,39 @@ limits and `CHROME_CONTROL_MCP_UPLOAD_ROOTS`.
 - `browser_storage`
 - `browser_cookies`
 - `browser_download`
+- `browser_record_start`
+- `browser_record_stop`
 - `browser_http_auth`
+
+## Recording
+
+`browser_record_start` records the session's tab to a `.webm`; `browser_record_stop` ends it and
+returns where it was saved. Video only -- no audio is captured.
+
+The video never comes back through a tool reply. The bridge is one command, one reply, with hard
+caps on the reply (16 MiB for a screenshot, 8 MiB for text), so a recording of any length could not
+fit. Stop returns a path, the way `browser_download` does.
+
+Beside the video it writes `<name>.timeline.json`: every command that ran while recording, with its
+id, its name, its offset in milliseconds, and the DOM generation at that moment. That is the
+machine-readable half -- what drove the page, lined up against the frames that show it.
+
+Two rules, both refusals rather than silent substitutions:
+
+- **A second start for a session is refused.** Restarting would discard the first recording with no
+  way to tell it had happened.
+- **Changing tabs is refused while recording.** A recording follows one tab, and ending it because
+  the operator changed tabs would lose the video to an action they could have done in the other
+  order. `browser_select_tab`, `browser_new_tab`, and `browser_window new`/`focus` all refuse;
+  `browser_window close` does not, because it does not retarget the session.
+
+If the session ends while recording -- the bridge drops, the tab closes, DevTools detaches -- the
+recording is **discarded**, not finalized. The frames stop arriving and the encoded bytes cover only
+part of what was asked for, so writing them out would hand back a file that looks complete and is
+not.
+
+Frames come from the DevTools protocol, not `chrome.tabCapture`; see
+[SECURITY.md](SECURITY.md) for why, and for what the `offscreen` permission does and does not grant.
 
 ## Coordinates, display scale, zoom, and pinch
 

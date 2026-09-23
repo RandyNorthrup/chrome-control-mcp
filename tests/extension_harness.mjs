@@ -137,6 +137,10 @@ export function loadWorker(exported, overrides = {}, extra = "") {
     TextEncoder,
     TextDecoder,
     structuredClone,
+    // Present in a real service worker; the worker uses them to build the
+    // data: urls it hands to chrome.downloads.
+    btoa,
+    atob,
   });
   const fields = exported.join(", ");
   const epilogue =

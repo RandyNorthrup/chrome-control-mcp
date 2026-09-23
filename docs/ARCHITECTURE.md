@@ -31,34 +31,45 @@ when launching native host, which selects relay mode.
 
 ## Platform backends
 
-| Concern             | Windows                                                   | Linux / macOS                                      |
-| ------------------- | --------------------------------------------------------- | -------------------------------------------------- |
-| Bridge transport    | Named pipe                                                | Unix-domain socket                                 |
-| Endpoint protection | Current-user DACL + Medium-integrity no-write-up label    | Private runtime directory + mode `0600` socket     |
-| Peer identity       | Process token, session, image path, Chrome ancestor       | Peer UID/PID, image path, optional Chrome ancestor |
-| Rendezvous          | `%LOCALAPPDATA%/ChromeControlMCP/browser_bridge.json`     | Private runtime directory                          |
-| Native-host install | HKCU Chrome NativeMessagingHosts key + generated manifest | Chrome `NativeMessagingHosts` manifest directory   |
+| Concern             | Windows                                                     | Linux / macOS                                      |
+| ------------------- | ----------------------------------------------------------- | -------------------------------------------------- |
+| Bridge transport    | Named pipe                                                  | Unix-domain socket                                 |
+| Endpoint protection | Current-user DACL + Medium-integrity no-write-up label      | Private runtime directory + mode `0600` socket     |
+| Peer identity       | Process token, session, image path, Chrome ancestor         | Peer UID/PID, image path, optional Chrome ancestor |
+| Rendezvous          | `%LOCALAPPDATA%/ChromeControlMCP/browser_bridge-<pid>.json` | Private runtime directory, same per-pid name       |
+| Native-host install | HKCU Chrome NativeMessagingHosts key + generated manifest   | Chrome `NativeMessagingHosts` manifest directory   |
 
 Linux uses `SO_PEERCRED`. macOS uses `getpeereid` plus `LOCAL_PEERPID`. Both sides require same
 effective user, recorded process, same executable image, nonce token, and protocol version.
 
-## Rendezvous ownership
+## Rendezvous and sessions
 
-One server per user owns the browser: the rendezvous record names its pid and endpoint, and the
-Chrome-launched relay binds to whatever the record names. A server that finds a live owner of the
-same image at start stands down (native tools only) rather than overwrite it; `stop()` removes the
-record only while it still names the exiting process. Because two servers can start within the same
-instant and both pass that check, the long-lived server also re-checks before every browser tool
-call while no relay is connected (`ensurePublished`): a record that is missing, or names a process
-that has exited, is re-published; a record naming another live owner is left alone and the call
-reports which pid holds the bridge. The extension retries the native connection every 2 s while
-its service worker is alive and from a 30 s alarm otherwise, so it lands on the published server
-without a browser restart.
+Each server publishes its own rendezvous record, named for the process that published it
+(`browser_bridge-<pid>.json`), so several can advertise at once. `stop()` removes a record only
+while it still names the exiting process, and a server sweeps records left by processes that are
+gone when it starts. `ensurePublished` re-publishes this server's record before a browser tool call
+while no relay is connected, so a record lost to anything short of the server exiting heals without
+a restart.
 
-Running several agents against one browser at the same time -- two VS Code windows on two projects
--- would need more than a second connection: the extension's correctness guards are single globals,
-so two sessions sharing them would invalidate each other's view of the page without failing.
-[MULTI_SESSION.md](MULTI_SESSION.md) sets out what the change would involve. It is not implemented.
+The Chrome-launched relay cannot be told which server it is for on argv, so it asks. It lists the
+published records, sends them to the extension as `bridge_offers`, and connects to the one the
+extension names in `attach_session`. The relay speaks first because the extension has no filesystem
+access and so has no server to name until it is offered one. A server the extension asks for that is
+no longer published yields no connection rather than a substitute.
+
+The extension holds one native port per server and one session per port -- Chrome starts a separate
+host process per port, and the relay behind it attaches to exactly one server. Each port's listeners
+close over their session, so an arriving frame never has to be matched back to one; only the
+browser's own events need routing, because they name a tab and nothing else. It retries the native
+connection every 2 s while its service worker is alive and from a 30 s alarm otherwise, and that
+alarm doubles as how a server started later is noticed: a relay offers its list once, so an
+established session would not otherwise hear about a second editor opening.
+
+Sessions are kept apart by a tab lease. A tab is held by the session that adopted it or has a
+debugger attachment on it, and the second session to reach for it is refused by name. Chrome already
+allows one debugger client per target, which covers the DevTools protocol; the lease covers
+`chrome.tabs`, `chrome.windows`, cookies and downloads, where Chrome would let two sessions collide
+without complaint. [MULTI_SESSION.md](MULTI_SESSION.md) records the design and what it cost.
 
 ## Extension preparation
 

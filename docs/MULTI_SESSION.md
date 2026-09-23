@@ -1,13 +1,14 @@
 # Running more than one agent against one browser
 
-Today exactly one Chrome Control MCP server controls the browser. A second one — a second VS Code
-window, a second project — serves its native tools with browser control off and retries on every
-browser tool call, so it picks the browser up when the first server exits. That is deliberate and
-it is enforced, not accidental: [`browser_bridge_pipe.cpp:255`](../src/browser_bridge_pipe.cpp#L255)
-refuses to publish over a record a live server of our own image owns.
+Before 1.5.0 exactly one Chrome Control MCP server controlled the browser. A second one — a second
+VS Code window, a second project — served its native tools with browser control off and retried on
+every browser tool call, picking the browser up when the first server exited. That was deliberate
+and enforced, not accidental: a server that found a live owner of its own image refused to publish
+over it.
 
-This document is about what it would take to lift that, and what it would cost. Nothing here is
-implemented.
+**Implemented in 1.5.0.** This document is kept as the design record: what the constraints turned
+out to be, and which of its own decisions were wrong before the code was written. The present tense
+below describes the design as built.
 
 ## What is actually single-instance
 

@@ -4,7 +4,78 @@ All notable changes are documented here. Project follows [Semantic Versioning](h
 
 ## [Unreleased]
 
+Nothing yet.
+
+## [1.5.0] - 2026-09-23
+
+### Added
+
+- **More than one agent can drive the browser at once.** Two editors on two projects each got an
+  MCP server, but only one of them got the browser: the second stood down and served its native
+  tools with browser control off. Now each server gets a session of its own.
+
+  The extension holds one native port per server and one session per port, and the sessions are
+  kept apart by a lease: a tab one session is driving is refused to another, by name, so "busy"
+  reads differently from "gone". Tabs held elsewhere are marked in `browser_tabs` rather than
+  hidden -- the operator sees the whole window either way, and a listing that gave no reason for
+  the refusal would read as a bug.
+
+  Chrome enforces one debugger client per tab, which covers the DevTools half; the lease is what
+  covers `chrome.tabs`, `chrome.windows`, cookies and downloads, where Chrome would happily let two
+  sessions collide.
+
+- **`browser_record_start` and `browser_record_stop` record a tab to a `.webm`.** Video only; no
+  audio. Stop returns the saved path, never the bytes -- the bridge is one command, one reply, with
+  hard caps on the reply, so a recording could not fit through it.
+
+  Beside the video it writes `<name>.timeline.json`: every command that ran while recording, with
+  its id, its name, its offset in milliseconds, and the DOM generation at that moment. That is what
+  lets the frames be read against what drove them.
+
+  Frames come from the DevTools protocol (`Page.startScreencast`), not `chrome.tabCapture`. Chrome
+  requires the `activeTab` grant for tab capture, and that grant comes only from a user invoking the
+  extension on that specific tab, so an agent-driven start could not obtain one. The only permission
+  recording adds is `offscreen`, for a hidden page to run the encoder in -- `MediaRecorder` needs a
+  DOM and the service worker has none. `debugger` was already held and is strictly more powerful.
+
+  Two refusals rather than silent substitutions: a second start for a session is refused instead of
+  replacing the first, and changing tabs is refused while recording instead of ending it. A session
+  that ends mid-recording discards the encoder and the partial bytes rather than writing a truncated
+  file that would read as a finished one.
+
+### Changed
+
+- Rendezvous records are named for the process that published them
+  (`browser_bridge-<pid>.json`), so several servers can advertise at once. Records left by servers
+  that have exited are swept when a server starts, which a single shared record never needed because
+  it was simply overwritten.
+
+- The relay is told which server to attach to instead of computing one path. It offers the published
+  servers to the extension and connects to the one it names; a server the extension asked for that is
+  no longer published yields no connection rather than a substitute.
+
+- The full profile advertises 49 tools; the read-only profile still advertises 12. Recording is
+  absent from read-only.
+
+- The bridge's Windows and POSIX halves no longer keep byte-identical copies of the same code. The
+  relay's stdio, frame decode, handshake, and pump are the same everywhere and now live in one
+  translation unit, leaving only connecting and watching an endpoint per platform. The pipe server's
+  constructors, rendezvous publishing, and state accessors likewise. Peer credentials and process
+  images -- three copies between the Linux and macOS halves of two units -- are one unit. Four
+  copies of `setError` are one definition, and the frame header size is defined beside the codec
+  that reads it rather than once per reader.
+
+- `BrowserBridgePipeServer::Options::protocol` defaults to `kBrowserBridgeProtocol` instead of a
+  literal `1` beside a comment claiming the two match, which is how a bumped protocol ends up
+  announced on one side only.
+
 ### Fixed
+
+- A browser-initiated detach now releases what a deliberate one does. `detachAll` cleared thirteen
+  things and the `onDetach` listener cleared ten; the three it forgot were the three with no symptom
+  at the moment they went wrong -- a polling handler kept driving a tab nothing was attached to, a
+  User-Agent captured from a page the session no longer drove could be restored over the next one,
+  and a half-delivered upload survived into the next session.
 
 - **Two installs running at once can no longer corrupt each other.** Every step that changes what is
   installed read the tree and then acted on what it read, with nothing holding the two together. Two
@@ -30,20 +101,6 @@ All notable changes are documented here. Project follows [Semantic Versioning](h
 - The `ancestorChainContainsImageForTesting` wrapper. It existed only because the function it called
   was file-local; that function is now declared where its callers can reach it, and the tests call
   it directly.
-
-### Changed
-
-- The bridge's Windows and POSIX halves no longer keep byte-identical copies of the same code. The
-  relay's stdio, frame decode, handshake, and pump are the same everywhere and now live in one
-  translation unit, leaving only connecting and watching an endpoint per platform. The pipe server's
-  constructors, rendezvous publishing, and state accessors likewise. Peer credentials and process
-  images -- three copies between the Linux and macOS halves of two units -- are one unit. Four
-  copies of `setError` are one definition, and the frame header size is defined beside the codec
-  that reads it rather than once per reader.
-
-- `BrowserBridgePipeServer::Options::protocol` defaults to `kBrowserBridgeProtocol` instead of a
-  literal `1` beside a comment claiming the two match, which is how a bumped protocol ends up
-  announced on one side only.
 
 ## [1.4.0] - 2026-09-22
 

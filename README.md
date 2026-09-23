@@ -11,7 +11,7 @@
 ![Platforms](https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20%7C%20macOS-2563eb.svg)
 ![C++20](https://img.shields.io/badge/C%2B%2B-20-00599c.svg)
 ![Chrome 116+](https://img.shields.io/badge/Chrome-116%2B-4285f4.svg)
-![MCP tools](https://img.shields.io/badge/MCP%20tools-47-ff1493.svg)
+![MCP tools](https://img.shields.io/badge/MCP%20tools-49-ff1493.svg)
 
 <p>
   Standalone Model Context Protocol server connecting an AI assistant to your existing Chrome
@@ -43,7 +43,7 @@ page overlay by default; documentation captures can opt in.
 | Extension lifecycle | Prepare, inspect, and unregister current-user native-host integration                                            |
 | In-place updates    | Check, download, verify, and install a new release without overwriting the running executable                    |
 
-All **47 MCP tools** use strict JSON Schemas. Long-lived MCP process preserves session and
+All **49 MCP tools** use strict JSON Schemas. Long-lived MCP process preserves session and
 element-ref state while Chrome remains an ordinary user-controlled browser.
 
 ## See it work
@@ -250,7 +250,7 @@ whatever the browser profile says.
 
 Local gates currently cover:
 
-- 13/13 native and extension suites on Windows, Linux, and macOS, with MSVC, GCC, and Clang
+- 17/17 native and extension suites on Windows, Linux, and macOS, with MSVC, GCC, and Clang
 - Warnings-as-errors plus `clang-tidy` and exhaustive `cppcheck`
 - Separate ASan+UBSan and TSan runs
 - Full-history Gitleaks scan and npm dependency audit
