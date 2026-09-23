@@ -78,13 +78,26 @@ the bundled TLS backend. No Linux machine has installed a release through `brows
 
 ## Sanitizers
 
-| Gate       | Result |
-| ---------- | ------ |
-| ASan+UBSan | 9/9    |
-| TSan       | 9/9    |
+| Gate       | Result | Where                                           |
+| ---------- | ------ | ----------------------------------------------- |
+| ASan+UBSan | 12/12  | GitHub Actions, and locally on Arch, GCC 16.2.1 |
+| TSan       | 12/12  | GitHub Actions (Qt 6.10.0)                      |
+
+ASan+UBSan was re-run locally against this release on Arch with GCC 16.2.1 and Qt 6.11.2: twelve
+suites pass and neither sanitizer reports anything, including the bridge pipe, relay, and security
+suites, which are the ones that actually run threads.
 
 TSan uses [`tests/tsan.supp`](../tests/tsan.supp) for two exact QtTest watchdog/logger symbols from
-prebuilt Qt. Project frames remain unsuppressed; any project race still fails job.
+prebuilt Qt. Project frames remain unsuppressed; any project race still fails the job.
+
+Those suppressions are matched by symbol, so they bind only where Qt ships symbols. On a
+distribution that strips Qt -- Arch, with Qt 6.11.2 -- QtTest's own watchdog race is reported
+instead, and eleven of the twelve binaries exit non-zero because of it. It is one race at one
+address inside `libQt6Test`, between the watchdog thread and main's stack during teardown, with no
+project frame in either stack, and it appears even in `test_install_layout`, which runs no thread of
+this project's own. Qt exposes no way to disable that watchdog. The suppression is deliberately not
+widened to match the library instead of the symbol: QtTest calls this project's test functions, so a
+library-scoped rule would also hide a real race in them.
 
 ## MCP and native-host smoke
 
