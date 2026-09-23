@@ -501,14 +501,23 @@ async function runConfig(config, { chrome, executable, fixture, extraArgs }) {
     // raised to 1350, so the browser decides it and no clip arithmetic moves it. The
     // width may therefore fall short by up to one scrollbar -- and by no more, which is
     // what keeps this a bound rather than a blanket. Height has no such gutter.
-    const SCROLLBAR_GUTTER_CSS = 17;
+    //
+    // In DIPs times the DISPLAY's scale, which is neither CSS pixels nor raw device
+    // pixels. The scrollbar is browser chrome: it does not scale with the page's zoom,
+    // so a CSS-pixel allowance collapses at 33% zoom; and it does scale with the
+    // display, so a flat device-pixel allowance is too small at 1.5x and above.
+    // Measured shortfalls: 15 device px at scale 1 (at 100%, 50% and 33% zoom alike),
+    // 22 at 1.5x, 37 at 2.5x, and 24 at 1.75x with 175% zoom -- 15 x the display scale
+    // in every case, and never the page zoom.
+    const SCROLLBAR_GUTTER_DIPS = 17;
+    const gutter = SCROLLBAR_GUTTER_DIPS * config.scaleFactor;
     const holdsDocument = (image, metrics) =>
       [
-        [image.width, metrics.ew, SCROLLBAR_GUTTER_CSS],
+        [image.width, metrics.ew, gutter],
         [image.height, metrics.eh, 0],
       ].every(
-        ([pixels, css, shortfall]) =>
-          pixels >= (css - shortfall - 0.5) * dpr - 1 &&
+        ([pixels, css, gutter]) =>
+          pixels >= (css - 0.5) * dpr - 1 - gutter &&
           pixels <= (css + 0.5) * dpr + config.scaleFactor + 1,
       );
     check(
