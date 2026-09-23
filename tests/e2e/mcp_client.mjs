@@ -171,6 +171,21 @@ export function jsonContent(result) {
   }
 }
 
+// The snapshot line a ref came from. A ref is only as good as the line it was read off, and when
+// a suite turns out to have driven the wrong element the line is the only thing that says why --
+// the accessibility tree is not the same on every platform, so the same name can sit on a
+// different node, or carry a different ref, than it does where the suite was written.
+export function lineFor(snapshot, accessibleName) {
+  const line = snapshot
+    .split(/\r?\n/)
+    .find(
+      (candidate) =>
+        candidate.includes(`"${accessibleName}"`) &&
+        candidate.includes("[ref="),
+    );
+  return line ? line.trim() : null;
+}
+
 export function refFor(snapshot, accessibleName) {
   const lines = snapshot
     .split(/\r?\n/)

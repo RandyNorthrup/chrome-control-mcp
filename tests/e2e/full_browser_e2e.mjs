@@ -18,7 +18,13 @@ import { fileURLToPath } from "node:url";
 
 import { waitForExtensionAttached } from "./extension_attach.mjs";
 import { startFixtureServer } from "./fixture_server.mjs";
-import { jsonContent, McpClient, refFor, textContent } from "./mcp_client.mjs";
+import {
+  jsonContent,
+  lineFor,
+  McpClient,
+  refFor,
+  textContent,
+} from "./mcp_client.mjs";
 
 const EXPECTED_TOOLS = [
   "browser_extension_install",
@@ -635,7 +641,8 @@ async function main() {
     assert.ok(
       nested.scrolled.y > 0,
       `The nested region did not scroll: ${JSON.stringify(nested)}; ` +
-        `the ref ${scrollRegionRef} resolves to ${JSON.stringify(scrollRegionBox)}`,
+        `the ref ${scrollRegionRef} resolves to ${JSON.stringify(scrollRegionBox)}; ` +
+        `it was read off ${JSON.stringify(lineFor(page, "Fixture scroll region"))}`,
     );
     // The reply says the page is already where it says it is -- measured on the page, not taken
     // from the reply: an element's box must have moved by exactly what the scroll reported.
