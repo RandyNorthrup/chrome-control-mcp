@@ -7,8 +7,8 @@ Evidence recorded 2026-08-20. Commands below ran against repository checkout, no
 | Platform | Toolchain                                | Result                                   |
 | -------- | ---------------------------------------- | ---------------------------------------- |
 | Windows  | MSVC 19.44, CMake 3.31, Qt 6.10, Node 22 | Build + 12/12 suites + live Chrome pass  |
-| Linux    | GCC 16 and Clang 22, Qt 6.11, Node 24    | Both builds + 10/10 suites + live Chrome |
-| macOS    | Clang + Qt 6.10 GitHub Actions runner    | Build + 10/10 suites                     |
+| Linux    | GCC 16 and Clang 22, Qt 6.11, Node 24    | Both builds + 12/12 suites + live Chrome |
+| macOS    | Clang + Qt 6.10 GitHub Actions runner    | Build + 12/12 suites                     |
 
 Live Windows browser: Chrome 151.0.7922.138. Minimum supported manifest version is Chrome 116.
 
@@ -40,7 +40,7 @@ Windows generator may add `-A x64`; multi-config builds place executable under `
 
 ## Automated tests
 
-Result: **10/10 passed** under Windows/MSVC, Linux/GCC, Linux/Clang, and macOS/Clang.
+Result: **12/12 passed** under Windows/MSVC, Linux/GCC, Linux/Clang, and macOS/Clang.
 
 | Test                               | Coverage                                                               |
 | ---------------------------------- | ---------------------------------------------------------------------- |
@@ -57,9 +57,13 @@ Result: **10/10 passed** under Windows/MSVC, Linux/GCC, Linux/Clang, and macOS/C
 | `test_browser_mcp_server`          | Identity, 47 tools, profiles, envelopes, schemas, and MCP content      |
 | `test_browser_extension_pure`      | 70 service-worker security, storage, geometry, and decision cases      |
 
-The Linux and macOS rows record the last run on those machines, which predates
-`test_install_layout` and `test_updater`. Those two suites are verified on Windows and run on every
-platform in GitHub Actions; a local Linux and macOS re-run is still outstanding.
+`test_install_layout` and `test_updater` are newer than the local Linux and macOS desktop runs
+recorded above, but both have since passed on all three platforms in GitHub Actions, which is where
+the 12/12 figures for Linux and macOS come from.
+
+The update path itself has been exercised end to end on Windows and on macOS 15.7.4, where a
+published archive installs and `browser_update_check` reaches the release host over HTTPS through
+the bundled TLS backend. No Linux machine has installed a release through `browser_update_apply`.
 
 ## Strict analysis
 

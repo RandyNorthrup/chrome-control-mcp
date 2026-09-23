@@ -6,6 +6,7 @@
 
 [![Quality](https://github.com/RandyNorthrup/chrome-control-mcp/actions/workflows/quality.yml/badge.svg)](https://github.com/RandyNorthrup/chrome-control-mcp/actions/workflows/quality.yml)
 [![Release](https://img.shields.io/github/v/release/RandyNorthrup/chrome-control-mcp?color=ec4899)](https://github.com/RandyNorthrup/chrome-control-mcp/releases/latest)
+[![VS Code Marketplace](https://img.shields.io/visual-studio-marketplace/v/RandyNorthrup.chrome-control-mcp?color=2563eb&label=marketplace)](https://marketplace.visualstudio.com/items?itemName=RandyNorthrup.chrome-control-mcp)
 [![MIT License](https://img.shields.io/badge/license-MIT-7c3aed.svg)](LICENSE)
 ![Platforms](https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20%7C%20macOS-2563eb.svg)
 ![C++20](https://img.shields.io/badge/C%2B%2B-20-00599c.svg)
@@ -17,7 +18,7 @@
   through native messaging and Chrome DevTools Protocol.
 </p>
 
-[Releases](https://github.com/RandyNorthrup/chrome-control-mcp/releases/latest) · [Quick start](#quick-start) · [Tool catalog](docs/TOOLS.md) · [Architecture](docs/ARCHITECTURE.md) · [Security](docs/SECURITY.md) · [Verification](docs/VERIFICATION.md)
+[Install](#install) · [Updating](#staying-up-to-date) · [Tool catalog](docs/TOOLS.md) · [Architecture](docs/ARCHITECTURE.md) · [Security](docs/SECURITY.md) · [Verification](docs/VERIFICATION.md)
 
 </div>
 
@@ -59,17 +60,6 @@ Both images are direct `browser_screenshot` results from live extension, not moc
 > focused, practical browser interaction scenarios. They have been invaluable for testing this
 > project's full MCP-to-Chrome path.
 
-## Release archives
-
-[Download the latest release](https://github.com/RandyNorthrup/chrome-control-mcp/releases/latest)
-for Windows x64, Linux x64, Apple silicon macOS, or Intel macOS. Each archive includes the MCP
-executable, unpacked extension, matching Qt Core runtime, licenses, and SPDX inventory. SHA-256
-checksums are published beside the assets.
-
-All artifacts are intentionally unsigned and unnotarized; this project has no signing key and does
-not require one. See the [release guide](docs/RELEASES.md) for verification, platform warnings, and
-the exact packaging boundary.
-
 ## Install
 
 ### From the VS Code Marketplace
@@ -80,10 +70,17 @@ Install **Chrome Control MCP** from the marketplace, or:
 code --install-extension RandyNorthrup.chrome-control-mcp
 ```
 
-The marketplace serves the build for your platform. The extension installs the server, registers it
-with the editor through the MCP server provider API, and keeps it updated. Nothing to configure and
-no path to know; the one manual step is pointing Chrome at the extension folder once, described
-below.
+The marketplace serves the build for your platform. The extension installs the server on first
+activation and registers it with the editor through the MCP server definition provider API, so there
+is no `mcp.json` to edit and no path to know. Marketplace updates and the server updating itself
+land in the same install; whichever is newer runs.
+
+One manual step remains, and only once. Run **Chrome Control MCP: Show the Chrome extension folder
+to load** from the command palette: it copies the folder path and opens it. Then in Chrome open
+`chrome://extensions`, turn on **Developer mode**, choose **Load unpacked**, and pick that folder.
+Why that cannot be automated is explained under [Prepare Chrome](#3-prepare-chrome). The other
+command, **Chrome Control MCP: Repair install**, reinstalls the server and its native-host
+registration.
 
 ### From a release archive
 
@@ -101,6 +98,15 @@ for Windows x64, Linux x64, Apple silicon macOS, or Intel macOS, unpack it, and 
 That installs the server where it can update itself and prints the command path to give your
 assistant, plus the folder to load into Chrome. Both stay the same through every later update.
 
+Each archive carries the MCP executable, the unpacked extension, the matching Qt Core and Qt Network
+runtime, the platform's Qt TLS backend, licenses, and an SPDX inventory; the Linux archives also
+carry the ICU libraries Qt Core links against there. SHA-256 checksums are published beside the
+assets.
+
+All artifacts are intentionally unsigned and unnotarized; this project has no signing key and does
+not require one. See the [release guide](docs/RELEASES.md) for verification, platform warnings, and
+the exact packaging boundary.
+
 ## Quick start (from source)
 
 ### 1. Install build requirements
@@ -108,7 +114,7 @@ assistant, plus the folder to load into Chrome. Both stay the same through every
 - Windows 10/11 x64, Linux x64, or macOS
 - Google Chrome 116+
 - CMake 3.25+
-- Qt 6.5+ with Core and Test components
+- Qt 6.5+ with Core, Network, and Test components
 - C++20 compiler: Visual Studio 2022, GCC, or Clang
 - Node.js 20.19+
 
@@ -175,9 +181,13 @@ Transport is newline-delimited JSON-RPC over stdio. Server opens no TCP listener
 ## Staying up to date
 
 ```text
-browser_update_check    what is installed, and what the newest release is
-browser_update_apply    install the newest release
+browser_update_status   where this build is installed, and which versions are present
+browser_update_check    what the newest release is
+browser_update_apply    install it
 ```
+
+`browser_update_status` touches no network. The executable also answers `--version`, and `--install`
+puts a copy into the managed layout without an MCP client in the loop.
 
 A running executable cannot be overwritten on Windows, so the update never tries to. Each version
 is installed into `<root>/versions/<version>` and a `current` link -- a directory junction on
@@ -232,21 +242,30 @@ CHROME_CONTROL_MCP_SECURITY_PROFILE=read_only
 CHROME_CONTROL_MCP_REDACT_SENSITIVE_OUTPUT=true
 ```
 
-Read-only profile exposes 10 tools and independently rejects hidden mutating calls.
+Read-only profile exposes 12 tools and independently rejects hidden mutating calls.
+`browser_update_apply` is not among them: it replaces the program on disk, which is a mutation
+whatever the browser profile says.
 
 ## Verification
 
-Local Windows and Linux gates currently cover:
+Local gates currently cover:
 
-- 12/12 native and extension suites on Windows; 10/10 on Linux and macOS with GCC and Clang
+- 12/12 native and extension suites on Windows, Linux, and macOS, with MSVC, GCC, and Clang
 - Warnings-as-errors plus `clang-tidy` and exhaustive `cppcheck`
 - Separate ASan+UBSan and TSan runs
 - Full-history Gitleaks scan and npm dependency audit
-- 44/44 live MCP tools through real Chrome on Windows
+- 44/44 live browser and extension tools through real Chrome on Windows. The three
+  `browser_update_*` tools are not browser tools and are not part of that run; their evidence is
+  below.
 - 35/35 display configurations on Windows and macOS: scales 1x to 3x, zoom 25% to 500%, pinch, and
   both scrollbar kinds, each coordinate proven by where its click landed
 - Public UI Playground navigation, snapshot, typing, click, and PNG capture
 - Reversible native-host install/status/uninstall lifecycle
+
+The update path is verified on Windows and macOS: the link is repointed while a server launched
+through it keeps serving and exits cleanly, and on macOS 15.7.4 a published archive installs and
+reaches the release host over HTTPS through its bundled TLS backend. No Linux machine has yet
+installed a release through `browser_update_apply`.
 
 GitHub Actions builds and tests Windows, Linux, and macOS on every direct push.
 
