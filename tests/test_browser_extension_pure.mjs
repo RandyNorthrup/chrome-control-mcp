@@ -24,46 +24,11 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
-import { fileURLToPath } from "node:url";
-import { dirname, join } from "node:path";
-import vm from "node:vm";
 
-const here = dirname(fileURLToPath(import.meta.url));
-const workerPath = join(here, "..", "browser", "extension", "background.js");
-const workerSource = readFileSync(workerPath, "utf8");
-
-// Every chrome.* access resolves to this same callable proxy, so arbitrarily deep chains
-// (chrome.debugger.onDetach.addListener(fn)) work without enumerating the API surface.
-// It records nothing and returns itself; the tests below never assert on chrome behaviour,
-// they assert on decisions the worker makes before it would ever call chrome.
-// `overrides` maps a dotted path ("tabs.get", "debugger.sendCommand") to a real implementation.
-// Everything else still resolves to the proxy, so a test that needs Chrome to ANSWER something
-// says only what it needs and inherits the rest.
-function makeChromeStub(overrides = {}, path = "") {
-  const target = function () {};
-  return new Proxy(target, {
-    get(_t, prop) {
-      if (prop === "then") {
-        return undefined;
-      } // must not look like a thenable
-      if (typeof prop !== "string") {
-        return makeChromeStub(overrides, path);
-      }
-      const reached = path ? `${path}.${prop}` : prop;
-      if (Object.prototype.hasOwnProperty.call(overrides, reached)) {
-        return overrides[reached];
-      }
-      return makeChromeStub(overrides, reached);
-    },
-    apply() {
-      return makeChromeStub(overrides, path);
-    },
-    construct() {
-      return makeChromeStub(overrides, path);
-    },
-  });
-}
+import {
+  loadWorker as loadWorkerFrom,
+  workerSource,
+} from "./extension_harness.mjs";
 
 // The names pulled out of the worker's scope. Anything not listed here stays private to the
 // worker, which keeps this file from quietly becoming a second copy of its API.
@@ -121,29 +86,7 @@ const EXPORTED = [
 ];
 
 function loadWorker(overrides = {}) {
-  const context = vm.createContext({
-    chrome: makeChromeStub(overrides),
-    console: { log() {}, warn() {}, error() {}, debug() {} },
-    setTimeout,
-    clearTimeout,
-    setInterval,
-    clearInterval,
-    URL,
-    TextEncoder,
-    TextDecoder,
-    structuredClone,
-  });
-  const epilogue = `\n;globalThis.__chrome_control_mcp_exports = { ${EXPORTED.join(", ")} };\n`;
-  vm.runInContext(workerSource + epilogue, context, { filename: workerPath });
-  const exported = context.__chrome_control_mcp_exports;
-  for (const name of EXPORTED) {
-    if (exported[name] === undefined) {
-      throw new Error(
-        `background.js no longer defines ${name}; the harness is stale`,
-      );
-    }
-  }
-  return exported;
+  return loadWorkerFrom(EXPORTED, overrides);
 }
 
 const w = loadWorker();

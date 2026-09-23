@@ -370,6 +370,12 @@ if(BUILD_TESTING)
     )
     set_tests_properties(test_browser_extension_pure PROPERTIES TIMEOUT 120)
 
+    add_test(NAME test_browser_extension_transport
+        COMMAND "${NODE_EXECUTABLE}" --test
+                "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_browser_extension_transport.mjs"
+    )
+    set_tests_properties(test_browser_extension_transport PROPERTIES TIMEOUT 120)
+
     add_test(NAME test_vscode_payload
         COMMAND "${NODE_EXECUTABLE}" --test
                 "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_vscode_payload.mjs"
