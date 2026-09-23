@@ -27,7 +27,12 @@ Windows, Linux, and macOS.
 
 - [x] Run live Chrome E2E on physical Linux desktop (Arch, Hyprland/Wayland, 150% scale)
 - [ ] Run live Chrome E2E on physical macOS desktop; automated native tests cover its backend, but
-      live-browser certification evidence is Windows and Linux only.
+      live-browser certification evidence is Windows and Linux only. The 1.4.0 update path itself
+      is verified there: install, managed layout, and an HTTPS release check through the bundled
+      TLS backend, on macOS 15.7.4.
+- [ ] Run the update path end to end on Linux. It builds, tests, and packages, and the archive now
+      carries the Qt and ICU libraries it needs, but no Linux machine has installed a release
+      through `browser_update_apply`.
 - [ ] Add Windows and Linux ARM64 build matrices when their Qt runner combinations are verified;
       macOS ARM64 builds and packages on a standard GitHub-hosted runner.
 - [ ] Move marketplace publishing off a personal access token before 2026-12-21, when the one in
