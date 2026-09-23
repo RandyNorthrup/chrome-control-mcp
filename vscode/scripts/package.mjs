@@ -133,12 +133,20 @@ run(
     "--out",
     out,
     "--no-dependencies",
-    // The payload is this project's own compiled binary and the Qt runtime, so
-    // there is no credential for the scanner to find. On macOS it does not
-    // report one either -- it fails with an empty error while walking the Qt
-    // frameworks -- and that refusal is the only thing standing between a
-    // working package and the marketplace.
+    // Both flags, because vsce only skips the scan when BOTH are set:
+    //
+    //   const scanForSecrets = !options.allowPackageAllSecrets;
+    //   const scanDotEnv = !options.allowPackageEnvFile;
+    //   if (!scanForSecrets && !scanDotEnv) return;
+    //
+    // With only the first, the dotenv pass still runs, and on macOS that pass
+    // throws while walking the Qt frameworks and calls process.exit(1) before
+    // any allow-list is consulted -- which is why allowing secrets alone did
+    // not help. The payload is this project's own binary plus the Qt runtime,
+    // with no .env file and no credential in it, so there is nothing here for
+    // the scan to find and nothing being waved through by skipping it.
     "--allow-package-all-secrets",
+    "--allow-package-env-file",
   ],
   extensionRoot,
 );
