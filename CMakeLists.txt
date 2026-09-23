@@ -348,4 +348,10 @@ if(BUILD_TESTING)
                 "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_browser_extension_pure.mjs"
     )
     set_tests_properties(test_browser_extension_pure PROPERTIES TIMEOUT 120)
+
+    add_test(NAME test_vscode_payload
+        COMMAND "${NODE_EXECUTABLE}" --test
+                "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_vscode_payload.mjs"
+    )
+    set_tests_properties(test_vscode_payload PROPERTIES TIMEOUT 120)
 endif()

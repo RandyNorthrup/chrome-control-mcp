@@ -6,9 +6,9 @@ Evidence recorded 2026-08-20. Commands below ran against repository checkout, no
 
 | Platform | Toolchain                                | Result                                   |
 | -------- | ---------------------------------------- | ---------------------------------------- |
-| Windows  | MSVC 19.44, CMake 3.31, Qt 6.10, Node 22 | Build + 12/12 suites + live Chrome pass  |
-| Linux    | GCC 16 and Clang 22, Qt 6.11, Node 24    | Both builds + 12/12 suites + live Chrome |
-| macOS    | Clang + Qt 6.10 GitHub Actions runner    | Build + 12/12 suites                     |
+| Windows  | MSVC 19.44, CMake 3.31, Qt 6.10, Node 22 | Build + 13/13 suites + live Chrome pass  |
+| Linux    | GCC 16 and Clang 22, Qt 6.11, Node 24    | Both builds + 13/13 suites + live Chrome |
+| macOS    | Clang + Qt 6.10 GitHub Actions runner    | Build + 13/13 suites                     |
 
 Live Windows browser: Chrome 151.0.7922.138. Minimum supported manifest version is Chrome 116.
 
@@ -40,7 +40,7 @@ Windows generator may add `-A x64`; multi-config builds place executable under `
 
 ## Automated tests
 
-Result: **12/12 passed** under Windows/MSVC, Linux/GCC, Linux/Clang, and macOS/Clang.
+Result: **13/13 passed** under Windows/MSVC, Linux/GCC, Linux/Clang, and macOS/Clang.
 
 | Test                               | Coverage                                                               |
 | ---------------------------------- | ---------------------------------------------------------------------- |
@@ -56,10 +56,11 @@ Result: **12/12 passed** under Windows/MSVC, Linux/GCC, Linux/Clang, and macOS/C
 | `test_updater`                     | Asset naming, checksum parsing, version order, and staged install      |
 | `test_browser_mcp_server`          | Identity, 47 tools, profiles, envelopes, schemas, and MCP content      |
 | `test_browser_extension_pure`      | 70 service-worker security, storage, geometry, and decision cases      |
+| `test_vscode_payload`              | VSIX payload rules, with red drills for a link that survives pruning   |
 
 `test_install_layout` and `test_updater` are newer than the local Linux and macOS desktop runs
 recorded above, but both have since passed on all three platforms in GitHub Actions, which is where
-the 12/12 figures for Linux and macOS come from.
+the 13/13 figures for Linux and macOS come from.
 
 The update path itself has been exercised end to end on Windows and on macOS 15.7.4, where a
 published archive installs and `browser_update_check` reaches the release host over HTTPS through
@@ -73,17 +74,23 @@ the bundled TLS backend. No Linux machine has installed a release through `brows
 - Exhaustive `cppcheck` production analysis passes. Deliberate unused-function probe first proved
   dead-code checker fails correctly; probe was then removed.
 - ESLint reports 0 errors; PSScriptAnalyzer reports 0 findings.
+- PSScriptAnalyzer throws `Object reference not set to an instance of an object` on a cold
+  module import, which is why the worker retries. Measured against 1.25.0, the newest release:
+  three passes over the eight tracked scripts produced one such failure on the first
+  invocation and none afterwards, so the retry mitigates a defect that is still upstream
+  rather than one this project introduced.
 - Full-history Gitleaks scan: 0 leaks.
-- `npm audit --audit-level=moderate`: 0 vulnerabilities.
+- `npm audit --audit-level=low`, for both the root and the extension package: 0
+  vulnerabilities.
 
 ## Sanitizers
 
 | Gate       | Result | Where                                           |
 | ---------- | ------ | ----------------------------------------------- |
-| ASan+UBSan | 12/12  | GitHub Actions, and locally on Arch, GCC 16.2.1 |
-| TSan       | 12/12  | GitHub Actions (Qt 6.10.0)                      |
+| ASan+UBSan | 13/13  | GitHub Actions, and locally on Arch, GCC 16.2.1 |
+| TSan       | 13/13  | GitHub Actions (Qt 6.10.0)                      |
 
-ASan+UBSan was re-run locally against this release on Arch with GCC 16.2.1 and Qt 6.11.2: twelve
+ASan+UBSan was re-run locally against this release on Arch with GCC 16.2.1 and Qt 6.11.2: thirteen
 suites pass and neither sanitizer reports anything, including the bridge pipe, relay, and security
 suites, which are the ones that actually run threads.
 
@@ -92,7 +99,7 @@ prebuilt Qt. Project frames remain unsuppressed; any project race still fails th
 
 Those suppressions are matched by symbol, so they bind only where Qt ships symbols. On a
 distribution that strips Qt -- Arch, with Qt 6.11.2 -- QtTest's own watchdog race is reported
-instead, and eleven of the twelve binaries exit non-zero because of it. It is one race at one
+instead, and eleven of the thirteen binaries exit non-zero because of it. It is one race at one
 address inside `libQt6Test`, between the watchdog thread and main's stack during teardown, with no
 project frame in either stack, and it appears even in `test_install_layout`, which runs no thread of
 this project's own. Qt exposes no way to disable that watchdog. The suppression is deliberately not

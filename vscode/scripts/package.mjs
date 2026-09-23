@@ -16,20 +16,18 @@ import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import {
+  assertPayloadHasNoLinks,
+  PayloadError,
+  prunePayload,
+  TARGETS,
+  validatePayload,
+} from "./payload.mjs";
 
 const extensionRoot = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
   "..",
 );
-
-// Every target the release workflow builds an archive for. A target absent
-// here cannot be packaged by accident with a payload for another platform.
-const TARGETS = new Map([
-  ["win32-x64", { executable: "chrome_control_mcp.exe" }],
-  ["linux-x64", { executable: "chrome_control_mcp" }],
-  ["darwin-arm64", { executable: "chrome_control_mcp" }],
-  ["darwin-x64", { executable: "chrome_control_mcp" }],
-]);
 
 function argument(flag) {
   const index = process.argv.indexOf(flag);
@@ -66,64 +64,28 @@ if (!payload) {
 
 const payloadRoot = path.resolve(payload);
 const { executable } = TARGETS.get(target);
-if (!fs.existsSync(path.join(payloadRoot, executable))) {
-  fail(`${payloadRoot} does not contain ${executable}`);
-}
-// The server needs its extension folder beside it: that folder is what the
-// user loads into Chrome, and a VSIX without it installs a server that cannot
-// be attached to a browser.
-if (!fs.existsSync(path.join(payloadRoot, "extension", "manifest.json"))) {
-  fail(`${payloadRoot} does not contain extension/manifest.json`);
-}
-
-// Stage the payload flat under bin/. The Qt runtime and the TLS backend have to
-// sit beside the executable, so the tree is copied whole rather than
-// cherry-picked.
 const binary = path.join(extensionRoot, "bin");
-fs.rmSync(binary, { recursive: true, force: true });
-fs.cpSync(payloadRoot, binary, { recursive: true });
-// A VSIX is a zip, and the packer has no representation for a link: handed the
-// directory symlink at QtNetwork.framework/Resources it fails with
-// "not a file". A macOS Qt framework is full of them -- Versions/Current -> A,
-// Resources -> Versions/Current/Resources, QtNetwork -> Versions/Current/
-// QtNetwork -- and they are conveniences, not load paths. Qt's install_name
-// names the versioned file directly (@rpath/QtNetwork.framework/Versions/A/
-// QtNetwork), so dropping every link leaves what dyld actually opens and is
-// smaller than resolving each one into a duplicate copy.
-//
-// The headers go the same way: hundreds of text files no runtime reads.
-function prune(directory) {
-  for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
-    const full = path.join(directory, entry.name);
-    if (entry.isSymbolicLink()) {
-      fs.rmSync(full, { force: true });
-    } else if (entry.isDirectory()) {
-      if (entry.name === "Headers" || entry.name.endsWith(".dSYM")) {
-        fs.rmSync(full, { recursive: true, force: true });
-      } else {
-        prune(full);
-      }
-    } else if (entry.name.endsWith(".prl") || entry.name.endsWith(".la")) {
-      fs.rmSync(full, { force: true });
-    }
-  }
-}
-prune(binary);
 
-// Nothing may survive that walk as a link: one left behind fails the pack with
-// a message that names the file and not the reason, which is how this cost a
-// build once already.
-function assertNoLinks(directory) {
-  for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
-    if (entry.isSymbolicLink()) {
-      fail(`${path.join(directory, entry.name)} is still a link`);
-    }
-    if (entry.isDirectory()) {
-      assertNoLinks(path.join(directory, entry.name));
-    }
+try {
+  validatePayload(payloadRoot, executable);
+
+  // Stage the payload flat under bin/. The Qt runtime and the TLS backend have
+  // to sit beside the executable, so the tree is copied whole rather than
+  // cherry-picked, then stripped of what a VSIX cannot or should not carry.
+  fs.rmSync(binary, { recursive: true, force: true });
+  fs.cpSync(payloadRoot, binary, { recursive: true });
+  const removed = prunePayload(binary);
+  assertPayloadHasNoLinks(binary);
+  console.log(
+    `payload: removed ${removed.links} links, ${removed.headers} header ` +
+      `directories, ${removed.metadata} static-link files`,
+  );
+} catch (error) {
+  if (error instanceof PayloadError) {
+    fail(error.message);
   }
+  throw error;
 }
-assertNoLinks(binary);
 
 // A VSIX is a zip and the executable bit does not survive it reliably; the
 // extension re-applies it at runtime. Set it here too so a locally installed
@@ -140,31 +102,13 @@ fs.mkdirSync(outDirectory, { recursive: true });
 const out = path.join(outDirectory, `${name}-${version}-${target}.vsix`);
 
 run("npx", ["tsc", "-p", "."], extensionRoot);
+// vsce's secret and .env scan stays on. This package goes to the marketplace,
+// and the only thing that scan ever caught here was a payload defect of ours:
+// a link to a directory, which it reports as EISDIR while the packer that runs
+// after it reports the same entry as "not a file".
 run(
   "npx",
-  [
-    "vsce",
-    "package",
-    "--target",
-    target,
-    "--out",
-    out,
-    "--no-dependencies",
-    // Both flags, because vsce only skips the scan when BOTH are set:
-    //
-    //   const scanForSecrets = !options.allowPackageAllSecrets;
-    //   const scanDotEnv = !options.allowPackageEnvFile;
-    //   if (!scanForSecrets && !scanDotEnv) return;
-    //
-    // With only the first, the dotenv pass still runs, and on macOS that pass
-    // throws while walking the Qt frameworks and calls process.exit(1) before
-    // any allow-list is consulted -- which is why allowing secrets alone did
-    // not help. The payload is this project's own binary plus the Qt runtime,
-    // with no .env file and no credential in it, so there is nothing here for
-    // the scan to find and nothing being waved through by skipping it.
-    "--allow-package-all-secrets",
-    "--allow-package-env-file",
-  ],
+  ["vsce", "package", "--target", target, "--out", out, "--no-dependencies"],
   extensionRoot,
 );
 console.log(`VSIX: ${out}`);

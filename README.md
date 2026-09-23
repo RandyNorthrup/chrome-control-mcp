@@ -250,7 +250,7 @@ whatever the browser profile says.
 
 Local gates currently cover:
 
-- 12/12 native and extension suites on Windows, Linux, and macOS, with MSVC, GCC, and Clang
+- 13/13 native and extension suites on Windows, Linux, and macOS, with MSVC, GCC, and Clang
 - Warnings-as-errors plus `clang-tidy` and exhaustive `cppcheck`
 - Separate ASan+UBSan and TSan runs
 - Full-history Gitleaks scan and npm dependency audit
