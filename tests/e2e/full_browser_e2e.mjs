@@ -614,6 +614,16 @@ async function main() {
     );
     assert.equal(media.volume, 0.4);
 
+    // The box the server resolves for this ref, taken before the scroll. When the scroll reports
+    // that it moved nothing, the question is always whether it was aimed at this element at all,
+    // and the reply's own point can only be read against the box it was supposed to come from.
+    const scrollRegionBox = jsonContent(
+      await runTool(
+        "browser_box",
+        { ref: scrollRegionRef },
+        "box of the nested scroll region",
+      ),
+    );
     const nested = jsonContent(
       await runTool(
         "browser_scroll",
@@ -624,7 +634,8 @@ async function main() {
     assert.equal(nested.settled, true, "The nested scroll never came to rest");
     assert.ok(
       nested.scrolled.y > 0,
-      `The nested region did not scroll: ${JSON.stringify(nested)}`,
+      `The nested region did not scroll: ${JSON.stringify(nested)}; ` +
+        `the ref ${scrollRegionRef} resolves to ${JSON.stringify(scrollRegionBox)}`,
     );
     // The reply says the page is already where it says it is -- measured on the page, not taken
     // from the reply: an element's box must have moved by exactly what the scroll reported.
