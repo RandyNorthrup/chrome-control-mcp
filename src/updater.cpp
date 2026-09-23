@@ -23,6 +23,9 @@
 #include <QTimer>
 #include <QVersionNumber>
 
+#include <algorithm>
+#include <utility>
+
 #ifndef CHROME_CONTROL_MCP_VERSION
 #define CHROME_CONTROL_MCP_VERSION "0.0.0"
 #endif
@@ -323,31 +326,37 @@ bool discardDirectory(const QString &path) {
 // alternatives are both wrong here: a move would tear the source out from under
 // a running process, and shelling out to a platform copy tool would add a
 // dependency for something this small.
+//
+// Walked with an explicit worklist rather than by recursion: the depth is the
+// depth of whatever directory was handed in, and a call stack is the wrong
+// place to keep that.
 bool copyDirectory(const QString &source, const QString &destination,
                    QString *error) {
-  const QDir source_directory(source);
-  if (!QDir().mkpath(destination)) {
-    *error = QStringLiteral("Could not create %1")
-                 .arg(QDir::toNativeSeparators(destination));
-    return false;
-  }
-  const QFileInfoList entries = source_directory.entryInfoList(
-      QDir::Files | QDir::Dirs | QDir::NoDotAndDotDot | QDir::Hidden);
-  for (const QFileInfo &entry : entries) {
-    const QString target =
-        QDir::cleanPath(QDir(destination).filePath(entry.fileName()));
-    if (entry.isDir()) {
-      if (!copyDirectory(entry.absoluteFilePath(), target, error)) {
+  QList<std::pair<QString, QString>> pending;
+  pending.append({source, destination});
+  while (!pending.isEmpty()) {
+    const auto [from, to] = pending.takeLast();
+    if (!QDir().mkpath(to)) {
+      *error = QStringLiteral("Could not create %1")
+                   .arg(QDir::toNativeSeparators(to));
+      return false;
+    }
+    const QFileInfoList entries = QDir(from).entryInfoList(
+        QDir::Files | QDir::Dirs | QDir::NoDotAndDotDot | QDir::Hidden);
+    for (const QFileInfo &entry : entries) {
+      const QString target =
+          QDir::cleanPath(QDir(to).filePath(entry.fileName()));
+      if (entry.isDir()) {
+        pending.append({entry.absoluteFilePath(), target});
+        continue;
+      }
+      QFile::remove(target);
+      if (!QFile::copy(entry.absoluteFilePath(), target)) {
+        *error = QStringLiteral("Could not copy %1 to %2")
+                     .arg(QDir::toNativeSeparators(entry.absoluteFilePath()),
+                          QDir::toNativeSeparators(target));
         return false;
       }
-      continue;
-    }
-    QFile::remove(target);
-    if (!QFile::copy(entry.absoluteFilePath(), target)) {
-      *error = QStringLiteral("Could not copy %1 to %2")
-                   .arg(QDir::toNativeSeparators(entry.absoluteFilePath()),
-                        QDir::toNativeSeparators(target));
-      return false;
     }
   }
   return true;
@@ -416,16 +425,18 @@ QString checksumForAsset(const QString &sums_text, const QString &asset_name) {
     if (name != asset_name) {
       continue;
     }
-    const QString hash = line.left(separator).trimmed().toLower();
+    QString hash = line.left(separator).trimmed().toLower();
     static constexpr qsizetype kSha256HexLength = 64;
     if (hash.size() != kSha256HexLength) {
       return {};
     }
-    for (const QChar character : hash) {
-      if (!character.isDigit() &&
-          (character < QLatin1Char('a') || character > QLatin1Char('f'))) {
-        return {};
-      }
+    const bool hexadecimal =
+        std::all_of(hash.cbegin(), hash.cend(), [](const QChar character) {
+          return character.isDigit() || (character >= QLatin1Char('a') &&
+                                         character <= QLatin1Char('f'));
+        });
+    if (!hexadecimal) {
+      return {};
     }
     return hash;
   }
@@ -442,15 +453,15 @@ bool isNewerVersion(const QString &candidate, const QString &current) {
   return current_version < candidate_version;
 }
 
-UpdateCheckResult checkForUpdate(const UpdaterConfig &raw_config) {
-  const UpdaterConfig config = UpdaterConfig::withDefaults(raw_config);
+UpdateCheckResult checkForUpdate(const UpdaterConfig &config) {
+  const UpdaterConfig resolved = UpdaterConfig::withDefaults(config);
   const QUrl url(QStringLiteral("%1/repos/%2/releases/latest")
-                     .arg(config.api_base_url, config.repository));
+                     .arg(resolved.api_base_url, resolved.repository));
   QByteArray body;
   QString error;
   if (!fetchBytes(url, config, QByteArrayLiteral("application/vnd.github+json"),
                   &body, &error)) {
-    return checkFailure(config, error);
+    return checkFailure(resolved, error);
   }
 
   QJsonParseError parse_error{};
@@ -471,20 +482,20 @@ UpdateCheckResult checkForUpdate(const UpdaterConfig &raw_config) {
 
   UpdateCheckResult result;
   result.ok = true;
-  result.current_version = config.current_version;
+  result.current_version = resolved.current_version;
   result.latest_version = version;
-  result.update_available = isNewerVersion(version, config.current_version);
+  result.update_available = isNewerVersion(version, resolved.current_version);
   result.notes_url = release.value(QStringLiteral("html_url")).toString();
-  result.install_root = config.layout.root;
+  result.install_root = resolved.layout.root;
   result.managed_install =
-      !installRootForExecutable(config.executable_path).isEmpty();
+      !installRootForExecutable(resolved.executable_path).isEmpty();
   return result;
 }
 
-UpdateApplyResult installStagedRelease(const UpdaterConfig &raw_config,
+UpdateApplyResult installStagedRelease(const UpdaterConfig &config,
                                        const QString &version,
                                        const QString &staged_directory) {
-  const UpdaterConfig config = UpdaterConfig::withDefaults(raw_config);
+  const UpdaterConfig resolved = UpdaterConfig::withDefaults(config);
   if (!isSafeVersionName(version)) {
     return applyFailure(
         QStringLiteral("Refusing to install an unsafe version name: %1")
@@ -494,7 +505,7 @@ UpdateApplyResult installStagedRelease(const UpdaterConfig &raw_config,
     return applyFailure(QStringLiteral("Nothing staged at %1")
                             .arg(QDir::toNativeSeparators(staged_directory)));
   }
-  const InstallLayout &layout = config.layout;
+  const InstallLayout &layout = resolved.layout;
   if (!QDir().mkpath(layout.versions)) {
     return applyFailure(QStringLiteral("Could not create %1")
                             .arg(QDir::toNativeSeparators(layout.versions)));
@@ -532,15 +543,15 @@ UpdateApplyResult installStagedRelease(const UpdaterConfig &raw_config,
           .filePath(QString::fromLatin1(kBrowserExtensionDirectoryName)));
   // The running process keeps the files it already opened. The new version is
   // what the client will launch next time, not what is answering right now.
-  result.restart_required = version != config.current_version;
+  result.restart_required = version != resolved.current_version;
   result.pruned_versions =
-      pruneInstalledVersions(layout, version, config.keep_recent_versions);
+      pruneInstalledVersions(layout, version, resolved.keep_recent_versions);
   return result;
 }
 
-UpdateApplyResult adoptRunningInstall(const UpdaterConfig &raw_config) {
-  const UpdaterConfig config = UpdaterConfig::withDefaults(raw_config);
-  const QString version = config.current_version;
+UpdateApplyResult adoptRunningInstall(const UpdaterConfig &config) {
+  const UpdaterConfig resolved = UpdaterConfig::withDefaults(config);
+  const QString version = resolved.current_version;
   if (!isSafeVersionName(version)) {
     return applyFailure(
         QStringLiteral("This build reports version %1, which cannot name a "
@@ -548,13 +559,13 @@ UpdateApplyResult adoptRunningInstall(const UpdaterConfig &raw_config) {
             .arg(version));
   }
   const QString source =
-      QDir::cleanPath(QFileInfo(config.executable_path).absolutePath());
+      QDir::cleanPath(QFileInfo(resolved.executable_path).absolutePath());
   if (!QFileInfo(QDir(source).filePath(executableFileName())).isFile()) {
     return applyFailure(
         QStringLiteral("%1 does not hold %2")
             .arg(QDir::toNativeSeparators(source), executableFileName()));
   }
-  const InstallLayout &layout = config.layout;
+  const InstallLayout &layout = resolved.layout;
   if (source.startsWith(layout.root, Qt::CaseInsensitive)) {
     return applyFailure(
         QStringLiteral("This copy already lives under the install root at %1")
@@ -599,7 +610,7 @@ UpdateApplyResult adoptRunningInstall(const UpdaterConfig &raw_config) {
     return applyFailure(error);
   }
 
-  UpdateApplyResult result = installStagedRelease(config, version, staging);
+  UpdateApplyResult result = installStagedRelease(resolved, version, staging);
   QDir(staging).removeRecursively();
   if (result.ok) {
     result.adopted = true;
@@ -611,18 +622,18 @@ UpdateApplyResult adoptRunningInstall(const UpdaterConfig &raw_config) {
   return result;
 }
 
-UpdateApplyResult applyUpdate(const UpdaterConfig &raw_config) {
-  const UpdaterConfig config = UpdaterConfig::withDefaults(raw_config);
-  const UpdateCheckResult check = checkForUpdate(config);
+UpdateApplyResult applyUpdate(const UpdaterConfig &config) {
+  const UpdaterConfig resolved = UpdaterConfig::withDefaults(config);
+  const UpdateCheckResult check = checkForUpdate(resolved);
   if (!check.ok) {
     return applyFailure(check.error);
   }
   if (!check.update_available) {
     UpdateApplyResult result;
     result.ok = true;
-    result.previous_version = currentVersion(config.layout);
-    result.installed_version = config.current_version;
-    result.executable_path = stableExecutablePath(config.executable_path);
+    result.previous_version = currentVersion(resolved.layout);
+    result.installed_version = resolved.current_version;
+    result.executable_path = stableExecutablePath(resolved.executable_path);
     result.restart_required = false;
     return result;
   }
@@ -631,14 +642,14 @@ UpdateApplyResult applyUpdate(const UpdaterConfig &raw_config) {
   const QString asset_name = releaseAssetName(version);
   const QString download_base =
       QStringLiteral("https://github.com/%1/releases/download/v%2")
-          .arg(config.repository, version);
+          .arg(resolved.repository, version);
   const QUrl asset_url(QStringLiteral("%1/%2").arg(download_base, asset_name));
   const QUrl checksums_url(QStringLiteral("%1/%2").arg(
       download_base, QString::fromLatin1(kChecksumsAssetName)));
 
   // Stage inside the install's own versions directory so the finished release
   // is moved, not copied, onto the volume it will live on.
-  const InstallLayout &layout = config.layout;
+  const InstallLayout &layout = resolved.layout;
   if (!QDir().mkpath(layout.versions)) {
     return applyFailure(QStringLiteral("Could not create %1")
                             .arg(QDir::toNativeSeparators(layout.versions)));
@@ -711,7 +722,7 @@ UpdateApplyResult applyUpdate(const UpdaterConfig &raw_config) {
   }
 
   UpdateApplyResult result =
-      installStagedRelease(config, version, release_root);
+      installStagedRelease(resolved, version, release_root);
   QDir(staging).removeRecursively();
   if (result.ok) {
     result.restart_required = true;

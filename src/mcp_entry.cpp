@@ -69,6 +69,15 @@ LineRead readBoundedLine(std::istream &in, std::string &line) {
   return line.empty() ? LineRead::Eof : LineRead::Ok;
 }
 
+// Write one line of plain output, checked. The same rule as writeResponse:
+// a caller that never received the path this prints cannot act on it, so a
+// failed write is reported rather than assumed away.
+bool writeLine(const QByteArray &line) {
+  const size_t want = static_cast<size_t>(line.size());
+  return std::fwrite(line.constData(), 1, want, stdout) == want &&
+         std::fputc('\n', stdout) != EOF && std::fflush(stdout) == 0;
+}
+
 // Write one response line, returning false if the write or flush failed -- a
 // lost response means the client can no longer be trusted to have received a
 // mutating command's result, so the caller stops serving rather than silently
@@ -191,13 +200,10 @@ int runInstall() {
       payload.insert(QStringLiteral("error"), registered.detail);
     }
   }
-  std::fwrite(QJsonDocument(payload).toJson(QJsonDocument::Compact).constData(),
-              1,
-              static_cast<size_t>(
-                  QJsonDocument(payload).toJson(QJsonDocument::Compact).size()),
-              stdout);
-  std::fputc('\n', stdout);
-  std::fflush(stdout);
+  if (!writeLine(QJsonDocument(payload).toJson(QJsonDocument::Compact))) {
+    std::cerr << "chrome-control-mcp: could not report the install result\n";
+    return 1;
+  }
   return payload.value(QStringLiteral("ok")).toBool() ? 0 : 1;
 }
 
@@ -247,10 +253,10 @@ int runMcpProcess(int argc, char **argv) {
     return runInstall();
   }
   if (wantsFlag(argc, argv, "--version")) {
-    std::fprintf(stdout, "%s %s\n",
-                 qUtf8Printable(chrome_control_mcp::serverName()),
-                 qUtf8Printable(chrome_control_mcp::serverVersion()));
-    return 0;
+    const QString identity = chrome_control_mcp::serverName() +
+                             QStringLiteral(" ") +
+                             chrome_control_mcp::serverVersion();
+    return writeLine(identity.toUtf8()) ? 0 : 1;
   }
 
   // MCP server mode: own the browser authority (pipe server + session) so a

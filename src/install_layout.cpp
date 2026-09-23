@@ -26,7 +26,8 @@
 // rename() is declared in <cstdio>, not <unistd.h>; relying on the latter to
 // pull it in transitively builds on some libcs and not others.
 #include <cstdio>
-#include <cstring>
+#include <string>
+#include <system_error>
 #include <unistd.h>
 #endif
 
@@ -138,15 +139,12 @@ bool isSafeVersionName(const QString &name) {
   if (name.startsWith(QLatin1Char('.'))) {
     return false;
   }
-  for (const QChar character : name) {
+  return std::all_of(name.cbegin(), name.cend(), [](const QChar character) {
     const bool allowed =
         character.isLetterOrNumber() || character == QLatin1Char('.') ||
         character == QLatin1Char('-') || character == QLatin1Char('_');
-    if (!allowed || !character.isPrint() || character.unicode() > 0x7F) {
-      return false;
-    }
-  }
-  return true;
+    return allowed && character.isPrint() && character.unicode() <= 0x7F;
+  });
 }
 
 QString installRootForExecutable(const QString &executable_path) {
@@ -343,6 +341,16 @@ bool writeJunction(const QString &link, const QString &target, QString *error) {
 
 #endif // Q_OS_WIN
 
+#ifndef Q_OS_WIN
+// std::strerror shares one buffer across threads, so two failures racing in a
+// long-lived server can each read the other's message. std::generic_category
+// resolves an errno through the thread-safe path the standard library provides
+// for exactly this.
+QString describeErrno(int value) {
+  return QString::fromStdString(std::generic_category().message(value));
+}
+#endif
+
 // Refuse to touch a current entry that is a real directory rather than a link.
 // That is a hand-made install or an extraction into the wrong place, and its
 // contents are not this code to delete.
@@ -431,16 +439,18 @@ bool pointCurrentAtVersion(const InstallLayout &layout, const QString &version,
   const QByteArray current_native = layout.current.toLocal8Bit();
   ::unlink(staged_native.constData());
   if (::symlink(target_native.constData(), staged_native.constData()) != 0) {
+    const int failure = errno;
     if (error != nullptr) {
       *error = QStringLiteral("Creating the current link failed: %1")
-                   .arg(QString::fromLocal8Bit(std::strerror(errno)));
+                   .arg(describeErrno(failure));
     }
     return false;
   }
   if (::rename(staged_native.constData(), current_native.constData()) != 0) {
+    const int failure = errno;
     if (error != nullptr) {
       *error = QStringLiteral("Pointing the current link failed: %1")
-                   .arg(QString::fromLocal8Bit(std::strerror(errno)));
+                   .arg(describeErrno(failure));
     }
     ::unlink(staged_native.constData());
     return false;
@@ -464,7 +474,7 @@ int pruneInstalledVersions(const InstallLayout &layout,
   QDir versions_directory(layout.versions);
   int removed = 0;
   for (qsizetype i = keep; i < candidates.size(); ++i) {
-    const QString name = candidates.at(i);
+    const QString &name = candidates.at(i);
     // Renaming the directory first is the busy test. A directory holding a file
     // some process still has open cannot be renamed on Windows, so a version
     // still in use is skipped whole rather than half-deleted; on POSIX the
