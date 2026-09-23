@@ -1865,9 +1865,14 @@ SnapshotView renderSnapshot(const QJsonObject &capture,
         asBackendId(node.value(QStringLiteral("backendNodeId")), &backend_id)) {
       ref = carried.value(backend_id);
       if (ref.isEmpty()) {
-        do {
+        // Only a node never seen takes a new number, and it steps over every
+        // name a carried ref has reserved. The carried name itself is already
+        // in `taken`, so this must not be a plain "while taken" over both --
+        // that would throw away the very ref this is here to preserve.
+        ref = QStringLiteral("e%1").arg(++next_ref);
+        while (taken.contains(ref)) {
           ref = QStringLiteral("e%1").arg(++next_ref);
-        } while (taken.contains(ref));
+        }
       }
       taken.insert(ref);
       ++view.element_count;
