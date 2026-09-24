@@ -406,6 +406,16 @@ function topFrameOf(stackTrace) {
   );
 }
 
+// Is this URL inline content rather than something fetched over the network?
+//
+// A data: or blob: URL is bytes the page already had: no connection, no server, no status worth
+// reporting. They are also numerous -- the media element's own controls load dozens of data:
+// icons for their buttons -- and logging them filled the ring and pushed out every request the
+// page actually made. Measured in the live suite: a network log that was nothing but base64 SVG.
+function isInlineRequestUrl(url) {
+  return /^(data|blob):/i.test(String(url || ""));
+}
+
 function recordConsole(session, entry) {
   session.consoleDropped += pushBounded(
     session.consoleEntries,
@@ -1837,6 +1847,17 @@ chrome.debugger.onEvent.addListener((source, method, params) => {
   if (method === "Network.requestWillBeSent") {
     if (params && params.requestId) {
       session.inflightRequests.add(params.requestId);
+      // Inline content is not network activity, and there is a lot of it: the media element's
+      // own controls alone load dozens of data: URLs for their icons, which filled the whole ring
+      // and pushed out every request the page actually made. A data: or blob: URL is bytes the
+      // page already had -- no connection, no server, no status worth reporting -- so it is
+      // tracked for network_idle above (it does complete, and idle must wait for it) and left out
+      // of the log below.
+      const requestUrl = params.request ? String(params.request.url || "") : "";
+      if (isInlineRequestUrl(requestUrl)) {
+        session.lastNetworkActivityMs = Date.now();
+        return;
+      }
       // Held until the response arrives, because CDP reports the method and URL here and the
       // status there. Capped: a page that starts requests it never finishes must not grow this
       // map for ever, and the oldest pending entry is the one least likely to still complete.

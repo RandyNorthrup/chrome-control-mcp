@@ -54,6 +54,7 @@ const EXPORTED = [
   "controlPresenceScript",
   "boundedText",
   "pushBounded",
+  "isInlineRequestUrl",
   "consoleArgText",
   "topFrameOf",
   "handleConsole",
@@ -954,6 +955,24 @@ test("browser_console separates silence from lost history", async () => {
   assert.equal(drained.cleared, true);
   assert.equal(session.consoleEntries.length, 0);
   assert.equal(session.consoleDropped, 0);
+});
+
+// The media element's own controls load dozens of data: icons. Logging them filled the ring and
+// pushed out every request the page actually made -- the live suite saw a network log that was
+// nothing but base64 SVG. They are still counted as activity, because network_idle must wait for
+// them; they are only kept out of the log.
+test("inline content is not a network request", () => {
+  assert.equal(w.isInlineRequestUrl("data:image/svg+xml;base64,AAAA"), true);
+  assert.equal(w.isInlineRequestUrl("blob:https://x.test/abc"), true);
+  // Case is not a promise the page makes.
+  assert.equal(w.isInlineRequestUrl("DATA:text/plain,hi"), true);
+  assert.equal(w.isInlineRequestUrl("https://x.test/real.png"), false);
+  assert.equal(w.isInlineRequestUrl("http://x.test/"), false);
+  // A scheme that merely STARTS with the letters is a different scheme.
+  assert.equal(w.isInlineRequestUrl("database://x.test/"), false);
+  assert.equal(w.isInlineRequestUrl(""), false);
+  assert.equal(w.isInlineRequestUrl(null), false);
+  assert.equal(w.isInlineRequestUrl(undefined), false);
 });
 
 test("browser_network reports failures, and what is still in flight", async () => {

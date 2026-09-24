@@ -695,13 +695,25 @@ async function main() {
     assert.equal(badLevel.isError, true, "an unknown console level is refused");
 
     const network = jsonContent(
-      await runTool("browser_network", {}, "read the page's requests"),
+      await runTool(
+        "browser_network",
+        { limit: 200 },
+        "read the page's requests",
+      ),
     );
     assert.ok(network.total > 0, "the fixture load produced requests");
-    assertIncludes(
-      network.requests.map((request) => request.url).join("\n"),
-      fixture.origin,
-      "the fixture's own requests are listed",
+    const urls = network.requests.map((request) => request.url);
+    assert.ok(
+      urls.some((url) => url.startsWith(fixture.origin)),
+      `no request to the fixture was listed; got ${JSON.stringify(urls.slice(0, 10))}`,
+    );
+    // Inline content is not network activity, and the media element's controls alone load dozens
+    // of data: icons -- enough to fill the ring and push out everything the page really asked
+    // for, which is exactly what happened the first time this ran.
+    assert.equal(
+      urls.some((url) => url.startsWith("data:") || url.startsWith("blob:")),
+      false,
+      "data: and blob: URLs must not crowd out real requests",
     );
     const failures = jsonContent(
       await runTool(
