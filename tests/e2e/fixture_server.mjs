@@ -162,7 +162,10 @@ function fixtureHome() {
       // error the page chose to print, a request that 404s, and an exception nobody catches.
       console.log('fixture console line');
       console.error('fixture console error');
-      fetch('/api/missing');
+      // The body has to be read, or the request never finishes loading and the page never goes
+      // network-idle again -- which is correct of network_idle, and would be this fixture
+      // leaving a request outstanding for the rest of the run.
+      fetch('/api/missing').then((response) => response.text()).catch(() => {});
       setTimeout(() => { throw new TypeError('fixture uncaught failure'); }, 0);
     });
     fetch('/api/delay').then((response) => response.text()).then((text) => {
