@@ -3055,6 +3055,32 @@ function controlPresenceScript(x, y) {
   );
 }
 
+// Move a cursor that is ALREADY there, and say so if it is not.
+//
+// controlPresenceScript rebuilds the whole overlay: three getElementById lookups, a stylesheet
+// check, two cssText assignments and an innerHTML that reparses an SVG. That is the right thing
+// once. A drag calls this on every step -- up to 60 of them -- and each one shipped ~2 KB of
+// script to be parsed and re-executed against the page for the sake of two numbers. On a loaded
+// runner a drag has come within the bridge's 30 s reply budget and failed the whole suite with
+// "browser did not reply"; this is the per-step cost that was in it.
+//
+// Only x and y are interpolated, and both are coerced to finite integers, exactly as the full
+// script does -- nothing page- or model-controlled is ever injected as code.
+function cursorNudgeScript(x, y) {
+  const px = (Number.isFinite(x) ? Math.round(x) : 0) - 3;
+  const py = (Number.isFinite(y) ? Math.round(y) : 0) - 1;
+  return (
+    "(function(){var c=document.getElementById('" +
+    AGENT_CURSOR_ID +
+    "');if(!c){return false;}var v=window.visualViewport;" +
+    "c.style.transform='translate('+(" +
+    px +
+    "+v.offsetLeft)+'px,'+(" +
+    py +
+    "+v.offsetTop)+'px)';return true;})()"
+  );
+}
+
 // Toggle the presence overlay's visibility without removing it (used to hide it for the duration
 // of a screenshot capture so it never appears in the image / over page media).
 function presenceVisibilityScript(visible) {
@@ -3074,6 +3100,17 @@ function presenceVisibilityScript(visible) {
 
 async function moveAgentCursor(tabId, x, y) {
   lastCursorPoint = { x, y };
+  // The overlay is usually already on this document, so try the cheap move first and build it
+  // only when the nudge reports there is nothing to move (a fresh document, or a page that wiped
+  // it). Cosmetic either way: a cursor that cannot be drawn must never fail the action it is
+  // decorating, which is why both paths swallow their errors.
+  const nudged = await sendCdp(tabId, "Runtime.evaluate", {
+    expression: cursorNudgeScript(x, y),
+    returnByValue: true,
+  }).catch(() => null);
+  if (nudged && nudged.result && nudged.result.value === true) {
+    return;
+  }
   await sendCdp(tabId, "Runtime.evaluate", {
     expression: controlPresenceScript(x, y),
   }).catch(() => {});
@@ -3594,17 +3631,24 @@ async function handleDrag(session, tabId, args) {
     for (let i = 1; i <= steps; i++) {
       const x = from.x + ((to.x - from.x) * i) / steps;
       const y = from.y + ((to.y - from.y) * i) / steps;
-      moves.push({
-        x,
-        y,
-        sent: [
-          moveAgentCursor(tabId, x, y),
-          dispatchMouse(tabId, "mouseMoved", x, y, {
-            button: "left",
-            buttons: 1,
-          }),
-        ],
-      });
+      const sent = [
+        moveAgentCursor(tabId, x, y),
+        dispatchMouse(tabId, "mouseMoved", x, y, {
+          button: "left",
+          buttons: 1,
+        }),
+      ];
+      // Every one of these is in flight before any of them is awaited. A promise that rejects
+      // while the loop below is still waiting on an earlier step has no handler attached yet, and
+      // V8 reports that as an unhandledrejection at the next microtask checkpoint -- in a service
+      // worker, one the runtime may tear down over. The drag would then stop answering and the
+      // bridge would report it as "browser did not reply", naming the transport for a fault that
+      // was here. Attaching a no-op catch marks each one handled NOW; the originals are still
+      // awaited in order below, so a real failure still stops the drag where it stopped.
+      for (const pending of sent) {
+        pending.catch(() => {});
+      }
+      moves.push({ x, y, sent });
     }
     // Awaited in the order they were sent, so atX/atY name the last step that actually landed: a
     // drag that failed halfway then releases where the pointer got to, not at the destination.

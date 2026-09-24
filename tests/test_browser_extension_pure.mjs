@@ -50,6 +50,8 @@ const EXPORTED = [
   "scrollRoom",
   "handleScroll",
   "pointLandsOnFn",
+  "cursorNudgeScript",
+  "handleDrag",
   "scrollContextFn",
   "boundedMs",
   "boundedCount",
@@ -682,6 +684,127 @@ test("the hit test climbs out of a shadow tree instead of calling it a miss", ()
   assert.equal(nothing.onTarget, false);
   assert.equal(nothing.hit, null);
   assert.equal(nothing.target, "BUTTON#shadow-button");
+});
+
+// The per-step cursor update. The full overlay script reparses an SVG and rewrites three
+// elements' styles; a 60-step drag ran that 60 times, and a drag has already come within the
+// bridge's 30 s reply budget on a loaded runner.
+test("the cursor nudge moves an existing cursor and admits when there is none", () => {
+  const script = w.cursorNudgeScript(120, 80);
+  // Only the two numbers are interpolated, and both arrive already rounded.
+  assert.ok(script.includes("117"), "x is offset to the arrow's tip");
+  assert.ok(script.includes("79"), "y is offset to the arrow's tip");
+  // It must not rebuild anything: those are the costs it exists to avoid.
+  for (const expensive of ["innerHTML", "cssText", "svg", "@keyframes"]) {
+    assert.ok(
+      !script.includes(expensive),
+      `the nudge must not ${expensive}; that is the full overlay's job`,
+    );
+  }
+
+  const run = (cursor) =>
+    new Function("document", "window", `return ${script};`)(
+      { getElementById: () => cursor },
+      { visualViewport: { offsetLeft: 0, offsetTop: 0 } },
+    );
+
+  // Nothing to move: it says so, and the caller builds the overlay instead of assuming it moved.
+  assert.equal(run(null), false);
+
+  // A cursor that is there gets positioned, and the script confirms it.
+  const cursor = { style: {} };
+  assert.equal(run(cursor), true);
+  assert.equal(cursor.style.transform, "translate(117px,79px)");
+
+  // A non-finite point is coerced rather than injected as code.
+  const nonsense = w.cursorNudgeScript(Number.NaN, Number.POSITIVE_INFINITY);
+  assert.ok(nonsense.includes("-3"), "a NaN x becomes 0, then the tip offset");
+  assert.ok(!/NaN|Infinity/.test(nonsense));
+});
+
+// A drag fires every step's commands before it awaits any of them. A rejection arriving while an
+// earlier step is still being awaited has no handler attached yet, and V8 raises
+// unhandledrejection at the next microtask checkpoint -- which in a service worker is something
+// the runtime may tear the worker down over. The drag then stops answering and the bridge blames
+// the transport: "browser did not reply within 30000 ms (connection reset)".
+test("a drag that fails mid-path raises no unhandled rejection", async () => {
+  const seen = [];
+  const onUnhandled = (reason) => seen.push(reason);
+  process.on("unhandledRejection", onUnhandled);
+  try {
+    let moves = 0;
+    const sendCommand = (_target, method, params) => {
+      if (
+        method === "Input.dispatchMouseEvent" &&
+        params.type === "mouseMoved"
+      ) {
+        moves += 1;
+        // Everything after the second step fails, as a detach mid-drag would.
+        if (moves > 2) {
+          return Promise.reject(new Error("Detached while handling command."));
+        }
+      }
+      if (method === "DOM.getBoxModel") {
+        return Promise.resolve({
+          model: { content: [10, 20, 40, 20, 40, 60, 10, 60] },
+        });
+      }
+      if (method === "Runtime.evaluate") {
+        const expression = String(params.expression || "");
+        if (expression.includes("dpr:")) {
+          return Promise.resolve({
+            result: {
+              value: {
+                dpr: 1,
+                sx: 0,
+                sy: 0,
+                href: "https://example.test/",
+                iw: 1280,
+                ih: 800,
+                vs: 1,
+                vl: 0,
+                vt: 0,
+              },
+            },
+          });
+        }
+        // The cursor nudge: report the overlay present so no rebuild is needed.
+        if (expression.includes("getElementById")) {
+          return Promise.resolve({ result: { value: true } });
+        }
+        return Promise.resolve({ result: { value: [0, 0, 0, 0] } });
+      }
+      return Promise.resolve({});
+    };
+    const worker = loadWorker({
+      "debugger.sendCommand": sendCommand,
+      "tabs.get": () =>
+        Promise.resolve({ id: 1, url: "https://example.test/" }),
+    });
+    const session = worker.makeSession();
+    session.attachedTabId = 1;
+    session.lastSnapshotTabId = 1;
+    session.lastSnapshotEpoch = session.domEpoch;
+
+    await assert.rejects(() =>
+      worker.handleDrag(session, 1, {
+        backendNodeId: 7,
+        to_backendNodeId: 8,
+        steps: 10,
+      }),
+    );
+
+    // Let every microtask settle; an unhandled rejection would be reported by now.
+    await new Promise((resolve) => setImmediate(resolve));
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.deepEqual(
+      seen.map((error) => String(error && error.message)),
+      [],
+      "a drag's in-flight commands must be handled the moment they are created",
+    );
+  } finally {
+    process.off("unhandledRejection", onUnhandled);
+  }
 });
 
 test("boundedMs and boundedCount refuse what they cannot honour", () => {
