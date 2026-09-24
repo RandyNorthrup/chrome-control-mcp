@@ -182,6 +182,7 @@ jobs:
             os: ubuntu-latest
             qt-arch: linux_gcc_64
             executable: build/chrome_control_mcp
+            cmake-args: -G Ninja -DCMAKE_BUILD_TYPE=Release
             # This image's kernel forbids unprivileged user namespaces, which leaves Chrome with
             # no usable sandbox and it refuses to start, and it has no GPU to rasterize with.
             # Only the dedicated test browser is affected; nothing here changes how the product
@@ -194,6 +195,7 @@ jobs:
             qt-arch: clang_64
             chrome-args: ""
             executable: build/chrome_control_mcp
+            cmake-args: -G Ninja -DCMAKE_BUILD_TYPE=Release
           # Windows carries the whole versioned-install layout: `current` is a directory
           # junction onto versions/<version>, and the bridge refuses any peer not running its own
           # binary. That combination shipped broken in 1.4.0 AND 1.5.0 -- the relay asked about
@@ -204,7 +206,11 @@ jobs:
             os: windows-latest
             qt-arch: win64_msvc2022_64
             chrome-args: ""
-            executable: build/chrome_control_mcp.exe
+            # -A x64 selects the Visual Studio generator, which brings MSVC with it. Ninja here
+            # would find MinGW on the runner's PATH instead, and the build fails on warnings MSVC
+            # does not raise. It is multi-config, so the binary lands under Release/.
+            executable: build/Release/chrome_control_mcp.exe
+            cmake-args: -A x64
     steps:
       - uses: actions/checkout@v4
 
@@ -219,12 +225,12 @@ jobs:
           cache: true
 
       - name: Configure
-        run: >-
-          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
-          -DBUILD_TESTING=ON
+        run: cmake -S . -B build ${{ matrix.cmake-args }} -DBUILD_TESTING=ON
 
+      # --config is what a multi-config generator needs and what a single-config one ignores;
+      # without it the Visual Studio generator would quietly build Debug.
       - name: Build
-        run: cmake --build build --parallel
+        run: cmake --build build --config Release --parallel
 
       # A dedicated browser for the suites: its own profile, its own bridge, headless. Chrome for
       # Testing is required -- branded Chrome ignores --load-extension. Pinned like every other
