@@ -701,7 +701,12 @@ async function main() {
         "read the page's requests",
       ),
     );
-    assert.ok(network.total > 0, "the fixture load produced requests");
+    assert.ok(
+      network.total > 0,
+      // Everything the reply knows, because "no requests" has several very different causes:
+      // nothing was recorded, the ring discarded them, or they are still in flight.
+      `no requests were recorded at all: ${JSON.stringify(network)}`,
+    );
     const urls = network.requests.map((request) => request.url);
     assert.ok(
       urls.some((url) => url.startsWith(fixture.origin)),
