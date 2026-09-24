@@ -6,6 +6,31 @@ All notable changes are documented here. Project follows [Semantic Versioning](h
 
 Nothing yet.
 
+## [1.5.5] - 2026-09-24
+
+### Fixed
+
+- A drag that failed part-way could stop the session answering. Every step's commands are sent
+  before any is awaited (awaiting each in turn costs 8.9 s in a background tab), so a command that
+  rejected while an earlier step was still being awaited had no handler attached yet -- and V8
+  raises `unhandledrejection` for that, which a service worker runtime may tear the worker down
+  over. The bridge then reported `browser did not reply within 30000 ms (connection reset)`,
+  naming the transport for a fault in the handler. Each in-flight command is now marked handled as
+  it is created, and a real failure still stops the drag where it stopped.
+- A drag re-sent the whole cursor-overlay script on every step -- three element lookups, two
+  `cssText` assignments and an `innerHTML` that reparses an SVG, up to 60 times, to move a cursor
+  by two numbers. A position-only nudge now moves a cursor that is already there, with the full
+  build kept as the fallback.
+- Both `package-lock.json` files said 1.3.1 while the project shipped 1.4.0 through 1.5.4. `npm
+ci` validates dependencies against the lock, not the root version, so nothing had ever noticed.
+
+### Added
+
+- `tests/test_release_versions.mjs`: every file that states a version must state the same one
+  (CMake, both `package.json`s, both lockfiles, the extension manifest, the installer header), and
+  the version being shipped must have a changelog entry and a release note. The release checklist
+  was a person remembering six files; it is now run by the gate.
+
 ## [1.5.4] - 2026-09-23
 
 ### Fixed
