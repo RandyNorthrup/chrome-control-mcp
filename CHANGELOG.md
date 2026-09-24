@@ -6,6 +6,35 @@ All notable changes are documented here. Project follows [Semantic Versioning](h
 
 Nothing yet.
 
+## [1.5.4] - 2026-09-23
+
+### Fixed
+
+- A `[ref]` named a position in the snapshot rather than a node. Refs were numbered by document
+  order and renumbered on every snapshot, so an element that gained a ref-worthy sibling above it
+  answered to a different ref the next time the page was captured -- and every ref a model still
+  held went on resolving, silently, to the element beside the one it named. `browser_snapshot`
+  advertises "a stable [ref]"; it now is one. The previous index is carried forward by
+  `backendNodeId`, so a node keeps the ref it was issued and only a new node takes a new number.
+  This reached `browser_click`, `browser_type`, `browser_drag` and `browser_scroll` alike: an
+  action could land on the wrong element and report success.
+- An action could be aimed at where an element used to be. Bringing an element into view moves the
+  page, and that move is not always finished when the command that asked for it returns, so the
+  box could be read while the page was still settling. The page is now allowed to come to rest
+  first. Shared by click, hover, drag and reveal.
+- A scroll by `[ref]` now verifies that its point still lands on that element, re-reads the box
+  once if it has slipped, and is refused -- naming what it hit -- rather than wheeling a stranger
+  and reporting the element that was asked for. The hit test climbs shadow boundaries, which
+  `elementFromPoint` and `Node.contains` do not.
+
+### Added
+
+- `browser_scroll` reports `point`, `hit` and `room` alongside `scrolled`. `scrolled` 0 with
+  `room` 0 is an edge already reached; `scrolled` 0 with room left means the wheel never reached
+  the scroller, which is a fault rather than an answer.
+- `tools/scroll_probe.mjs`, a pure-CDP diagnostic that needs no MCP server, extension or build, so
+  it can answer in about two minutes wherever a platform disagrees about input.
+
 ## [1.5.3] - 2026-09-23
 
 ### Fixed
