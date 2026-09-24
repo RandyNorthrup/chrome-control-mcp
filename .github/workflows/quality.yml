@@ -134,14 +134,17 @@ jobs:
             os: windows-latest
             qt-arch: win64_msvc2022_64
             cmake-args: -A x64
+            executable: build/Release/chrome_control_mcp.exe
           - name: Linux
             os: ubuntu-latest
             qt-arch: linux_gcc_64
             cmake-args: -G Ninja -DCMAKE_BUILD_TYPE=Release
+            executable: build/chrome_control_mcp
           - name: macOS
             os: macos-latest
             qt-arch: clang_64
             cmake-args: -G Ninja -DCMAKE_BUILD_TYPE=Release
+            executable: build/chrome_control_mcp
     steps:
       - uses: actions/checkout@v4
 
@@ -168,6 +171,16 @@ jobs:
             }
             exit $LASTEXITCODE
           }
+
+      # The packaged-binary smoke check ran ONLY in the release workflow, so the tool count it
+      # pins could not fail until a tag was already pushed -- which is how 1.6.0's four archive
+      # jobs went red on a number three other tests had already been updated for. It needs a built
+      # server, which this job has.
+      - name: Smoke the built server
+        shell: bash
+        run: |
+          node scripts/mcp_smoke.mjs "${{ matrix.executable }}"
+          node scripts/mcp_smoke.mjs --read-only "${{ matrix.executable }}"
 
   live-browser:
     name: ${{ matrix.name }} live browser suites
