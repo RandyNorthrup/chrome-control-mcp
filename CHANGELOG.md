@@ -6,6 +6,49 @@ All notable changes are documented here. Project follows [Semantic Versioning](h
 
 Nothing yet.
 
+## [1.6.0] - 2026-09-24
+
+### Added
+
+- `browser_console`: the page's own console output, its uncaught exceptions and unhandled
+  rejections, and what the browser said about the page (a blocked mixed-content load, a CSP
+  violation, a subresource that failed) -- that last group never reaches the page's console API.
+  An agent that clicked a button and saw nothing happen had no way to learn that the page threw.
+- `browser_network`: the requests the page made -- method, URL, resource type, status, MIME type,
+  and the milliseconds until the response arrived. A request that never got a response carries the
+  browser's error text instead of a status. The Network domain was already enabled for
+  `wait_for network_idle`; none of it had ever been surfaced.
+- Both are bounded rings of bounded entries, separate `omitted` (what the reply left out) from
+  `dropped` (what the buffer discarded), and are in the read-only profile: neither can change what
+  the page does or what the user sees.
+- The live browser suites run on Windows. They ran on macOS alone, and Windows is where the
+  versioned install layout lives -- the junction identity fault shipped there in 1.4.0 and again
+  in 1.5.0 with green unit tests throughout, because nothing drove a live browser there.
+- Live coverage for `browser_record_start` / `browser_record_stop`, which shipped in 1.5.0 with
+  none. Nothing in the suite's `NOT_EXERCISED_HERE` now reads "not written yet".
+
+### Fixed
+
+- The network log filled with the `data:` icons the media element's controls load, crowding out
+  every request the page actually made. Inline content is counted for `network_idle` and left out
+  of the log.
+- A request was logged when its body finished loading, which lost the document's own request every
+  time -- that request completes the navigation which drops anything still awaiting a response --
+  and never logged a `fetch()` whose body nobody reads. Entries are written when the response
+  arrives; `ms` is what the server took rather than what the body cost to stream.
+- The Windows live job configured with `-G Ninja` and no MSVC environment, so CMake took MinGW
+  from the runner's PATH and the build failed on warnings MSVC does not raise.
+
+### Changed
+
+- The control cursor is 24px rather than 32px. At that size its SVG renders at scale 1, so the
+  arrow's tip lands on exact integers rather than the rounding 32px needed.
+- No JavaScript evaluation tool, written down in `docs/TOOLS.md` and `docs/SECURITY.md` as a
+  decision rather than an omission: an eval would bypass the isolated-world storage checks, the
+  dialog policy, the freshness gating on ref and coordinate actions and the refusal of
+  `javascript:` URLs, and could delete the control overlay. There is no read-only
+  `Runtime.evaluate`, so a "read-only eval" would be a promise the code could not keep.
+
 ## [1.5.5] - 2026-09-24
 
 ### Fixed
