@@ -339,6 +339,89 @@ const MAC_EDITING_COMMANDS = Object.assign(Object.create(null), {
 // "AI CONTROL" badge. Cosmetic only (never a security boundary): a hostile page can hide it but
 // cannot use it to drive input. It is auto-hidden while a screenshot is captured so it never
 // bleeds into the image the model reads (and does not obscure page media in a capture).
+// How much of what the page says is kept, and how much of any one thing it says.
+//
+// Both are page-controlled: the text of a console message and the URL of a request are written by
+// the site, not by us. A cap on each entry keeps one enormous string from filling a reply, and a
+// cap on the ring keeps a page that logs in a loop from growing the worker without bound.
+const MAX_CONSOLE_ENTRIES = 200;
+const MAX_NETWORK_ENTRIES = 200;
+const MAX_PENDING_REQUESTS = 500;
+const MAX_ENTRY_TEXT_CHARS = 512;
+const MAX_ENTRY_URL_CHARS = 512;
+
+// Page text, bounded and flattened. Truncation is MARKED: a message that was cut and a message
+// that happened to end there must not read the same.
+function boundedText(value, limit) {
+  const text = value === undefined || value === null ? "" : String(value);
+  const flat = text.replace(/\s+/g, " ").trim();
+  return flat.length > limit ? flat.slice(0, limit) + "\u2026" : flat;
+}
+
+// Push onto a ring, returning 1 if something had to be dropped to make room.
+function pushBounded(ring, entry, limit) {
+  ring.push(entry);
+  if (ring.length <= limit) {
+    return 0;
+  }
+  ring.shift();
+  return 1;
+}
+
+// One console argument as text. CDP gives a RemoteObject: a primitive carries `value`, and
+// anything else carries a `description` or at least a type. Rendering an object as "[object
+// Object]" would throw away the only useful part, so the description is preferred where there is
+// one -- that is where a thrown Error's message and class live.
+function consoleArgText(argument) {
+  if (!argument || typeof argument !== "object") {
+    return "";
+  }
+  if (Object.prototype.hasOwnProperty.call(argument, "value")) {
+    return String(argument.value);
+  }
+  if (typeof argument.description === "string") {
+    return argument.description;
+  }
+  if (typeof argument.unserializableValue === "string") {
+    return argument.unserializableValue;
+  }
+  return argument.type ? "[" + argument.type + "]" : "";
+}
+
+// Where a message came from, when CDP says. The top frame is the useful one; the rest is noise in
+// a reply a model has to read.
+function topFrameOf(stackTrace) {
+  const frames =
+    stackTrace && Array.isArray(stackTrace.callFrames)
+      ? stackTrace.callFrames
+      : [];
+  const frame = frames.length > 0 ? frames[0] : null;
+  if (!frame || !frame.url) {
+    return null;
+  }
+  return (
+    boundedText(frame.url, MAX_ENTRY_URL_CHARS) +
+    ":" +
+    ((Number(frame.lineNumber) || 0) + 1)
+  );
+}
+
+function recordConsole(session, entry) {
+  session.consoleDropped += pushBounded(
+    session.consoleEntries,
+    entry,
+    MAX_CONSOLE_ENTRIES,
+  );
+}
+
+function recordNetwork(session, entry) {
+  session.networkDropped += pushBounded(
+    session.networkEntries,
+    entry,
+    MAX_NETWORK_ENTRIES,
+  );
+}
+
 const AGENT_CURSOR_ID = "__chrome_control_mcp_agent_cursor__";
 const CONTROL_STYLE_ID = "__chrome_control_mcp_control_style__";
 const CONTROL_FRAME_ID = "__chrome_control_mcp_control_frame__";
@@ -373,6 +456,24 @@ function makeSession() {
     inflightRequests: new Set(),
 
     lastNetworkActivityMs: 0,
+
+    // What the page said, and what it asked the network for, since this session attached.
+    //
+    // An agent that clicks a button and sees nothing happen has, until now, had no way to learn
+    // that the page threw "TypeError: x is not a function" -- the one fact that explains it. Both
+    // of these are RINGS with a hard cap: every field in them is page-controlled, and a page that
+    // logs in a loop must cost a bounded amount of memory and a bounded reply, not an unbounded
+    // one. What falls off the back is counted rather than forgotten, because "the oldest entries
+    // are gone" and "there were none" are different answers.
+    consoleEntries: [],
+    consoleDropped: 0,
+
+    // Keyed by requestId so a response can be paired with the method and URL that asked for it;
+    // CDP reports those on two different events. Bounded for the same reason, and pruned when a
+    // request completes so a long-lived page does not accumulate one entry per subresource.
+    networkPending: new Map(),
+    networkEntries: [],
+    networkDropped: 0,
 
     // True only while the Network domain is actually instrumenting the attached tab. The idle
     // predicate is read entirely off the events above, so without them it reports a quiet page having
@@ -1196,6 +1297,8 @@ const COMMAND_TABLE = new Map([
   ["groupTabs", { fn: handleGroupTabs, tab: false, args: true }],
   ["ungroupTabs", { fn: handleUngroupTabs, tab: false, args: true }],
   ["waitFor", { fn: handleWaitFor, tab: true, args: true }],
+  ["console", { fn: handleConsole, tab: true, args: true }],
+  ["network", { fn: handleNetwork, tab: true, args: true }],
   ["getValue", { fn: handleGetValue, tab: true, args: true }],
   ["getAttribute", { fn: handleGetAttribute, tab: true, args: true }],
   ["box", { fn: handleBox, tab: true, args: true }],
@@ -1528,6 +1631,12 @@ async function enableSessionDomains(session, tabId) {
   await sendCdp(tabId, "Accessibility.enable");
   await sendCdp(tabId, "Page.enable");
   await sendCdp(tabId, "Network.enable");
+  // What the page says about itself. Runtime carries console calls and uncaught exceptions; Log
+  // carries what the BROWSER reports about the page -- a blocked mixed-content load, a CSP
+  // violation, a failed subresource -- which never reaches the page's own console API. Both are
+  // read-only: they report, they cannot act.
+  await sendCdp(tabId, "Runtime.enable");
+  await sendCdp(tabId, "Log.enable");
   session.networkInstrumented = true;
   session.inflightRequests.clear();
   session.lastNetworkActivityMs = Date.now();
@@ -1606,6 +1715,11 @@ function releaseAttachedState(session) {
   session.pendingDialogPolicy = null; // an armed dialog response does not carry across sessions
   session.lastDialog = null; // nor does a prior page's dialog report
   session.inflightRequests.clear(); // network-idle tracking does not carry across sessions
+  session.consoleEntries = []; // what a page we no longer drive said is not this session's record
+  session.consoleDropped = 0;
+  session.networkEntries = [];
+  session.networkDropped = 0;
+  session.networkPending.clear();
   session.networkInstrumented = false; // nor does the Network domain: the next session enables its own
   session.originalUserAgent = null; // emulation overrides are per-session; recapture on the next tab
   session.httpAuthCreds = null; // armed HTTP-auth credentials do not carry across sessions
@@ -1723,8 +1837,39 @@ chrome.debugger.onEvent.addListener((source, method, params) => {
   if (method === "Network.requestWillBeSent") {
     if (params && params.requestId) {
       session.inflightRequests.add(params.requestId);
+      // Held until the response arrives, because CDP reports the method and URL here and the
+      // status there. Capped: a page that starts requests it never finishes must not grow this
+      // map for ever, and the oldest pending entry is the one least likely to still complete.
+      if (session.networkPending.size >= MAX_PENDING_REQUESTS) {
+        const oldest = session.networkPending.keys().next();
+        if (!oldest.done) {
+          session.networkPending.delete(oldest.value);
+        }
+      }
+      session.networkPending.set(params.requestId, {
+        method: boundedText(params.request ? params.request.method : "", 16),
+        url: boundedText(
+          params.request ? params.request.url : "",
+          MAX_ENTRY_URL_CHARS,
+        ),
+        type: boundedText(params.type, 32),
+        startedMs: Date.now(),
+      });
     }
     session.lastNetworkActivityMs = Date.now();
+    return;
+  }
+  // The status, paired with the request that asked for it. Recorded here rather than on
+  // loadingFinished because that event carries no status at all.
+  if (method === "Network.responseReceived") {
+    const pending =
+      params && params.requestId
+        ? session.networkPending.get(params.requestId)
+        : null;
+    if (pending && params.response) {
+      pending.status = Number(params.response.status) || 0;
+      pending.mimeType = boundedText(params.response.mimeType, 64);
+    }
     return;
   }
   if (
@@ -1733,8 +1878,85 @@ chrome.debugger.onEvent.addListener((source, method, params) => {
   ) {
     if (params && params.requestId) {
       session.inflightRequests.delete(params.requestId);
+      const pending = session.networkPending.get(params.requestId);
+      if (pending) {
+        session.networkPending.delete(params.requestId);
+        recordNetwork(session, {
+          method: pending.method,
+          url: pending.url,
+          type: pending.type,
+          // A request that failed has no status; saying 0 would read as "the server answered
+          // 0". The error text is the answer in that case.
+          status:
+            method === "Network.loadingFailed"
+              ? null
+              : (pending.status ?? null),
+          mime_type: pending.mimeType || null,
+          failed: method === "Network.loadingFailed",
+          error:
+            method === "Network.loadingFailed"
+              ? boundedText(params.errorText, MAX_ENTRY_TEXT_CHARS) || "failed"
+              : null,
+          ms: Math.max(0, Date.now() - pending.startedMs),
+        });
+      }
     }
     session.lastNetworkActivityMs = Date.now();
+    return;
+  }
+  // What the page's own script logged.
+  if (method === "Runtime.consoleAPICalled") {
+    const args = Array.isArray(params && params.args) ? params.args : [];
+    recordConsole(session, {
+      level: boundedText(params && params.type, 16) || "log",
+      text: boundedText(
+        args.map(consoleArgText).filter(Boolean).join(" "),
+        MAX_ENTRY_TEXT_CHARS,
+      ),
+      source: "console",
+      at: topFrameOf(params && params.stackTrace),
+    });
+    return;
+  }
+  // An uncaught exception or an unhandled promise rejection. This is the one an agent most needs:
+  // a click that "did nothing" usually did throw.
+  if (method === "Runtime.exceptionThrown") {
+    const details = (params && params.exceptionDetails) || {};
+    const thrown = details.exception || {};
+    recordConsole(session, {
+      level: "error",
+      // The exception's own description carries the class and message ("TypeError: x is not a
+      // function"); details.text is usually just "Uncaught".
+      text: boundedText(
+        thrown.description || details.text || "uncaught exception",
+        MAX_ENTRY_TEXT_CHARS,
+      ),
+      source: "exception",
+      at:
+        topFrameOf(details.stackTrace) ||
+        (details.url
+          ? boundedText(details.url, MAX_ENTRY_URL_CHARS) +
+            ":" +
+            ((Number(details.lineNumber) || 0) + 1)
+          : null),
+    });
+    return;
+  }
+  // What the BROWSER says about the page: a blocked mixed-content load, a CSP violation, a
+  // subresource that 404ed. None of this reaches the page's console API, so without it an agent
+  // sees a page that simply does not work and no reason why.
+  if (method === "Log.entryAdded") {
+    const entry = (params && params.entry) || {};
+    recordConsole(session, {
+      level: boundedText(entry.level, 16) || "info",
+      text: boundedText(entry.text, MAX_ENTRY_TEXT_CHARS),
+      source: boundedText(entry.source, 32) || "browser",
+      at: entry.url
+        ? boundedText(entry.url, MAX_ENTRY_URL_CHARS) +
+          ":" +
+          ((Number(entry.lineNumber) || 0) + 1)
+        : null,
+    });
     return;
   }
   // HTTP-auth interception (browser_http_auth). While Fetch is enabled we MUST answer every
@@ -1787,6 +2009,10 @@ chrome.debugger.onEvent.addListener((source, method, params) => {
       // A new document: any in-flight request from the old page is moot -- reset so a request
       // that never reported completion cannot keep network_idle from ever resolving.
       session.inflightRequests.clear();
+      // A request the old document started will never report a response now, so its pending entry
+      // would sit in the map for the life of the session. The COMPLETED log is kept: what the last
+      // page loaded is still true, and each entry names its own URL.
+      session.networkPending.clear();
       session.lastNetworkActivityMs = Date.now();
       // Armed HTTP-auth credentials were meant for the page being left; disarm them so a
       // navigation (or an attacker-driven redirect) cannot carry them into a new document.
@@ -2992,9 +3218,10 @@ async function resolveActionQuad(tabId, backendNodeId) {
 // PAGE -- the badge as an "AI CONTROL" static text it could reason from or act on. aria-hidden
 // marks the whole subtree ignored, and an ignored node is what axNodeToCapture drops.
 function controlPresenceScript(x, y) {
-  // The arrow's tip is at (2,1) in the 24-unit viewBox rendered at 32px (scale ~1.33); offset
-  // the translate so the tip lands on the action point.
-  const px = (Number.isFinite(x) ? Math.round(x) : 0) - 3;
+  // The arrow's tip is at (2,1) in the 24-unit viewBox, rendered at 24px: scale exactly 1, so the
+  // tip is at (2,1) in page pixels and the offset that puts it on the action point is exact
+  // rather than the rounding the old 32px render needed.
+  const px = (Number.isFinite(x) ? Math.round(x) : 0) - 2;
   const py = (Number.isFinite(y) ? Math.round(y) : 0) - 1;
   return (
     "(function(){" +
@@ -3032,15 +3259,15 @@ function controlPresenceScript(x, y) {
     "var c=mk('" +
     AGENT_CURSOR_ID +
     "','div');" +
-    "c.style.cssText='position:fixed;left:0;top:0;z-index:2147483647;width:32px;height:32px;" +
+    "c.style.cssText='position:fixed;left:0;top:0;z-index:2147483647;width:24px;height:24px;" +
     "pointer-events:none;will-change:transform;" +
     "transition:transform .12s cubic-bezier(.22,1,.36,1);" +
-    "filter:drop-shadow(0 0 3px #ff2d95) drop-shadow(0 0 7px rgba(255,45,149,.95)) " +
-    "drop-shadow(0 0 14px rgba(255,45,149,.65))';" +
-    "c.innerHTML=\"<div style='position:absolute;left:-9px;top:-9px;width:34px;height:34px;" +
+    "filter:drop-shadow(0 0 2px #ff2d95) drop-shadow(0 0 5px rgba(255,45,149,.95)) " +
+    "drop-shadow(0 0 10px rgba(255,45,149,.65))';" +
+    "c.innerHTML=\"<div style='position:absolute;left:-7px;top:-7px;width:26px;height:26px;" +
     "border-radius:50%;background:radial-gradient(circle,rgba(255,45,149,.55),rgba(255,45,149,0) 70%);" +
     "animation:chromeControlMcpPulse 1.6s ease-out infinite'></div>" +
-    "<svg width='32' height='32' viewBox='0 0 24 24' xmlns='http://www.w3.org/2000/svg' " +
+    "<svg width='24' height='24' viewBox='0 0 24 24' xmlns='http://www.w3.org/2000/svg' " +
     "style='position:relative'>" +
     "<path d='M2 1 L2 19 L7 14 L10.5 21 L13.6 19.6 L10.1 13 L17 13 Z' fill='#ffffff' " +
     "stroke='#12001a' stroke-width='1.3' stroke-linejoin='round'/></svg>\";" +
@@ -3067,7 +3294,9 @@ function controlPresenceScript(x, y) {
 // Only x and y are interpolated, and both are coerced to finite integers, exactly as the full
 // script does -- nothing page- or model-controlled is ever injected as code.
 function cursorNudgeScript(x, y) {
-  const px = (Number.isFinite(x) ? Math.round(x) : 0) - 3;
+  // The same tip offset the full build uses; the two MUST agree or the cursor jumps by a couple
+  // of pixels depending on which path drew it.
+  const px = (Number.isFinite(x) ? Math.round(x) : 0) - 2;
   const py = (Number.isFinite(y) ? Math.round(y) : 0) - 1;
   return (
     "(function(){var c=document.getElementById('" +
@@ -5577,6 +5806,100 @@ async function handleScroll(session, tabId, args) {
     hit: context.hit,
     room: scrollRoom(context, deltaY),
   };
+}
+
+// -- what the page said, and what it fetched -----------------------------------
+//
+// Both are read-only: they report what was already recorded by the event handler above and change
+// nothing about the page. They exist because the alternative an agent reaches for is arbitrary
+// JavaScript evaluation, which would void most of this project's defenses at once -- an eval can
+// read storage outside the isolated world, redefine window.confirm past the dialog policy, click
+// without any of the freshness gating, and delete the AI CONTROL overlay that is the user's only
+// signal that a session is driving. These answer the questions eval is usually asked for, without
+// handing the page's own capabilities to the model.
+
+function boundedTail(entries, limit) {
+  const count = Math.max(1, Math.min(limit, entries.length));
+  return entries.slice(entries.length - count);
+}
+
+async function handleConsole(session, tabId, args) {
+  await ensureAttached(session, tabId);
+  const limit = boundedCount(
+    args && args.limit,
+    50,
+    1,
+    MAX_CONSOLE_ENTRIES,
+    "browser_console limit",
+  );
+  const levels =
+    args && args.level !== undefined && args.level !== null
+      ? String(args.level).trim().toLowerCase()
+      : "";
+  // A level the caller names but that nothing produces is not an error; it is an empty answer.
+  // A level that is not a level at all IS an error: silently returning everything would answer a
+  // different question than the one asked.
+  const known = ["error", "warning", "info", "log", "debug"];
+  if (levels !== "" && known.indexOf(levels) < 0) {
+    throw new Error(
+      "browser_console level must be one of: " + known.join(", ") + ".",
+    );
+  }
+  const matching = levels
+    ? session.consoleEntries.filter((entry) => entry.level === levels)
+    : session.consoleEntries;
+  const shown = boundedTail(matching, limit);
+  const reply = {
+    ok: true,
+    entries: shown,
+    // What is being left out, said plainly in both directions: older entries this reply did not
+    // carry, and entries the ring had already discarded. "No errors" and "the errors scrolled
+    // off" must never read the same.
+    total: matching.length,
+    omitted: Math.max(0, matching.length - shown.length),
+    dropped: session.consoleDropped,
+  };
+  if (args && args.clear === true) {
+    session.consoleEntries = [];
+    session.consoleDropped = 0;
+    reply.cleared = true;
+  }
+  return reply;
+}
+
+async function handleNetwork(session, tabId, args) {
+  await ensureAttached(session, tabId);
+  const limit = boundedCount(
+    args && args.limit,
+    50,
+    1,
+    MAX_NETWORK_ENTRIES,
+    "browser_network limit",
+  );
+  const onlyFailed = Boolean(args && args.failed_only === true);
+  const matching = onlyFailed
+    ? session.networkEntries.filter(
+        (entry) =>
+          entry.failed || (entry.status !== null && entry.status >= 400),
+      )
+    : session.networkEntries;
+  const shown = boundedTail(matching, limit);
+  const reply = {
+    ok: true,
+    requests: shown,
+    total: matching.length,
+    omitted: Math.max(0, matching.length - shown.length),
+    dropped: session.networkDropped,
+    // Requests that have not answered yet. Without this, a reply listing nothing reads as "the
+    // page asked for nothing" when it may simply still be waiting.
+    in_flight: session.networkPending.size,
+  };
+  if (args && args.clear === true) {
+    session.networkEntries = [];
+    session.networkDropped = 0;
+    reply.cleared = true;
+  }
+  return reply;
 }
 
 // -- dialogs -----------------------------------------------------------------

@@ -86,6 +86,7 @@ function fixtureHome() {
         <button id="js-button" type="button">Fixture JS button</button>
         <button id="coordinate-button" type="button">Fixture coordinate button</button>
         <button id="prompt-button" type="button">Open fixture prompt</button>
+        <button id="diagnostics-button" type="button">Fixture diagnostics</button>
       </div>
       <output id="action-output" aria-live="polite">No action yet</output>
     </section>
@@ -156,6 +157,14 @@ function fixtureHome() {
       dragging = false;
     });
     setTimeout(() => { document.getElementById('delayed-output').textContent = 'Delayed fixture ready'; }, 350);
+    document.getElementById('diagnostics-button').addEventListener('click', () => {
+      // One click that produces every kind of thing browser_console reports: a plain log, an
+      // error the page chose to print, a request that 404s, and an exception nobody catches.
+      console.log('fixture console line');
+      console.error('fixture console error');
+      fetch('/api/missing');
+      setTimeout(() => { throw new TypeError('fixture uncaught failure'); }, 0);
+    });
     fetch('/api/delay').then((response) => response.text()).then((text) => {
       document.getElementById('network-output').textContent = text;
     });

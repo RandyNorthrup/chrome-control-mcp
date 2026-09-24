@@ -359,6 +359,18 @@ QHash<QString, CmdSpec> pageAndTabCommandSpecs() {
           false}}}},
       {QStringLiteral("browser_tabs"),
        {QStringLiteral("listTabs"), QStringLiteral("none"), {}}},
+      {QStringLiteral("browser_console"),
+       {QStringLiteral("console"),
+        QStringLiteral("none"),
+        {{QStringLiteral("level"), QStringLiteral("string"), false},
+         {QStringLiteral("limit"), QStringLiteral("int"), false},
+         {QStringLiteral("clear"), QStringLiteral("bool"), false}}}},
+      {QStringLiteral("browser_network"),
+       {QStringLiteral("network"),
+        QStringLiteral("none"),
+        {{QStringLiteral("failed_only"), QStringLiteral("bool"), false},
+         {QStringLiteral("limit"), QStringLiteral("int"), false},
+         {QStringLiteral("clear"), QStringLiteral("bool"), false}}}},
       {QStringLiteral("browser_select_tab"),
        {QStringLiteral("selectTab"),
         QStringLiteral("none"),
@@ -1234,6 +1246,59 @@ void appendTabTools(QJsonArray &tools) {
       QStringLiteral("List the tabs in the session's window with index, title, "
                      "and URL."),
       toolSchema({}, {})));
+  tools.append(toolEntry(
+      QStringLiteral("browser_console"),
+      QStringLiteral(
+          "What the page has said since this session attached: console "
+          "messages, uncaught exceptions and unhandled rejections, and what "
+          "the browser itself reported about the page (a blocked load, a CSP "
+          "violation, a subresource that failed). Read this when an action "
+          "appeared to do nothing -- a click that changed nothing usually "
+          "threw. Newest last; total and omitted say what this reply left "
+          "out, and dropped how many the buffer discarded, so an empty list "
+          "means silence rather than lost history."),
+      toolSchema(
+          QJsonObject{
+              {QStringLiteral("level"),
+               stringProperty(QStringLiteral(
+                   "Only this level: error, warning, info, log, or debug "
+                   "(optional; default all)."))},
+              {QStringLiteral("limit"),
+               typedProperty(
+                   QStringLiteral("integer"),
+                   QStringLiteral("How many of the most recent to return "
+                                  "(default 50)."))},
+              {QStringLiteral("clear"),
+               typedProperty(QStringLiteral("boolean"),
+                             QStringLiteral("Discard the buffer after replying "
+                                            "(default false)."))}},
+          {})));
+  tools.append(toolEntry(
+      QStringLiteral("browser_network"),
+      QStringLiteral(
+          "The requests this page completed since the session attached: "
+          "method, URL, resource type, status, MIME type, and how long each "
+          "took; a request that failed carries the browser's error text "
+          "instead of a status. Use it to confirm a form actually posted, or "
+          "to find the call behind a page that looks broken. in_flight "
+          "counts requests still waiting, so an empty list is not mistaken "
+          "for a page that asked for nothing."),
+      toolSchema(
+          QJsonObject{
+              {QStringLiteral("failed_only"),
+               typedProperty(QStringLiteral("boolean"),
+                             QStringLiteral("Only failures and status >= 400 "
+                                            "(default false)."))},
+              {QStringLiteral("limit"),
+               typedProperty(
+                   QStringLiteral("integer"),
+                   QStringLiteral("How many of the most recent to return "
+                                  "(default 50)."))},
+              {QStringLiteral("clear"),
+               typedProperty(QStringLiteral("boolean"),
+                             QStringLiteral("Discard the buffer after replying "
+                                            "(default false)."))}},
+          {})));
   tools.append(toolEntry(
       QStringLiteral("browser_select_tab"),
       QStringLiteral(

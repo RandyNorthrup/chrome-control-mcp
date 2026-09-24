@@ -104,6 +104,11 @@ project works to, but it is worth choosing deliberately.
   start or a tab change rather than silently replacing or ending the first.
 - A session that ends mid-recording discards the encoder and the partial bytes rather than
   writing a truncated file that would read as a finished one.
+- Console, exception, and network records are bounded rings of bounded entries: every field in
+  them is page-controlled, and what the ring discards is counted rather than silently forgotten.
+- No tool evaluates caller-supplied JavaScript. An eval would bypass the isolated-world storage
+  checks, the dialog policy, the freshness gating on ref and coordinate actions, and the refusal
+  of `javascript:` URLs, and could remove the control overlay that shows a session is driving.
 - Strict schemas reject unknown arguments and wrong types.
 - Compiler warnings are errors; static analysis, secret scan, dependency audit, and sanitizers run as
   release gates.

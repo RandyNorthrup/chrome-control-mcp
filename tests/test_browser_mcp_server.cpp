@@ -83,7 +83,7 @@ void BrowserMcpServerTests::fullCatalogContainsEveryBrowserAndInstallerTool() {
       handleRequest(request(QStringLiteral("tools/list"), 2), &browser);
   QVERIFY(response.has_value());
   const QSet<QString> names = catalogNames(*response);
-  QCOMPARE(names.size(), 49);
+  QCOMPARE(names.size(), 51);
   for (const QString &expected : {
            QStringLiteral("browser_navigate"),
            QStringLiteral("browser_snapshot"),
@@ -136,11 +136,16 @@ void BrowserMcpServerTests::readOnlyCatalogFiltersMutatingTools() {
       handleRequest(request(QStringLiteral("tools/list"), 2), &browser, policy);
   QVERIFY(response.has_value());
   const QSet<QString> names = catalogNames(*response);
-  QCOMPARE(names.size(), 12);
+  QCOMPARE(names.size(), 14);
   QVERIFY(names.contains(QStringLiteral("browser_snapshot")));
   QVERIFY(names.contains(QStringLiteral("browser_extension_status")));
   QVERIFY(names.contains(QStringLiteral("browser_update_check")));
   QVERIFY(names.contains(QStringLiteral("browser_update_status")));
+  // Reporting what the page already said and already fetched changes nothing
+  // about the page, so both belong in a profile whose whole promise is that it
+  // cannot.
+  QVERIFY(names.contains(QStringLiteral("browser_console")));
+  QVERIFY(names.contains(QStringLiteral("browser_network")));
   QVERIFY(!names.contains(QStringLiteral("browser_click")));
   QVERIFY(!names.contains(QStringLiteral("browser_extension_install")));
   // Installing a release is a mutating, process-replacing action, so the

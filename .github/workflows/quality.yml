@@ -181,6 +181,7 @@ jobs:
           - name: Linux
             os: ubuntu-latest
             qt-arch: linux_gcc_64
+            executable: build/chrome_control_mcp
             # This image's kernel forbids unprivileged user namespaces, which leaves Chrome with
             # no usable sandbox and it refuses to start, and it has no GPU to rasterize with.
             # Only the dedicated test browser is affected; nothing here changes how the product
@@ -192,6 +193,18 @@ jobs:
             os: macos-latest
             qt-arch: clang_64
             chrome-args: ""
+            executable: build/chrome_control_mcp
+          # Windows carries the whole versioned-install layout: `current` is a directory
+          # junction onto versions/<version>, and the bridge refuses any peer not running its own
+          # binary. That combination shipped broken in 1.4.0 AND 1.5.0 -- the relay asked about
+          # itself and about its peer through two different calls, and through a junction those
+          # answer with two names for one file, so no session could attach at all. The unit tests
+          # were green through both releases, because nothing drove a live browser here.
+          - name: Windows
+            os: windows-latest
+            qt-arch: win64_msvc2022_64
+            chrome-args: ""
+            executable: build/chrome_control_mcp.exe
     steps:
       - uses: actions/checkout@v4
 
@@ -219,6 +232,9 @@ jobs:
       # compositor, and a browser that changed under them would read as a regression.
       - name: Install Chrome for Testing
         id: chrome
+        # A bash script, and the default shell on windows-latest is pwsh, where none of it
+        # parses.
+        shell: bash
         run: |
           installed=$(npx -y @puppeteer/browsers@latest install chrome@${{ env.CHROME_VERSION }} --path "$PWD/.chrome-for-testing")
           {
@@ -226,6 +242,15 @@ jobs:
             echo "${installed#* }"
             echo "CHROME_PATH_EOF"
           } >> "$GITHUB_OUTPUT"
+
+      # Windows registers native-messaging hosts in the registry, one key per user, so the
+      # dedicated browser cannot be given a registration of its own: it reaches whatever that key
+      # names. Pointing it at the build under test is what lets the live suites run here at all.
+      # The runner is a throwaway user; nothing outside it is touched.
+      - name: Register the native messaging host
+        if: runner.os == 'Windows'
+        shell: bash
+        run: npm run extension -- install "${{ matrix.executable }}"
 
       # shell: bash on the piped steps below is load-bearing. The default non-Windows
       # shell is `bash -e {0}`, which does not set pipefail, so a pipeline reports tee's
@@ -237,6 +262,7 @@ jobs:
         run: >-
           node tests/e2e/display_matrix_e2e.mjs
           --chrome="${{ steps.chrome.outputs.path }}" --parallel=2
+          --executable="${{ matrix.executable }}"
           ${{ matrix.chrome-args }} | tee display-matrix.json
 
       # Not on Linux: this runner's Chrome never answers a screenshot taken under an emulated
@@ -249,12 +275,14 @@ jobs:
         shell: bash
         run: >-
           node tests/e2e/isolated_run.mjs --chrome="${{ steps.chrome.outputs.path }}"
+          --executable="${{ matrix.executable }}"
           ${{ matrix.chrome-args }} tests/e2e/full_browser_e2e.mjs | tee full-browser-e2e.json
 
       - name: User interference E2E
         shell: bash
         run: >-
           node tests/e2e/isolated_run.mjs --chrome="${{ steps.chrome.outputs.path }}"
+          --executable="${{ matrix.executable }}"
           ${{ matrix.chrome-args }} tests/e2e/user_interference_e2e.mjs
           | tee user-interference-e2e.json
 

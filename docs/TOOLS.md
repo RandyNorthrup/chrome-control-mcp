@@ -61,6 +61,47 @@ limits and `CHROME_CONTROL_MCP_UPLOAD_ROOTS`.
 - `browser_box`
 - `browser_focus`
 - `browser_reveal`
+- `browser_console`
+- `browser_network`
+
+### What the page said, and what it fetched
+
+`browser_console` reports the page's own console messages, its uncaught exceptions and unhandled
+rejections, and what the browser said about the page -- a blocked mixed-content load, a CSP
+violation, a subresource that failed. That last group never reaches the page's console API, so
+without it a page that simply does not work gives no reason why.
+
+Read it when an action appeared to do nothing. A click that changed nothing usually threw, and
+until this existed nothing in the toolset could see that.
+
+`browser_network` reports the requests the page completed since the session attached: method, URL,
+resource type, status, MIME type, and how long each took. A request that failed carries the
+browser's error text instead of a status, because a transport failure has no status and reporting
+`0` would read as a server answering `0`. `failed_only: true` narrows to failures and `4xx`/`5xx`.
+
+Both are rings with a hard cap, because every field in them is written by the site. Each reply
+says what it left out in two different senses, and they mean different things:
+
+- `omitted` -- entries this reply did not carry, because `limit` was smaller than the buffer.
+- `dropped` -- entries the buffer itself discarded to stay bounded.
+
+An empty list with `dropped: 0` is silence. An empty list with `dropped` above zero is lost
+history. `browser_network` also reports `in_flight`, so an empty list is not mistaken for a page
+that asked for nothing when it is still waiting.
+
+### Why there is no JavaScript evaluation tool
+
+An arbitrary-JavaScript tool would void most of the defenses in `docs/SECURITY.md` in a single
+call: it reads and writes storage outside the isolated world that verifies the live origin, it
+redefines `window.confirm` past the dialog policy, it clicks without any of the freshness gating
+that `[ref]` and coordinate actions require, `browser_navigate` refuses `javascript:` URLs and this
+would be the same thing through another door, and it can delete the AI CONTROL overlay that is the
+user's only signal a session is driving the tab.
+
+It also cannot be made safe by narrowing it: there is no read-only `Runtime.evaluate`, so a
+"read-only eval" would be a promise the code could not keep. `browser_console` and
+`browser_network` answer what evaluation is usually reached for. `browser_js_click` remains the
+one narrow escape hatch, for an element that will not take a real click.
 
 ## Browser state and advanced operations
 
@@ -197,9 +238,11 @@ large schema that could drift from source.
 `CHROME_CONTROL_MCP_SECURITY_PROFILE=read_only` advertises only:
 
 - `browser_box`
+- `browser_console`
 - `browser_extension_status`
 - `browser_get_attribute`
 - `browser_get_value`
+- `browser_network`
 - `browser_read`
 - `browser_screenshot`
 - `browser_snapshot`

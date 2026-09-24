@@ -51,6 +51,13 @@ const EXPORTED = [
   "handleScroll",
   "pointLandsOnFn",
   "cursorNudgeScript",
+  "controlPresenceScript",
+  "boundedText",
+  "pushBounded",
+  "consoleArgText",
+  "topFrameOf",
+  "handleConsole",
+  "handleNetwork",
   "handleDrag",
   "scrollContextFn",
   "boundedMs",
@@ -691,9 +698,18 @@ test("the hit test climbs out of a shadow tree instead of calling it a miss", ()
 // bridge's 30 s reply budget on a loaded runner.
 test("the cursor nudge moves an existing cursor and admits when there is none", () => {
   const script = w.cursorNudgeScript(120, 80);
-  // Only the two numbers are interpolated, and both arrive already rounded.
-  assert.ok(script.includes("117"), "x is offset to the arrow's tip");
+  // Only the two numbers are interpolated, and both arrive already rounded. The arrow's tip is at
+  // (2,1) in its 24-unit viewBox, rendered at 24px, so the offsets are exactly -2 and -1.
+  assert.ok(script.includes("118"), "x is offset to the arrow's tip");
   assert.ok(script.includes("79"), "y is offset to the arrow's tip");
+  // The nudge and the full build MUST place the tip identically, or the cursor jumps by a couple
+  // of pixels depending on which path happened to draw it -- and which one runs depends only on
+  // whether the overlay already existed.
+  const full = w.controlPresenceScript(120, 80);
+  assert.ok(
+    full.includes("118") && full.includes("79"),
+    "the full overlay build uses the same tip offset as the nudge",
+  );
   // It must not rebuild anything: those are the costs it exists to avoid.
   for (const expensive of ["innerHTML", "cssText", "svg", "@keyframes"]) {
     assert.ok(
@@ -714,11 +730,11 @@ test("the cursor nudge moves an existing cursor and admits when there is none", 
   // A cursor that is there gets positioned, and the script confirms it.
   const cursor = { style: {} };
   assert.equal(run(cursor), true);
-  assert.equal(cursor.style.transform, "translate(117px,79px)");
+  assert.equal(cursor.style.transform, "translate(118px,79px)");
 
   // A non-finite point is coerced rather than injected as code.
   const nonsense = w.cursorNudgeScript(Number.NaN, Number.POSITIVE_INFINITY);
-  assert.ok(nonsense.includes("-3"), "a NaN x becomes 0, then the tip offset");
+  assert.ok(nonsense.includes("-2"), "a NaN x becomes 0, then the tip offset");
   assert.ok(!/NaN|Infinity/.test(nonsense));
 });
 
@@ -805,6 +821,205 @@ test("a drag that fails mid-path raises no unhandled rejection", async () => {
   } finally {
     process.off("unhandledRejection", onUnhandled);
   }
+});
+
+// Everything in a console entry is written by the PAGE. A message is text the site chose, and a
+// request URL is a string the site chose; both arrive unbounded.
+test("page text is bounded, flattened, and says when it was cut", () => {
+  assert.equal(w.boundedText("  hello\n  world  ", 100), "hello world");
+  assert.equal(w.boundedText(null, 100), "");
+  assert.equal(w.boundedText(undefined, 100), "");
+  // A message that was cut and one that happened to end there must not read the same.
+  const long = w.boundedText("x".repeat(50), 10);
+  assert.equal(long.length, 11);
+  assert.ok(long.endsWith("\u2026"), "truncation is marked");
+  assert.ok(!w.boundedText("x".repeat(10), 10).endsWith("\u2026"));
+});
+
+test("a ring drops the oldest and reports that it had to", () => {
+  const ring = [];
+  assert.equal(w.pushBounded(ring, 1, 3), 0);
+  assert.equal(w.pushBounded(ring, 2, 3), 0);
+  assert.equal(w.pushBounded(ring, 3, 3), 0);
+  // Full: the next push costs the oldest entry, and says so.
+  assert.equal(w.pushBounded(ring, 4, 3), 1);
+  assert.deepEqual(crossRealm(ring), [2, 3, 4]);
+});
+
+// CDP hands console arguments as RemoteObjects. Rendering one as "[object Object]" throws away
+// the only useful part -- an Error's class and message live in its description.
+test("a console argument keeps the part worth reading", () => {
+  assert.equal(w.consoleArgText({ type: "string", value: "hi" }), "hi");
+  assert.equal(w.consoleArgText({ type: "number", value: 42 }), "42");
+  assert.equal(
+    w.consoleArgText({
+      type: "object",
+      className: "TypeError",
+      description: "TypeError: x is not a function",
+    }),
+    "TypeError: x is not a function",
+  );
+  assert.equal(
+    w.consoleArgText({ type: "number", unserializableValue: "NaN" }),
+    "NaN",
+  );
+  assert.equal(w.consoleArgText({ type: "undefined" }), "[undefined]");
+  assert.equal(w.consoleArgText(null), "");
+  // A value that IS falsy is still a value, not an absent one.
+  assert.equal(w.consoleArgText({ type: "boolean", value: false }), "false");
+});
+
+test("a stack trace reports its top frame, one-based, or nothing", () => {
+  assert.equal(
+    w.topFrameOf({
+      callFrames: [
+        { url: "https://x.test/a.js", lineNumber: 41 },
+        { url: "https://x.test/b.js", lineNumber: 7 },
+      ],
+    }),
+    "https://x.test/a.js:42",
+  );
+  // CDP counts lines from zero and humans do not.
+  assert.equal(
+    w.topFrameOf({
+      callFrames: [{ url: "https://x.test/a.js", lineNumber: 0 }],
+    }),
+    "https://x.test/a.js:1",
+  );
+  assert.equal(w.topFrameOf({ callFrames: [] }), null);
+  assert.equal(w.topFrameOf(null), null);
+  assert.equal(w.topFrameOf({ callFrames: [{ lineNumber: 3 }] }), null);
+});
+
+function readerWorker() {
+  const worker = loadWorker({
+    "debugger.sendCommand": () => Promise.resolve({}),
+    "tabs.get": () => Promise.resolve({ id: 1, url: "https://example.test/" }),
+  });
+  const session = worker.makeSession();
+  session.attachedTabId = 1;
+  return { worker, session };
+}
+
+// An empty list has two very different meanings, and a reply that cannot tell them apart is worse
+// than useless: "the page logged nothing" and "the errors scrolled off" lead somewhere different.
+test("browser_console separates silence from lost history", async () => {
+  const { worker, session } = readerWorker();
+  for (let i = 0; i < 5; i += 1) {
+    session.consoleEntries.push({
+      level: "log",
+      text: "m" + i,
+      source: "console",
+      at: null,
+    });
+  }
+  session.consoleEntries.push({
+    level: "error",
+    text: "TypeError: x is not a function",
+    source: "exception",
+    at: "https://x.test/a.js:42",
+  });
+  session.consoleDropped = 7;
+
+  const all = crossRealm(await worker.handleConsole(session, 1, {}));
+  assert.equal(all.total, 6);
+  assert.equal(all.entries.length, 6);
+  assert.equal(all.omitted, 0);
+  // The buffer had already thrown 7 away before this call; saying nothing about that would let a
+  // model conclude the page was quiet.
+  assert.equal(all.dropped, 7);
+
+  // Newest last, and a limit takes the NEWEST, not the first ones recorded.
+  const tail = crossRealm(await worker.handleConsole(session, 1, { limit: 2 }));
+  assert.equal(tail.entries.length, 2);
+  assert.equal(tail.entries[1].text, "TypeError: x is not a function");
+  assert.equal(tail.omitted, 4);
+
+  const errors = crossRealm(
+    await worker.handleConsole(session, 1, { level: "error" }),
+  );
+  assert.equal(errors.entries.length, 1);
+  assert.equal(errors.entries[0].source, "exception");
+
+  // A level that is not a level is refused: answering with everything would silently answer a
+  // different question.
+  await assert.rejects(
+    () => worker.handleConsole(session, 1, { level: "catastrophe" }),
+    /level must be one of/,
+  );
+
+  const drained = crossRealm(
+    await worker.handleConsole(session, 1, { clear: true }),
+  );
+  assert.equal(drained.cleared, true);
+  assert.equal(session.consoleEntries.length, 0);
+  assert.equal(session.consoleDropped, 0);
+});
+
+test("browser_network reports failures, and what is still in flight", async () => {
+  const { worker, session } = readerWorker();
+  session.networkEntries.push(
+    {
+      method: "GET",
+      url: "https://x.test/ok",
+      type: "Document",
+      status: 200,
+      mime_type: "text/html",
+      failed: false,
+      error: null,
+      ms: 12,
+    },
+    {
+      method: "POST",
+      url: "https://x.test/save",
+      type: "XHR",
+      status: 500,
+      mime_type: "application/json",
+      failed: false,
+      error: null,
+      ms: 40,
+    },
+    {
+      method: "GET",
+      url: "https://x.test/gone",
+      type: "Image",
+      status: null,
+      mime_type: null,
+      failed: true,
+      error: "net::ERR_NAME_NOT_RESOLVED",
+      ms: 3,
+    },
+  );
+  session.networkPending.set("req-9", {
+    method: "GET",
+    url: "https://x.test/slow",
+    startedMs: Date.now(),
+  });
+
+  const all = crossRealm(await worker.handleNetwork(session, 1, {}));
+  assert.equal(all.requests.length, 3);
+  // A list of completed requests says nothing about the one still running; without this an empty
+  // reply reads as "the page asked for nothing".
+  assert.equal(all.in_flight, 1);
+
+  // Both kinds of "went wrong": a transport failure with no status, and a status the server sent.
+  const bad = crossRealm(
+    await worker.handleNetwork(session, 1, { failed_only: true }),
+  );
+  assert.equal(bad.requests.length, 2);
+  assert.deepEqual(
+    bad.requests.map((r) => r.url),
+    ["https://x.test/save", "https://x.test/gone"],
+  );
+  // A failed request has no status; reporting 0 would read as a server answering 0.
+  assert.equal(bad.requests[1].status, null);
+  assert.equal(bad.requests[1].error, "net::ERR_NAME_NOT_RESOLVED");
+
+  const drained = crossRealm(
+    await worker.handleNetwork(session, 1, { clear: true }),
+  );
+  assert.equal(drained.cleared, true);
+  assert.equal(session.networkEntries.length, 0);
 });
 
 test("boundedMs and boundedCount refuse what they cannot honour", () => {

@@ -462,10 +462,10 @@ void BrowserContractTests::catalog_advertisesDomFirstToolsWithStrictSchemas() {
   // set unconditionally
   // (nav/action/pointer/form/tab/wait/inspection/window/infra/print/
   // permission/storage/cookies/download/record/upload/http-auth/
-  // advanced-input), 43 tools in all.
+  // advanced-input/observability), 45 tools in all.
   // `>= 15` could not catch a tool silently dropped from or duplicated into the
   // catalog.
-  QCOMPARE(tools.size(), 43);
+  QCOMPARE(tools.size(), 45);
 
   QStringList names;
   for (const QJsonValue &value : tools) {

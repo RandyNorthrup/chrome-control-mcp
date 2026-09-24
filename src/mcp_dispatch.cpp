@@ -333,9 +333,14 @@ bool mcpToolIsReadOnly(const QString &tool_name) {
   static const QSet<QString> kReadOnly{
       QStringLiteral("assert_text_visible"),
       QStringLiteral("browser_box"),
+      // Reporting what the page already said and already fetched. Neither can
+      // change what the page does or what the user sees; `clear` discards this
+      // session's own record of it, which is the only state either one touches.
+      QStringLiteral("browser_console"),
       QStringLiteral("browser_extension_status"),
       QStringLiteral("browser_get_attribute"),
       QStringLiteral("browser_get_value"),
+      QStringLiteral("browser_network"),
       QStringLiteral("browser_read"),
       QStringLiteral("browser_screenshot"),
       QStringLiteral("browser_snapshot"),

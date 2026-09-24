@@ -71,6 +71,10 @@ const EXPECTED_TOOLS = [
   "browser_http_auth",
   "browser_js_click",
   "browser_upload",
+  "browser_console",
+  "browser_network",
+  "browser_record_start",
+  "browser_record_stop",
 ];
 
 // Advertised, and deliberately NOT driven here. Kept as an explicit list rather
@@ -87,8 +91,6 @@ const NOT_EXERCISED_HERE = new Map([
   ["browser_update_check", "reaches the network; covered by test_updater"],
   ["browser_update_status", "reads the install layout, not the browser"],
   ["browser_update_apply", "replaces the program on disk; never in a test run"],
-  ["browser_record_start", "needs its own live coverage; not written yet"],
-  ["browser_record_stop", "needs its own live coverage; not written yet"],
 ]);
 
 const sleep = (milliseconds) =>
@@ -619,6 +621,152 @@ async function main() {
       ),
     );
     assert.equal(media.volume, 0.4);
+
+    // What the page said, and what it fetched. Both exist because the alternative an agent
+    // reaches for is arbitrary JavaScript evaluation, which would void most of this project's
+    // defenses at once. The fixture's diagnostics button produces one of each kind in a single
+    // click: a log, an error the page printed, a request that 404s, and an exception nobody
+    // catches.
+    const diagnosticsRef = refFor(page, "Fixture diagnostics");
+    await runTool(
+      "browser_reveal",
+      { ref: diagnosticsRef },
+      "reveal diagnostics",
+    );
+    await runTool(
+      "browser_click",
+      { ref: diagnosticsRef },
+      "click diagnostics",
+    );
+    // The uncaught throw is queued on a timer and the 404 has to reach the server, so neither is
+    // in the buffer the instant the click returns.
+    await sleep(1200);
+
+    const consoleReply = jsonContent(
+      await runTool("browser_console", {}, "read the page's console"),
+    );
+    const consoleText = consoleReply.entries
+      .map((entry) => entry.text)
+      .join("\n");
+    assertIncludes(
+      consoleText,
+      "fixture console line",
+      "console.log was captured",
+    );
+    assertIncludes(
+      consoleText,
+      "fixture console error",
+      "console.error was captured",
+    );
+    // The one that matters most: a click that appears to do nothing usually threw, and until
+    // this tool existed nothing could see it.
+    assertIncludes(
+      consoleText,
+      "fixture uncaught failure",
+      "an uncaught exception was captured",
+    );
+    const thrown = consoleReply.entries.find((entry) =>
+      entry.text.includes("fixture uncaught failure"),
+    );
+    assert.equal(thrown.level, "error", "an uncaught throw is an error");
+    assert.equal(
+      thrown.source,
+      "exception",
+      "and is marked as an exception, not a log",
+    );
+
+    // A level filter answers a narrower question, and an unknown level is refused rather than
+    // silently answering the wider one.
+    const onlyErrors = jsonContent(
+      await runTool(
+        "browser_console",
+        { level: "error" },
+        "read only console errors",
+      ),
+    );
+    assert.equal(
+      onlyErrors.entries.every((entry) => entry.level === "error"),
+      true,
+      "a level filter returns only that level",
+    );
+    const badLevel = await client.tool("browser_console", {
+      level: "catastrophe",
+    });
+    assert.equal(badLevel.isError, true, "an unknown console level is refused");
+
+    const network = jsonContent(
+      await runTool("browser_network", {}, "read the page's requests"),
+    );
+    assert.ok(network.total > 0, "the fixture load produced requests");
+    assertIncludes(
+      network.requests.map((request) => request.url).join("\n"),
+      fixture.origin,
+      "the fixture's own requests are listed",
+    );
+    const failures = jsonContent(
+      await runTool(
+        "browser_network",
+        { failed_only: true },
+        "read only failed requests",
+      ),
+    );
+    const missingRequest = failures.requests.find((request) =>
+      request.url.includes("/api/missing"),
+    );
+    assert.ok(
+      missingRequest,
+      `the 404 was not reported: ${JSON.stringify(failures)}`,
+    );
+    assert.equal(
+      missingRequest.status,
+      404,
+      "and it is reported with its status",
+    );
+    assert.equal(missingRequest.method, "GET");
+
+    // Recording, end to end. It shipped in 1.5.0 with no live coverage at all -- the suite said
+    // so in NOT_EXERCISED_HERE -- so a start that failed on its first real call was exactly how
+    // "canvas.captureStream is not a function" reached a release.
+    const recordingName = `e2e-${Date.now()}.webm`;
+    const started = jsonContent(
+      await runTool(
+        "browser_record_start",
+        { filename: recordingName },
+        "start recording",
+      ),
+    );
+    assert.equal(started.ok, true, "recording started");
+    // A second start must be refused rather than silently replacing the first.
+    const secondStart = await client.tool("browser_record_start", {});
+    assert.equal(
+      secondStart.isError,
+      true,
+      "a second recording for the same session is refused",
+    );
+    // Something for the video to contain.
+    await runTool("browser_reveal", { ref: hoverRef }, "move while recording");
+    await sleep(1500);
+    const stopped = jsonContent(
+      await runTool("browser_record_stop", {}, "stop recording"),
+    );
+    assertSafeGeneratedPath(stopped.path, "e2e-", ".webm");
+    const video = await stat(stopped.path);
+    // A zero-byte file is what a recorder that captured nothing writes; the tool is supposed to
+    // refuse that rather than hand back an empty video.
+    assert.ok(
+      video.size > 1024,
+      `recording is too small to contain anything: ${video.size} bytes`,
+    );
+    assert.ok(stopped.duration_ms > 0, "the recording reports a duration");
+    // The timeline is what makes the video readable against what drove it.
+    const timeline = JSON.parse(await readFile(stopped.timeline_path, "utf8"));
+    assert.ok(
+      Array.isArray(timeline.commands) && timeline.commands.length > 0,
+      "the timeline lists the commands that ran while recording",
+    );
+    // Stopping when nothing is recording is an error, not an empty file.
+    const stopAgain = await client.tool("browser_record_stop", {});
+    assert.equal(stopAgain.isError, true, "a second stop is refused");
 
     // The box the server resolves for this ref, taken before the scroll. When the scroll reports
     // that it moved nothing, the question is always whether it was aimed at this element at all,
