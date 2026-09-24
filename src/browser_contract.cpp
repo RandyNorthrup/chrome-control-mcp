@@ -1276,9 +1276,10 @@ void appendTabTools(QJsonArray &tools) {
   tools.append(toolEntry(
       QStringLiteral("browser_network"),
       QStringLiteral(
-          "The requests this page completed since the session attached: "
-          "method, URL, resource type, status, MIME type, and how long each "
-          "took; a request that failed carries the browser's error text "
+          "The requests this page made since the session attached: method, "
+          "URL, resource type, status, MIME type, and the milliseconds until "
+          "the response arrived; a request that never got one carries the "
+          "browser's error text "
           "instead of a status. Use it to confirm a form actually posted, or "
           "to find the call behind a page that looks broken. in_flight "
           "counts requests still waiting, so an empty list is not mistaken "

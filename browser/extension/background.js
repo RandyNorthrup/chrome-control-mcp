@@ -1880,16 +1880,36 @@ chrome.debugger.onEvent.addListener((source, method, params) => {
     session.lastNetworkActivityMs = Date.now();
     return;
   }
-  // The status, paired with the request that asked for it. Recorded here rather than on
-  // loadingFinished because that event carries no status at all.
+  // A request is logged when its RESPONSE arrives, not when its body finishes loading. Two
+  // measured reasons, both of which produced an empty log:
+  //
+  // The document's own request completes the navigation it caused, and the navigation clears the
+  // pending map -- so waiting for loadingFinished lost the single most useful entry in the log,
+  // every time.
+  //
+  // A fetch() whose body is never read never finishes loading at all. The response arrives, the
+  // status is known, and loadingFinished does not come; the request sat in flight for the life of
+  // the session. The fixture's own 404 probe is exactly that shape.
+  //
+  // `ms` is therefore time-to-response rather than time-to-last-byte, which is the number worth
+  // having anyway: it is what the server took, not what the body cost to stream.
   if (method === "Network.responseReceived") {
     const pending =
       params && params.requestId
         ? session.networkPending.get(params.requestId)
         : null;
     if (pending && params.response) {
-      pending.status = Number(params.response.status) || 0;
-      pending.mimeType = boundedText(params.response.mimeType, 64);
+      session.networkPending.delete(params.requestId);
+      recordNetwork(session, {
+        method: pending.method,
+        url: pending.url,
+        type: pending.type,
+        status: Number(params.response.status) || 0,
+        mime_type: boundedText(params.response.mimeType, 64) || null,
+        failed: false,
+        error: null,
+        ms: Math.max(0, Date.now() - pending.startedMs),
+      });
     }
     return;
   }
@@ -1899,27 +1919,27 @@ chrome.debugger.onEvent.addListener((source, method, params) => {
   ) {
     if (params && params.requestId) {
       session.inflightRequests.delete(params.requestId);
+      // A request still pending here never got a response: it failed outright (DNS, refused,
+      // blocked). One that did get a response was logged and removed at that point, so reaching
+      // this with an entry still in the map IS the failure case.
       const pending = session.networkPending.get(params.requestId);
       if (pending) {
         session.networkPending.delete(params.requestId);
-        recordNetwork(session, {
-          method: pending.method,
-          url: pending.url,
-          type: pending.type,
-          // A request that failed has no status; saying 0 would read as "the server answered
-          // 0". The error text is the answer in that case.
-          status:
-            method === "Network.loadingFailed"
-              ? null
-              : (pending.status ?? null),
-          mime_type: pending.mimeType || null,
-          failed: method === "Network.loadingFailed",
-          error:
-            method === "Network.loadingFailed"
-              ? boundedText(params.errorText, MAX_ENTRY_TEXT_CHARS) || "failed"
-              : null,
-          ms: Math.max(0, Date.now() - pending.startedMs),
-        });
+        if (method === "Network.loadingFailed") {
+          recordNetwork(session, {
+            method: pending.method,
+            url: pending.url,
+            type: pending.type,
+            // A request that never got a response has no status; saying 0 would read as a server
+            // answering 0. The error text is the answer in that case.
+            status: null,
+            mime_type: null,
+            failed: true,
+            error:
+              boundedText(params.errorText, MAX_ENTRY_TEXT_CHARS) || "failed",
+            ms: Math.max(0, Date.now() - pending.startedMs),
+          });
+        }
       }
     }
     session.lastNetworkActivityMs = Date.now();
@@ -2030,9 +2050,11 @@ chrome.debugger.onEvent.addListener((source, method, params) => {
       // A new document: any in-flight request from the old page is moot -- reset so a request
       // that never reported completion cannot keep network_idle from ever resolving.
       session.inflightRequests.clear();
-      // A request the old document started will never report a response now, so its pending entry
-      // would sit in the map for the life of the session. The COMPLETED log is kept: what the last
-      // page loaded is still true, and each entry names its own URL.
+      // A request the old document started and that never answered will never answer now, so its
+      // pending entry would sit in the map for the life of the session and be counted as in
+      // flight for ever. Anything that DID answer was already logged when its response arrived,
+      // including the document request that caused this navigation. The completed log is kept:
+      // what the last page loaded is still true, and every entry names its own URL.
       session.networkPending.clear();
       session.lastNetworkActivityMs = Date.now();
       // Armed HTTP-auth credentials were meant for the page being left; disarm them so a

@@ -74,10 +74,18 @@ without it a page that simply does not work gives no reason why.
 Read it when an action appeared to do nothing. A click that changed nothing usually threw, and
 until this existed nothing in the toolset could see that.
 
-`browser_network` reports the requests the page completed since the session attached: method, URL,
-resource type, status, MIME type, and how long each took. A request that failed carries the
-browser's error text instead of a status, because a transport failure has no status and reporting
-`0` would read as a server answering `0`. `failed_only: true` narrows to failures and `4xx`/`5xx`.
+`browser_network` reports the requests the page made since the session attached: method, URL,
+resource type, status, MIME type, and the milliseconds until the response arrived. A request that
+never got a response carries the browser's error text instead of a status, because a transport
+failure has no status and reporting `0` would read as a server answering `0`. `failed_only: true`
+narrows to failures and `4xx`/`5xx`.
+
+An entry is written when the response arrives, not when the body finishes loading. That is
+deliberate, and both reasons were measured: the document's own request completes the navigation it
+caused, and the navigation drops anything still awaiting a response -- so waiting for the body lost
+the single most useful entry in the log every time. And a `fetch()` whose body is never read never
+finishes loading at all, so it would sit in flight for the life of the session. `ms` is therefore
+what the server took, not what the body cost to stream.
 
 Both are rings with a hard cap, because every field in them is written by the site. Each reply
 says what it left out in two different senses, and they mean different things:
