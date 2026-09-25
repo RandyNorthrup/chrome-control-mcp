@@ -143,7 +143,20 @@ function planCoverage(configs) {
 }
 
 function pageState(text) {
-  const content = JSON.parse(text).content;
+  // A tool that failed answers with prose, not JSON -- "browser did not reply within 30000 ms
+  // (connection reset)" is the one that turns up under load. Parsing that as JSON reports
+  // SyntaxError: Unexpected token 'b', which names neither the tool that failed nor what it
+  // said, and a run that dies here leaves nothing to diagnose.
+  let parsed;
+  try {
+    parsed = JSON.parse(text);
+  } catch (error) {
+    throw new Error(
+      `browser_read did not return JSON; the tool answered: ${String(text).slice(0, 400)}`,
+      { cause: error },
+    );
+  }
+  const content = parsed.content;
   const out =
     content.match(/^(none|hit:\S+|miss@\S+|over:\S+|drop:\S+)$/m)?.[1] ?? null;
   const metrics = Object.fromEntries(
