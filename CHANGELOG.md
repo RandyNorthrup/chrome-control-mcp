@@ -6,6 +6,38 @@ All notable changes are documented here. Project follows [Semantic Versioning](h
 
 Nothing yet.
 
+## [1.6.1] - 2026-09-25
+
+Everything a fresh-install run on a clean Windows 11 VM turned up: 50 of the 51 tools driven
+against live sites, each checked by its effect rather than its reply.
+
+### Fixed
+
+- `browser_network` dropped redirects. A redirect re-fires `requestWillBeSent` under the same
+  request id, and the pending entry was overwritten without being logged -- so a form POST that
+  302s appeared only as the GET that followed, the opposite of what the tool is for. Both hops are
+  logged now, the first with its status and a `redirected_to`.
+- `browser_select` could not match a label copied out of the snapshot. Pages write `&nbsp;` for
+  alignment, which puts U+00A0 in `option.text` while the snapshot shows an ordinary space; `===`
+  made those different strings. Both the single and multi paths compare with whitespace collapsed.
+- `browser_permission` passed `ask` to Chrome for `javascript`, `images` and `popups`, which the
+  API rejects -- those are on-or-off. The error named neither the tool, the permission, nor what
+  would have worked. It is checked per type now, and says all three. Chrome's extension API cannot
+  return one site to the browser default; the refusal says so rather than implying it can.
+- `browser_media` could not reach a `<video>` that draws its own controls: not focusable, no
+  accessibility value, so no ref. `video` and `audio` are interactable roles now.
+- `browser_hover` could not reach an element with no ref -- a link with no `href`, a div with only
+  an `onmouseenter` handler. It takes `x`/`y` like `browser_click_at`, refused unless the
+  screenshot they came from still matches the live render, and refuses both at once.
+- The recording timeline's field is `cmd`, not the `name` the description claimed.
+- `browser_back` can fail after a `browser_navigate` nobody clicked on, because Chrome creates no
+  history entry without user interaction. The description says so instead of leaving it looking
+  like a fault.
+- `browser_extension_install` told every caller to load the extension by hand even when it was
+  already loaded and connected.
+- A live-suite failure reported `SyntaxError: Unexpected token 'b'` when a tool answered with
+  prose instead of JSON. It now reports what the tool actually said.
+
 ## [1.6.0] - 2026-09-24
 
 ### Added
