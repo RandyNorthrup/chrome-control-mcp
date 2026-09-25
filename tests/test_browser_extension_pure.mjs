@@ -55,6 +55,9 @@ const EXPORTED = [
   "boundedText",
   "pushBounded",
   "isInlineRequestUrl",
+  "selectOptionFn",
+  "SETTINGS_BY_PERMISSION",
+  "INTERACTABLE_ROLES",
   "consoleArgText",
   "topFrameOf",
   "handleConsole",
@@ -1039,6 +1042,93 @@ test("browser_network reports failures, and what is still in flight", async () =
   );
   assert.equal(drained.cleared, true);
   assert.equal(session.networkEntries.length, 0);
+});
+
+// Found on a Windows VM driving real sites: a label copied out of the snapshot did not select
+// the option it named. Plenty of pages write &nbsp; between words for alignment, which puts
+// U+00A0 in option.text while the snapshot renders an ordinary space, and a === comparison makes
+// those two different strings.
+test("an option label matches across the whitespace the page chose", () => {
+  const options = [
+    { value: "ny", text: "New York", label: "New York" },
+    { value: "la", text: "Los\u00a0Angeles", label: "Los\u00a0Angeles" },
+  ];
+  const makeSelect = (multiple) => ({
+    tagName: "SELECT",
+    multiple,
+    options,
+    selectedIndex: -1,
+    dispatchEvent() {},
+  });
+
+  // The function is built in THIS realm because it constructs Event, which the page has and the
+  // worker's realm does not. Same source either way -- it is read off the shipped worker.
+  class FakeEvent {
+    constructor(type) {
+      this.type = type;
+    }
+  }
+  const select = new Function(
+    "Event",
+    `return (${w.selectOptionFn.toString()});`,
+  )(FakeEvent);
+  const pick = (mode, value, label, index, values) =>
+    crossRealm(
+      select.call(makeSelect(false), mode, value, label, index, values),
+    );
+
+  // The label as the snapshot shows it selects the option the page spells with a NBSP.
+  const chosen = pick("label", undefined, "Los Angeles", undefined, undefined);
+  assert.equal(chosen.ok, true, JSON.stringify(chosen));
+  // An ordinary label still matches, and a label that names nothing still fails.
+  assert.equal(pick("label", undefined, "New York").ok, true);
+  assert.equal(pick("label", undefined, "Boston").ok, false);
+
+  // Multi-select matches by the same rule, or the same label works singly and not in a list.
+  const many = crossRealm(
+    select.call(makeSelect(true), "values", undefined, undefined, undefined, [
+      "Los Angeles",
+    ]),
+  );
+  assert.equal(many.ok, true, JSON.stringify(many));
+  assert.equal(many.selected.length, 1);
+});
+
+// Chrome takes a different set of values per permission type. Passing one it does not take came
+// back as "Invalid invocation: Error at property 'setting': Value must be one of allow, block",
+// which names neither the tool, the permission, nor what would have worked.
+test("the per-permission setting table says what Chrome accepts", () => {
+  const table = crossRealm(w.SETTINGS_BY_PERMISSION);
+  // These three are on-or-off: there is no prompt to show, so "ask" is rejected by the API
+  // rather than treated as a default.
+  for (const type of ["javascript", "images", "popups"]) {
+    assert.deepEqual(table[type], ["allow", "block"], type);
+    assert.equal(table[type].includes("ask"), false, type + " cannot ask");
+  }
+  // Anything not listed falls back to the full set, which is what a prompt-capable permission
+  // like geolocation needs.
+  assert.equal(table.location, undefined);
+  assert.equal(table.notifications, undefined);
+});
+
+// browser_media exists to drive these, and without a ref it cannot be aimed at one. A <video>
+// whose controls the page draws itself is not focusable and carries no AX value, so it was shown
+// to the model as scenery it could see and not touch.
+test("media elements are interactable enough to earn a ref", () => {
+  const roles = crossRealm([...w.INTERACTABLE_ROLES]);
+  assert.ok(
+    roles.includes("video"),
+    "a video must be reachable by browser_media",
+  );
+  assert.ok(roles.includes("audio"), "and so must an audio element");
+  // The set is still about things you act on, not scenery.
+  for (const scenery of ["generic", "paragraph", "image", "main"]) {
+    assert.equal(
+      roles.includes(scenery),
+      false,
+      scenery + " is not interactable",
+    );
+  }
 });
 
 test("boundedMs and boundedCount refuse what they cannot honour", () => {

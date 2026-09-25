@@ -166,6 +166,8 @@ function fixtureHome() {
       // network-idle again -- which is correct of network_idle, and would be this fixture
       // leaving a request outstanding for the rest of the run.
       fetch('/api/missing').then((response) => response.text()).catch(() => {});
+      // A POST that 302s to a GET: two hops, one requestId.
+      fetch('/api/redirect', { method: 'POST' }).then((response) => response.text()).catch(() => {});
       setTimeout(() => { throw new TypeError('fixture uncaught failure'); }, 0);
     });
     fetch('/api/delay').then((response) => response.text()).then((text) => {
@@ -426,6 +428,17 @@ export async function startFixtureServer() {
         () => send(200, "text/plain; charset=utf-8", "Network fixture ready"),
         300,
       );
+      return;
+    }
+    // A POST that redirects, which is what a real form submit does. browser_network logged only
+    // the GET that followed, because the redirect re-fires requestWillBeSent under the same id.
+    if (url.pathname === "/api/redirect") {
+      response.writeHead(302, { location: "/api/landed" });
+      response.end();
+      return;
+    }
+    if (url.pathname === "/api/landed") {
+      send(200, "text/plain; charset=utf-8", "landed");
       return;
     }
     if (url.pathname === "/download.txt") {

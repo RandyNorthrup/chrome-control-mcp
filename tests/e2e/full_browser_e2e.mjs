@@ -720,6 +720,32 @@ async function main() {
       false,
       "data: and blob: URLs must not crowd out real requests",
     );
+    // A form POST that redirects is TWO hops under one requestId. Logging only the hop that
+    // survived meant a POST 302 was reported as the GET that followed -- which defeats the one
+    // thing the tool is for, confirming that a form actually posted.
+    const posted = network.requests.find(
+      (request) =>
+        request.method === "POST" && request.url.includes("/api/redirect"),
+    );
+    assert.ok(
+      posted,
+      `the redirecting POST was not logged: ${JSON.stringify(network.requests.map((r) => r.method + " " + r.url))}`,
+    );
+    assert.equal(
+      posted.status,
+      302,
+      "and it is logged with the redirect status",
+    );
+    assert.ok(
+      String(posted.redirected_to).includes("/api/landed"),
+      `the redirect target is not reported: ${JSON.stringify(posted)}`,
+    );
+    // The hop it redirected to is its own entry, so both are visible.
+    assert.ok(
+      network.requests.some((request) => request.url.includes("/api/landed")),
+      "the request the redirect landed on is logged too",
+    );
+
     const failures = jsonContent(
       await runTool(
         "browser_network",

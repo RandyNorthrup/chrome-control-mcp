@@ -58,6 +58,13 @@ const INTERACTABLE_ROLES = new Set([
   "treeitem",
   "gridcell",
   "scrollbar",
+  // Media elements. browser_media exists to drive these, and without a ref it cannot be aimed at
+  // one: a <video> whose controls the page draws itself is not focusable and carries no AX value,
+  // so it was emitted as scenery the model could see and not touch. Measured on a direct .mp4 in
+  // Chrome's own viewer and on one of two videos on the same page -- the other happened to be
+  // focusable, which is why this looked arbitrary.
+  "video",
+  "audio",
 ]);
 
 // Roles that are pure structure -- not interactable on their own even when focusable.
@@ -1847,16 +1854,37 @@ chrome.debugger.onEvent.addListener((source, method, params) => {
   if (method === "Network.requestWillBeSent") {
     if (params && params.requestId) {
       session.inflightRequests.add(params.requestId);
+      const requestUrl = params.request ? String(params.request.url || "") : "";
       // Inline content is not network activity, and there is a lot of it: the media element's
       // own controls alone load dozens of data: URLs for their icons, which filled the whole ring
       // and pushed out every request the page actually made. A data: or blob: URL is bytes the
       // page already had -- no connection, no server, no status worth reporting -- so it is
       // tracked for network_idle above (it does complete, and idle must wait for it) and left out
       // of the log below.
-      const requestUrl = params.request ? String(params.request.url || "") : "";
       if (isInlineRequestUrl(requestUrl)) {
         session.lastNetworkActivityMs = Date.now();
         return;
+      }
+      // A redirect re-fires this event for the SAME requestId, carrying the response that
+      // redirected. Overwriting the pending entry here lost that hop entirely: a form POST that
+      // 302s was logged only as the GET that followed, which defeats the one thing the tool is
+      // for -- confirming that a form actually posted. Log the hop before replacing it.
+      const redirect = params.redirectResponse;
+      const superseded = session.networkPending.get(params.requestId);
+      if (redirect && superseded) {
+        recordNetwork(session, {
+          method: superseded.method,
+          url: superseded.url,
+          type: superseded.type,
+          status: Number(redirect.status) || 0,
+          mime_type: boundedText(redirect.mimeType, 64) || null,
+          failed: false,
+          error: null,
+          // Where it went. Without this a 302 is a status with no destination, and the entry
+          // that follows looks like an unrelated request to a different URL.
+          redirected_to: boundedText(requestUrl, MAX_ENTRY_URL_CHARS),
+          ms: Math.max(0, Date.now() - superseded.startedMs),
+        });
       }
       // Held until the response arrives, because CDP reports the method and URL here and the
       // status there. Capped: a page that starts requests it never finishes must not grow this
@@ -1908,6 +1936,7 @@ chrome.debugger.onEvent.addListener((source, method, params) => {
         mime_type: boundedText(params.response.mimeType, 64) || null,
         failed: false,
         error: null,
+        redirected_to: null,
         ms: Math.max(0, Date.now() - pending.startedMs),
       });
     }
@@ -1937,6 +1966,7 @@ chrome.debugger.onEvent.addListener((source, method, params) => {
             failed: true,
             error:
               boundedText(params.errorText, MAX_ENTRY_TEXT_CHARS) || "failed",
+            redirected_to: null,
             ms: Math.max(0, Date.now() - pending.startedMs),
           });
         }
@@ -3790,8 +3820,33 @@ async function handleClick(session, tabId, args) {
 // then re-snapshots to read what appeared. Optional dwell lets hover-intent JS settle.
 async function handleHover(session, tabId, args) {
   await ensureAttached(session, tabId);
-  requireSnapshotTab(session, tabId);
-  const point = await resolveActionPoint(tabId, args.backendNodeId);
+  // Not every hoverable thing gets a ref. An <a> with no href, or a <div> with only an
+  // onmouseenter handler, has no accessibility role that says "interactable", so the snapshot
+  // shows it without one. browser_click_at already answers that for clicks by taking a pixel of
+  // the last screenshot; hover had no such path, which left those elements reachable by click
+  // and not by hover. The coordinate is converted exactly as browser_click_at converts it, and
+  // is refused unless the screenshot it came from still matches the live render.
+  const byPoint =
+    args.x !== undefined &&
+    args.x !== null &&
+    args.y !== undefined &&
+    args.y !== null;
+  if (byPoint && typeof args.backendNodeId === "number") {
+    throw new Error("browser_hover takes EITHER a ref or x/y, not both.");
+  }
+  let point;
+  if (byPoint) {
+    point = await screenshotPoint(
+      session,
+      tabId,
+      Number(args.x),
+      Number(args.y),
+      "browser_hover",
+    );
+  } else {
+    requireSnapshotTab(session, tabId);
+    point = await resolveActionPoint(tabId, args.backendNodeId);
+  }
   await moveAgentCursor(tabId, point.x, point.y);
   await dispatchMouse(tabId, "mouseMoved", point.x, point.y, {
     modifiers: parseModifiers(args.modifiers),
@@ -4113,6 +4168,18 @@ async function handleType(session, tabId, args) {
 // PAGE, serialized by source, so it closes over nothing here -- everything it needs is a
 // parameter. Kept at module scope for that reason: nesting it would imply a closure it cannot have.
 const selectOptionFn = function (mode, value, label, index, values) {
+  // Option text as a human reads it. A page that writes &nbsp; between words -- which plenty do
+  // for alignment -- puts U+00A0 in option.text, while the snapshot the caller copied the label
+  // out of shows an ordinary space. Comparing those with === means "Los Angeles" never matches
+  // the option literally called "Los Angeles". Collapse whitespace on BOTH sides, so a label
+  // read off the snapshot selects the option it names.
+  const sameLabel = (a, b) => {
+    if (typeof a !== "string" || typeof b !== "string") {
+      return false;
+    }
+    const flat = (t) => t.replace(/\s+/g, " ").trim();
+    return flat(a) === flat(b);
+  };
   const el = this;
   if (!el || el.tagName !== "SELECT") {
     return { ok: false, error: "the ref is not a <select> element" };
@@ -4144,7 +4211,7 @@ const selectOptionFn = function (mode, value, label, index, values) {
       const o = el.options[j];
       let at = -1;
       for (let w = 0; w < want.length; w++) {
-        if (want[w] === o.value || want[w] === o.text) {
+        if (want[w] === o.value || sameLabel(want[w], o.text)) {
           at = w;
           break;
         }
@@ -4181,7 +4248,10 @@ const selectOptionFn = function (mode, value, label, index, values) {
       chosen = i;
       break;
     }
-    if (mode === "label" && (opt.label === label || opt.text === label)) {
+    if (
+      mode === "label" &&
+      (sameLabel(opt.label, label) || sameLabel(opt.text, label))
+    ) {
       chosen = i;
       break;
     }
@@ -6863,6 +6933,15 @@ const PERMISSION_TYPES = {
 };
 const PERMISSION_SETTINGS = ["allow", "block", "ask"];
 
+// What Chrome actually accepts, per type. "ask" is meaningful only where there is a prompt to
+// show: javascript, images and popups are on-or-off, and asking for "ask" on them is rejected by
+// the API rather than treated as a default. Anything not listed takes the full set.
+const SETTINGS_BY_PERMISSION = {
+  javascript: ["allow", "block"],
+  images: ["allow", "block"],
+  popups: ["allow", "block"],
+};
+
 // A single concrete host: a dotted name, or a bracketed IPv6 literal. "*" is NOT a forbidden
 // host code point in the URL standard, so `new URL("https://*")` parses with host "*" -- and
 // that host would reach chrome.contentSettings as the pattern "https://*/*", which grants the
@@ -6941,8 +7020,23 @@ async function handlePermission(session, args) {
       );
     }
   }
-  // set() rejects when a setting does not apply to a type (e.g. 'ask' on images); that error
-  // surfaces honestly to the caller rather than being swallowed.
+  // Chrome accepts a different set of values per type, and passing one it does not take comes
+  // back as "Invalid invocation: Error at property 'setting': Value must be one of allow,
+  // block" -- which names neither the tool, the permission, nor what WOULD have worked. The
+  // check moves here so the refusal can say all three.
+  const allowed = SETTINGS_BY_PERMISSION[typeKey] || PERMISSION_SETTINGS;
+  if (allowed.indexOf(setting) < 0) {
+    throw new Error(
+      "Chrome does not accept '" +
+        setting +
+        "' for the '" +
+        String(args.name).toLowerCase() +
+        "' permission; it takes " +
+        allowed.join(" or ") +
+        ". Chrome's extension API cannot return one site to the browser default -- " +
+        "clear that in chrome://settings/content.",
+    );
+  }
   await store.set({ primaryPattern: pattern, setting });
   return { ok: true, name: String(args.name).toLowerCase(), setting, pattern };
 }

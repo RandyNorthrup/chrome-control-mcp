@@ -80,6 +80,11 @@ never got a response carries the browser's error text instead of a status, becau
 failure has no status and reporting `0` would read as a server answering `0`. `failed_only: true`
 narrows to failures and `4xx`/`5xx`.
 
+A redirect is two hops under one request id, and both are logged: the hop that redirected carries
+its own status (302) and `redirected_to`, and the request it landed on is its own entry. Without
+that, a form POST that redirects appeared only as the GET which followed -- the opposite of what
+the tool is for.
+
 An entry is written when the response arrives, not when the body finishes loading. That is
 deliberate, and both reasons were measured: the document's own request completes the navigation it
 caused, and the navigation drops anything still awaiting a response -- so waiting for the body lost

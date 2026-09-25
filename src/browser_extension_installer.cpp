@@ -372,12 +372,15 @@ ExtensionInstallResult BrowserExtensionInstaller::install() {
   // and the clicks.
   return {true, QStringLiteral("Browser extension bridge prepared"),
           QStringLiteral(
-              "Native host registered. The extension itself must now be loaded "
-              "once, by hand, by the person at the keyboard: open "
-              "chrome://extensions, turn on Developer mode, choose Load "
-              "unpacked, and select %1. Chrome offers no programmatic way to "
-              "load an unpacked extension, so do not try to automate this step "
-              "-- ask the user to do it. Then reload or restart Chrome.")
+              "Native host registered. If the extension is NOT yet loaded in "
+              "Chrome, it must be loaded once, by hand, by the person at the "
+              "keyboard: open chrome://extensions, turn on Developer mode, "
+              "choose Load unpacked, and select %1. Chrome offers no "
+              "programmatic way to load an unpacked extension, so do not try "
+              "to automate this step -- ask the user to do it. If it is "
+              "already loaded (browser_extension_status reports the bridge "
+              "attached), nothing further is needed here; reload it at "
+              "chrome://extensions only to pick up a new version.")
               .arg(QDir::toNativeSeparators(config_.extension_path))};
 }
 

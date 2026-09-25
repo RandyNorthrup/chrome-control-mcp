@@ -269,8 +269,10 @@ QHash<QString, CmdSpec> interactionCommandSpecs() {
          {QStringLiteral("modifiers"), QStringLiteral("string"), false}}}},
       {QStringLiteral("browser_hover"),
        {QStringLiteral("hover"),
-        QStringLiteral("required"),
-        {{QStringLiteral("duration_ms"), QStringLiteral("int"), false},
+        QStringLiteral("optional"),
+        {{QStringLiteral("x"), QStringLiteral("int"), false},
+         {QStringLiteral("y"), QStringLiteral("int"), false},
+         {QStringLiteral("duration_ms"), QStringLiteral("int"), false},
          {QStringLiteral("modifiers"), QStringLiteral("string"), false}}}},
       {QStringLiteral("browser_drag"),
        {QStringLiteral("drag"),
@@ -921,11 +923,19 @@ void appendNavTools(QJsonArray &tools) {
       toolSchema({}, {})));
   tools.append(toolEntry(
       QStringLiteral("browser_back"),
-      QStringLiteral("Go back one entry in the active tab's history."),
+      QStringLiteral(
+          "Go back one entry in the active tab's history. Chrome does not "
+          "create a history entry for a navigation the user never interacted "
+          "with, so a browser_navigate that nobody clicked on may leave "
+          "nothing to go back to -- that refusal is Chrome's, not this "
+          "tool's."),
       toolSchema({}, {})));
   tools.append(toolEntry(
       QStringLiteral("browser_forward"),
-      QStringLiteral("Go forward one entry in the active tab's history."),
+      QStringLiteral(
+          "Go forward one entry in the active tab's history. There is nothing "
+          "forward of the newest entry, and following a fresh navigation "
+          "there usually is none."),
       toolSchema({}, {})));
   tools.append(toolEntry(QStringLiteral("browser_reload"),
                          QStringLiteral("Reload the active tab."),
@@ -1082,12 +1092,24 @@ void appendPointerTools(QJsonArray &tools) {
       QStringLiteral(
           "Move the pointer over the element with [ref] to reveal hover menus, "
           "tooltips, or row actions, then take a fresh snapshot to read what "
-          "appeared. duration_ms lets hover-intent UI settle."),
+          "appeared. duration_ms lets hover-intent UI settle. An element with "
+          "no accessibility role -- a link with no href, a div with only an "
+          "onmouseenter handler -- gets no ref; hover it by x/y instead, which "
+          "are pixels of the latest browser_screenshot, exactly as "
+          "browser_click_at takes them. Give a ref or x/y, never both."),
       toolSchema(
           QJsonObject{
               {QStringLiteral("ref"),
                stringProperty(
                    QStringLiteral("Element ref to hover, e.g. \"e5\"."))},
+              {QStringLiteral("x"),
+               typedProperty(QStringLiteral("integer"),
+                             QStringLiteral(
+                                 "Screenshot x, for an element with no ref."))},
+              {QStringLiteral("y"),
+               typedProperty(QStringLiteral("integer"),
+                             QStringLiteral(
+                                 "Screenshot y, for an element with no ref."))},
               {QStringLiteral("duration_ms"),
                typedProperty(QStringLiteral("integer"),
                              QStringLiteral("Dwell time in ms (optional)."))}},
@@ -1751,9 +1773,9 @@ void appendRecordTools(QJsonArray &tools) {
           "Stop the recording started by browser_record_start and return the "
           "saved video path, its duration, and the path of a JSON timeline "
           "written beside it. The timeline lists every command that ran while "
-          "recording -- its id, name, offset in milliseconds, and the DOM "
-          "generation at that moment -- so the video can be read against what "
-          "drove it."),
+          "recording -- its id, the command name in `cmd`, `offset_ms`, and "
+          "the DOM generation in `dom_epoch` -- so the video can be read "
+          "against what drove it."),
       toolSchema(QJsonObject{}, {})));
 }
 
