@@ -19,7 +19,14 @@
 // alarm -- and Chrome coalesces a background worker's timers, so a browser that started before
 // its server can take the better part of a minute to find it. Measured: 6-10 s on a foreground
 // Chrome, longer on several dedicated browsers starting at once.
-const ATTACH_DEADLINE_MS = 90_000;
+//
+// 90 s covered three alarm periods, which was enough until the matrix began running two browsers
+// at a time on a hosted Windows runner: two configurations there failed with "did not attach
+// within 90 s" and both passed on a re-run, which is a budget sitting right on the edge rather
+// than a broken bridge. A deadline that is occasionally too short does not find bugs, it
+// manufactures them -- and every second of it is spent only when the attach is actually slow, so
+// a generous one costs nothing on a fast machine.
+const ATTACH_DEADLINE_MS = 180_000;
 const POLL_MS = 250;
 const NOT_ATTACHED = "extension is not attached";
 

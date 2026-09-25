@@ -37,6 +37,10 @@ against live sites, each checked by its effect rather than its reply.
   already loaded and connected.
 - A live-suite failure reported `SyntaxError: Unexpected token 'b'` when a tool answered with
   prose instead of JSON. It now reports what the tool actually said.
+- The live suites' attach budget was 90 s, which two Windows configurations exceeded under the
+  matrix's two-at-a-time browser startup and both passed on a re-run. A deadline sitting on the
+  edge manufactures failures rather than finding them; it is 180 s, and the extra is spent only
+  when an attach is actually slow.
 
 ## [1.6.0] - 2026-09-24
 
