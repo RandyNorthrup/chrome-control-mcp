@@ -104,6 +104,8 @@ const EXPORTED = [
   "makeSession",
   "scrollerPathFn",
   "SCROLLER_PATH_SOURCE",
+  "scrollMovedFn",
+  "scrollEndScript",
   "buildActionableMap",
   "hasPointerHandlerAttr",
   "hasUsableBox",
@@ -645,6 +647,111 @@ test("a command that fails still leaves no beat running behind it", async (t) =>
     1,
     "the failure path clears the interval too",
   );
+});
+
+// From a CI failure at 200% zoom under a pinch: browser_scroll answered "settled, scrolled 0" and
+// the page then moved 100px more, so the next step read a stale position and the scroll after it
+// over-reported by exactly that 100.
+//
+// One mismatch produced both halves. The in-page rest detector resolved when the serialized offsets
+// DIFFERED from the ones read before the wheel -- and the chain under the point changes composition
+// as content moves, so a scroller entering or leaving it makes a different string without anything
+// having moved. scrollDistance, which matches only the names present in both reads, correctly
+// reported 0. So the wheel was declared at rest before it had moved anything.
+test("rest means a scroller moved, not that the list looks different", () => {
+  const before = [
+    ["visual-viewport", 0, 0],
+    ["BODY/DIV[0]#list", 0, 100],
+    ["page", 0, 613],
+  ];
+
+  // Nothing moved: not rest, whatever else changed about the list.
+  assert.equal(w.scrollMovedFn(before, before), false);
+
+  // A scroller that was not under the point before is now, and one that was has gone. No offset
+  // that both reads can see has changed -- which is precisely the case that used to read as rest.
+  const shuffled = [
+    ["visual-viewport", 0, 0],
+    ["BODY/DIV[1]#other", 0, 4000],
+    ["page", 0, 613],
+  ];
+  assert.equal(
+    w.scrollMovedFn(before, shuffled),
+    false,
+    "a different chain is not a moved page",
+  );
+  // And scrollDistance agrees, which is the point: one rule, two callers.
+  assert.deepEqual(crossRealm(w.scrollDistance(before, shuffled)), {
+    x: 0,
+    y: 0,
+  });
+
+  // Real movement, of any scroller in the chain, is rest.
+  assert.equal(
+    w.scrollMovedFn(before, [
+      ["visual-viewport", 0, 0],
+      ["BODY/DIV[0]#list", 0, 340],
+      ["page", 0, 613],
+    ]),
+    true,
+    "the inner scroller moved",
+  );
+  assert.equal(
+    w.scrollMovedFn(before, [
+      ["visual-viewport", 0, 0],
+      ["BODY/DIV[0]#list", 0, 100],
+      ["page", 0, 0],
+    ]),
+    true,
+    "the page moved",
+  );
+  // The pinched viewport panning counts too: it is what the wheel spent.
+  assert.equal(
+    w.scrollMovedFn(before, [
+      ["visual-viewport", 0, 100],
+      ["BODY/DIV[0]#list", 0, 100],
+      ["page", 0, 613],
+    ]),
+    true,
+    "the visual viewport panned",
+  );
+});
+
+// The watcher is a string built for the page, so what matters is that the page can run it and that
+// it carries everything it calls. A missing prelude is a ReferenceError inside a listener, where
+// nothing would report it -- the scroll would simply never settle.
+test("the rest detector carries every function it calls", () => {
+  const script = w.scrollEndScript(10, 20, [["page", 0, 0]]);
+  for (const needed of ["scrollerPathFn", "scrollMovedFn"]) {
+    assert.ok(
+      script.includes("var " + needed + "="),
+      needed + " must travel with the script",
+    );
+  }
+  // Runnable in a realm that has none of the worker's scope: the page is exactly that.
+  const run = new Function(
+    "window",
+    "document",
+    "getComputedStyle",
+    "addEventListener",
+    "removeEventListener",
+    "setTimeout",
+    "return " + script,
+  );
+  const ends = [];
+  const promise = run(
+    { visualViewport: { offsetLeft: 0, offsetTop: 0 } },
+    { elementFromPoint: () => null, scrollingElement: null },
+    () => ({ overflowX: "visible", overflowY: "visible" }),
+    (_type, fn) => ends.push(fn),
+    () => {},
+    (fn) => {
+      // The page's own give-up timer. Called at once here so the promise settles.
+      fn();
+    },
+  );
+  assert.ok(promise instanceof Promise);
+  assert.equal(ends.length, 1, "it listens for exactly one scrollend");
 });
 
 test("scrollDistance matches scrollers by name, and counts each once", () => {

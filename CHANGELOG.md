@@ -42,6 +42,24 @@ had a test that could fail.
   blaming the connection. The beat also keeps the MV3 service worker alive while it works, which is
   the other half of why long commands died.
 
+- A reply too big to cross the pipe inside one budget failed as a timeout while it was arriving
+  perfectly well. The read loop handed every chunk the same shrinking deadline, so the budget
+  bounded the whole TRANSFER rather than a gap in it -- and the progress beats cannot help there,
+  because once the extension starts posting the reply there are no more beats to send. Found by a
+  CI run that lost a 5120x2880 screenshot to
+  `browser did not reply within 30000 ms (connection reset)`, which is the exact message this
+  release exists to stop printing for work that is going fine. A chunk that moved bytes now
+  restarts the budget, bounded by the ceiling on the whole exchange.
+- `browser_wait_for` silently clamped `timeout_ms` to 25 s. That cap was there to dodge the very
+  budget above -- its comment said so -- and a caller asking for 60 s got 25 and was told nothing.
+  The budget restarts on a beat now, so the cap is the same 120 s ceiling `browser_download`
+  already uses, and the description states it.
+- The in-page rest detector reported a scroll as settled when the serialized offsets merely looked
+  different. The chain under the point changes composition as content moves, so a scroller entering
+  or leaving it read as movement -- while `scrollDistance`, which matches only the names present in
+  both reads, correctly reported 0. So `browser_scroll` could answer "settled, scrolled 0" and the
+  page would go on moving after the reply, leaving the next call to read a stale position. Both now
+  measure by one rule.
 - The extension asked for a bridge that was not there every couple of seconds, for as long as the
   browser was open. Every attempt starts a process -- `connectNative` makes Chrome launch the native
   host, which looks for a published server, finds none, says so and exits -- and the 2 s retry was

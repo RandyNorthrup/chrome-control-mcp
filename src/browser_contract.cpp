@@ -1452,9 +1452,12 @@ void appendWaitForTool(QJsonArray &tools) {
                    QStringLiteral(
                        "Wait for the condition to be false (optional)."))},
               {QStringLiteral("timeout_ms"),
-               typedProperty(
-                   QStringLiteral("integer"),
-                   QStringLiteral("Max wait in ms (default 8000)."))}},
+               typedProperty(QStringLiteral("integer"),
+                             // The cap is stated because it is enforced by
+                             // clamping: a caller asking for more than this got
+                             // less and was told nothing about it.
+                             QStringLiteral("Max wait in ms (default 8000, cap "
+                                            "120000)."))}},
           {})));
 }
 

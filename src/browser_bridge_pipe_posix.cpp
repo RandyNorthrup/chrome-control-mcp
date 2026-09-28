@@ -43,6 +43,27 @@ constexpr int kChromeAncestorMaxDepth = 12;
 struct IoDeadline {
   std::chrono::steady_clock::time_point deadline;
   int cancel_fd{-1};
+  // Zero leaves this a hard deadline, which is what the handshake and every
+  // write want. Set, it makes the budget a SILENCE budget: bytes arriving push
+  // the deadline out again, never past absolute_end.
+  int refresh_ms{0};
+  std::chrono::steady_clock::time_point absolute_end{};
+
+  // Called after a chunk that actually moved bytes. A frame still arriving is
+  // not a peer that has gone quiet, and a multi-megabyte screenshot crossing a
+  // loaded machine's socket used to fail as a timeout while it was arriving
+  // perfectly well.
+  void noteProgress() {
+    if (refresh_ms == 0) {
+      return;
+    }
+    const auto next = std::chrono::steady_clock::now() +
+                      std::chrono::milliseconds(refresh_ms);
+    deadline =
+        (absolute_end.time_since_epoch().count() != 0 && next > absolute_end)
+            ? absolute_end
+            : next;
+  }
 
   [[nodiscard]] int remainingMs() const {
     const auto remaining =
@@ -103,7 +124,9 @@ bool waitForIo(int fd, short events, const IoDeadline &deadline) {
 }
 
 bool socketReadExact(int socket_fd, char *buffer, qsizetype size,
-                     const IoDeadline &deadline) {
+                     const IoDeadline &whole_read) {
+  // A copy, so a refreshed budget bounds this read and leaks into nothing else.
+  IoDeadline deadline = whole_read;
   qsizetype offset = 0;
   while (offset < size) {
     if (!waitForIo(socket_fd, POLLIN, deadline)) {
@@ -122,6 +145,7 @@ bool socketReadExact(int socket_fd, char *buffer, qsizetype size,
       return false;
     }
     offset += received;
+    deadline.noteProgress(); // bytes arriving is not a peer gone quiet
   }
   return true;
 }
@@ -603,7 +627,11 @@ bool BrowserBridgePipeServer::awaitReply(const QJsonObject &request,
     ceiling_bounds_read = remaining <= options_.io_timeout_ms;
     const int budget = static_cast<int>(std::min<qint64>(
         options_.io_timeout_ms, std::max<qint64>(0, remaining)));
-    const IoDeadline deadline = deadlineAfter(budget, shutdown_pipe_[0]);
+    IoDeadline deadline = deadlineAfter(budget, shutdown_pipe_[0]);
+    // The reply's own transfer counts as progress: a frame big enough to take
+    // longer than one budget to cross is not a silent peer.
+    deadline.refresh_ms = options_.io_timeout_ms;
+    deadline.absolute_end = absolute_end;
     if (!readFrame(connection_fd_, deadline, reply)) {
       *why = whyItEnded();
       return false;

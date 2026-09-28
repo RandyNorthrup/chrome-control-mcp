@@ -5050,11 +5050,13 @@ async function handleWaitFor(session, tabId, args) {
   // The generation this wait belongs to. Re-checked every poll so a superseded wait stops
   // driving the page instead of finishing into a connection that is already gone.
   const gen = session.commandGeneration;
-  // The whole exchange lives under the bridge's single I/O deadline (30s); a wait allowed to
-  // outlast it leaves the app reporting a transport reset while this loop keeps polling and
-  // finally posts its reply into a dead relay. Stay inside the deadline so the timeout the
-  // caller sees is this handler's honest "not satisfied", not a torn-down connection.
-  const timeout = waitDurationMs(args.timeout_ms, "timeout_ms", 8000, 25000);
+  // This used to be capped at 25 s to stay inside the bridge's 30 s deadline: a wait that
+  // outlasted it left the caller reading a transport reset while this loop kept polling and
+  // finally posted its reply into a relay that was already gone. That deadline is a SILENCE
+  // budget now -- the progress beat this command sends every few seconds restarts it -- so the
+  // cap is the same 120 s ceiling browser_download uses, comfortably inside the 180 s ceiling on
+  // a whole exchange. The timeout a caller sees is still this handler's own "not satisfied".
+  const timeout = waitDurationMs(args.timeout_ms, "timeout_ms", 8000, 120000);
   const absent = args.absent === true;
   const text =
     typeof args.text === "string" && args.text.length > 0 ? args.text : null;
@@ -5997,11 +5999,12 @@ function scrollDirection(raw) {
 const scrollEndScript = (x, y, before) =>
   `new Promise(function(done){` +
   SCROLLER_PATH_SOURCE +
+  SCROLL_MOVED_SOURCE +
   `var read=${scrollOffsetsFn.toString()};` +
-  `var before=${JSON.stringify(JSON.stringify(before))};` +
+  `var before=${JSON.stringify(before)};` +
   `function clear(){removeEventListener('scrollend',onEnd,true);}` +
   `function onEnd(){var now=read(${Number(x)}, ${Number(y)});` +
-  `if(JSON.stringify(now)===before){return;}clear();done(now);}` +
+  `if(!scrollMovedFn(before,now)){return;}clear();done(now);}` +
   `addEventListener('scrollend',onEnd,true);` +
   `setTimeout(function(){clear();done(null);},${SCROLL_END_PAGE_TIMEOUT_MS});})`;
 // How long to wait for that scrollend. A scroll that moves nothing -- an edge already reached,
@@ -6101,10 +6104,30 @@ function scrollOffsetsFn(x, y) {
   return offsets;
 }
 
+// Whether any scroller present in BOTH reads has moved.
+//
+// The same rule scrollDistance measures by, and for the same reason: the chain under the point
+// changes composition as the content moves, so an entry appearing or disappearing is not movement
+// and must not be read as any. The in-page rest detector used to compare the whole serialized
+// list, which made exactly that mistake -- it answered "at rest" for a wheel that had not moved
+// anything yet, while scrollDistance correctly reported 0, and the page went on moving after the
+// reply had been sent.
+function scrollMovedFn(before, now) {
+  const was = new Map(before.map((entry) => [entry[0], entry]));
+  for (const [name, left, top] of now) {
+    const previous = was.get(name);
+    if (previous && (previous[1] !== left || previous[2] !== top)) {
+      return true;
+    }
+  }
+  return false;
+}
+
 // Both readers are stringified into the page, and an injected function cannot call one that stayed
-// in the worker: whatever they use has to travel with them. Declared under its own name so the
-// same source works unchanged in the worker's scope, where the tests call it directly.
+// in the worker: whatever they use has to travel with them. Declared under their own names so the
+// same source works unchanged in the worker's scope, where the tests call them directly.
 const SCROLLER_PATH_SOURCE = `var scrollerPathFn=${scrollerPathFn.toString()};`;
+const SCROLL_MOVED_SOURCE = `var scrollMovedFn=${scrollMovedFn.toString()};`;
 
 // A promise for the offsets the page comes to rest at, away from `before`; null if it never does.
 function armScrollEnd(tabId, x, y, before) {

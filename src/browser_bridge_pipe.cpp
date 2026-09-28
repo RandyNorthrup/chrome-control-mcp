@@ -55,6 +55,25 @@ constexpr int kChromeAncestorMaxDepth = 12;
 struct IoDeadline {
   ULONGLONG m_deadline_tick;
   HANDLE m_cancel_event;
+  // Zero leaves this a hard deadline, which is what the handshake and every
+  // write want. Set, it makes the budget a SILENCE budget: bytes arriving push
+  // the deadline out again, never past m_absolute_tick.
+  DWORD m_refresh_ms{0};
+  ULONGLONG m_absolute_tick{0};
+
+  // Called after a chunk that actually moved bytes. A frame still arriving is
+  // not a peer that has gone quiet, and a multi-megabyte screenshot crossing a
+  // loaded machine's pipe used to fail as a timeout while it was arriving
+  // perfectly well.
+  void noteProgress() {
+    if (m_refresh_ms == 0) {
+      return;
+    }
+    const ULONGLONG next = GetTickCount64() + m_refresh_ms;
+    m_deadline_tick = (m_absolute_tick != 0 && next > m_absolute_tick)
+                          ? m_absolute_tick
+                          : next;
+  }
 
   [[nodiscard]] DWORD remainingMs() const {
     const ULONGLONG now = GetTickCount64();
@@ -110,6 +129,7 @@ bool pipeReadExact(HANDLE pipe, char *buffer, DWORD size, IoDeadline deadline) {
       return false;
     }
     offset += static_cast<DWORD>(got);
+    deadline.noteProgress(); // a local copy, so only this read is extended
   }
   return true;
 }
@@ -570,7 +590,11 @@ bool BrowserBridgePipeServer::awaitReply(const QJsonObject &request,
     ceiling_bounds_read = absolute_end <= quiet_end;
     const IoDeadline deadline{
         .m_deadline_tick = ceiling_bounds_read ? absolute_end : quiet_end,
-        .m_cancel_event = shutdown_event_};
+        .m_cancel_event = shutdown_event_,
+        // The reply's own transfer counts as progress: a frame big enough to
+        // take longer than one budget to cross is not a silent peer.
+        .m_refresh_ms = static_cast<DWORD>(options_.io_timeout_ms),
+        .m_absolute_tick = absolute_end};
     if (!readFrame(pipe_, deadline, reply)) {
       *why = whyItEnded();
       return false;

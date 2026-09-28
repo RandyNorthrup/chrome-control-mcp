@@ -136,6 +136,48 @@ bool clientWrite(NativeIpcHandle handle, const QJsonObject &object) {
   return true;
 }
 
+// Write one frame in pieces, pausing between them: what a multi-megabyte reply
+// looks like crossing a busy machine. Returns false as soon as the peer stops
+// taking it.
+bool clientWriteSlowly(NativeIpcHandle handle, const QJsonObject &object,
+                       qsizetype chunk, int gap_ms) {
+  const QByteArray frame = encodeFrame(object);
+  qsizetype offset = 0;
+  while (offset < frame.size()) {
+    const qsizetype piece = qMin(chunk, frame.size() - offset);
+    qsizetype written = 0;
+    while (written < piece) {
+#ifdef Q_OS_WIN
+      DWORD wrote = 0;
+      if (WriteFile(handle, frame.constData() + offset + written,
+                    static_cast<DWORD>(piece - written), &wrote,
+                    nullptr) == FALSE ||
+          wrote == 0) {
+        return false;
+      }
+      written += wrote;
+#else
+#ifdef MSG_NOSIGNAL
+      constexpr int flags = MSG_NOSIGNAL;
+#else
+      constexpr int flags = 0;
+#endif
+      const ssize_t wrote = ::send(handle, frame.constData() + offset + written,
+                                   static_cast<size_t>(piece - written), flags);
+      if (wrote <= 0) {
+        return false;
+      }
+      written += wrote;
+#endif
+    }
+    offset += piece;
+    if (offset < frame.size()) {
+      sleepMilliseconds(gap_ms);
+    }
+  }
+  return true;
+}
+
 bool clientReadExact(NativeIpcHandle handle, char *buffer, qsizetype size) {
   qsizetype offset = 0;
   while (offset < size) {
@@ -253,6 +295,7 @@ private slots:
   void handshake_thenCommandReplyRoundTrips();
   void silentPeer_deadlineResetsConnection();
   void workingPeer_beatsHoldTheConnectionOpen();
+  void slowFrame_transferHoldsTheConnectionOpen();
   void endlessPeer_absoluteCapAbandonsTheCommand();
   void reconnect_secondClientServedWithNewGeneration();
   void doubleStop_isSafe();
@@ -613,6 +656,68 @@ void BrowserBridgePipeTests::workingPeer_beatsHoldTheConnectionOpen() {
 // is an MCP call that never returns. The refusal says the command ran too long
 // rather than blaming the connection -- the caller's next move is not the one a
 // transport failure calls for.
+// A frame that is still arriving is not a peer that has gone silent.
+//
+// The read loop handed every chunk the SAME shrinking deadline, so a reply had
+// to cross the pipe IN FULL inside one budget however steadily its bytes
+// flowed. A screenshot at 5120x2880 is megabytes; on a loaded runner that
+// transfer outran 30 s and came back as "browser did not reply within 30000 ms
+// (connection reset)" -- for a reply that was arriving perfectly well. The
+// progress beats cannot help there: once the extension starts posting the reply
+// there are no more beats to send, and the stall is in the transfer itself.
+//
+// Here the peer takes three times its silence budget to deliver one frame, a
+// piece at a time.
+void BrowserBridgePipeTests::slowFrame_transferHoldsTheConnectionOpen() {
+  QTemporaryDir dir;
+  BrowserBridgePipeServer server(
+      testOptions(dir.filePath(QStringLiteral("r.json")), 300));
+  QString error;
+  QVERIFY2(server.start(&error), qPrintable(error));
+
+  const QString name = server.pipeName();
+  const QString token = server.token();
+  // Big enough that it has to be chunked, and recognisable on the way out.
+  const QString payload(4000, QLatin1Char('x'));
+  std::thread client([&] {
+    const NativeIpcHandle handle = connectAndHandshake(name, token);
+    if (handle == kInvalidNativeIpcHandle) {
+      return;
+    }
+    QJsonObject command;
+    if (!clientRead(handle, &command)) {
+      closeNativeIpcHandle(handle);
+      return;
+    }
+    // Ten pieces, 100 ms apart: a second of transfer against a 300 ms budget.
+    clientWriteSlowly(
+        handle,
+        QJsonObject{{QStringLiteral("type"), QStringLiteral("result")},
+                    {QStringLiteral("id"), QStringLiteral("b-1")},
+                    {QStringLiteral("payload"),
+                     QJsonObject{{QStringLiteral("data"), payload}}}},
+        450, 100);
+    closeNativeIpcHandle(handle);
+  });
+
+  QVERIFY(waitUntil([&server] { return server.clientConnected(); }, 5000));
+  const auto exchange = server.sendCommandAwaitReply(
+      QJsonObject{{QStringLiteral("type"), QStringLiteral("command")},
+                  {QStringLiteral("id"), QStringLiteral("b-1")},
+                  {QStringLiteral("cmd"), QStringLiteral("screenshot")}});
+  QVERIFY2(exchange.ok, qPrintable(exchange.error));
+  // Whole and intact, not merely accepted.
+  QCOMPARE(exchange.reply.value(QStringLiteral("payload"))
+               .toObject()
+               .value(QStringLiteral("data"))
+               .toString()
+               .size(),
+           payload.size());
+
+  client.join();
+  server.stop();
+}
+
 void BrowserBridgePipeTests::endlessPeer_absoluteCapAbandonsTheCommand() {
   QTemporaryDir dir;
   auto options = testOptions(dir.filePath(QStringLiteral("r.json")), 1000);
