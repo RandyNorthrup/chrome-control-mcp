@@ -54,6 +54,14 @@ had a test that could fail.
   budget above -- its comment said so -- and a caller asking for 60 s got 25 and was told nothing.
   The budget restarts on a beat now, so the cap is the same 120 s ceiling `browser_download`
   already uses, and the description states it.
+- `browser_scroll` reported `settled` for a wheel that had not been acted on yet. "Nothing moved"
+  was treated as "an edge already reached" -- true at an edge, wrong when the scroll simply has not
+  begun, which on a heavily zoomed page is the common case: at 25% zoom a request of 200 is 800 CSS
+  px of animated travel. The reply then said `scrolled 0, settled true` and the page went on moving,
+  so the next call read a position it had already left and the scroll after that over-reported by
+  the difference. Reported twice by CI, on two platforms and two configurations. `room` already
+  distinguished the two cases and was already in the reply: nothing moved with room left now waits
+  to find out, and nothing moved with no room is still answered at once.
 - The in-page rest detector reported a scroll as settled when the serialized offsets merely looked
   different. The chain under the point changes composition as content moves, so a scroller entering
   or leaving it read as movement -- while `scrollDistance`, which matches only the names present in
@@ -74,6 +82,9 @@ had a test that could fail.
 
 ### Added
 
+- `tools/backoff_probe.mjs`, which measures the reconnect cadence in a real browser rather than
+  against mocked timers: it loads the extension with no server to find and counts the attempts. On
+  a 75-second watch it records 6, where the retry it replaced would have made at least 37.
 - A pause switch on the toolbar button, because backing off is not the same as being able to stop.
   Clicking it while the bridge is connected pauses it: the open ports are closed, the browser is
   released, and nothing reaches for it again until it is resumed. Clicking while paused resumes and

@@ -3614,6 +3614,31 @@ async function settleScroll(tabId) {
   }
 }
 
+// How long to keep watching for a wheel to take effect when nothing has moved yet and the chain
+// under the point still had somewhere to go. Long enough for a heavily zoomed page's animated
+// scroll to begin, short enough that a wheel which genuinely missed its scroller does not hold the
+// reply for noticeably longer than it already waits.
+const SCROLL_START_GRACE_MS = 600;
+
+// Wait for a scroll to start, and then for it to finish; answer with the offsets last read.
+//
+// settleScroll alone cannot serve here: it waits for the offsets to stop changing, and before a
+// scroll has begun they already have -- its first two reads agree and it returns at once, having
+// measured nothing. So the start is waited for first, and only then the rest.
+async function awaitScrollStart(tabId, x, y, before) {
+  const giveUp = Date.now() + SCROLL_START_GRACE_MS;
+  let latest = before;
+  while (Date.now() < giveUp) {
+    await pageDelay(tabId, SCROLL_SETTLE_STEP_MS).catch(() => {});
+    latest = await scrollOffsets(tabId, x, y).catch(() => latest);
+    if (scrollMovedFn(before, latest)) {
+      await settleScroll(tabId);
+      return await scrollOffsets(tabId, x, y).catch(() => latest);
+    }
+  }
+  return latest; // the grace expired with nothing moving: the wheel never landed
+}
+
 // Scroll the element into view and return its content quad in visual-viewport CSS px.
 async function resolveActionQuad(tabId, backendNodeId) {
   if (typeof backendNodeId !== "number") {
@@ -6373,22 +6398,40 @@ async function handleScroll(session, tabId, args) {
       () => null,
     ),
   ]);
-  // Rested where the page said, or wherever it is now if no end came. A wheel that moved nothing --
-  // an edge already reached, nothing scrollable under the pointer -- has nothing to come to rest:
-  // that IS the answer, and scrolled says it.
-  const after = rested || (await scrollOffsets(tabId, point.x, point.y));
-  const moved = JSON.stringify(after) !== JSON.stringify(before);
+  // Rested where the page said, or wherever it is now if no end came.
+  const room = scrollRoom(context, deltaY);
+  let after = rested || (await scrollOffsets(tabId, point.x, point.y));
+  // Matched name by name, as scrollDistance and the in-page watcher are: the chain under the point
+  // changes composition as content moves, and an entry appearing or leaving is not movement.
+  const moved = scrollMovedFn(before, after);
+  let settled = Boolean(rested);
+  if (!settled && !moved && room > 0) {
+    // Nothing moved, and there WAS somewhere to go that way -- so this is not an edge. Either the
+    // wheel has not been acted on yet (a big delta on a heavily zoomed page is animated) or it
+    // never reached the scroller. Waiting tells those apart, where reporting rest here told the
+    // caller the page had finished moving when it had not started.
+    //
+    // Whichever it was, the page is at rest by the time this returns: it either moved and then
+    // settled, or the grace expired with nothing moving. `scrolled` is measured from the offsets
+    // below, so the distance follows whatever actually happened.
+    after = await awaitScrollStart(tabId, point.x, point.y, before);
+    settled = true;
+  } else if (!settled) {
+    // Nothing moved and nowhere to go: an edge already reached, which IS rest, and `scrolled` and
+    // `room` together say so.
+    settled = !moved;
+  }
   return {
     ok: true,
     deltaY,
     scrolled: scrollDistance(before, after),
-    settled: Boolean(rested) || !moved,
+    settled,
     waited_ms: Date.now() - started,
     // What the wheel was aimed at and what it had to work with. scrolled 0 with room left is a
     // wheel that never reached the scroller; scrolled 0 with no room is an edge already reached.
     point: { x: Math.round(point.x), y: Math.round(point.y) },
     hit: context.hit,
-    room: scrollRoom(context, deltaY),
+    room,
   };
 }
 

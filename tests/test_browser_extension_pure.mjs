@@ -934,7 +934,10 @@ test("scrollContextFn names what the wheel lands on and the chain under it", () 
 // point stayed put in the viewport, the element slid out from under it, and the wheel scrolled
 // whatever had moved into that spot while the reply named the element the caller asked for. On the
 // macOS runner that was DIV#shadow-host, a different section of the page.
-function scrollWorker(hitAnswers) {
+function scrollWorker(
+  hitAnswers,
+  scrollers = [["BODY/DIV[0]#scroll-region", 0, 600]],
+) {
   const calls = [];
   const hits = hitAnswers.slice();
   const sendCommand = (_target, method, params) => {
@@ -986,10 +989,7 @@ function scrollWorker(hitAnswers) {
       if (expression.includes("scrollers")) {
         return Promise.resolve({
           result: {
-            value: {
-              hit: "DIV#scroll-region",
-              scrollers: [["scroller-0:DIV#scroll-region", 0, 600]],
-            },
+            value: { hit: "DIV#scroll-region", scrollers },
           },
         });
       }
@@ -1015,6 +1015,83 @@ function scrollWorker(hitAnswers) {
   });
   return { worker, calls };
 }
+
+// Reported twice by CI, on two platforms and two configurations: browser_scroll answered
+// `scrolled 0, settled true` and the page then moved. At 25% zoom a request of 200 is 800 CSS px
+// of travel and the scroll is animated, so nothing had happened yet when the reply was built. The
+// reply called that rest -- on the reasoning that a wheel which moved nothing has nothing to come
+// to rest, which is true at an edge and wrong when the wheel simply has not been acted on. The
+// next call then read a position the page had already left.
+//
+// `room` is what tells the two apart, and it was already in the reply.
+test("nothing moved with room left is waited out, not called rest", async () => {
+  // Offsets never change and no scrollend arrives: the shape of a wheel whose scroll has not
+  // begun. Room remains, so this is not an edge.
+  const pending = scrollWorker(
+    [{ hit: "DIV#scroll-region", target: "DIV#scroll-region", onTarget: true }],
+    [["BODY/DIV[0]#scroll-region", 0, 600]],
+  );
+  const session = pending.worker.makeSession();
+  session.attachedTabId = 1;
+  session.lastSnapshotTabId = 1;
+  session.lastSnapshotEpoch = session.domEpoch;
+  const reply = crossRealm(
+    await pending.worker.handleScroll(session, 1, {
+      backendNodeId: 7,
+      direction: "down",
+      amount: 180,
+    }),
+  );
+  assert.equal(reply.ok, true);
+  assert.equal(reply.room, 600, "the chain still had somewhere to go");
+  assert.deepEqual(reply.scrolled, { x: 0, y: 0 });
+  // It waited for the page before answering: the reads that did that are the evidence, because a
+  // reply built straight from the first read is exactly what shipped.
+  const offsetReads = pending.calls.filter(
+    (call) =>
+      call.method === "Runtime.evaluate" &&
+      String(call.params.expression).includes("visual-viewport") &&
+      !String(call.params.expression).includes("new Promise"),
+  ).length;
+  assert.ok(
+    offsetReads > 2,
+    `the reply was built without waiting for the page (${offsetReads} offset reads)`,
+  );
+});
+
+test("nothing moved with nowhere to go is answered at once", async () => {
+  // At the bottom: top === max, so a downward wheel has no room. Nothing moving IS the answer
+  // here, and waiting for it would only make every edge scroll slower.
+  const atEdge = scrollWorker(
+    [{ hit: "DIV#scroll-region", target: "DIV#scroll-region", onTarget: true }],
+    [["BODY/DIV[0]#scroll-region", 600, 600]],
+  );
+  const session = atEdge.worker.makeSession();
+  session.attachedTabId = 1;
+  session.lastSnapshotTabId = 1;
+  session.lastSnapshotEpoch = session.domEpoch;
+  const reply = crossRealm(
+    await atEdge.worker.handleScroll(session, 1, {
+      backendNodeId: 7,
+      direction: "down",
+      amount: 180,
+    }),
+  );
+  assert.equal(reply.ok, true);
+  assert.equal(reply.room, 0, "an edge already reached");
+  assert.equal(reply.settled, true);
+  assert.deepEqual(reply.scrolled, { x: 0, y: 0 });
+  const offsetReads = atEdge.calls.filter(
+    (call) =>
+      call.method === "Runtime.evaluate" &&
+      String(call.params.expression).includes("visual-viewport") &&
+      !String(call.params.expression).includes("new Promise"),
+  ).length;
+  assert.ok(
+    offsetReads <= 2,
+    `an edge should not be waited out (${offsetReads} offset reads)`,
+  );
+});
 
 test("a scroll whose point misses its element is refused, not aimed at a stranger", async () => {
   // Off target both times: the page is moving under the point, and no wheel should be sent.
