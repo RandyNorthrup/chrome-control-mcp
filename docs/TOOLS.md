@@ -1,6 +1,6 @@
 # Tool catalog
 
-Full profile advertises 49 tools: 41 live browser tools, 2 recording tools, 3 extension lifecycle
+Full profile advertises 51 tools: 43 live browser tools, 2 recording tools, 3 extension lifecycle
 tools, and 3
 self-update tools.
 
@@ -41,6 +41,29 @@ input itself or the control that opens it, because nearly every page hides the r
 snapshot as `filechooser "name" [ref=eN] (hidden)`, so either can be named. A control with several
 file inputs in scope is refused rather than guessed at. See [`SECURITY.md`](SECURITY.md) for the
 limits and `CHROME_CONTROL_MCP_UPLOAD_ROOTS`.
+
+### Controls the page wires up itself
+
+A real page builds most of its controls out of plain elements: a `<div>` with a click handler, a
+card that is clickable because it is styled `cursor: pointer`. None of that reaches the
+accessibility tree -- those arrive as `generic` with no name and nothing saying they can be acted
+on -- so a snapshot built from roles alone shows the model scenery where the page has a button.
+
+The capture reads three signals out of the DOM snapshot it already takes, and an element that has a
+box and matches one of them earns a ref with the reason attached:
+
+| Flag          | What it means                                                                                   |
+| ------------- | ----------------------------------------------------------------------------------------------- |
+| `(clickable)` | Chrome's own `isClickable`: a click handler, whether inline or added with `addEventListener`    |
+| `(hoverable)` | the element carries a pointer handler attribute (`onmouseenter`, `onpointerdown`, and the rest) |
+| `(pointer)`   | its computed cursor is `pointer` and its parent's is not                                        |
+
+`cursor` is an inherited property, which is why the parent is part of the last rule: a card and
+everything drawn inside it all compute `pointer`, and the ref belongs on the card. An element laid
+out to nothing gets no ref however it is wired -- there is nothing to aim at.
+
+These flags are descriptive. A ref is a ref: `browser_click`, `browser_hover` and the rest take
+them exactly as they take a button's.
 
 ## Tabs and windows
 
@@ -203,6 +226,12 @@ and policy installation requires a Web Store listing. An assistant should report
 clicks rather than search for a way around it. `browser_extension_uninstall` removes that host
 registration; Chrome extension removal remains manual. No private key or packaged extension is
 used.
+
+`browser_extension_uninstall` reports whether it actually removed anything. Removing a registration
+that was never there succeeds at the system-call level on both platforms -- a missing key and a
+missing file are not errors -- so a reply of "Browser extension bridge unregistered" means a
+registration was found and removed, and "Nothing to unregister" means the machine was already in
+that state and nothing was changed.
 
 ## Updating this server
 

@@ -199,6 +199,47 @@ bool relayHandshake(NativeIpcHandle pipe, const QString &token, int protocol,
   return true;
 }
 
+bool relayFrameIsProgress(const QJsonObject &frame) {
+  return frame.value(QStringLiteral("type")).toString() ==
+         QLatin1String("progress");
+}
+
+bool readBrowserReplyPastProgress(const BrowserReadFn &browser_read,
+                                  RelayProgressQueue *progress,
+                                  QJsonObject *reply) {
+  for (;;) {
+    QJsonObject frame;
+    if (!browser_read(&frame)) {
+      return false;
+    }
+    if (!relayFrameIsProgress(frame)) {
+      *reply = frame;
+      return true;
+    }
+    const std::lock_guard<std::mutex> lock(progress->m_mutex);
+    if (++progress->m_seen > kMaxProgressFramesPerExchange) {
+      return false;
+    }
+    progress->m_frames.push_back(frame);
+  }
+}
+
+bool drainProgressToPipe(NativeIpcHandle pipe, RelayProgressQueue *progress) {
+  std::vector<QJsonObject> beats;
+  {
+    // Taken under the lock and written outside it: a pipe write can block, and
+    // holding the lock across one would stall the thread reading the reply.
+    const std::lock_guard<std::mutex> lock(progress->m_mutex);
+    beats.swap(progress->m_frames);
+  }
+  // all_of stops at the first false, so this is the loop it replaces: oldest
+  // beat first, and the first write the pipe refuses ends the drain.
+  return std::all_of(beats.cbegin(), beats.cend(),
+                     [pipe](const QJsonObject &beat) {
+                       return relayWritePipeFrame(pipe, beat);
+                     });
+}
+
 bool relayPumpOnce(NativeIpcHandle pipe, const BrowserReadFn &browser_read,
                    const BrowserWriteFn &browser_write) {
   QJsonObject command;

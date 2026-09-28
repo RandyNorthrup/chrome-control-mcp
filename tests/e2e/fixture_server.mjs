@@ -26,7 +26,17 @@ function htmlPage(title, body, script = "") {
     #drag-source { background: #1769aa; color: white; }
     #drag-target { background: #207a3c; color: white; }
     #scroll-region { height: 9rem; overflow: auto; border: 1px solid #777; padding: .5rem; }
+    /* Rows of different depth and height, so a wheel inside the region changes WHICH element sits
+       under the action point -- a plain paragraph, then a span inside a row. Naming the scroller
+       by how far it was from the point renamed it mid-scroll on exactly this shape. */
+    .scroll-row { padding: 1.4rem 0; border-bottom: 1px dotted #aaa; }
+    .scroll-filler { margin: 1.8rem 0; }
     #deep-target { margin-top: 40rem; }
+    /* Controls the page wires up itself. To the accessibility tree these are "generic": no role
+       and no focusability says they can be acted on, which is why they used to reach the model as
+       scenery. cursor:pointer is INHERITED, so the child inside the card computes it too. */
+    #pointer-card { cursor: pointer; border: .15rem solid #777; padding: 1rem; }
+    #wired-click, #wired-hover { border: .15rem dashed #777; padding: 1rem; }
     output { display: block; min-height: 1.5rem; font-weight: 700; }
     @media (max-width: 35rem) { body { padding: .5rem; } section { padding: .75rem; } }
   </style>
@@ -114,8 +124,23 @@ function fixtureHome() {
       <h2 id="scroll-heading">Scrolling</h2>
       <div id="scroll-region" role="region" tabindex="0" aria-label="Fixture scroll region">
         <p>Scroll region start</p>
+        <div class="scroll-row"><span class="scroll-label">Nested row one</span></div>
+        <p class="scroll-filler">Filler between the rows</p>
+        <div class="scroll-row"><span class="scroll-label">Nested row two</span></div>
+        <p class="scroll-filler">More filler between the rows</p>
+        <div class="scroll-row"><span class="scroll-label">Nested row three</span></div>
         <button id="deep-target" type="button">Fixture deep target</button>
       </div>
+    </section>
+    <section aria-labelledby="wired-heading">
+      <h2 id="wired-heading">Wired by the page</h2>
+      <div id="wired-click" aria-label="Fixture wired click">Click handler, no role</div>
+      <div id="wired-hover" aria-label="Fixture wired hover" onmouseenter="window.__fixtureWiredHover()">Hover handler, no role</div>
+      <div id="pointer-card" aria-label="Fixture pointer card">
+        Pointer card
+        <span id="pointer-card-child" aria-label="Fixture pointer card child">inside the card</span>
+      </div>
+      <output id="wired-output">Wired idle</output>
     </section>`,
     `
     const actionOutput = document.getElementById('action-output');
@@ -128,6 +153,18 @@ function fixtureHome() {
     });
     document.getElementById('hover-target').addEventListener('mouseenter', () => {
       document.getElementById('hover-output').textContent = 'hovered';
+    });
+    // Wired the way a real page wires a div it drew itself. The click goes through
+    // addEventListener -- measured against a real Chrome, DOMSnapshot's isClickable flags that
+    // just as it flags an inline onclick -- and the hover through the inline attribute, which
+    // isClickable does NOT flag and which nothing but an attribute scan can see.
+    const wiredOutput = document.getElementById('wired-output');
+    document.getElementById('wired-click').addEventListener('click', () => {
+      wiredOutput.textContent = 'wired-clicked';
+    });
+    window.__fixtureWiredHover = () => { wiredOutput.textContent = 'wired-hovered'; };
+    document.getElementById('pointer-card').addEventListener('click', () => {
+      wiredOutput.textContent = 'card-clicked';
     });
     // The page reports the file the way a site would use it: through its own change event,
     // reading name, size, and -- the part that proves the bytes really arrived -- the contents.

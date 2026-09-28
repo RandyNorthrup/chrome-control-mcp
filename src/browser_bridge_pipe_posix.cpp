@@ -12,6 +12,7 @@
 #include <QFileInfo>
 #include <QtEndian>
 
+#include <algorithm>
 #include <cerrno>
 #include <chrono>
 #include <cstring>
@@ -528,14 +529,12 @@ void BrowserBridgePipeServer::serveConnected() {
         deadlineAfter(options_.io_timeout_ms, shutdown_pipe_[0]);
     QJsonObject reply;
     Exchange result;
+    QString why;
     if (!writeFrame(connection_fd_, request, deadline)) {
       result.error = QStringLiteral(
           "browser did not accept the command (timeout or reset)");
-    } else if (!readFrame(connection_fd_, deadline, &reply)) {
-      result.error =
-          QStringLiteral(
-              "browser did not reply within %1 ms (connection reset)")
-              .arg(options_.io_timeout_ms);
+    } else if (!awaitReply(request, &reply, &why)) {
+      result.error = why;
       const IoDeadline cancelDeadline =
           deadlineAfter(kCancelWriteBudgetMs, shutdown_pipe_[0]);
       if (writeFrame(
@@ -563,6 +562,64 @@ void BrowserBridgePipeServer::serveConnected() {
   }
 }
 
+bool BrowserBridgePipeServer::awaitReply(const QJsonObject &request,
+                                         QJsonObject *reply, QString *why) {
+  const auto absolute_end = std::chrono::steady_clock::now() +
+                            std::chrono::milliseconds(options_.max_exchange_ms);
+  int beats = 0;
+  // Whether the ceiling, rather than the silence budget, is what bounds the
+  // read now in flight.
+  //
+  // Which of the two ran out decides what the caller is told, and it cannot be
+  // decided by reading the clock afterwards: the deadline is built from whole
+  // milliseconds of remaining time, so a read cut short by the ceiling expires
+  // a fraction BEFORE it -- measured -- and a clock comparison then says the
+  // ceiling had not been reached. The read that the ceiling cut short is the
+  // read whose budget the ceiling set, which is a fact about the loop.
+  bool ceiling_bounds_read = false;
+  const auto whyItEnded = [&]() {
+    if (beats > 0 && ceiling_bounds_read) {
+      // Still working, and out of time. Say so rather than reporting a reset:
+      // the connection is fine, and the caller's next move (a smaller job, a
+      // longer-running tool) is not the one a transport failure calls for.
+      return QStringLiteral("browser was still working on %1 after %2 ms (%3 "
+                            "progress reports); the command was abandoned")
+          .arg(request.value(QStringLiteral("cmd")).toString())
+          .arg(options_.max_exchange_ms)
+          .arg(beats);
+    }
+    return QStringLiteral(
+               "browser did not reply within %1 ms (connection reset)")
+        .arg(options_.io_timeout_ms);
+  };
+  for (;;) {
+    // Whichever comes first: another silence budget, or the ceiling on the
+    // whole exchange. Clamping here is what keeps a beat every few seconds
+    // from extending the wait without end.
+    const auto remaining =
+        std::chrono::duration_cast<std::chrono::milliseconds>(
+            absolute_end - std::chrono::steady_clock::now())
+            .count();
+    ceiling_bounds_read = remaining <= options_.io_timeout_ms;
+    const int budget = static_cast<int>(std::min<qint64>(
+        options_.io_timeout_ms, std::max<qint64>(0, remaining)));
+    const IoDeadline deadline = deadlineAfter(budget, shutdown_pipe_[0]);
+    if (!readFrame(connection_fd_, deadline, reply)) {
+      *why = whyItEnded();
+      return false;
+    }
+    if (reply->value(QStringLiteral("type")).toString() !=
+        QLatin1String("progress")) {
+      return true;
+    }
+    ++beats;
+    if (std::chrono::steady_clock::now() >= absolute_end) {
+      *why = whyItEnded();
+      return false;
+    }
+  }
+}
+
 BrowserBridgePipeServer::Exchange
 BrowserBridgePipeServer::sendCommandAwaitReply(const QJsonObject &frame) {
   std::unique_lock<std::mutex> lock(mutex_);
@@ -578,7 +635,12 @@ BrowserBridgePipeServer::sendCommandAwaitReply(const QJsonObject &frame) {
                 QStringLiteral("A browser action is already in progress.")};
   }
   const quint64 my_generation = generation_;
+  // Ask the extension to report progress while it works. The deadline belongs
+  // to this transport, so the request for the beats that hold it open belongs
+  // here too. An extension older than this server ignores the flag and is
+  // simply held to the plain silence budget, as it always was.
   request_frame_ = frame;
+  request_frame_.insert(QStringLiteral("progress"), true);
   has_request_ = true;
   has_response_ = false;
   cv_.notify_all();

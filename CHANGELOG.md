@@ -6,6 +6,79 @@ All notable changes are documented here. Project follows [Semantic Versioning](h
 
 Nothing yet.
 
+## [1.7.0] - 2026-09-25
+
+The three things 1.6.1 shipped without fixing, and the reason each one had survived: none of them
+had a test that could fail.
+
+### Fixed
+
+- `browser_scroll` aimed at a ref inside a nested scroll container reported `scrolled 0` while the
+  element visibly moved. The two reads either side of the wheel matched scrollers by a name that
+  counted ancestors up from whatever element the point landed on -- a property of the CONTENT, not
+  of the container. Scrolling the content out from under the point renamed the very scroller that
+  had moved, so nothing matched and the distance came back as zero; the in-page rest-detector
+  compared the same list and saw a change that was only the renaming. Scrollers are named by their
+  path from the document root now. The live fixture's scroll region gained rows of differing depth
+  so the rename actually happens there, and the suite checks the reported distance against the
+  measured movement of an element inside it.
+- An element the page wires up itself -- a div with a click handler, a card with `cursor: pointer`
+  -- earned no ref. To the accessibility tree it is `generic` with no name, which the capture
+  dropped, so the model was shown scenery where the page had a button and the only way to reach it
+  was `browser_click_at` with a pixel read off a screenshot. The capture now reads three signals
+  out of the DOMSnapshot it already takes: Chrome's own `isClickable` (which covers an inline
+  `onclick` and an `addEventListener` wiring alike -- measured against a real Chrome, not assumed),
+  the page's own pointer-handler attributes, and the computed cursor. `cursor` is inherited, so a
+  card only counts when its parent does not: promoting on the computed value alone turned one
+  clickable card into a ref for every part of it. The outline says which signal earned the ref --
+  `(clickable)`, `(hoverable)`, `(pointer)`.
+- `browser did not reply within 30000 ms (connection reset)` was a silence budget being spent as a
+  work budget. Handlers are allowed far longer than 30 s by design (`browser_download` polls to
+  120 s), so a slow page, a big download or a loaded machine surfaced as a transport failure and a
+  reset connection for work that was proceeding normally. The extension now reports progress every
+  5 s while a command runs; the relay forwards those beats without mistaking one for the reply, and
+  each restarts the server's deadline. Silence still fails in 30 s. A command that beats but never
+  finishes is abandoned at 180 s with a refusal that names it and says it ran too long, rather than
+  blaming the connection. The beat also keeps the MV3 service worker alive while it works, which is
+  the other half of why long commands died.
+
+- The extension asked for a bridge that was not there every couple of seconds, for as long as the
+  browser was open. Every attempt starts a process -- `connectNative` makes Chrome launch the native
+  host, which looks for a published server, finds none, says so and exits -- and the 2 s retry was
+  re-armed by its own disconnect, with one further attempt on every `tabs.onUpdated` and
+  `tabs.onActivated`. So a machine with the extension installed and no editor running spawned host
+  processes continuously, faster while its owner was browsing. Reported from a machine where it was
+  disruptive enough to interfere with unrelated work, and the only way out was to disable the
+  extension. The interval now doubles while nothing answers, from 2 s to a 2-minute ceiling, and
+  resets the moment a bridge does answer -- so a server that is running is still found within two
+  seconds. The waiting applies to the tab events and the alarm as well, which were the paths that
+  made the old interval moot.
+
+### Added
+
+- A pause switch on the toolbar button, because backing off is not the same as being able to stop.
+  Clicking it while the bridge is connected pauses it: the open ports are closed, the browser is
+  released, and nothing reaches for it again until it is resumed. Clicking while paused resumes and
+  connects at once; clicking while it is merely not connected retries immediately rather than
+  waiting out the interval. The badge reads `off` while paused and nothing at all otherwise, and the
+  state survives a browser restart -- somebody who turned it off because it was in their way must
+  not find it back on tomorrow. This needs the `storage` permission, which is new.
+- `browser_extension_uninstall` has live coverage for the first time, driven through the built
+  server against a real registration. Nothing had ever run it: the live suite cannot remove the
+  registration it is using, and the unit tests stop at the installer class. What made it
+  untestable on Windows was the registration being one fixed key per user -- POSIX has had
+  `CHROME_CONTROL_MCP_NATIVE_HOST_DIR` from the beginning and Windows had no equivalent, so the
+  only key to test against was the user's own. `CHROME_CONTROL_MCP_NATIVE_HOST_KEY` and
+  `CHROME_CONTROL_MCP_DATA_DIR` are that missing half. Chrome still reads only the fixed key.
+
+### Changed
+
+- `browser_extension_uninstall` says when there was nothing to remove. Removing a registration that
+  was never there succeeds at the system-call level on both platforms -- a missing key and a
+  missing file are not errors -- and the reply said "Browser extension bridge unregistered" for a
+  machine it had not changed. It now answers "Nothing to unregister", and the summary for a real
+  removal is unchanged.
+
 ## [1.6.1] - 2026-09-25
 
 Everything a fresh-install run on a clean Windows 11 VM turned up: 50 of the 51 tools driven

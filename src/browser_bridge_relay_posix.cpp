@@ -81,13 +81,21 @@ bool awaitBrowserReply(NativeIpcHandle pipe, const BrowserReadFn &browser_read,
                        QJsonObject *reply) {
   std::atomic<bool> finished{false};
   bool readOk = false;
+  RelayProgressQueue progress;
   std::thread reader([&] {
-    readOk = browser_read(reply);
+    readOk = readBrowserReplyPastProgress(browser_read, &progress, reply);
     finished.store(true, std::memory_order_release);
   });
 
   bool socketOk = true;
   while (!finished.load(std::memory_order_acquire)) {
+    // Forwarded from the thread that owns the socket, never from the one that
+    // read them; the ownership split is what makes this safe without
+    // cancellable I/O.
+    if (!drainProgressToPipe(pipe, &progress)) {
+      socketOk = false;
+      break;
+    }
     pollfd descriptor{pipe, POLLIN, 0};
     const int ready = poll(&descriptor, 1, kCancelPollMs);
     if (ready < 0 && errno == EINTR) {

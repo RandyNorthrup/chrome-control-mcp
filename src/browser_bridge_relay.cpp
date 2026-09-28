@@ -159,13 +159,21 @@ bool awaitBrowserReply(NativeIpcHandle pipe, const BrowserReadFn &browser_read,
                        QJsonObject *reply) {
   std::atomic<bool> finished{false};
   bool read_ok = false;
+  RelayProgressQueue progress;
   std::thread reader([&] {
-    read_ok = browser_read(reply);
+    read_ok = readBrowserReplyPastProgress(browser_read, &progress, reply);
     finished.store(true, std::memory_order_release);
   });
 
   bool pipe_ok = true;
   while (!finished.load(std::memory_order_acquire)) {
+    // Forwarded from the thread that owns the pipe, never from the one that
+    // read them: a synchronous handle with a blocking read on it is no place
+    // for a second thread's write.
+    if (!drainProgressToPipe(pipe, &progress)) {
+      pipe_ok = false;
+      break;
+    }
     DWORD available = 0;
     if (PeekNamedPipe(pipe, nullptr, 0, nullptr, &available, nullptr) ==
         FALSE) {

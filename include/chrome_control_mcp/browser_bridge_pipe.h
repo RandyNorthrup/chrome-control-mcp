@@ -35,7 +35,21 @@
 namespace chrome_control_mcp {
 
 /// Default per read/write deadline for a bridge exchange, in milliseconds.
+///
+/// This is a SILENCE budget, not a work budget. An extension handling a command
+/// says so every few seconds, and each beat restarts this deadline -- so a
+/// download that legitimately runs for two minutes stays connected while an
+/// extension that has actually stopped answering still fails in thirty seconds.
 inline constexpr int kBrowserBridgeDefaultIoTimeoutMs = 30'000;
+
+/// The absolute ceiling on one exchange, however lively the extension is.
+///
+/// Above the longest budget any handler is allowed to take (browser_download
+/// polls to 120 s), with headroom for the page it is waiting on. Past this the
+/// command is abandoned even though beats are still arriving: a handler running
+/// this long is not going to finish, and the alternative is an MCP call that
+/// never returns.
+inline constexpr int kBrowserBridgeMaxExchangeMs = 180'000;
 
 /// Whether a DIFFERENT, still-running process of this same program owns the
 /// bridge described by the rendezvous record at @p rendezvous_path.
@@ -86,8 +100,10 @@ public:
     int protocol{kBrowserBridgeProtocol};
     bool require_chrome_ancestor{true}; ///< Production; tests relax this.
     int io_timeout_ms{
-        kBrowserBridgeDefaultIoTimeoutMs}; ///< Per read/write deadline.
-    QString rendezvous_path; ///< Empty -> the real per-user location.
+        kBrowserBridgeDefaultIoTimeoutMs}; ///< Silence budget per read/write.
+    int max_exchange_ms{
+        kBrowserBridgeMaxExchangeMs}; ///< Ceiling on one whole exchange.
+    QString rendezvous_path;          ///< Empty -> the real per-user location.
   };
 
   /// The result of one command/reply exchange.
@@ -152,6 +168,13 @@ private:
   void run();
   bool handshake();
   void serveConnected();
+  // Read the reply to @p request, reading past the progress beats the extension
+  // sends while it is still working. Each beat restarts the silence budget;
+  // max_exchange_ms bounds the whole wait regardless. False with @p why set
+  // when either budget is spent, saying WHICH -- silence and a command that ran
+  // too long are different faults and want different answers from the caller.
+  [[nodiscard]] bool awaitReply(const QJsonObject &request, QJsonObject *reply,
+                                QString *why);
   bool verifyPeer(QString *why) const;
 
   Options options_;

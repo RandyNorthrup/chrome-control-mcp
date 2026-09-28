@@ -116,6 +116,45 @@ struct SlowFakeExtension {
   }
 };
 
+// A fake extension that takes its time and says so, which is what every long
+// handler now does: a few beats while it works, then the answer. The beats are
+// frames on the same channel as the reply, so the relay has to read past them
+// -- and forward them, or the server learns nothing and its silence budget
+// expires exactly as before.
+struct BeatingFakeExtension {
+  QJsonObject last_command;
+  int beats_to_send{3};
+  int beats_sent{0};
+  int beat_gap_ms{250};
+
+  chrome_control_mcp::BrowserWriteFn writer() {
+    return [this](const QJsonObject &command) {
+      last_command = command;
+      return true;
+    };
+  }
+  chrome_control_mcp::BrowserReadFn reader() {
+    return [this](QJsonObject *out) {
+      std::this_thread::sleep_for(std::chrono::milliseconds(beat_gap_ms));
+      if (beats_sent < beats_to_send) {
+        ++beats_sent;
+        *out = QJsonObject{
+            {QStringLiteral("type"), QStringLiteral("progress")},
+            {QStringLiteral("id"), last_command.value(QStringLiteral("id"))},
+            {QStringLiteral("elapsed_ms"), beat_gap_ms * beats_sent}};
+        return true;
+      }
+      *out = QJsonObject{
+          {QStringLiteral("type"), QStringLiteral("result")},
+          {QStringLiteral("id"), last_command.value(QStringLiteral("id"))},
+          {QStringLiteral("payload"),
+           QJsonObject{{QStringLiteral("worked_for_ms"),
+                        beat_gap_ms * (beats_to_send + 1)}}}};
+      return true;
+    };
+  }
+};
+
 } // namespace
 
 class BrowserBridgeRelayTests : public QObject {
@@ -129,6 +168,7 @@ private slots:
   void relayHandshake_rejectsProtocolMismatch();
   void relay_forwardsCommandAndReplyOverRealPipe();
   void relay_forwardsCancelToAPollingExtensionWhenTheServerAbandons();
+  void relay_forwardsProgressBeatsAndStillDeliversTheReply();
   void control_notConnectedReportsError();
   void control_snapshotRoundTripsThroughRelay();
   void browserPresence_openInputIsNotClosed();
@@ -318,6 +358,64 @@ void BrowserBridgeRelayTests::
   // race, and pinning it would make this test flaky rather than more truthful.
   // What matters is that the extension was told, and the exchange still failed
   // for the caller.
+
+  closeNativeIpcHandle(pipe);
+  server.stop();
+}
+
+// The whole path, end to end: a handler that outlives the server's silence
+// budget four times over, beating as it works, over a real pipe with the real
+// relay in between.
+//
+// Every piece has to hold or this fails. The extension beats; the relay reads
+// past the beats instead of handing the first one up as the reply, and forwards
+// each from the thread that owns the pipe; the server restarts its deadline on
+// each and keeps waiting. Before this, the server tore the connection down at
+// 400 ms and the caller was told the browser had reset -- for a command that
+// was working the entire time.
+void BrowserBridgeRelayTests::
+    relay_forwardsProgressBeatsAndStillDeliversTheReply() {
+  QTemporaryDir dir;
+  auto options = serverOptions(dir.filePath(QStringLiteral("r.json")));
+  options.io_timeout_ms = 400; // four beats at 250 ms each outlast this
+  BrowserBridgePipeServer server(options);
+  QString error;
+  QVERIFY2(server.start(&error), qPrintable(error));
+
+  QString token;
+  int protocol = 0;
+  const NativeIpcHandle pipe = relayConnect(
+      dir.filePath(QStringLiteral("r.json")), &token, &protocol, &error);
+  QVERIFY(pipe != kInvalidNativeIpcHandle);
+  QVERIFY2(relayHandshake(pipe, token, protocol, &error), qPrintable(error));
+  QVERIFY(waitUntil([&server] { return server.clientConnected(); }, 5000));
+
+  BeatingFakeExtension extension;
+  std::atomic<bool> pumped{false};
+  std::thread relay([&] {
+    pumped = relayPumpOnce(pipe, extension.reader(), extension.writer());
+  });
+
+  const auto exchange = server.sendCommandAwaitReply(
+      QJsonObject{{QStringLiteral("type"), QStringLiteral("command")},
+                  {QStringLiteral("id"), QStringLiteral("b-1")},
+                  {QStringLiteral("cmd"), QStringLiteral("download")}});
+  relay.join();
+  QVERIFY(pumped.load());
+  QVERIFY2(exchange.ok, qPrintable(exchange.error));
+  // The REPLY came up, not the first beat wearing its id.
+  QCOMPARE(exchange.reply.value(QStringLiteral("type")).toString(),
+           QStringLiteral("result"));
+  QCOMPARE(exchange.reply.value(QStringLiteral("payload"))
+               .toObject()
+               .value(QStringLiteral("worked_for_ms"))
+               .toInt(),
+           1000);
+  QCOMPARE(extension.beats_sent, 3);
+  // And the extension was asked for them: the server sets the flag, so an older
+  // extension that ignores it is still held to the plain silence budget rather
+  // than being relied on to beat.
+  QVERIFY(extension.last_command.value(QStringLiteral("progress")).toBool());
 
   closeNativeIpcHandle(pipe);
   server.stop();

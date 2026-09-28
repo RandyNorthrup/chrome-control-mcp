@@ -371,6 +371,37 @@ async function main() {
     const mediaRef = refFor(page, "Fixture audio");
     const scrollRegionRef = refFor(page, "Fixture scroll region");
     const deepTargetRef = refFor(page, "Fixture deep target");
+    // Controls the page wires up itself. Nothing about their role or focusability says they can
+    // be acted on -- to the accessibility tree they are "generic" -- so before the capture read
+    // Chrome's own isClickable, the page's own handler attributes and the computed cursor, they
+    // reached the model as scenery it could see and not touch. refFor throws when a name has no
+    // ref, so these four lines ARE the assertion.
+    const wiredClickRef = refFor(page, "Fixture wired click");
+    const wiredHoverRef = refFor(page, "Fixture wired hover");
+    const pointerCardRef = refFor(page, "Fixture pointer card");
+    // And the reason each one earned it, which is what tells a reader why a "generic" has a ref.
+    assertIncludes(
+      lineFor(page, "Fixture wired click"),
+      "clickable",
+      "the click-wired div says why it is actionable",
+    );
+    assertIncludes(
+      lineFor(page, "Fixture wired hover"),
+      "hoverable",
+      "the hover-wired div says why it is actionable",
+    );
+    assertIncludes(
+      lineFor(page, "Fixture pointer card"),
+      "pointer",
+      "the styled card says why it is actionable",
+    );
+    // cursor is INHERITED: the child inside the card computes "pointer" too, and promoting on the
+    // computed value alone would turn one clickable card into a ref for every part of it.
+    assert.equal(
+      lineFor(page, "Fixture pointer card child"),
+      null,
+      "the child inside the pointer card must not earn a ref of its own",
+    );
 
     const textRead = jsonContent(
       await runTool("browser_read", { format: "text" }, "read page text"),
@@ -821,6 +852,12 @@ async function main() {
         "box of the nested scroll region",
       ),
     );
+    // Where an element INSIDE the scroller sits before the wheel. What the reply claims has to
+    // match what the page did, and a scroll that reports 0 for a container it just moved is the
+    // fault this measures: the scrollers were matched between the two reads by a name that
+    // counted ancestors up from whatever the point landed on, so scrolling the content out from
+    // under the point renamed the very container that had moved. The rows inside the region are
+    // deliberately of different depths for that reason.
     const nested = jsonContent(
       await runTool(
         "browser_scroll",
@@ -834,6 +871,46 @@ async function main() {
       `The nested region did not scroll: ${JSON.stringify(nested)}; ` +
         `the ref ${scrollRegionRef} resolves to ${JSON.stringify(scrollRegionBox)}; ` +
         `it was read off ${JSON.stringify(lineFor(page, "Fixture scroll region"))}`,
+    );
+    // What the reply claims, against what the page did -- the check that catches a scroll
+    // reporting 0 for a container it has just moved.
+    //
+    // Measured across a SECOND scroll, because aiming at a ref reveals it first: on the call
+    // above that reveal scrolled the page by 726 before the wheel moved the container by 180, so
+    // measuring across it measures two scrolls and compares them against one. By now the region
+    // is in view and its reveal has nothing left to do, which is what makes the two numbers
+    // comparable. The rows inside it are of differing depths on purpose: the element under the
+    // action point changes as the content moves, which is exactly what used to rename the
+    // scroller between the two reads and cost the reply its distance.
+    const deepBefore = jsonContent(
+      await runTool(
+        "browser_box",
+        { ref: deepTargetRef },
+        "box inside the nested scroller, before",
+      ),
+    );
+    const nestedAgain = jsonContent(
+      await runTool(
+        "browser_scroll",
+        { ref: scrollRegionRef, direction: "down", amount: 180 },
+        "scroll nested region again",
+      ),
+    );
+    const deepAfter = jsonContent(
+      await runTool(
+        "browser_box",
+        { ref: deepTargetRef },
+        "box inside the nested scroller, after",
+      ),
+    );
+    assert.ok(
+      nestedAgain.scrolled.y > 0,
+      `The second nested scroll moved nothing: ${JSON.stringify(nestedAgain)}`,
+    );
+    assert.ok(
+      Math.abs(deepBefore.y - deepAfter.y - nestedAgain.scrolled.y) <= 1,
+      `The nested scroll reported ${JSON.stringify(nestedAgain.scrolled)} but the content ` +
+        `inside it moved ${deepBefore.y - deepAfter.y}px`,
     );
     // The reply says the page is already where it says it is -- measured on the page, not taken
     // from the reply: an element's box must have moved by exactly what the scroll reported.
@@ -876,6 +953,60 @@ async function main() {
       "browser_scroll",
       { direction: "up", amount: 100000 },
       "scroll back to the top",
+    );
+
+    // A ref that cannot be acted on is no better than no ref. Both of these are driven through
+    // the ordinary tools, and the page is asked what happened.
+    await runTool(
+      "browser_click",
+      { ref: wiredClickRef },
+      "click the div the page wired to a click",
+    );
+    let wiredState = jsonContent(
+      await runTool(
+        "browser_read",
+        { format: "text" },
+        "read after wired click",
+      ),
+    );
+    assertIncludes(
+      wiredState.content,
+      "wired-clicked",
+      "the click reached the div's own handler",
+    );
+    await runTool(
+      "browser_hover",
+      { ref: wiredHoverRef },
+      "hover the div the page wired to a hover",
+    );
+    wiredState = jsonContent(
+      await runTool(
+        "browser_read",
+        { format: "text" },
+        "read after wired hover",
+      ),
+    );
+    assertIncludes(
+      wiredState.content,
+      "wired-hovered",
+      "the hover reached the div's own handler",
+    );
+    await runTool(
+      "browser_click",
+      { ref: pointerCardRef },
+      "click the card that only looks clickable",
+    );
+    wiredState = jsonContent(
+      await runTool(
+        "browser_read",
+        { format: "text" },
+        "read after card click",
+      ),
+    );
+    assertIncludes(
+      wiredState.content,
+      "card-clicked",
+      "the click reached the card's own handler",
     );
     const revealed = jsonContent(
       await runTool(

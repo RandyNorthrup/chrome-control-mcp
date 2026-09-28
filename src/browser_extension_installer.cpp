@@ -41,6 +41,15 @@ QString currentExecutablePath() {
 }
 
 QString defaultDataDirectory() {
+  // Overridable for the same reason the native-host directory is: the install
+  // and uninstall paths write and delete real files, and the only way to
+  // exercise them is to point them somewhere that is not the user's own
+  // installation.
+  const QString configured =
+      qEnvironmentVariable("CHROME_CONTROL_MCP_DATA_DIR");
+  if (!configured.isEmpty()) {
+    return QDir::cleanPath(QFileInfo(configured).absoluteFilePath());
+  }
   QString base =
       QStandardPaths::writableLocation(QStandardPaths::GenericDataLocation);
   if (base.isEmpty()) {
@@ -300,9 +309,20 @@ BrowserExtensionInstaller::BrowserExtensionInstaller(
         QDir::cleanPath(QFileInfo(config_.data_dir).absoluteFilePath());
   }
   if (config_.native_host_key_path.isEmpty()) {
+    // POSIX has had CHROME_CONTROL_MCP_NATIVE_HOST_DIR since the beginning,
+    // which is why the registration path could be exercised there and not here:
+    // Chrome reads one fixed HKCU key per user, so the only copy to test
+    // against was the user's own. This is the missing half. Chrome still looks
+    // only at the fixed key -- what this buys is a way to run install and
+    // uninstall for real without touching it.
+    const QString configured =
+        qEnvironmentVariable("CHROME_CONTROL_MCP_NATIVE_HOST_KEY");
     config_.native_host_key_path =
-        QStringLiteral("Software\\Google\\Chrome\\NativeMessagingHosts\\") +
-        QString::fromLatin1(kNativeHostName);
+        configured.isEmpty()
+            ? QStringLiteral(
+                  "Software\\Google\\Chrome\\NativeMessagingHosts\\") +
+                  QString::fromLatin1(kNativeHostName)
+            : configured;
   }
   if (config_.native_host_manifest_dir.isEmpty()) {
     config_.native_host_manifest_dir = defaultNativeHostManifestDirectory();
@@ -385,32 +405,41 @@ ExtensionInstallResult BrowserExtensionInstaller::install() {
 }
 
 ExtensionInstallResult BrowserExtensionInstaller::uninstall() const {
+  // What is actually there, read BEFORE anything is removed. Removing a
+  // registration that was never present succeeds at the system call level on
+  // both platforms -- a missing key and a missing file are not errors -- and
+  // the reply then said "unregistered" for a machine it had not changed. A
+  // caller checking whether the extension is still wired up would read that as
+  // proof it had just been taken apart.
+  const bool was_registered = nativeHostPresence(config_) > 0;
+  const QString manifestPath = hostManifestPath(config_);
+  const bool had_manifest = QFileInfo(manifestPath).isFile();
 #ifdef Q_OS_WIN
   QString error;
   if (!removeNativeHostKey(config_.native_host_key_path, &error)) {
     return {false, QStringLiteral("Could not remove native host registration"),
             error};
   }
-  const QString manifestPath = hostManifestPath(config_);
-  if (QFileInfo(manifestPath).isFile() && !QFile::remove(manifestPath)) {
+  if (had_manifest && !QFile::remove(manifestPath)) {
     return {false,
             QStringLiteral(
                 "Native host registration removed; manifest cleanup failed"),
             manifestPath};
   }
-  return {true, QStringLiteral("Browser extension bridge unregistered"),
-          QStringLiteral("Remove Chrome Control MCP manually from "
-                         "chrome://extensions if it is loaded")};
 #else
-  const QString manifestPath = hostManifestPath(config_);
-  if (QFileInfo(manifestPath).isFile() && !QFile::remove(manifestPath)) {
+  if (had_manifest && !QFile::remove(manifestPath)) {
     return {false, QStringLiteral("Could not remove native host registration"),
             manifestPath};
+  }
+#endif
+  if (!was_registered && !had_manifest) {
+    return {true, QStringLiteral("Nothing to unregister"),
+            QStringLiteral("No native host registration was present for this "
+                           "user, so nothing was changed.")};
   }
   return {true, QStringLiteral("Browser extension bridge unregistered"),
           QStringLiteral("Remove Chrome Control MCP manually from "
                          "chrome://extensions if it is loaded")};
-#endif
 }
 
 ExtensionInstallState BrowserExtensionInstaller::state() const {

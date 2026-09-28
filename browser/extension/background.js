@@ -67,6 +67,25 @@ const INTERACTABLE_ROLES = new Set([
   "audio",
 ]);
 
+// Inline handler attributes that say the page wired this element to the pointer itself.
+//
+// Chrome's own DOMSnapshot isClickable covers click, and covers it properly: measured against a
+// real Chrome, it flags a div with an inline onclick AND one wired with addEventListener, which
+// no attribute scan could see. What it does not flag is hover -- an element with only
+// onmouseenter comes back false -- and browser_hover has to be able to reach what it is aimed at.
+// mousedown/pointerdown are here for the same reason: custom controls are routinely built on them
+// and never fire a click listener for Chrome to notice.
+const POINTER_HANDLER_ATTRS = new Set([
+  "onmouseenter",
+  "onmouseover",
+  "onmousedown",
+  "onmouseup",
+  "onpointerenter",
+  "onpointerover",
+  "onpointerdown",
+  "onpointerup",
+]);
+
 // Roles that are pure structure -- not interactable on their own even when focusable.
 const STRUCTURAL_ROLES = new Set([
   "generic",
@@ -627,6 +646,10 @@ function makeSession() {
 
     reconnectTimer: null,
 
+    // Whether this port ever reached a bridge. What separates "no server is running" from "the
+    // server went away", which want different retry intervals.
+    everReady: false,
+
     controlGroupId: null,
 
     controlGroupTabId: null,
@@ -765,6 +788,177 @@ function originOf(url) {
 }
 
 // -- Native messaging port ---------------------------------------------------
+//
+// How often a bridge that is not there gets asked for again.
+//
+// Every attempt STARTS A PROCESS. connectNative makes Chrome launch the native host, which looks
+// for a published server, finds none, says so and exits. That is cheap once and ruinous in a loop,
+// and it was a loop: a 2 s retry armed by its own disconnect, plus one attempt on every tab event.
+// A browser with no MCP server running therefore spawned a host process every couple of seconds
+// for as long as it was open, and faster than that while the user was browsing. Reported from a
+// machine where it was loud enough to interfere with unrelated work, and the way out was to
+// disable the extension -- which is the right instinct and the wrong thing to have to do.
+//
+// So the interval grows while nothing answers and resets the moment something does: a bridge that
+// IS there is still found within two seconds, and one that is not is asked for every two minutes.
+const RECONNECT_MIN_MS = 2000;
+const RECONNECT_MAX_MS = 120000;
+
+// Kept at module scope, not on a session: the point is to remember across the sessions that keep
+// failing, each of which is a fresh record. Chrome retires this worker after ~30 s idle, so both
+// values are mirrored into session storage -- a backoff that forgets every 30 s is not a backoff.
+let reconnectDelayMs = RECONNECT_MIN_MS;
+let nextAttemptAt = 0;
+
+// Whether the user has switched the bridge off from the toolbar. Remembered where the browser
+// keeps it across a restart: somebody who turned it off because it was in their way must not find
+// it back on tomorrow.
+let bridgePaused = false;
+
+// Whether the pause has been decided by something other than the startup read -- a toolbar click
+// on a worker that has only just woken. The read is asynchronous and finishes after module
+// evaluation, so without this it would put such a decision back to whatever storage happened to
+// say, and a user's click would be undone by a race they cannot see.
+let bridgePauseDecided = false;
+
+// The same for the interval: once an attempt has failed, the live values are the truth and a
+// seed that arrives afterwards is stale.
+let backoffTouched = false;
+
+const BRIDGE_PAUSED_KEY = "chrome_control_mcp.paused";
+const BACKOFF_KEY = "chrome_control_mcp.backoff";
+
+// Storage is best-effort throughout. It can be absent (the unit harness stubs `chrome` without
+// it), and a bridge that refuses to work because it could not save a preference would be a worse
+// failure than forgetting one.
+function rememberBackoff() {
+  try {
+    void chrome.storage.session.set({
+      [BACKOFF_KEY]: { delayMs: reconnectDelayMs, nextAttemptAt },
+    });
+  } catch (_e) {
+    // Nothing to do: the in-memory values above still hold for this worker.
+  }
+}
+
+function growReconnectDelay() {
+  backoffTouched = true;
+  reconnectDelayMs = Math.min(reconnectDelayMs * 2, RECONNECT_MAX_MS);
+  rememberBackoff();
+}
+
+// A bridge answered, so the next one that does not gets the short interval again. Without this the
+// backoff would be a one-way ratchet: an editor restarted after a long quiet spell would be found
+// two minutes later rather than two seconds.
+function resetReconnectDelay() {
+  backoffTouched = true;
+  reconnectDelayMs = RECONNECT_MIN_MS;
+  nextAttemptAt = 0;
+  rememberBackoff();
+}
+
+// Whether an attempt may be made now.
+//
+// The window this consults is opened by a FAILED attempt, and it holds off the callers that have no
+// schedule of their own: the tab events and the alarm, which fire without limit and were the paths
+// that made the old 2 s interval moot. The scheduled retry is already spaced by its own timer, and
+// passes `force` to say so -- without that it could be refused a millisecond early and arm nothing
+// further, which would stop the retrying altogether.
+//
+// `force` never overrides the pause. Pausing is the one state the extension does not get to talk
+// itself out of.
+function connectAttemptAllowed(force) {
+  if (bridgePaused) {
+    return false;
+  }
+  return force || Date.now() >= nextAttemptAt;
+}
+
+// What the toolbar icon says. Only the paused state gets a badge: an extension that decorates
+// itself while it is working normally is its own kind of noise, and "no server running" is the
+// ordinary state on a machine where the editor is simply closed.
+function showBridgeState() {
+  try {
+    if (bridgePaused) {
+      void chrome.action.setBadgeText({ text: "off" });
+      void chrome.action.setBadgeBackgroundColor({ color: "#8a8a8a" });
+      void chrome.action.setTitle({
+        title: "Chrome Control MCP: paused. Click to resume.",
+      });
+      return;
+    }
+    void chrome.action.setBadgeText({ text: "" });
+    void chrome.action.setTitle({
+      title: anyPortOpen()
+        ? "Chrome Control MCP: connected. Click to pause."
+        : "Chrome Control MCP: no server found. Click to retry now.",
+    });
+  } catch (_e) {
+    // No action surface (the unit harness). The state above is what matters.
+  }
+}
+
+// Turn the bridge off, or back on, and remember which.
+//
+// Pausing closes the open ports as well as stopping the attempts: a user who switches this off
+// while it is connected means "stop driving my browser", not "stop trying to reconnect later".
+async function setBridgePaused(paused) {
+  bridgePauseDecided = true;
+  bridgePaused = paused;
+  showBridgeState();
+  try {
+    void chrome.storage.local.set({ [BRIDGE_PAUSED_KEY]: paused });
+  } catch (_e) {
+    // Not remembered across a restart, but honoured for this one.
+  }
+  if (!paused) {
+    return;
+  }
+  for (const session of [...sessions]) {
+    const port = session.port;
+    session.port = null;
+    detachAll(session, "bridge paused");
+    sessions.delete(session);
+    if (port) {
+      try {
+        port.disconnect();
+      } catch (_e) {
+        // Already gone, which is the state we wanted.
+      }
+    }
+  }
+}
+
+// Read back what the user chose before this worker existed. Chrome retires the worker every ~30 s,
+// so this runs often; it must not start an attempt of its own, only decide whether one is allowed.
+async function loadBridgeState() {
+  try {
+    const stored = await chrome.storage.local.get(BRIDGE_PAUSED_KEY);
+    if (!bridgePauseDecided) {
+      bridgePaused = Boolean(stored && stored[BRIDGE_PAUSED_KEY] === true);
+    }
+  } catch (_e) {
+    // Running is the safe default: the bridge is what the extension is for.
+  }
+  try {
+    const stored = backoffTouched
+      ? null
+      : await chrome.storage.session.get(BACKOFF_KEY);
+    const saved = stored && stored[BACKOFF_KEY];
+    if (saved && typeof saved.delayMs === "number") {
+      reconnectDelayMs = Math.min(
+        Math.max(saved.delayMs, RECONNECT_MIN_MS),
+        RECONNECT_MAX_MS,
+      );
+    }
+    if (saved && typeof saved.nextAttemptAt === "number") {
+      nextAttemptAt = saved.nextAttemptAt;
+    }
+  } catch (_e) {
+    // A forgotten interval costs one extra attempt, which is the old behaviour once.
+  }
+  showBridgeState();
+}
 
 function scheduleReconnect(session) {
   if (session.reconnectTimer) {
@@ -775,8 +969,9 @@ function scheduleReconnect(session) {
     // The session this timer belonged to is finished: reconnecting means asking
     // for a fresh one, not reviving this record.
     sessions.delete(session);
-    connect();
-  }, 2000);
+    // Forced because THIS is the interval: the timer above already waited it out.
+    connect({ force: true });
+  }, reconnectDelayMs);
 }
 
 function onDisconnect(session) {
@@ -793,7 +988,21 @@ function onDisconnect(session) {
     sessions.delete(session); // it had no server; there is nothing to retry for
     return;
   }
+  // A port that never reached a bridge is the case the interval is for. One that DID reach one and
+  // then lost it is a different fact -- the server went away, and it may well come straight back --
+  // so it keeps the short interval it earned.
+  // The window opens here, where the failure is known. Until an attempt has actually failed there
+  // is nothing to hold off, which is why two editors can each open a port at once.
+  nextAttemptAt = Date.now() + reconnectDelayMs;
+  rememberBackoff();
   scheduleReconnect(session);
+  // Longer NEXT time, not this time: a server that has only just gone (or that was a moment from
+  // starting) is still picked up at the short interval, and it is the run of failures after that
+  // which earns the waiting. A port that reached a bridge and then lost it keeps the short
+  // interval outright -- the server going away is a different fact from one never being there.
+  if (!session.everReady) {
+    growReconnectDelay();
+  }
 }
 
 // Open one native port and give it a session of its own.
@@ -802,7 +1011,10 @@ function onDisconnect(session) {
 // relay behind it attaches to exactly one server. The session is closed over by
 // this port's listeners, which is why no frame ever has to be matched back to a
 // session by searching -- the closure already knows.
-function connect() {
+function connect({ force = false } = {}) {
+  if (!connectAttemptAllowed(force)) {
+    return null;
+  }
   const session = makeSession();
   try {
     session.port = chrome.runtime.connectNative(HOST_NAME);
@@ -1126,7 +1338,9 @@ function onHostMessage(session, msg) {
     // the chain converges without this having to loop over an answer that has
     // not arrived yet.
     if (available.length > 1) {
-      connect();
+      // Not a retry: this port's own offer named a server nothing holds, so the next port has
+      // somewhere to go. The waiting interval is about bridges that are NOT there.
+      connect({ force: true });
     }
     return;
   }
@@ -1134,6 +1348,9 @@ function onHostMessage(session, msg) {
     session.health.connected = true;
     session.health.bridge = "ready";
     session.health.error = null;
+    session.everReady = true;
+    resetReconnectDelay();
+    showBridgeState();
     session.bridgeReady = msg.protocol === BRIDGE_PROTOCOL;
     if (!session.bridgeReady) {
       session.health.error =
@@ -1209,6 +1426,48 @@ function onHostMessage(session, msg) {
   console.warn("[ChromeControlMCP] unexpected frame type:", msg.type);
 }
 
+// How often a command that is still running says so.
+//
+// The host's reply budget was a SILENCE budget being spent as a work budget: 30 s with no frame
+// on the pipe tore the connection down, while handlers are allowed far longer than that by
+// design (browser_download runs to 120 s). A slow page, a big download or a loaded machine
+// therefore surfaced as "browser did not reply within 30000 ms (connection reset)" -- a
+// transport failure reported for work that was proceeding normally, and a connection reset for
+// a browser that was fine. A beat inside the budget is what tells those two apart: the host
+// restarts its deadline on each one and keeps a cap on the total, so silence still fails fast
+// and progress no longer does.
+//
+// It earns its keep a second time in MV3. Chrome retires an idle service worker, and posting on
+// the port is activity -- so the same beat that reports the work also keeps the worker that is
+// doing it alive.
+const PROGRESS_BEAT_MS = 5000;
+
+// Beat for as long as `msg` is being handled, or null if the host did not ask for one.
+//
+// Only for a host that asked. An older server never sets the flag, and it would read a frame
+// type it does not know as the reply to the command it is waiting for -- so the flag is what
+// keeps a new extension safe in front of an old server.
+function startProgressBeat(session, msg) {
+  if (msg.progress !== true) {
+    return null;
+  }
+  const started = Date.now();
+  return setInterval(() => {
+    send(session, {
+      type: "progress",
+      id: msg.id,
+      cmd: msg.cmd,
+      elapsed_ms: Date.now() - started,
+    });
+  }, PROGRESS_BEAT_MS);
+}
+
+function stopProgressBeat(beat) {
+  if (beat !== null) {
+    clearInterval(beat);
+  }
+}
+
 async function handleCommand(session, msg) {
   const id = msg.id;
   const cmd = msg.cmd;
@@ -1220,24 +1479,32 @@ async function handleCommand(session, msg) {
   // too -- before the work, so the offset is when it started rather than when
   // it finished.
   noteCommandForRecording(session, id, cmd);
+  const beat = startProgressBeat(session, msg);
+  // The reply is built first and sent after the beat has stopped. Sending inside the try would
+  // leave a window where the interval can still fire, and a progress frame AFTER the reply is
+  // the one thing this must never do: the host has moved on, and it would read as the answer to
+  // whatever command comes next.
+  let reply;
   try {
-    const payload = await runCommand(session, cmd, msg);
-    send(session, {
+    reply = {
       type: "result",
       id,
       cmd,
-      payload,
+      payload: await runCommand(session, cmd, msg),
       domEpoch: session.domEpoch,
-    });
+    };
   } catch (e) {
-    send(session, {
+    reply = {
       type: "error",
       id,
       cmd,
       error: e && e.message ? e.message : String(e),
       domEpoch: session.domEpoch,
-    });
+    };
+  } finally {
+    stopProgressBeat(beat);
   }
+  send(session, reply);
 }
 
 async function runCommand(session, cmd, args) {
@@ -2216,6 +2483,89 @@ function addNodeBounds(map, backendIds, nodeIndex, bounds) {
   }
 }
 
+// Whether a node carries one of the pointer handler attributes above. Attributes arrive as a
+// flat [nameIndex, valueIndex, ...] run of string-table indices.
+function hasPointerHandlerAttr(attributes, strings) {
+  for (let i = 0; i + 1 < (attributes || []).length; i += 2) {
+    if (
+      POINTER_HANDLER_ATTRS.has(String(strings[attributes[i]]).toLowerCase())
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
+
+// The computed cursor of every laid-out node in one document, keyed by its node index. Styles
+// arrive parallel to layout.nodeIndex, one array per node in the order captureSnapshot was asked
+// for them -- "cursor" is the only one asked for, so it is always element 0.
+function cursorsOfDocument(doc, strings) {
+  const cursors = new Map();
+  const layout = (doc && doc.layout) || {};
+  const nodeIndex = layout.nodeIndex || [];
+  const styles = layout.styles || [];
+  for (let i = 0; i < nodeIndex.length; i++) {
+    const style = styles[i];
+    if (style && style.length > 0 && strings[style[0]] != null) {
+      cursors.set(nodeIndex[i], String(strings[style[0]]));
+    }
+  }
+  return cursors;
+}
+
+// Why one node in a document counts as wired to the pointer, or null if nothing says it is.
+//
+// cursor is an INHERITED property: a card with cursor:pointer hands it to every descendant, and
+// promoting on the computed value alone turns one clickable card into a ref for the card, its
+// heading, its paragraph and its image. Measured, not assumed -- a child inside a pointer card
+// reports "pointer" itself. Comparing against the parent is what keeps the outermost element,
+// which is the one a click belongs on.
+function wiredReasonFor(index, nodes, cursors, strings, clickable) {
+  if (clickable.has(index)) {
+    return "click";
+  }
+  if (hasPointerHandlerAttr((nodes.attributes || [])[index], strings)) {
+    return "hover";
+  }
+  const parent = (nodes.parentIndex || [])[index];
+  if (cursors.get(index) === "pointer" && cursors.get(parent) !== "pointer") {
+    return "pointer";
+  }
+  return null;
+}
+
+// What Chrome already knows about which elements answer the pointer, read out of the SAME
+// DOMSnapshot the geometry comes from -- no extra round trip, no evaluation in the page.
+//
+// This exists because a real page builds its controls out of divs. To the accessibility tree a
+// div with a click handler is "generic" with no name, which the capture drops and the renderer
+// would drop again -- so the model was shown scenery where the page had a button, and the only
+// way to reach it was browser_click_at with a pixel read off a screenshot.
+function buildActionableMap(snapshot) {
+  const map = new Map();
+  const strings = (snapshot && snapshot.strings) || [];
+  for (const doc of (snapshot && snapshot.documents) || []) {
+    const nodes = (doc && doc.nodes) || {};
+    const backendIds = nodes.backendNodeId || [];
+    // isClickable is RareBooleanData: the node indices that are true, and nothing for the rest.
+    const clickable = new Set(
+      (nodes.isClickable && nodes.isClickable.index) || [],
+    );
+    const cursors = cursorsOfDocument(doc, strings);
+    for (let i = 0; i < backendIds.length; i++) {
+      const backend = backendIds[i];
+      if (backend === undefined || map.has(backend)) {
+        continue;
+      }
+      const reason = wiredReasonFor(i, nodes, cursors, strings, clickable);
+      if (reason) {
+        map.set(backend, reason);
+      }
+    }
+  }
+  return map;
+}
+
 function buildBoundsMap(snapshot) {
   const map = new Map();
   const documents = (snapshot && snapshot.documents) || [];
@@ -2331,7 +2681,15 @@ function axApplyGeometry(node, boundsByBackend, rec) {
   }
 }
 
-function axNodeToCapture(node, depth, boundsByBackend) {
+// A box worth aiming at. A node with no layout entry, or one laid out to nothing, is not
+// something a click or a hover could be pointed at however it was wired -- and admitting those
+// would spend the node budget on elements no tool can use.
+function hasUsableBox(boundsByBackend, backend) {
+  const box = backend === null ? null : boundsByBackend.get(backend);
+  return Boolean(box) && box.width > 0 && box.height > 0;
+}
+
+function axNodeToCapture(node, depth, boundsByBackend, wiredByBackend) {
   if (node.ignored) {
     return null;
   }
@@ -2339,8 +2697,17 @@ function axNodeToCapture(node, depth, boundsByBackend) {
   const name = axValue(node.name);
   const props = indexProps(node.properties);
   const focusable = props.focusable === true;
-  const interactable =
+  const backend =
+    typeof node.backendDOMNodeId === "number" ? node.backendDOMNodeId : null;
+  const byRole =
     INTERACTABLE_ROLES.has(role) || (focusable && !STRUCTURAL_ROLES.has(role));
+  // What the page wired to the pointer, for the elements whose role and focusability say
+  // nothing. Only ones with a box, and only when the role has not already earned the ref.
+  const wired =
+    byRole || !hasUsableBox(boundsByBackend, backend)
+      ? null
+      : wiredByBackend.get(backend) || null;
+  const interactable = byRole || wired !== null;
   // Structural, unnamed, non-interactable filler is dropped by the C++ renderer anyway
   // (roleIsStructuralNoise); not emitting it here keeps the node budget for content the
   // model can actually see or act on.
@@ -2354,6 +2721,11 @@ function axNodeToCapture(node, depth, boundsByBackend) {
     interactable,
     visible: props.hidden !== true,
   };
+  if (wired !== null) {
+    // Why this one carries a ref when its role says "generic". The renderer whitelists the
+    // three values; it is never shown as free text.
+    rec.wired = wired;
+  }
   axApplyGeometry(node, boundsByBackend, rec);
   axApplyStateFlags(props, role, rec);
   axApplyValueFields(node, props, rec);
@@ -2392,7 +2764,7 @@ function pushChildren(stack, node, byId, depth) {
 // page-controlled way to hold the single command channel busy past the transport deadline. The
 // visit cap bounds that; either bound biting leaves the stack non-empty, reporting the outline as
 // partial rather than whole.
-function walkAxTree(roots, byId, boundsByBackend) {
+function walkAxTree(roots, byId, boundsByBackend, wiredByBackend) {
   const out = [];
   const seen = new Set();
   const stack = [];
@@ -2412,7 +2784,7 @@ function walkAxTree(roots, byId, boundsByBackend) {
       continue;
     }
     seen.add(node.nodeId);
-    const rec = axNodeToCapture(node, depth, boundsByBackend);
+    const rec = axNodeToCapture(node, depth, boundsByBackend, wiredByBackend);
     if (rec) {
       out.push(rec);
     }
@@ -2423,10 +2795,15 @@ function walkAxTree(roots, byId, boundsByBackend) {
   return { nodes: out, truncated: stack.length > 0 };
 }
 
-function buildNodes(axTree, boundsByBackend) {
+function buildNodes(axTree, boundsByBackend, wiredByBackend) {
   const axNodes = (axTree && axTree.nodes) || [];
   const byId = new Map(axNodes.map((n) => [n.nodeId, n]));
-  return walkAxTree(axRootsOf(axNodes), byId, boundsByBackend);
+  return walkAxTree(
+    axRootsOf(axNodes),
+    byId,
+    boundsByBackend,
+    wiredByBackend || new Map(),
+  );
 }
 
 // Count every frame in the tree Chrome reports for the tab.
@@ -2680,11 +3057,14 @@ async function captureSnapshot(session, tabId) {
   // capture as the ref_index of record: the comparison has to happen here.
   const startEpoch = session.domEpoch;
   const snapshot = await sendCdp(tabId, "DOMSnapshot.captureSnapshot", {
-    computedStyles: [],
+    // cursor is what tells a styled div apart from scenery; it rides along with the geometry
+    // read rather than costing a call of its own.
+    computedStyles: ["cursor"],
   });
   const boundsByBackend = buildBoundsMap(snapshot);
+  const wiredByBackend = buildActionableMap(snapshot);
   const axTree = await sendCdp(tabId, "Accessibility.getFullAXTree", {});
-  const built = buildNodes(axTree, boundsByBackend);
+  const built = buildNodes(axTree, boundsByBackend, wiredByBackend);
   const media = await collectMediaNodes(tabId, built.nodes);
   const withMedia = built.nodes.concat(media.nodes);
   // After the accessibility pass, so an input the page actually shows is named once, by the pass
@@ -5616,6 +5996,7 @@ function scrollDirection(raw) {
 // clears its own listener and gives up on its own, so a page is never left carrying it.
 const scrollEndScript = (x, y, before) =>
   `new Promise(function(done){` +
+  SCROLLER_PATH_SOURCE +
   `var read=${scrollOffsetsFn.toString()};` +
   `var before=${JSON.stringify(JSON.stringify(before))};` +
   `function clear(){removeEventListener('scrollend',onEnd,true);}` +
@@ -5632,39 +6013,98 @@ const SCROLL_END_PAGE_TIMEOUT_MS = 5000;
 
 // The offsets of every scroller a wheel at (x, y) can move, and of the visual viewport a pinched
 // page's wheel pans first, in one call.
+// A scroller's identity, stable across two reads of the same page.
+//
+// The name these reads are matched by USED to count ancestors up from whatever element the point
+// happened to land on ("scroller-2:DIV"). That number is a property of the content under the
+// point, not of the scroller: scroll the content and the point lands somewhere else in the same
+// container -- on its padding, on a taller row, on a child one level deeper -- and the scroller
+// that just moved comes back under a different name. scrollDistance matches by name, finds no
+// entry from before, and reports 0 for a scroll it had performed; the in-page scrollend watcher
+// compares the whole list and sees a change that was only the renaming. Both were measured inside
+// a nested scroll container on a real page.
+//
+// A path from the root names the ELEMENT. What is under the point may change; where the container
+// sits in the document does not. An id short-circuits the sibling count (unique within its tree,
+// and the path keeps climbing past it so two trees cannot collide); the guard bounds a DOM deep
+// enough, or a getRootNode cycle odd enough, to make this walk expensive.
+function scrollerPathFn(el) {
+  const parts = [];
+  let node = el;
+  let guard = 0;
+  while (node && guard < 64) {
+    guard += 1;
+    const parent = node.parentElement;
+    if (!parent) {
+      const root = node.getRootNode();
+      const host = root && root.host;
+      if (!host) {
+        parts.push(node.tagName || "#document");
+        break;
+      }
+      parts.push("shadow"); // crossed a shadow boundary: the segments above are the host's
+      node = host;
+      continue;
+    }
+    if (node.id) {
+      parts.push(node.tagName + "#" + node.id);
+    } else {
+      let index = 0;
+      for (
+        let sib = parent.firstElementChild;
+        sib && sib !== node;
+        sib = sib.nextElementSibling
+      ) {
+        index += 1;
+      }
+      parts.push(node.tagName + "[" + index + "]");
+    }
+    node = parent;
+  }
+  return parts.reverse().join("/");
+}
+
 function scrollOffsetsFn(x, y) {
   const vv = window.visualViewport;
   const seen = [];
   const offsets = [["visual-viewport", vv.offsetLeft, vv.offsetTop]];
-  const add = (e, name) => {
+  // The page's own scroller keeps its plain name wherever it is found. It reaches `add` by two
+  // routes -- climbed to as an ancestor of the point, or appended at the end -- and naming it by
+  // path on the first route and "page" on the second would be the same mismatch by another name.
+  const page = document.scrollingElement;
+  const add = (e) => {
     if (seen.indexOf(e) >= 0) {
       return; // one entry per scroller: the page's own scroller is often in the chain as well
     }
     seen.push(e);
-    offsets.push([name, e.scrollLeft, e.scrollTop]);
+    offsets.push([
+      e === page ? "page" : scrollerPathFn(e),
+      e.scrollLeft,
+      e.scrollTop,
+    ]);
   };
   let e = document.elementFromPoint(x + vv.offsetLeft, y + vv.offsetTop);
-  let depth = 0;
   while (e) {
     const style = getComputedStyle(e);
     if (
       /(auto|scroll|overlay)/.test(style.overflowX + " " + style.overflowY) &&
       (e.scrollHeight > e.clientHeight || e.scrollWidth > e.clientWidth)
     ) {
-      // Named by where it sits in the chain, so the same scroller is recognised across reads even
-      // when the content under the point has moved.
-      add(e, "scroller-" + depth + ":" + e.tagName + (e.id ? "#" + e.id : ""));
+      add(e);
     }
-    depth += 1;
     const root = e.getRootNode();
     e = e.parentElement || (root && root.host) || null;
   }
-  const page = document.scrollingElement;
   if (page) {
-    add(page, "page");
+    add(page);
   }
   return offsets;
 }
+
+// Both readers are stringified into the page, and an injected function cannot call one that stayed
+// in the worker: whatever they use has to travel with them. Declared under its own name so the
+// same source works unchanged in the worker's scope, where the tests call it directly.
+const SCROLLER_PATH_SOURCE = `var scrollerPathFn=${scrollerPathFn.toString()};`;
 
 // A promise for the offsets the page comes to rest at, away from `before`; null if it never does.
 function armScrollEnd(tabId, x, y, before) {
@@ -5752,30 +6192,34 @@ function scrollContextFn(x, y) {
   const name = (e) => (e ? e.tagName + (e.id ? "#" + e.id : "") : null);
   const seen = [];
   const scrollers = [];
-  const add = (e, label) => {
+  const page = document.scrollingElement;
+  // Named exactly as scrollOffsetsFn names them, so a reply's `room` and its `scrolled` are
+  // talking about the same containers under the same labels.
+  const add = (e) => {
     if (seen.indexOf(e) >= 0) {
       return; // one entry per scroller, as scrollOffsetsFn does
     }
     seen.push(e);
-    scrollers.push([label, e.scrollTop, e.scrollHeight - e.clientHeight]);
+    scrollers.push([
+      e === page ? "page" : scrollerPathFn(e),
+      e.scrollTop,
+      e.scrollHeight - e.clientHeight,
+    ]);
   };
   let e = target;
-  let depth = 0;
   while (e) {
     const style = getComputedStyle(e);
     if (
       /(auto|scroll|overlay)/.test(style.overflowX + " " + style.overflowY) &&
       (e.scrollHeight > e.clientHeight || e.scrollWidth > e.clientWidth)
     ) {
-      add(e, "scroller-" + depth + ":" + name(e));
+      add(e);
     }
-    depth += 1;
     const root = e.getRootNode();
     e = e.parentElement || (root && root.host) || null;
   }
-  const page = document.scrollingElement;
   if (page) {
-    add(page, "page");
+    add(page);
   }
   return { hit: name(target), scrollers };
 }
@@ -5784,7 +6228,9 @@ function scrollContextFn(x, y) {
 // read leaves the reply's diagnosis blank rather than failing a scroll that otherwise worked.
 async function scrollContext(tabId, x, y) {
   const read = await sendCdp(tabId, "Runtime.evaluate", {
-    expression: `(${scrollContextFn.toString()})(${Number(x)}, ${Number(y)})`,
+    expression:
+      `(function(){${SCROLLER_PATH_SOURCE}` +
+      `return (${scrollContextFn.toString()})(${Number(x)}, ${Number(y)});})()`,
     returnByValue: true,
   }).catch(() => null);
   const value = read && read.result && read.result.value;
@@ -5804,7 +6250,9 @@ function scrollRoom(context, deltaY) {
 
 async function scrollOffsets(tabId, x, y) {
   const read = await sendCdp(tabId, "Runtime.evaluate", {
-    expression: `(${scrollOffsetsFn.toString()})(${Number(x)}, ${Number(y)})`,
+    expression:
+      `(function(){${SCROLLER_PATH_SOURCE}` +
+      `return (${scrollOffsetsFn.toString()})(${Number(x)}, ${Number(y)});})()`,
     returnByValue: true,
   });
   const offsets = read && read.result && read.result.value;
@@ -7597,7 +8045,31 @@ const connectIfIdle = () => {
 };
 chrome.runtime.onInstalled.addListener(connectIfIdle);
 chrome.runtime.onStartup.addListener(connectIfIdle);
-chrome.action.onClicked.addListener(connectIfIdle);
+
+// The toolbar button fixes whatever the current state is, which is also what the title says it
+// will do. Paused -> resume and connect. Connected -> pause. Neither -> the user can see it is not
+// connected and is asking for an attempt now, so the waiting interval does not apply to it.
+const onActionClicked = async () => {
+  if (bridgePaused) {
+    await setBridgePaused(false);
+    resetReconnectDelay();
+    connect({ force: true });
+    return;
+  }
+  if (anyPortOpen()) {
+    await setBridgePaused(true);
+    return;
+  }
+  resetReconnectDelay();
+  connect({ force: true });
+};
+chrome.action.onClicked.addListener(() => {
+  void onActionClicked();
+});
+
+// Before anything decides whether to connect. A pause the user set yesterday has to be in force
+// for the listeners below, which fire as soon as the browser starts moving.
+void loadBridgeState();
 
 // Ordinary browsing re-arms the bridge too. The 2 s timer below lives only as long as this
 // worker, and Chrome coalesces a background worker's timers into seconds, so a bridge that came up

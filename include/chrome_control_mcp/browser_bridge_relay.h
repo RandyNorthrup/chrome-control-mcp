@@ -9,6 +9,8 @@
 #include <QString>
 
 #include <functional>
+#include <mutex>
+#include <vector>
 
 /// @file browser_bridge_relay.h
 /// @brief The browser-control bridge RELAY, hosted in the Chrome-spawned native
@@ -76,8 +78,46 @@ inline constexpr int kRelayAttachTimeoutMs = 5000;
 [[nodiscard]] QString selectRendezvousRecord(const QStringList &records,
                                              const QString &wanted);
 
+/// The beats an extension sends while a command it was given is still
+/// running, waiting to be written to the pipe by the thread that owns it.
+///
+/// They cross a thread boundary because the two handles have one owner each:
+/// the reply thread is the only code that reads Chrome's stdout, and the pump
+/// thread is the only code that touches the pipe. A beat read by the first and
+/// written by the second has to be handed over, and this is the handover.
+struct RelayProgressQueue {
+  std::mutex m_mutex;
+  std::vector<QJsonObject> m_frames;
+  /// Beats seen on this exchange, capped so an extension that emits nothing
+  /// else cannot keep the reply thread reading forever.
+  int m_seen{0};
+};
+
+/// The most beats one exchange may carry before the relay stops believing it.
+/// The server's absolute cap ends a genuine exchange long before this; anything
+/// past it is a stream that is never going to become a reply.
+inline constexpr int kMaxProgressFramesPerExchange = 4096;
+
+/// Whether @p frame is a progress beat rather than a reply.
+[[nodiscard]] bool relayFrameIsProgress(const QJsonObject &frame);
+
+/// Read frames from the browser until one arrives that is NOT a progress beat,
+/// which is the reply; beats are queued on @p progress for the pump thread to
+/// forward. False at end-of-stream, on a framing error, or once a single
+/// exchange has produced more beats than kMaxProgressFramesPerExchange.
+[[nodiscard]] bool
+readBrowserReplyPastProgress(const BrowserReadFn &browser_read,
+                             RelayProgressQueue *progress, QJsonObject *reply);
+
+/// Write every beat queued so far to @p pipe, oldest first. False if the pipe
+/// rejected one, which the caller treats exactly as it treats any other pipe
+/// failure. Called only on the thread that owns @p pipe.
+[[nodiscard]] bool drainProgressToPipe(NativeIpcHandle pipe,
+                                       RelayProgressQueue *progress);
+
 /// Wait for the browser's reply to a command already forwarded, while staying
-/// able to see a `cancel` the server sends mid-exchange and pass it on.
+/// able to see a `cancel` the server sends mid-exchange and pass it on, and to
+/// forward the beats the extension sends while it is still working.
 ///
 /// The server abandons an exchange when its own I/O deadline elapses. A handler
 /// that POLLS -- browser_wait_for, browser_download -- does not stop when that

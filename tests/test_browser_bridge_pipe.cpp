@@ -113,8 +113,20 @@ bool clientWrite(NativeIpcHandle handle, const QJsonObject &object) {
     }
     offset += wrote;
 #else
-    const ssize_t wrote = write(handle, frame.constData() + offset,
-                                static_cast<size_t>(frame.size() - offset));
+    // MSG_NOSIGNAL, exactly as the code under test writes
+    // (browser_bridge_pipe_posix.cpp). A plain write() to a socket whose peer
+    // has closed raises SIGPIPE and kills the process -- which is what a test
+    // that keeps writing until the server tears the connection down does on
+    // purpose. The failure has to come back as a false, or the suite dies
+    // instead of reporting.
+#ifdef MSG_NOSIGNAL
+    constexpr int flags = MSG_NOSIGNAL;
+#else
+    constexpr int flags = 0;
+#endif
+    const ssize_t wrote =
+        ::send(handle, frame.constData() + offset,
+               static_cast<size_t>(frame.size() - offset), flags);
     if (wrote <= 0) {
       return false;
     }
@@ -240,6 +252,8 @@ private slots:
   void ancestorChain_boundsDepthAndMatchesImage();
   void handshake_thenCommandReplyRoundTrips();
   void silentPeer_deadlineResetsConnection();
+  void workingPeer_beatsHoldTheConnectionOpen();
+  void endlessPeer_absoluteCapAbandonsTheCommand();
   void reconnect_secondClientServedWithNewGeneration();
   void doubleStop_isSafe();
   void restartAfterStopWorksAndDoubleStartRefused();
@@ -511,6 +525,139 @@ void BrowserBridgePipeTests::silentPeer_deadlineResetsConnection() {
       QStringLiteral("browser did not reply within 300 ms (connection reset)"));
   QVERIFY(waitUntil([&server] { return !server.clientConnected(); },
                     5000)); // connection torn down
+
+  client.join();
+  server.stop();
+}
+
+// The reply budget is a SILENCE budget, not a work budget.
+//
+// Before this, 30 s without a frame on the pipe tore the connection down --
+// while handlers are allowed far longer by design (browser_download polls to
+// 120 s). A download on a slow link, or a loaded machine, therefore came back
+// as "browser did not reply within 30000 ms (connection reset)": a transport
+// failure reported for work that was proceeding normally, and a reset for a
+// browser that was perfectly healthy.
+//
+// Here the peer takes four times its silence budget to answer, and says so
+// while it works.
+void BrowserBridgePipeTests::workingPeer_beatsHoldTheConnectionOpen() {
+  QTemporaryDir dir;
+  BrowserBridgePipeServer server(
+      testOptions(dir.filePath(QStringLiteral("r.json")), 300));
+  QString error;
+  QVERIFY2(server.start(&error), qPrintable(error));
+
+  const QString name = server.pipeName();
+  const QString token = server.token();
+  std::atomic<bool> asked_for_progress{false};
+  std::thread client([&] {
+    const NativeIpcHandle handle = connectAndHandshake(name, token);
+    if (handle == kInvalidNativeIpcHandle) {
+      return;
+    }
+    QJsonObject command;
+    if (!clientRead(handle, &command)) {
+      closeNativeIpcHandle(handle);
+      return;
+    }
+    // The server asks for the beats it is about to rely on. An extension older
+    // than this server never sees the flag, ignores it, and is held to the
+    // plain silence budget.
+    asked_for_progress.store(
+        command.value(QStringLiteral("progress")).toBool(false));
+    // Four beats at 150 ms: every one of them lands inside the 300 ms budget,
+    // and together they carry the exchange to twice what a silent peer is
+    // allowed.
+    for (int beat = 0; beat < 4; ++beat) {
+      sleepMilliseconds(150);
+      if (!clientWrite(
+              handle,
+              QJsonObject{{QStringLiteral("type"), QStringLiteral("progress")},
+                          {QStringLiteral("id"), QStringLiteral("b-1")},
+                          {QStringLiteral("elapsed_ms"), 150 * (beat + 1)}})) {
+        closeNativeIpcHandle(handle);
+        return;
+      }
+    }
+    clientWrite(handle,
+                QJsonObject{{QStringLiteral("type"), QStringLiteral("result")},
+                            {QStringLiteral("id"), QStringLiteral("b-1")},
+                            {QStringLiteral("payload"),
+                             QJsonObject{{QStringLiteral("slow"), true}}}});
+    closeNativeIpcHandle(handle);
+  });
+
+  QVERIFY(waitUntil([&server] { return server.clientConnected(); }, 5000));
+  const auto exchange = server.sendCommandAwaitReply(
+      QJsonObject{{QStringLiteral("type"), QStringLiteral("command")},
+                  {QStringLiteral("id"), QStringLiteral("b-1")},
+                  {QStringLiteral("cmd"), QStringLiteral("download")}});
+  QVERIFY2(exchange.ok, qPrintable(exchange.error));
+  QVERIFY(asked_for_progress.load());
+  QCOMPARE(exchange.reply.value(QStringLiteral("payload"))
+               .toObject()
+               .value(QStringLiteral("slow"))
+               .toBool(),
+           true);
+  // The beats were consumed by the transport, never handed up as the answer.
+  QCOMPARE(exchange.reply.value(QStringLiteral("type")).toString(),
+           QStringLiteral("result"));
+
+  client.join();
+  server.stop();
+}
+
+// A beat every few seconds must not be able to hold a command open forever: a
+// handler still running this long is not going to finish, and the alternative
+// is an MCP call that never returns. The refusal says the command ran too long
+// rather than blaming the connection -- the caller's next move is not the one a
+// transport failure calls for.
+void BrowserBridgePipeTests::endlessPeer_absoluteCapAbandonsTheCommand() {
+  QTemporaryDir dir;
+  auto options = testOptions(dir.filePath(QStringLiteral("r.json")), 1000);
+  options.max_exchange_ms = 700; // the whole exchange, however lively the peer
+  BrowserBridgePipeServer server(options);
+  QString error;
+  QVERIFY2(server.start(&error), qPrintable(error));
+
+  const QString name = server.pipeName();
+  const QString token = server.token();
+  std::thread client([&] {
+    const NativeIpcHandle handle = connectAndHandshake(name, token);
+    if (handle == kInvalidNativeIpcHandle) {
+      return;
+    }
+    QJsonObject command;
+    if (!clientRead(handle, &command)) {
+      closeNativeIpcHandle(handle);
+      return;
+    }
+    // Beats, and never an answer: the shape of a handler wedged in a poll loop.
+    while (clientWrite(
+        handle,
+        QJsonObject{{QStringLiteral("type"), QStringLiteral("progress")},
+                    {QStringLiteral("id"), QStringLiteral("b-1")}})) {
+      sleepMilliseconds(100);
+    }
+    closeNativeIpcHandle(handle);
+  });
+
+  QVERIFY(waitUntil([&server] { return server.clientConnected(); }, 5000));
+  const auto exchange = server.sendCommandAwaitReply(
+      QJsonObject{{QStringLiteral("type"), QStringLiteral("command")},
+                  {QStringLiteral("id"), QStringLiteral("b-1")},
+                  {QStringLiteral("cmd"), QStringLiteral("wait_for")}});
+  QVERIFY(!exchange.ok);
+  // Names the command, the budget it spent, and that it was working rather than
+  // silent.
+  QVERIFY2(exchange.error.contains(QStringLiteral("still working on wait_for")),
+           qPrintable(exchange.error));
+  QVERIFY2(exchange.error.contains(QStringLiteral("700 ms")),
+           qPrintable(exchange.error));
+  QVERIFY2(!exchange.error.contains(QStringLiteral("connection reset")),
+           qPrintable(exchange.error));
+  QVERIFY(waitUntil([&server] { return !server.clientConnected(); }, 5000));
 
   client.join();
   server.stop();

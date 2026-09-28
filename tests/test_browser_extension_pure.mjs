@@ -27,6 +27,7 @@ import assert from "node:assert/strict";
 
 import {
   loadWorker as loadWorkerFrom,
+  makeFakePort,
   workerSource,
 } from "./extension_harness.mjs";
 
@@ -101,6 +102,15 @@ const EXPORTED = [
   "MAX_FILE_INPUT_NODES",
   "MAX_UPLOADS_IN_FLIGHT",
   "makeSession",
+  "scrollerPathFn",
+  "SCROLLER_PATH_SOURCE",
+  "buildActionableMap",
+  "hasPointerHandlerAttr",
+  "hasUsableBox",
+  "handleCommand",
+  "startProgressBeat",
+  "stopProgressBeat",
+  "PROGRESS_BEAT_MS",
 ];
 
 function loadWorker(overrides = {}) {
@@ -331,6 +341,312 @@ test("shotMatchesRender sees a pinch, not only a scroll or zoom", () => {
   assert.equal(w.shotMatchesRender(session, shot, now), false);
 });
 
+// A DOM just real enough for the naming walk: tag, id, parent, and the sibling links it counts
+// through. Nothing here is a scroller or has a size -- the question is only what an element is
+// CALLED, which is the whole of the bug below.
+function fakeTree(spec, parent = null) {
+  const node = {
+    tagName: spec.tag,
+    id: spec.id || "",
+    parentElement: parent,
+    children: [],
+    getRootNode() {
+      return { host: null };
+    },
+  };
+  node.children = (spec.kids || []).map((kid) => fakeTree(kid, node));
+  node.firstElementChild = node.children[0] || null;
+  for (let i = 0; i < node.children.length; i++) {
+    node.children[i].nextElementSibling = node.children[i + 1] || null;
+  }
+  return node;
+}
+const findByTag = (root, tag) => {
+  if (root.tagName === tag) {
+    return root;
+  }
+  for (const kid of root.children) {
+    const hit = findByTag(kid, tag);
+    if (hit) {
+      return hit;
+    }
+  }
+  return null;
+};
+
+// Found on a real page: browser_scroll aimed at a ref inside a nested scroll container reported
+// "scrolled 0" while the element visibly moved.
+//
+// The scrollers were named by counting ancestors up from whatever the point landed on
+// ("scroller-2:DIV"). That count belongs to the CONTENT under the point, not to the scroller:
+// scroll the content and the point lands on a different element inside the same container, so the
+// same container comes back under a different name. scrollDistance matches by name, found no
+// entry from before, and reported 0 for a scroll it had just performed.
+test("a scroller is named by where it sits, not by what is under the point", () => {
+  const page = fakeTree({
+    tag: "HTML",
+    kids: [
+      {
+        tag: "BODY",
+        kids: [
+          {
+            tag: "DIV",
+            id: "list",
+            kids: [{ tag: "P", kids: [{ tag: "SPAN" }] }, { tag: "ARTICLE" }],
+          },
+        ],
+      },
+    ],
+  });
+  const scroller = findByTag(page, "DIV");
+  // The point started on the SPAN two levels inside the scroller and, after the wheel, landed
+  // straight on the scroller itself. The old name moved with it; the path does not.
+  const name = w.scrollerPathFn(scroller);
+  assert.equal(
+    name,
+    w.scrollerPathFn(scroller),
+    "the same element, the same name",
+  );
+  assert.match(name, /DIV#list/);
+  // Two different scrollers must not collide, or one's offset counts as the other's distance.
+  assert.notEqual(
+    w.scrollerPathFn(findByTag(page, "ARTICLE")),
+    w.scrollerPathFn(findByTag(page, "P")),
+  );
+  // And the name is what scrollDistance matches on: same name, real movement reported.
+  assert.deepEqual(
+    crossRealm(
+      w.scrollDistance(
+        [
+          ["visual-viewport", 0, 0],
+          [name, 0, 0],
+        ],
+        [
+          ["visual-viewport", 0, 0],
+          [name, 0, 260],
+        ],
+      ),
+    ),
+    { x: 0, y: 260 },
+  );
+});
+
+test("the naming walk crosses a shadow boundary and terminates", () => {
+  const host = fakeTree({ tag: "BODY", kids: [{ tag: "MY-WIDGET" }] });
+  const widget = findByTag(host, "MY-WIDGET");
+  // An element inside the widget's shadow root: no parentElement, reached through .host.
+  const inner = {
+    tagName: "DIV",
+    id: "",
+    parentElement: null,
+    children: [],
+    getRootNode: () => ({ host: widget }),
+  };
+  const name = w.scrollerPathFn(inner);
+  assert.match(name, /shadow/, "the boundary is part of the identity");
+  assert.match(name, /MY-WIDGET/, "and so is the host it sits in");
+  // A getRootNode that answers with itself would spin forever without the guard.
+  const loop = { tagName: "DIV", id: "", parentElement: null, children: [] };
+  loop.getRootNode = () => ({ host: loop });
+  assert.equal(typeof w.scrollerPathFn(loop), "string");
+});
+
+// Found on a real page: an element a page wires up itself -- a div with a click handler, a card
+// with cursor:pointer -- reaches the accessibility tree as "generic" with no name, which the
+// capture dropped. The model was shown scenery where the page had a button, and the only way to
+// reach it was a pixel read off a screenshot.
+//
+// The signals here were measured against a real Chrome before being relied on, and the fixture
+// below is that measurement written down: isClickable covers an inline onclick AND an
+// addEventListener wiring, and covers neither a hover-only handler nor a styled card.
+test("the elements a page wires to the pointer earn a ref", () => {
+  const strings = [
+    "id",
+    "onclick",
+    "onmouseenter",
+    "cursor",
+    "pointer",
+    "auto",
+    "card",
+  ];
+  const snapshot = {
+    strings,
+    documents: [
+      {
+        nodes: {
+          // 0 body, 1 click-wired div, 2 hover-only div, 3 pointer card, 4 its child, 5 plain
+          parentIndex: [-1, 0, 0, 0, 3, 0],
+          backendNodeId: [10, 11, 12, 13, 14, 15],
+          attributes: [[], [1, 5], [2, 5], [], [], []],
+          isClickable: { index: [1] },
+        },
+        layout: {
+          nodeIndex: [0, 1, 2, 3, 4, 5],
+          styles: [[5], [5], [5], [4], [4], [5]],
+        },
+      },
+    ],
+  };
+  const wired = crossRealm(
+    Object.fromEntries(w.buildActionableMap(snapshot).entries()),
+  );
+  assert.equal(wired["11"], "click", "Chrome's own isClickable is the signal");
+  assert.equal(wired["12"], "hover", "a hover handler is nothing else's job");
+  assert.equal(wired["13"], "pointer", "the card is what a click belongs on");
+  // cursor is INHERITED: the child of a pointer card computes "pointer" too, and promoting on
+  // the computed value alone would turn one clickable card into a ref for every part of it.
+  assert.equal(wired["14"], undefined, "not the child inside the card");
+  assert.equal(wired["15"], undefined, "and not plain scenery");
+});
+
+test("a wired element still needs a box worth aiming at", () => {
+  const bounds = new Map([
+    [11, { x: 0, y: 0, width: 80, height: 24 }],
+    [12, { x: 0, y: 0, width: 0, height: 0 }],
+  ]);
+  assert.equal(w.hasUsableBox(bounds, 11), true);
+  assert.equal(w.hasUsableBox(bounds, 12), false, "laid out to nothing");
+  assert.equal(w.hasUsableBox(bounds, 99), false, "no layout at all");
+  assert.equal(w.hasUsableBox(bounds, null), false, "no backend id");
+
+  const node = (backend) => ({
+    role: { value: "generic" },
+    name: { value: "" },
+    properties: [],
+    backendDOMNodeId: backend,
+  });
+  const wired = new Map([
+    [11, "click"],
+    [12, "click"],
+  ]);
+  const shown = crossRealm(w.axNodeToCapture(node(11), 0, bounds, wired));
+  assert.equal(shown.interactable, true);
+  assert.equal(shown.wired, "click", "the renderer says why it carries a ref");
+  // Sized to nothing: no tool could aim at it, so it stays dropped as it was before.
+  assert.equal(w.axNodeToCapture(node(12), 0, bounds, wired), null);
+  // And a role that was never wired is untouched by any of this.
+  assert.equal(w.axNodeToCapture(node(99), 0, bounds, wired), null);
+});
+
+test("a role that already earns a ref is not re-labelled as wired", () => {
+  const bounds = new Map([[21, { x: 0, y: 0, width: 60, height: 20 }]]);
+  const button = {
+    role: { value: "button" },
+    name: { value: "Save" },
+    properties: [],
+    backendDOMNodeId: 21,
+  };
+  const rec = crossRealm(
+    w.axNodeToCapture(button, 0, bounds, new Map([[21, "click"]])),
+  );
+  assert.equal(rec.interactable, true);
+  assert.equal(rec.wired, undefined, "a button is a button, not a wired div");
+});
+
+test("only real handler attributes count as wiring", () => {
+  const strings = [
+    "onmouseenter",
+    "x",
+    "onload",
+    "data-onclick",
+    "ONMOUSEDOWN",
+  ];
+  assert.equal(w.hasPointerHandlerAttr([0, 1], strings), true);
+  assert.equal(
+    w.hasPointerHandlerAttr([4, 1], strings),
+    true,
+    "case-insensitive",
+  );
+  assert.equal(
+    w.hasPointerHandlerAttr([2, 1], strings),
+    false,
+    "onload is not a pointer",
+  );
+  assert.equal(
+    w.hasPointerHandlerAttr([3, 1], strings),
+    false,
+    "nor an attribute merely named so",
+  );
+  assert.equal(w.hasPointerHandlerAttr(undefined, strings), false);
+});
+
+// The host's reply budget was being spent as a work budget: 30 s of silence on the pipe tore the
+// connection down, while handlers are allowed far longer by design (browser_download polls to
+// 120 s). A slow page or a loaded machine therefore surfaced as "browser did not reply within
+// 30000 ms (connection reset)" -- a transport failure reported for work that was going fine.
+//
+// The beat is what tells silence and slowness apart. Its two rules are that it only speaks to a
+// host that asked (an older server would read an unknown frame type as the reply to the command
+// it is waiting for) and that it NEVER speaks after the reply (the host has moved on, and a late
+// beat would answer whatever command comes next).
+test("a command that is still working beats, only when the host asked", (t) => {
+  t.mock.timers.enable({ apis: ["setInterval"] });
+  // Loaded after the timers are mocked: the harness hands the worker the globals it has then.
+  const worker = loadWorker();
+  const session = worker.makeSession();
+  session.port = makeFakePort();
+
+  const beat = worker.startProgressBeat(session, {
+    progress: true,
+    id: "b-7",
+    cmd: "download",
+  });
+  assert.notEqual(beat, null);
+  t.mock.timers.tick(worker.PROGRESS_BEAT_MS * 3 + 1);
+  const beats = session.port.posted.filter((f) => f.type === "progress");
+  assert.equal(beats.length, 3);
+  // Addressed like every other frame: the host correlates it to the command it is waiting on.
+  assert.equal(beats[0].id, "b-7");
+  assert.equal(beats[0].cmd, "download");
+  assert.equal(typeof beats[0].elapsed_ms, "number");
+
+  worker.stopProgressBeat(beat);
+  t.mock.timers.tick(worker.PROGRESS_BEAT_MS * 5);
+  assert.equal(
+    session.port.posted.filter((f) => f.type === "progress").length,
+    3,
+    "not one beat after the command stopped",
+  );
+
+  // A host that did not ask is one that would not understand the answer.
+  const quiet = worker.makeSession();
+  quiet.port = makeFakePort();
+  assert.equal(
+    worker.startProgressBeat(quiet, { id: "b-8", cmd: "read" }),
+    null,
+  );
+  t.mock.timers.tick(worker.PROGRESS_BEAT_MS * 4);
+  assert.deepEqual(quiet.port.posted, []);
+  // And stopping a beat that was never started is not a crash.
+  worker.stopProgressBeat(null);
+});
+
+test("a command that fails still leaves no beat running behind it", async (t) => {
+  t.mock.timers.enable({ apis: ["setInterval"] });
+  const worker = loadWorker();
+  const session = worker.makeSession();
+  session.port = makeFakePort();
+
+  // An unknown command fails inside runCommand. The reply is built in a catch and sent after the
+  // beat has been stopped -- sending it inside the try would leave a window in which the interval
+  // can still fire, which is the one thing this must never do.
+  await worker.handleCommand(session, {
+    type: "command",
+    id: "b-9",
+    cmd: "no-such-command",
+    progress: true,
+  });
+  assert.equal(session.port.posted.length, 1);
+  assert.equal(session.port.lastPosted().type, "error");
+  assert.equal(session.port.lastPosted().id, "b-9");
+  t.mock.timers.tick(worker.PROGRESS_BEAT_MS * 6);
+  assert.equal(
+    session.port.posted.length,
+    1,
+    "the failure path clears the interval too",
+  );
+});
+
 test("scrollDistance matches scrollers by name, and counts each once", () => {
   const before = [
     ["visual-viewport", 0, 0],
@@ -454,22 +770,46 @@ test("scrollContextFn names what the wheel lands on and the chain under it", () 
     },
     getComputedStyle: (e) => ({ overflowX: e.overflow, overflowY: e.overflow }),
   };
+  // Built exactly as the worker builds it for the page: the naming walk is a separate function,
+  // and an injected function cannot call one that stayed behind in the worker. Using the SAME
+  // constant the product uses is the point -- a prelude that stops being sent would fail here
+  // with the ReferenceError the page would throw, rather than passing on a copy.
   const run = new Function(
     "window",
     "document",
     "getComputedStyle",
-    `return (${w.scrollContextFn.toString()})(10, 20);`,
+    `${w.SCROLLER_PATH_SOURCE}` +
+      `return (${w.scrollContextFn.toString()})(10, 20);`,
   );
   const context = crossRealm(
     run(sandbox.window, sandbox.document, sandbox.getComputedStyle),
   );
   assert.equal(context.hit, "DIV#region");
   // The scrollable region under the point, and the page scroller, each once; the non-scrolling
-  // ancestors in between are not scrollers and must not appear.
+  // ancestors in between are not scrollers and must not appear. The region is named by where it
+  // sits in the document -- not by how far it was from the point, which is what used to rename it
+  // mid-scroll and cost the reply its distance.
   assert.deepEqual(context.scrollers, [
-    ["scroller-0:DIV#region", 40, 756 - 142],
+    ["BODY/DIV[0]/DIV#region", 40, 756 - 142],
     ["page", 200, 2000 - 800],
   ]);
+  // The wheel moved the content, so the point now lands on the region itself rather than on
+  // something inside it. The chain is shorter by one -- and the region must still come back under
+  // the name it had, or scrollDistance matches nothing and reports a scroll that happened as 0.
+  const inner = make("SPAN", "", "visible", 0, 10, 10);
+  inner.parentElement = region;
+  const deeper = crossRealm(
+    run(
+      sandbox.window,
+      { elementFromPoint: () => inner, scrollingElement: page },
+      sandbox.getComputedStyle,
+    ),
+  );
+  assert.equal(
+    deeper.scrollers[0][0],
+    context.scrollers[0][0],
+    "the same container, whatever the point landed on",
+  );
   // A point over nothing at all still reports the page, and says it hit nothing.
   const empty = crossRealm(
     run(

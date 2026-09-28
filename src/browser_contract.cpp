@@ -205,6 +205,18 @@ QString stateSuffix(const QJsonObject &node) {
   if (node.value(QStringLiteral("multiple")).toBool(false)) {
     flags << QStringLiteral("multiple");
   }
+  // Why a node whose role says "generic" carries a ref at all: the page wired
+  // it to the pointer itself. The value is matched against a fixed set rather
+  // than rendered -- it reaches here from a page-controlled capture, and
+  // everything else in this line is escaped for exactly that reason.
+  const QString wired = node.value(QStringLiteral("wired")).toString();
+  if (wired == QLatin1String("click")) {
+    flags << QStringLiteral("clickable");
+  } else if (wired == QLatin1String("hover")) {
+    flags << QStringLiteral("hoverable");
+  } else if (wired == QLatin1String("pointer")) {
+    flags << QStringLiteral("pointer");
+  }
   appendValueFlags(node, flags);
   return flags.isEmpty() ? QString()
                          : QStringLiteral("(") + flags.join(QLatin1Char(',')) +

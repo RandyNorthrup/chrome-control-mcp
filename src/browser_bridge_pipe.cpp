@@ -484,14 +484,12 @@ void BrowserBridgePipeServer::serveConnected() {
                               .m_cancel_event = shutdown_event_};
     QJsonObject reply;
     Exchange result;
+    QString why;
     if (!writeFrame(pipe_, request, deadline)) {
       result.error = QStringLiteral(
           "browser did not accept the command (timeout or reset)");
-    } else if (!readFrame(pipe_, deadline, &reply)) {
-      result.error =
-          QStringLiteral(
-              "browser did not reply within %1 ms (connection reset)")
-              .arg(options_.io_timeout_ms);
+    } else if (!awaitReply(request, &reply, &why)) {
+      result.error = why;
       // Abandoning the exchange here does not stop the extension: a handler
       // that POLLS (browser_download runs to 120 s, well past this deadline)
       // keeps driving the page for as long as ITS own timeout allows, because
@@ -533,6 +531,62 @@ void BrowserBridgePipeServer::serveConnected() {
   }
 }
 
+bool BrowserBridgePipeServer::awaitReply(const QJsonObject &request,
+                                         QJsonObject *reply, QString *why) {
+  const ULONGLONG absolute_end =
+      GetTickCount64() + static_cast<ULONGLONG>(options_.max_exchange_ms);
+  int beats = 0;
+  // Whether the ceiling, rather than the silence budget, is what bounds the
+  // read now in flight.
+  //
+  // Which of the two ran out decides what the caller is told, and it cannot be
+  // decided by reading the clock afterwards: the deadline is built from whole
+  // milliseconds of remaining time, so a read cut short by the ceiling expires
+  // a fraction BEFORE it -- measured -- and a clock comparison then says the
+  // ceiling had not been reached. The read that the ceiling cut short is the
+  // read whose budget the ceiling set, which is a fact about the loop.
+  bool ceiling_bounds_read = false;
+  const auto whyItEnded = [&]() {
+    if (beats > 0 && ceiling_bounds_read) {
+      // Still working, and out of time. Say so rather than reporting a reset:
+      // the connection is fine, and the caller's next move (a smaller job, a
+      // longer-running tool) is not the one a transport failure calls for.
+      return QStringLiteral("browser was still working on %1 after %2 ms (%3 "
+                            "progress reports); the command was abandoned")
+          .arg(request.value(QStringLiteral("cmd")).toString())
+          .arg(options_.max_exchange_ms)
+          .arg(beats);
+    }
+    return QStringLiteral(
+               "browser did not reply within %1 ms (connection reset)")
+        .arg(options_.io_timeout_ms);
+  };
+  for (;;) {
+    // Whichever comes first: another silence budget, or the ceiling on the
+    // whole exchange. Clamping here is what keeps a beat every few seconds
+    // from extending the wait without end.
+    const ULONGLONG quiet_end =
+        GetTickCount64() + static_cast<ULONGLONG>(options_.io_timeout_ms);
+    ceiling_bounds_read = absolute_end <= quiet_end;
+    const IoDeadline deadline{
+        .m_deadline_tick = ceiling_bounds_read ? absolute_end : quiet_end,
+        .m_cancel_event = shutdown_event_};
+    if (!readFrame(pipe_, deadline, reply)) {
+      *why = whyItEnded();
+      return false;
+    }
+    if (reply->value(QStringLiteral("type")).toString() !=
+        QLatin1String("progress")) {
+      return true;
+    }
+    ++beats;
+    if (GetTickCount64() >= absolute_end) {
+      *why = whyItEnded();
+      return false;
+    }
+  }
+}
+
 BrowserBridgePipeServer::Exchange
 BrowserBridgePipeServer::sendCommandAwaitReply(const QJsonObject &frame) {
   std::unique_lock<std::mutex> lock(mutex_);
@@ -553,7 +607,12 @@ BrowserBridgePipeServer::sendCommandAwaitReply(const QJsonObject &frame) {
   // is what stops the sender from silently sleeping through its own
   // connection's death and hanging for the life of the next session.
   const quint64 my_generation = generation_;
+  // Ask the extension to report progress while it works. The deadline belongs
+  // to this transport, so the request for the beats that hold it open belongs
+  // here too. An extension older than this server ignores the flag and is
+  // simply held to the plain silence budget, as it always was.
   request_frame_ = frame;
+  request_frame_.insert(QStringLiteral("progress"), true);
   has_request_ = true;
   has_response_ = false;
   cv_.notify_all();

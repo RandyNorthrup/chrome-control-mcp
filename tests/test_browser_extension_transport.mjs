@@ -26,7 +26,14 @@ import assert from "node:assert/strict";
 import { loadWorker, makeFakePort, settle } from "./extension_harness.mjs";
 
 // Functions reached directly. Everything else is driven through the port.
-const EXPORTED = ["connect", "send"];
+const EXPORTED = [
+  "connect",
+  "send",
+  "setBridgePaused",
+  "reconnectOnActivity",
+  "RECONNECT_MIN_MS",
+  "RECONNECT_MAX_MS",
+];
 
 // A session's fields are reassigned as the bridge comes and goes, so naming them in the
 // epilogue would capture their values at load time rather than follow them; a closure reads
@@ -39,7 +46,8 @@ const LIVE =
   "sessions, peek: () => { const s = [...sessions][0]; return s ? {" +
   " port: s.port, bridgeReady: s.bridgeReady," +
   " commandGeneration: s.commandGeneration, domEpoch: s.domEpoch," +
-  " serverId: s.serverId, health: s.health, surplus: s.surplus } : {}; }";
+  " serverId: s.serverId, health: s.health, surplus: s.surplus } : {}; }," +
+  " retryDelay: () => reconnectDelayMs, paused: () => bridgePaused";
 
 // Load the worker with a port under the test's control. The worker calls connect() at top
 // level, so the port is already open and both listeners are registered when this returns.
@@ -71,6 +79,189 @@ const PROTOCOL = 1;
 function ready(port, protocol = PROTOCOL) {
   port.emit({ type: "bridge_ready", protocol });
 }
+
+// A browser with no MCP server running must not spawn a native host process every couple of
+// seconds for as long as it is open.
+//
+// Every attempt starts a process: connectNative launches the host, which looks for a published
+// server, finds none, says so and exits. The retry was a flat 2 s armed by its own disconnect, and
+// ordinary browsing added one attempt per tab event on top -- which on a real machine was loud
+// enough to interfere with unrelated work, and the way out was to disable the extension.
+test("a bridge that never answers is asked for less and less often", (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout", "Date"] });
+  const opened = [];
+  const worker = loadWorker(
+    EXPORTED,
+    {
+      "runtime.connectNative": () => {
+        const port = makeFakePort();
+        opened.push(port);
+        return port;
+      },
+    },
+    LIVE,
+  );
+  const min = worker.RECONNECT_MIN_MS;
+
+  // The worker connects at load. Nothing answers, and the host goes away.
+  assert.equal(opened.length, 1);
+  assert.equal(worker.retryDelay(), min, "it starts at the short interval");
+  opened[0].drop();
+
+  // The first retry still comes at the SHORT interval: a server that was a moment from starting,
+  // or has only just gone, is picked up quickly. It is the run of failures after this that earns
+  // the waiting.
+  t.mock.timers.tick(min - 1);
+  assert.equal(opened.length, 1, "not before the interval is up");
+  t.mock.timers.tick(1);
+  assert.equal(opened.length, 2, "and once it is");
+
+  // That attempt fails too, so the next one waits twice as long -- and the tick that would have
+  // been enough a moment ago is not any more.
+  opened[1].drop();
+  t.mock.timers.tick(min);
+  assert.equal(opened.length, 2, "the interval doubled");
+  t.mock.timers.tick(min);
+  assert.equal(opened.length, 3);
+
+  // And again, until it stops growing. Each round doubles, so a browser left open with no server
+  // ends up asking a couple of times an hour rather than thirty times a minute.
+  let delay = min * 2;
+  for (let round = 0; round < 8; round++) {
+    opened[opened.length - 1].drop();
+    delay = Math.min(delay * 2, worker.RECONNECT_MAX_MS);
+    t.mock.timers.tick(delay);
+  }
+  assert.equal(
+    worker.retryDelay(),
+    worker.RECONNECT_MAX_MS,
+    "the interval is capped rather than growing without end",
+  );
+});
+
+// The path that made the old interval moot. tabs.onUpdated and tabs.onActivated fire constantly
+// while somebody browses, and each one used to be an unconditional attempt -- so the 2 s timer was
+// never the fastest thing asking.
+test("ordinary browsing does not get to bypass the interval", (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout", "Date"] });
+  const opened = [];
+  const worker = loadWorker(
+    EXPORTED,
+    {
+      "runtime.connectNative": () => {
+        const port = makeFakePort();
+        opened.push(port);
+        return port;
+      },
+    },
+    LIVE,
+  );
+  opened[0].drop();
+  assert.equal(opened.length, 1);
+
+  // A hundred tab events inside the waiting interval are a hundred refusals, not a hundred
+  // processes.
+  for (let event = 0; event < 100; event++) {
+    worker.reconnectOnActivity();
+  }
+  assert.equal(opened.length, 1, "no attempt is made inside the interval");
+
+  // Once it has passed, browsing is a perfectly good reason to try again -- that is what it is
+  // there for, so a bridge that came up is noticed without waiting for the alarm.
+  t.mock.timers.tick(worker.RECONNECT_MIN_MS);
+  assert.equal(opened.length, 2, "the scheduled retry ran");
+  opened[1].drop();
+  t.mock.timers.tick(worker.RECONNECT_MIN_MS * 2);
+  const before = opened.length;
+  worker.reconnectOnActivity();
+  assert.ok(
+    opened.length >= before,
+    "browsing after the interval may attempt again",
+  );
+});
+
+// A bridge that answers has to put the interval back, or the growth is a one-way ratchet: an
+// editor started after a long quiet spell would be found two minutes later instead of at once.
+test("a bridge that answers puts the interval back", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout", "Date"] });
+  const opened = [];
+  const worker = loadWorker(
+    EXPORTED,
+    {
+      "runtime.connectNative": () => {
+        const port = makeFakePort();
+        opened.push(port);
+        return port;
+      },
+    },
+    LIVE,
+  );
+  // Fail a few times so the interval has grown well past its floor.
+  for (let round = 0; round < 3; round++) {
+    opened[opened.length - 1].drop();
+    t.mock.timers.tick(worker.RECONNECT_MAX_MS);
+  }
+  assert.ok(worker.retryDelay() > worker.RECONNECT_MIN_MS, "the interval grew");
+
+  // Now a host answers.
+  opened[opened.length - 1].emit({ type: "bridge_ready", protocol: PROTOCOL });
+  assert.equal(
+    worker.retryDelay(),
+    worker.RECONNECT_MIN_MS,
+    "and a bridge that answered resets it",
+  );
+});
+
+// The switch, because backing off is not the same as being able to stop it. Somebody whose work
+// this interferes with should be able to turn it off without uninstalling the extension.
+test("pausing closes the bridge and stops every attempt", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout", "Date"] });
+  const opened = [];
+  const worker = loadWorker(
+    EXPORTED,
+    {
+      "runtime.connectNative": () => {
+        const port = makeFakePort();
+        opened.push(port);
+        return port;
+      },
+      "debugger.attach": () => Promise.resolve(),
+      "debugger.detach": () => Promise.resolve(),
+    },
+    LIVE,
+  );
+  opened[0].emit({ type: "bridge_ready", protocol: PROTOCOL });
+  assert.equal(worker.paused(), false);
+  assert.equal([...worker.sessions].length, 1);
+
+  await worker.setBridgePaused(true);
+  assert.equal(worker.paused(), true);
+  assert.equal(
+    opened[0].connected,
+    false,
+    "the open port is closed, not just left idle",
+  );
+  assert.equal([...worker.sessions].length, 0);
+
+  // Nothing reaches for the bridge while it is off -- not the timer, not browsing, and not an
+  // attempt that asks to skip the waiting. A pause the extension can talk itself out of is not a
+  // pause.
+  const whilePaused = opened.length;
+  t.mock.timers.tick(worker.RECONNECT_MAX_MS * 2);
+  worker.reconnectOnActivity();
+  assert.equal(
+    worker.connect({ force: true }),
+    null,
+    "even a forced attempt is refused",
+  );
+  assert.equal(opened.length, whilePaused, "no host process while paused");
+
+  // And resuming works.
+  await worker.setBridgePaused(false);
+  assert.equal(worker.paused(), false);
+  assert.notEqual(worker.connect({ force: true }), null);
+  assert.equal(opened.length, whilePaused + 1);
+});
 
 test("connecting gives the port a session of its own", () => {
   const { worker, port } = bootWorker();

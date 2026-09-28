@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.25)
 
-project(chrome_control_mcp VERSION 1.6.1 LANGUAGES CXX)
+project(chrome_control_mcp VERSION 1.7.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -424,4 +424,19 @@ if(BUILD_TESTING)
                 "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_vscode_payload.mjs"
     )
     set_tests_properties(test_vscode_payload PROPERTIES TIMEOUT 120)
+
+    # browser_extension_install / _status / _uninstall against a REAL registration, driven
+    # through the built server. Nothing had ever run the uninstall tool: the live suite cannot
+    # remove the registration it is using, and the unit tests stop at the installer class. It
+    # takes the binary's path because it is the packaged tool surface under test, not a library.
+    add_test(NAME test_extension_install_cycle
+        COMMAND "${NODE_EXECUTABLE}" --test
+                "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_extension_install_cycle.mjs"
+    )
+    # In the environment rather than on the command line: node --test reads a positional
+    # argument as another test file, and would try to run the .exe as one.
+    set_tests_properties(test_extension_install_cycle PROPERTIES
+        TIMEOUT 180
+        ENVIRONMENT "CHROME_CONTROL_MCP_TEST_EXECUTABLE=$<TARGET_FILE:chrome_control_mcp>"
+    )
 endif()
