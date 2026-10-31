@@ -1,0 +1,58 @@
+{
+  "ran_at": "2026-10-31T22:43:59.597Z",
+  "results": [
+    {
+      "site": "ProseMirror",
+      "url": "https://prosemirror.net/examples/basic/",
+      "editor": "- generic [ref=e20] (editable,clickable,value=Hello ProseMirror This is editable text. You can focus it an...)",
+      "paste": {
+        "pasted": true,
+        "taken_by": "page",
+        "target": {
+          "id": "",
+          "tag": "div"
+        },
+        "via": "paste"
+      },
+      "marker_on_page": true,
+      "copy": {
+        "copied": true,
+        "from": "page"
+      },
+      "copied_back": true,
+      "result": "pass"
+    },
+    {
+      "site": "Quill",
+      "url": "https://quilljs.com/",
+      "editor": "- generic [ref=e77] (editable,clickable,value=Quill Rich Text Editor Quill is a free open source WYSIWYG ...)",
+      "result": "error: browser_click failed: The element could not be brought on screen (its centre is at -458, 438); scroll it into view first."
+    },
+    {
+      "site": "TinyMCE (in a frame)",
+      "url": "https://www.tiny.cloud/docs/tinymce/latest/basic-example/",
+      "result": "no editor found in the snapshot"
+    },
+    {
+      "site": "Plain form field",
+      "url": "https://httpbin.org/forms/post",
+      "editor": "- textbox \"Customer name:\" [ref=e485] (editable)",
+      "paste": {
+        "pasted": true,
+        "taken_by": "inserted",
+        "target": {
+          "id": "",
+          "tag": "input"
+        }
+      },
+      "marker_on_page": false,
+      "marker_in_field": true,
+      "copy": {
+        "copied": true,
+        "from": "selection"
+      },
+      "copied_back": true,
+      "result": "pass"
+    }
+  ]
+}

@@ -72,14 +72,16 @@ QString uploadMimeForName(const QString &name) {
   return type.name();
 }
 
-UploadBatch readUploadFiles(const QStringList &paths, const QString &roots) {
+UploadBatch readUploadFiles(const QStringList &paths, const QString &roots,
+                            const QString &tool) {
   UploadBatch batch;
   if (paths.isEmpty()) {
-    batch.error = QStringLiteral("browser_upload needs at least one path.");
+    batch.error = QStringLiteral("%1 needs at least one path.").arg(tool);
     return batch;
   }
   if (paths.size() > kMaxUploadFiles) {
-    batch.error = QStringLiteral("browser_upload takes at most %1 files.")
+    batch.error = QStringLiteral("%1 takes at most %2 files.")
+                      .arg(tool)
                       .arg(kMaxUploadFiles);
     return batch;
   }
@@ -91,7 +93,7 @@ UploadBatch readUploadFiles(const QStringList &paths, const QString &roots) {
     // choose.
     if (!info.isAbsolute()) {
       batch.error =
-          QStringLiteral("browser_upload needs an absolute path: %1").arg(path);
+          QStringLiteral("%1 needs an absolute path: %2").arg(tool, path);
       return batch;
     }
     const QString canonical = info.canonicalFilePath();
@@ -114,11 +116,11 @@ UploadBatch readUploadFiles(const QStringList &paths, const QString &roots) {
     }
     const qint64 size = file.size();
     if (size > kMaxUploadFileBytes) {
-      batch.error =
-          QStringLiteral("%1 is %2 bytes; browser_upload carries at most %3.")
-              .arg(canonical)
-              .arg(size)
-              .arg(kMaxUploadFileBytes);
+      batch.error = QStringLiteral("%1 is %2 bytes; %3 carries at most %4.")
+                        .arg(canonical)
+                        .arg(size)
+                        .arg(tool)
+                        .arg(kMaxUploadFileBytes);
       return batch;
     }
     const QByteArray contents = file.readAll();

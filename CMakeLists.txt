@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.25)
 
-project(chrome_control_mcp VERSION 1.8.2 LANGUAGES CXX)
+project(chrome_control_mcp VERSION 1.9.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -426,6 +426,14 @@ if(BUILD_TESTING)
                 "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_browser_extension_tabs.mjs"
     )
     set_tests_properties(test_browser_extension_tabs PROPERTIES TIMEOUT 120)
+
+    # Each agent's own clipboard: copy, cut and paste chords never sent to Chrome as keys, one agent
+    # never reaching another's, page clipboard calls honoured only inside the agent's own commands.
+    add_test(NAME test_browser_extension_clipboard
+        COMMAND "${NODE_EXECUTABLE}" --test
+                "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_browser_extension_clipboard.mjs"
+    )
+    set_tests_properties(test_browser_extension_clipboard PROPERTIES TIMEOUT 120)
 
     # Every version string agrees, and the version being shipped has its changelog entry and
     # release note -- checked on each push, not first discovered by the release workflow.

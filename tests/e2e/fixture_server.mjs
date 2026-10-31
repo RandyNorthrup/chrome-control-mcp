@@ -268,6 +268,101 @@ document.getElementById('pick').addEventListener('click', async () => {
   );
 }
 
+// Every way a page meets a clipboard: a rich editor that reads a paste from the paste event, one
+// that reads it from beforeinput, a bare contenteditable and a text field that take whatever is
+// typed, copy buttons built the two ways sites build them, a paste button, a timer that reads the
+// clipboard on its own, and editors inside a same-origin frame and a frame from another site
+// (@p crossOrigin). Each reports what it got into its own status line.
+function clipboardPage(crossOrigin) {
+  return htmlPage(
+    "Clipboard",
+    `<iframe id="cross-frame" title="Cross-site field" src="${crossOrigin}/clipboard-frame"
+  style="width:420px;height:90px;border:1px solid #888"></iframe>
+<p id="cross-status">cross: none</p>
+<p id="cross-box">cross-box: none</p>
+<textarea id="field" aria-label="Plain field">copy me from the field</textarea>
+<p id="field-status">field: copy me from the field</p>
+<div id="rich" contenteditable="true" role="textbox" aria-label="Rich editor"
+  style="min-height:3rem;border:1px solid #888"></div>
+<p id="rich-status">rich: none</p>
+<div id="beforeinput-editor" contenteditable="true" role="textbox" aria-label="Beforeinput editor"
+  style="min-height:3rem;border:1px solid #888"></div>
+<p id="beforeinput-status">beforeinput: none</p>
+<div id="bare" contenteditable="true" role="textbox" aria-label="Bare editor"
+  style="min-height:3rem;border:1px solid #888"></div>
+<p id="bare-status">bare: none</p>
+<button id="copy-exec" type="button">Copy with execCommand</button>
+<p id="exec-status">exec: none</p>
+<button id="copy-async" type="button">Copy with clipboard API</button>
+<p id="async-status">async: none</p>
+<button id="paste-read" type="button">Paste with clipboard API</button>
+<p id="read-status">read: none</p>
+<button id="arm-timer" type="button">Read clipboard in 3 seconds</button>
+<p id="timer-status">timer: none</p>
+<button id="focus-frame" type="button">Focus the framed editor</button>
+<iframe id="same-frame" title="Framed editor" style="width:420px;height:90px"
+  srcdoc="<div id='inner' contenteditable='true' style='min-height:3rem;border:1px solid #888'></div><script>document.getElementById('inner').addEventListener('paste',function(e){e.preventDefault();parent.document.getElementById('frame-status').textContent='frame: '+e.clipboardData.getData('text/plain').replace(/\\n/g,' / ')+'|files='+e.clipboardData.files.length;});</script>"></iframe>
+<p id="frame-status">frame: none</p>`,
+    `const status = (id, text) => { document.getElementById(id).textContent = text; };
+const field = document.getElementById('field');
+field.addEventListener('input', () => status('field-status', 'field: ' + field.value));
+document.getElementById('rich').addEventListener('paste', (e) => {
+  e.preventDefault();
+  const d = e.clipboardData;
+  const files = [...d.files].map((f) => f.name + ':' + f.size + ':' + f.type).join(',');
+  status('rich-status', 'rich: text=' + d.getData('text/plain') + '|html=' +
+    d.getData('text/html') + '|files=' + files);
+});
+document.getElementById('beforeinput-editor').addEventListener('beforeinput', (e) => {
+  if (e.inputType !== 'insertFromPaste') { return; }
+  e.preventDefault();
+  const d = e.dataTransfer;
+  status('beforeinput-status', 'beforeinput: ' + (d ? d.getData('text/plain') : 'no data') +
+    '|files=' + (d ? d.files.length : 0));
+});
+const bare = document.getElementById('bare');
+bare.addEventListener('input', () => status('bare-status', 'bare: ' + bare.innerText.replace(/\\n+/g, ' / ')));
+document.getElementById('copy-exec').addEventListener('click', () => {
+  const t = document.createElement('textarea');
+  t.value = 'exec-copied-text';
+  document.body.appendChild(t);
+  t.select();
+  const ok = document.execCommand('copy');
+  t.remove();
+  status('exec-status', 'exec: ' + ok);
+});
+document.getElementById('copy-async').addEventListener('click', () => {
+  navigator.clipboard.writeText('async-copied-text').then(
+    () => status('async-status', 'async: ok'),
+    (e) => status('async-status', 'async: ' + e.name));
+});
+document.getElementById('paste-read').addEventListener('click', () => {
+  navigator.clipboard.readText().then(
+    (t) => status('read-status', 'read: ' + t),
+    (e) => status('read-status', 'read: ' + e.name));
+});
+document.getElementById('arm-timer').addEventListener('click', () => {
+  status('timer-status', 'timer: armed');
+  setTimeout(() => navigator.clipboard.readText().then(
+    (t) => status('timer-status', 'timer: ' + t),
+    (e) => status('timer-status', 'timer: ' + e.name)), 3000);
+});
+document.getElementById('focus-frame').addEventListener('click', () => {
+  document.getElementById('same-frame').contentDocument.getElementById('inner').focus();
+});
+// Where to click to put focus in the cross-site frame's field, in viewport CSS px.
+const crossBox = () => {
+  const r = document.getElementById('cross-frame').getBoundingClientRect();
+  status('cross-box', 'cross-box: ' + Math.round(r.left + 60) + ',' + Math.round(r.top + 30));
+};
+addEventListener('scroll', crossBox);
+addEventListener('load', crossBox);
+addEventListener('message', (e) => {
+  if (e.data && typeof e.data.cross === 'string') { status('cross-status', 'cross: ' + e.data.cross); }
+});`,
+  );
+}
+
 function protectedPage() {
   return htmlPage(
     "Authenticated Fixture",
@@ -520,6 +615,31 @@ export async function startFixtureServer() {
     }
     if (url.pathname === "/uploads") {
       send(200, "text/html; charset=utf-8", uploadShapesPage());
+      return;
+    }
+    if (url.pathname === "/clipboard") {
+      // The same server under another host name is another site, so the frame is out of process
+      // and out of the page's reach, as an embedded editor from another site would be.
+      const port = String(request.headers.host || "").split(":")[1];
+      send(
+        200,
+        "text/html; charset=utf-8",
+        clipboardPage(`http://localhost:${port}`),
+      );
+      return;
+    }
+    if (url.pathname === "/clipboard-frame") {
+      // The field fills the whole frame, so a click anywhere in the frame lands in it.
+      send(
+        200,
+        "text/html; charset=utf-8",
+        `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Cross-site field</title></head>
+<body style="margin:0"><textarea id="xfield" aria-label="Cross-site textarea"
+  style="position:fixed;inset:0;width:100%;height:100%;box-sizing:border-box"></textarea>
+<script>const f = document.getElementById('xfield');
+f.addEventListener('input', () => parent.postMessage({ cross: f.value.replace(/\\n/g, ' / ') }, '*'));</script>
+</body></html>`,
+      );
       return;
     }
     if (url.pathname === "/api/delay") {

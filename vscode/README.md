@@ -6,7 +6,7 @@
 and without ever taking your screen.**
 
 This extension installs the [Chrome Control MCP](https://github.com/RandyNorthrup/chrome-control-mcp)
-server and registers it with VS Code, so its 52 tools are available to chat without editing an
+server and registers it with VS Code, so its 53 tools are available to chat without editing an
 `mcp.json` or knowing a path. The same server works with any MCP client -- Claude Code, Codex,
 Cursor, Claude Desktop -- and several of them can share one browser at once.
 
@@ -14,18 +14,19 @@ Cursor, Claude Desktop -- and several of them can share one browser at once.
 
 ## What it does
 
-| Capability              | Included                                                                                                    |
-| ----------------------- | ----------------------------------------------------------------------------------------------------------- |
-| Many agents at once     | Several editors, and several agents inside one, each in its own tabs and coloured tab group                 |
-| Your tabs stay yours    | A tab you open never joins an AI group; drag a tab in to hand it over, out to take it back                  |
-| Works beside you        | Drives background tabs and never brings them to the front; an agent's popup goes behind your tab            |
-| Always visible          | A frame, a named badge and a cursor in the agent's colour on every tab it holds                             |
-| Cleans up after itself  | `browser_release`, or the editor exiting, closes what the agent opened; borrowed tabs are handed back       |
-| Uploads without dialogs | File inputs, script-created inputs, drop zones and `showOpenFilePicker`, filled directly in background tabs |
-| Semantic control        | Accessibility snapshots with element refs bound to the tab they came from                                   |
-| Real input              | Click, type, keys, hover, drag, select, scroll, dialogs and media                                           |
-| Browser state           | Cookies, storage, permissions, downloads, print, HTTP auth, emulation, and tab recording to `.webm`         |
-| In-place updates        | The server updates itself without overwriting the copy that is running                                      |
+| Capability              | Included                                                                                                                                    |
+| ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| Many agents at once     | Several editors, and several agents inside one, each in its own tabs and coloured tab group                                                 |
+| Your tabs stay yours    | A tab you open never joins an AI group; drag a tab in to hand it over, out to take it back                                                  |
+| Works beside you        | Drives background tabs and never brings them to the front; an agent's popup goes behind your tab                                            |
+| Always visible          | A frame, a named badge and a cursor in the agent's colour on every tab it holds                                                             |
+| Cleans up after itself  | `browser_release`, or the editor exiting, closes what the agent opened; borrowed tabs are handed back                                       |
+| Uploads without dialogs | File inputs, script-created inputs, drop zones and `showOpenFilePicker`, filled directly in background tabs                                 |
+| A clipboard each        | Copy, cut and paste use the agent's own clipboard, never yours or another agent's; pastes carry text, formatting and images into any editor |
+| Semantic control        | Accessibility snapshots with element refs bound to the tab they came from                                                                   |
+| Real input              | Click, type, keys, hover, drag, select, scroll, dialogs and media                                                                           |
+| Browser state           | Cookies, storage, permissions, downloads, print, HTTP auth, emulation, and tab recording to `.webm`                                         |
+| In-place updates        | The server updates itself without overwriting the copy that is running                                                                      |
 
 The server talks to your ordinary Chrome through native messaging and the Chrome DevTools Protocol.
 It opens no network listener, and nothing leaves your machine.

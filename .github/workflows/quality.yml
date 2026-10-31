@@ -318,6 +318,17 @@ jobs:
           ${{ matrix.chrome-args }} tests/e2e/multi_agent_e2e.mjs
           | tee multi-agent-e2e.json
 
+      # Each agent's own clipboard: copy, cut and paste by key, by tool and through a page's own
+      # buttons, into editors that take a paste three different ways -- while a sentinel the "user"
+      # put on the browser's clipboard stays there and never reaches an agent's page.
+      - name: Per-agent clipboard E2E
+        shell: bash
+        run: >-
+          node tests/e2e/isolated_run.mjs --chrome="${{ steps.chrome.outputs.path }}"
+          --executable="${{ matrix.executable }}"
+          ${{ matrix.chrome-args }} tests/e2e/clipboard_e2e.mjs
+          | tee clipboard-e2e.json
+
       # What each suite measured, kept whether it passed or failed: the reports carry the
       # per-configuration numbers a failure has to be read against.
       - name: Keep the suites' reports

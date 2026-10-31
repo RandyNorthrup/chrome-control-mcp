@@ -1,0 +1,32 @@
+{
+  "ran_at": "2026-10-31T22:44:48.248Z",
+  "results": [
+    {
+      "site": "Quill",
+      "url": "https://quilljs.com/",
+      "editor": "- generic [ref=e22] (editable,clickable,value=Quill Rich Text Editor Quill is a free open source WYSIWYG ...)",
+      "paste": {
+        "pasted": true,
+        "taken_by": "page",
+        "target": {
+          "id": "",
+          "tag": "div"
+        },
+        "via": "paste"
+      },
+      "marker_on_page": true,
+      "copy": {
+        "copied": true,
+        "from": "page"
+      },
+      "copied_back": true,
+      "result": "pass"
+    },
+    {
+      "site": "TinyMCE (in a frame)",
+      "url": "https://www.tiny.cloud/docs/tinymce/latest/basic-example/",
+      "result": "no editor found in the snapshot",
+      "frame_lines": ["- iframe \"Rich Text Area. Press ALT-0 for help.\""]
+    }
+  ]
+}

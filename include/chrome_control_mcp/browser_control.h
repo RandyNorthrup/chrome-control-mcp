@@ -122,12 +122,14 @@ private:
   [[nodiscard]] ToolResult
   exchange(const browser::BrowserBridgeSession::Outgoing &outgoing);
 
-  /// browser_upload: read the named files here, send their bytes as bridge-
-  /// sized chunks, then the command that assigns them to the element. It is
-  /// several round trips because Chrome accepts at most 1 MiB in one message
-  /// from a native host, and a file is usually larger than the rest of a
-  /// session's traffic put together.
-  [[nodiscard]] ToolResult invokeUpload(const QJsonObject &arguments);
+  /// A tool call that carries files -- browser_upload, and browser_clipboard
+  /// writing files: read the named files here, send their bytes as bridge-
+  /// sized chunks, then the tool's own command naming them. It is several
+  /// round trips because Chrome accepts at most 1 MiB in one message from a
+  /// native host, and a file is usually larger than the rest of a session's
+  /// traffic put together.
+  [[nodiscard]] ToolResult invokeWithFiles(const QString &name,
+                                           const QJsonObject &arguments);
 
   BrowserBridgePipeServer pipe_;
   browser::BrowserBridgeSession session_;

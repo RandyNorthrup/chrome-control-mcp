@@ -1,0 +1,19 @@
+tee: /mnt/c/Users/Randy/Coding/chrome-control-mcp/docs/plans/evidence/clipboard/live-red-drills.txt: No such file or directory
+== drill: no page stand-in
+exit=0
+== drill: no chord interception
+exit=1
+FAIL an editor that reads the paste event gets text, HTML and the image file -- rich: text=USER-CLIPBOARD-SENTINEL-1793486201430|html=|files=
+FAIL an editor that reads beforeinput insertFromPaste gets the data transfer
+FAIL a bare editable region gets the text typed in, line by line
+== drill: no command window
+exit=1
+FAIL a page reading the clipboard on its own, outside any agent command, is refused -- timer: async-copied-text
+== drill: no restore on handback
+exit=1
+FAIL a tab handed back runs the browser's own clipboard functions again -- [true,null]
+== restored
+staged copy matches source
+exit=0
+
+[exited with code 1]

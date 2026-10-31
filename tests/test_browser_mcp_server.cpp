@@ -98,6 +98,8 @@ void BrowserMcpServerTests::initializeCarriesClientAgnosticInstructions() {
            QStringLiteral("agent"),
            QStringLiteral("refused"),
            QStringLiteral("browser_upload"),
+           QStringLiteral("browser_clipboard"),
+           QStringLiteral("never the system clipboard"),
            QStringLiteral("browser_release"),
            QStringLiteral("handed back"),
            QStringLiteral("keep_open:true"),
@@ -177,7 +179,7 @@ void BrowserMcpServerTests::fullCatalogContainsEveryBrowserAndInstallerTool() {
       handleRequest(request(QStringLiteral("tools/list"), 2), &browser);
   QVERIFY(response.has_value());
   const QSet<QString> names = catalogNames(*response);
-  QCOMPARE(names.size(), 52);
+  QCOMPARE(names.size(), 53);
   for (const QString &expected : {
            QStringLiteral("browser_navigate"),
            QStringLiteral("browser_snapshot"),

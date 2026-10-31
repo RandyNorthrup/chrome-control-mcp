@@ -299,6 +299,7 @@ private slots:
   void ancestorChain_boundsDepthAndMatchesImage();
   void handshake_thenCommandReplyRoundTrips();
   void silentPeer_deadlineResetsConnection();
+  void closingPeer_isReportedAsClosedNotSilent();
   void workingPeer_beatsHoldTheConnectionOpen();
   void slowFrame_transferHoldsTheConnectionOpen();
   void endlessPeer_absoluteCapAbandonsTheCommand();
@@ -584,6 +585,51 @@ void BrowserBridgePipeTests::silentPeer_deadlineResetsConnection() {
   server.stop();
 }
 
+// A relay that goes away mid-command is not a browser gone quiet. Both used to
+// be reported as "browser did not reply within N ms" -- here the budget is 30 s
+// and the relay closes at once, so that text would have claimed half a minute
+// of silence for a connection that was gone in a millisecond, and a stalled
+// browser could not be told from a broken bridge.
+void BrowserBridgePipeTests::closingPeer_isReportedAsClosedNotSilent() {
+  QTemporaryDir dir;
+  BrowserBridgePipeServer server(
+      testOptions(dir.filePath(QStringLiteral("r.json")), 30000));
+  QString error;
+  QVERIFY2(server.start(&error), qPrintable(error));
+
+  const QString name = server.pipeName();
+  const QString token = server.token();
+  std::thread client([&] {
+    const NativeIpcHandle handle = connectAndHandshake(name, token);
+    if (handle == kInvalidNativeIpcHandle) {
+      return;
+    }
+    QJsonObject command;
+    clientRead(handle, &command); // take the command, then leave
+    closeNativeIpcHandle(handle);
+  });
+
+  QVERIFY(waitUntil([&server] { return server.clientConnected(); }, 5000));
+  QElapsedTimer timer;
+  timer.start();
+  const auto exchange = server.sendCommandAwaitReply(
+      QJsonObject{{QStringLiteral("type"), QStringLiteral("command")},
+                  {QStringLiteral("id"), QStringLiteral("b-1")},
+                  {QStringLiteral("cmd"), QStringLiteral("click")}});
+  QVERIFY(!exchange.ok);
+  QVERIFY2(exchange.error.startsWith(
+               QStringLiteral("the browser's relay closed the connection ")),
+           qPrintable(exchange.error));
+  QVERIFY2(
+      exchange.error.contains(QStringLiteral(" ms into click, before "
+                                             "replying (connection reset)")),
+      qPrintable(exchange.error));
+  QVERIFY2(timer.elapsed() < 10000, "reported at once, not after the budget");
+
+  client.join();
+  server.stop();
+}
+
 // The reply budget is a SILENCE budget, not a work budget.
 //
 // Before this, 30 s without a frame on the pipe tore the connection down --
@@ -804,9 +850,11 @@ void BrowserBridgePipeTests::reconnect_secondClientServedWithNewGeneration() {
                   {QStringLiteral("id"), QStringLiteral("b-1")},
                   {QStringLiteral("cmd"), QStringLiteral("snapshot")}});
   QVERIFY(!reset.ok);
-  QCOMPARE(
-      reset.error,
-      QStringLiteral("browser did not reply within 500 ms (connection reset)"));
+  // A relay that died is reported as one that closed the connection, not as
+  // one that stayed silent for the whole budget.
+  QVERIFY2(reset.error.startsWith(
+               QStringLiteral("the browser's relay closed the connection ")),
+           qPrintable(reset.error));
   client_a.join();
   QVERIFY(waitUntil([&server] { return !server.clientConnected(); },
                     5000)); // the accept loop re-armed

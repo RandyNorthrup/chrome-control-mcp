@@ -1,0 +1,4 @@
+{"suite":"clipboard_e2e","exit":1,"ok":false,"checks":15,"passed":15}
+{"suite":"multi_agent_e2e","exit":0,"ok":true,"checks":25,"passed":25}
+{"suite":"user_interference_e2e","exit":0,"ok":true,"checks":10,"passed":10}
+{"suite":"full_browser_e2e","exit":0,"ok":true,"tools":48,"cases":177}

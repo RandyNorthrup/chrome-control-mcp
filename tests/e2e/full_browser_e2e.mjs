@@ -95,6 +95,10 @@ const NOT_EXERCISED_HERE = new Map([
     "browser_release",
     "closes the tabs this suite works in; driven by multi_agent_e2e.mjs",
   ],
+  [
+    "browser_clipboard",
+    "needs a second agent and the user's clipboard to mean anything; driven by clipboard_e2e.mjs",
+  ],
 ]);
 
 const sleep = (milliseconds) =>

@@ -172,6 +172,7 @@ const KEY_DEFS = Object.assign(Object.create(null), {
   esc: { key: "Escape", code: "Escape", keyCode: 27 },
   backspace: { key: "Backspace", code: "Backspace", keyCode: 8 },
   delete: { key: "Delete", code: "Delete", keyCode: 46 },
+  insert: { key: "Insert", code: "Insert", keyCode: 45 },
   space: { key: " ", code: "Space", keyCode: 32, text: " " },
   arrowup: { key: "ArrowUp", code: "ArrowUp", keyCode: 38 },
   arrowdown: { key: "ArrowDown", code: "ArrowDown", keyCode: 40 },
@@ -612,6 +613,14 @@ function makeSession() {
     // A file's bytes, in base64, keyed by the upload id the app minted for it. One entry per file in
     // flight; entries go as soon as the upload is applied, abandoned, or the session ends.
     uploadChunks: new Map(),
+
+    // Each agent's clipboard, keyed by agent name ("" for the session's shared group): text,
+    // markup and files, in this worker's memory only. See "Agent clipboards".
+    clipboards: new Map(),
+
+    // What a page in one of this session's tabs did with the agent's clipboard during (or just
+    // after) the last command, reported on the next reply and then cleared.
+    clipboardDuringCommand: null,
   };
 }
 
@@ -645,6 +654,11 @@ function makeTabState(tabId, origin) {
     attaching: null,
 
     lastUsedAt: Date.now(),
+
+    // Until when a page in this tab may use the agent's clipboard: Infinity while one of the
+    // agent's input commands on this tab runs, a moment after one ends, 0 otherwise. A page asking
+    // outside it is refused, as a page with no clipboard permission is.
+    inputUntil: 0,
 
     // Where this tab's agent cursor last went, so a redraw after a navigation re-parks it there.
     cursor: { x: PARKED_CURSOR.x, y: PARKED_CURSOR.y },
@@ -1807,6 +1821,12 @@ function reportSideEffects(session, payload) {
     payload.file_chooser = session.chooserDuringCommand;
     session.chooserDuringCommand = null;
   }
+  // A copy or paste button the agent clicked used the agent's clipboard; say so, or the agent
+  // cannot tell that the page's "Copied!" put anything anywhere.
+  if (session.clipboardDuringCommand) {
+    payload.page_clipboard = session.clipboardDuringCommand;
+    session.clipboardDuringCommand = null;
+  }
   return payload;
 }
 
@@ -1924,6 +1944,7 @@ const COMMAND_TABLE = new Map([
     },
   ],
   ["upload", { fn: handleUpload, tab: true, args: true }],
+  ["clipboard", { fn: handleClipboard, tab: true, args: true }],
   ["release", { fn: handleRelease, tab: false, args: true }],
 ]);
 
@@ -1967,11 +1988,20 @@ async function dispatchCommand(session, cmd, args) {
   if (tab && OPENER_COMMANDS.has(cmd)) {
     await armFilePickers(session, tab);
   }
+  // The page in this tab may use the agent's clipboard while the agent's own input reaches it,
+  // and for a moment after -- a click handler that copies after an await lands just past the click.
+  const opensClipboard = Boolean(tab) && CLIPBOARD_COMMANDS.has(cmd);
+  if (opensClipboard) {
+    tab.inputUntil = Infinity;
+  }
   try {
     return await entry.fn(...params);
   } catch (error) {
     throw await explainUnreachablePage(tab, error);
   } finally {
+    if (opensClipboard) {
+      tab.inputUntil = Date.now() + OPENER_GRACE_MS;
+    }
     if (tab) {
       tab.dialogArmActive = false;
       if (scopedPolicy !== null && tab.pendingDialogPolicy === scopedPolicy) {
@@ -2382,6 +2412,9 @@ async function detachTab(session, state, { closed = false } = {}) {
     setTabControlBadge(state.id, false);
     return;
   }
+  // The page's own clipboard functions go back before the debugger does: the next document gets no
+  // stand-in once the attachment ends, but the live one keeps it until it is taken off.
+  await restorePageClipboard(state.id, { attached: wasAttached });
   if (wasAttached) {
     await removeControlPresence(state.id);
     await chrome.debugger.detach({ tabId: state.id }).catch(() => {
@@ -2972,6 +3005,8 @@ async function releaseTabs(session, states, { closeOpened }) {
   if (session.tabs.size === 0) {
     session.groups.clear();
   }
+  // An agent that let go of its last tab let go of its clipboard with it.
+  forgetReleasedClipboards(session);
   session.lastTabListing = null;
   persistLeases();
   return result;
@@ -2987,6 +3022,8 @@ async function standDown(session, { closeOpened }) {
   session.commandGeneration++;
   clearUploads(session);
   discardRecording(session);
+  session.clipboards.clear();
+  session.clipboardDuringCommand = null;
   return result;
 }
 
@@ -3475,6 +3512,1048 @@ function noteFileChooser(session, tab, chooser) {
   };
 }
 
+// -- Agent clipboards ---------------------------------------------------------------
+//
+// The operating system has one clipboard, and every agent and the user shared it: an agent's
+// Ctrl+V pasted whatever was last copied anywhere on the machine -- the user's own copy, or another
+// agent's -- and its copy replaced the user's. A page's own copy button was worse: agent tabs run
+// under focus emulation, so a background page believes it is focused, and Chrome lets a focused
+// page write the system clipboard. Chrome has no clipboard per tab or per extension, so each agent
+// gets one here instead, and nothing an agent does reaches the system clipboard at all.
+//
+// One per agent, keyed like its tab group: this session plus the agent name its tab was opened
+// with ("" for the session's shared group). Held in this worker's memory only -- never in
+// chrome.storage, never on disk -- bounded, and cleared when the agent lets go of its last tab or
+// the session is stood down (its server exited, or the user paused the bridge).
+//
+// Three ways in, one store:
+//   - the agent's own copy, cut and paste chords, which handlePressKey answers here instead of
+//     sending to Chrome as keys (which is what would read or write the system clipboard);
+//   - browser_clipboard, which writes, reads, clears, copies, cuts and pastes;
+//   - the page's clipboard API in a held tab, through a stand-in that asks this worker, honoured
+//     only while one of the agent's own input commands on that tab runs and for 2 s after.
+const CLIPBOARD_STATE_KEY = "__chrome_control_mcp_clipboard__";
+const CLIPBOARD_BINDING = "__chrome_control_mcp_clipboard_call__";
+// What one clipboard may hold. Text and markup are each bounded on their own; files share the
+// upload ceiling, since they cross the bridge the same way.
+const MAX_CLIPBOARD_TEXT_CHARS = 2 * 1024 * 1024;
+const MAX_CLIPBOARD_HTML_CHARS = 2 * 1024 * 1024;
+const MAX_CLIPBOARD_FILES = 10;
+const MAX_CLIPBOARD_TYPE_CHARS = 128;
+// How long a page's clipboard call waits for this worker before it is refused, so a page whose
+// tab was let go of mid-call is not left with a promise that never settles.
+const CLIPBOARD_PAGE_CALL_MS = 10000;
+// The commands during which (and for OPENER_GRACE_MS after) a page in that tab may use the
+// agent's clipboard: everything that delivers the agent's input, as a user's click or key press
+// would give the page activation, and the agent's own clipboard commands -- a page's paste handler
+// may itself read the clipboard.
+const CLIPBOARD_COMMANDS = new Set([...OPENER_COMMANDS, "clipboard"]);
+
+function clipboardOf(session, agent) {
+  return session.clipboards.get(agent || "") || null;
+}
+
+// Store @p clip as @p agent's clipboard, or refuse it whole. A clipboard cut down to fit would be
+// pasted as though it were what was copied.
+function setClipboard(session, agent, clip) {
+  const text = typeof clip.text === "string" ? clip.text : "";
+  const html = typeof clip.html === "string" ? clip.html : "";
+  const files = Array.isArray(clip.files) ? clip.files : [];
+  if (text.length > MAX_CLIPBOARD_TEXT_CHARS) {
+    throw new Error(
+      "The text is larger than a clipboard holds (" +
+        MAX_CLIPBOARD_TEXT_CHARS / (1024 * 1024) +
+        " MiB).",
+    );
+  }
+  if (html.length > MAX_CLIPBOARD_HTML_CHARS) {
+    throw new Error(
+      "The HTML is larger than a clipboard holds (" +
+        MAX_CLIPBOARD_HTML_CHARS / (1024 * 1024) +
+        " MiB).",
+    );
+  }
+  if (files.length > MAX_CLIPBOARD_FILES) {
+    throw new Error(
+      "A clipboard holds at most " + MAX_CLIPBOARD_FILES + " files.",
+    );
+  }
+  let bytes = 0;
+  for (const file of files) {
+    bytes += file.data.length;
+  }
+  if (bytes > MAX_UPLOAD_BASE64) {
+    throw new Error("The files are larger than a clipboard holds.");
+  }
+  if (!text && !html && files.length === 0) {
+    throw new Error("There is nothing to put on the clipboard.");
+  }
+  session.clipboards.set(agent || "", {
+    text,
+    html,
+    files,
+    source: clip.source,
+    at: Date.now(),
+  });
+}
+
+// What a reply says about a clipboard: never its content, which only `read` returns.
+function clipboardSummary(clip) {
+  if (!clip) {
+    return { empty: true };
+  }
+  return {
+    empty: false,
+    text_length: clip.text.length,
+    html_length: clip.html.length,
+    files: clip.files.map((file) => ({
+      name: file.name,
+      type: file.type,
+      size: file.size,
+    })),
+    source: clip.source,
+  };
+}
+
+// An agent that holds no tab any more has let go of its clipboard too. Called after tabs are
+// released; an agent still holding a tab keeps its clipboard, and so does every other agent.
+function forgetReleasedClipboards(session) {
+  const holding = new Set();
+  for (const state of session.tabs.values()) {
+    holding.add(state.agent || "");
+  }
+  for (const agent of [...session.clipboards.keys()]) {
+    if (!holding.has(agent)) {
+      session.clipboards.delete(agent);
+    }
+  }
+}
+
+// The clipboard operation a chord performs, or null for any other chord. Copy, cut and paste with
+// Control or Command on every platform -- an agent rarely knows which one the browser runs on, and
+// either is what it means -- plus Insert and Delete's own clipboard chords, and the two ways of
+// asking for a paste without formatting.
+function clipboardChord(def, modifiers) {
+  const { shift, control, alt, meta } = MODIFIER_BITS;
+  const primary = modifiers === control || modifiers === meta;
+  const primaryShift =
+    modifiers === (control | shift) || modifiers === (meta | shift);
+  switch (def.code) {
+    case "KeyC":
+      return primary ? "copy" : null;
+    case "KeyX":
+      return primary ? "cut" : null;
+    case "KeyV":
+      if (primary) {
+        return "paste";
+      }
+      return primaryShift || modifiers === (meta | shift | alt)
+        ? "pastePlain"
+        : null;
+    case "Insert":
+      if (modifiers === control) {
+        return "copy";
+      }
+      return modifiers === shift ? "paste" : null;
+    case "Delete":
+      return modifiers === shift ? "cut" : null;
+    default:
+      return null;
+  }
+}
+
+// Runs in the page. Where a copy or paste lands: the focused element, followed through open shadow
+// roots and into the frames this document can reach. Focus inside a frame from another site is
+// reported rather than guessed past -- no script here can reach into it.
+function clipboardTargetFn() {
+  let doc = document;
+  let el = doc.activeElement;
+  for (let guard = 0; guard < 32 && el; guard += 1) {
+    if (el.shadowRoot && el.shadowRoot.activeElement) {
+      el = el.shadowRoot.activeElement;
+      continue;
+    }
+    if (el.tagName === "IFRAME" || el.tagName === "FRAME") {
+      let inner;
+      try {
+        inner = el.contentDocument;
+      } catch (_e) {
+        inner = null;
+      }
+      if (!inner) {
+        return { doc, el, crossFrame: true };
+      }
+      doc = inner;
+      el = inner.activeElement;
+      continue;
+    }
+    break;
+  }
+  return { doc, el: el || doc.body || doc.documentElement, crossFrame: false };
+}
+
+// Runs in the page, and inside the page's stand-in for execCommand. What a real copy (or cut) of
+// @p el in @p doc gives the clipboard. The page is asked first, exactly as a browser asks it: a copy
+// event carrying an empty DataTransfer, fired where the selection is. What the page put there is
+// believed when it cancelled the event -- that is how a page says "copy this instead". Otherwise the
+// selection is taken: the selected part of a text field, or the document's selection as text and
+// markup. A password field gives nothing, as it does to a real copy.
+function clipboardCaptureFn(doc, el, cut) {
+  const win = doc.defaultView;
+  const isField = (node) =>
+    Boolean(node) &&
+    (node.tagName === "TEXTAREA" ||
+      (node.tagName === "INPUT" &&
+        /^(text|search|url|tel|email|password|number)?$/i.test(
+          node.type || "",
+        )));
+  const selection = win.getSelection();
+  const anchor =
+    selection && selection.rangeCount > 0 ? selection.anchorNode : null;
+  const anchorEl = anchor
+    ? anchor.nodeType === 1
+      ? anchor
+      : anchor.parentElement
+    : null;
+  // The field whose text is selected. Usually the focused one; but the copy button every site
+  // builds -- a scratch textarea, select(), execCommand('copy') -- selects a field it never focuses,
+  // and the document selection then sits at that field, by itself or as a child of its parent.
+  let field = isField(el) ? el : null;
+  if (!field && isField(anchor)) {
+    field = anchor;
+  } else if (!field && anchorEl === anchor && anchor) {
+    const child = anchor.childNodes[selection.anchorOffset];
+    field = isField(child) ? child : null;
+  }
+  const target = field || anchorEl || el || doc.body;
+  const transfer = new win.DataTransfer();
+  const event = new win.ClipboardEvent(cut ? "cut" : "copy", {
+    clipboardData: transfer,
+    bubbles: true,
+    cancelable: true,
+    composed: true,
+  });
+  target.dispatchEvent(event);
+  if (event.defaultPrevented) {
+    return {
+      text: transfer.getData("text/plain"),
+      html: transfer.getData("text/html"),
+      from: "page",
+      editable: false,
+    };
+  }
+  if (field) {
+    if (String(field.type).toLowerCase() === "password") {
+      return { text: "", html: "", from: "selection", password: true };
+    }
+    const start = field.selectionStart;
+    const end = field.selectionEnd;
+    const picked =
+      typeof start === "number" && typeof end === "number" && end > start
+        ? field.value.slice(start, end)
+        : "";
+    return {
+      text: picked,
+      html: "",
+      from: "selection",
+      editable: !field.readOnly && !field.disabled,
+    };
+  }
+  if (!selection || selection.rangeCount === 0 || selection.isCollapsed) {
+    return { text: "", html: "", from: "selection", editable: false };
+  }
+  const box = doc.createElement("div");
+  for (let i = 0; i < selection.rangeCount; i += 1) {
+    box.appendChild(selection.getRangeAt(i).cloneContents());
+  }
+  return {
+    text: selection.toString(),
+    html: box.innerHTML,
+    from: "selection",
+    editable: Boolean(anchorEl && anchorEl.isContentEditable),
+  };
+}
+
+// Runs in the page: the agent's copy or cut, from wherever focus is.
+function agentCopyFn(findTarget, capture, cut, maxText, maxHtml) {
+  const spot = findTarget();
+  if (spot.crossFrame) {
+    return { crossFrame: true };
+  }
+  const got = capture(spot.doc, spot.el, cut);
+  if (got.text.length > maxText || got.html.length > maxHtml) {
+    return { tooLarge: true };
+  }
+  return got;
+}
+
+// Runs in the page. A real paste of @p clip into whatever has focus: a paste event carrying it --
+// where nearly every editor and every "paste an image anywhere" page reads a paste -- and then,
+// for an editable region whose page did not take the paste event, a beforeinput of type
+// insertFromPaste with the same data, which is where some editors read it instead. Text the page
+// took from neither is inserted by the caller with a trusted Input.insertText. Markup is only ever
+// offered to the page's own handlers, which sanitize it as they would a real paste; nothing here
+// inserts it.
+function agentPasteFn(findTarget, clip) {
+  const spot = findTarget();
+  if (spot.crossFrame) {
+    return { handled: "none", crossFrame: true, editable: true, field: true };
+  }
+  const { doc, el } = spot;
+  const win = doc.defaultView;
+  const transfer = new win.DataTransfer();
+  if (clip.text) {
+    transfer.setData("text/plain", clip.text);
+  }
+  if (clip.html) {
+    transfer.setData("text/html", clip.html);
+  }
+  for (const file of clip.files) {
+    const binary = win.atob(file.data);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i += 1) {
+      bytes[i] = binary.charCodeAt(i);
+    }
+    transfer.items.add(new win.File([bytes], file.name, { type: file.type }));
+  }
+  const target = {
+    tag: String(el.tagName || "")
+      .toLowerCase()
+      .slice(0, 40),
+    id: String(el.id || "").slice(0, 120),
+  };
+  const paste = new win.ClipboardEvent("paste", {
+    clipboardData: transfer,
+    bubbles: true,
+    cancelable: true,
+    composed: true,
+  });
+  el.dispatchEvent(paste);
+  if (paste.defaultPrevented) {
+    return { handled: "page", via: "paste", target };
+  }
+  const field =
+    el.tagName === "TEXTAREA" ||
+    (el.tagName === "INPUT" &&
+      /^(text|search|url|tel|email|password|number)?$/i.test(el.type || ""));
+  if (field) {
+    return {
+      handled: "none",
+      editable: !el.readOnly && !el.disabled,
+      field: true,
+      target,
+    };
+  }
+  if (!el.isContentEditable) {
+    return { handled: "none", editable: false, target };
+  }
+  const before = new win.InputEvent("beforeinput", {
+    inputType: "insertFromPaste",
+    dataTransfer: transfer,
+    bubbles: true,
+    cancelable: true,
+    composed: true,
+  });
+  el.dispatchEvent(before);
+  if (before.defaultPrevented) {
+    return { handled: "page", via: "beforeinput", target };
+  }
+  return { handled: "none", editable: true, field: false, target };
+}
+
+// Runs in the page, in every document of a held tab and in each frame of it the page can reach.
+// The page's clipboard API, answered by this worker through the binding -- so a page's copy or
+// paste button in an agent's tab uses that agent's clipboard and never the system's. Installed on
+// the prototypes, so Clipboard.prototype.writeText.call(...) cannot step around it. Its restore()
+// puts the browser's own functions back when the tab is handed back, and arm() reinstates these
+// when it is held again.
+function clipboardStandInFn(KEY, BINDING, capture, CALL_MS) {
+  const build = (win) => {
+    const clipProto = win.Clipboard && win.Clipboard.prototype;
+    const docProto = win.Document && win.Document.prototype;
+    const originals = {};
+    const owners = {};
+    for (const name of ["writeText", "write", "readText", "read"]) {
+      if (clipProto && typeof clipProto[name] === "function") {
+        originals[name] = clipProto[name];
+        owners[name] = clipProto;
+      }
+    }
+    if (docProto && typeof docProto.execCommand === "function") {
+      originals.execCommand = docProto.execCommand;
+      owners.execCommand = docProto;
+    }
+    const pending = new Map();
+    let seq = 0;
+    const refusal = () =>
+      new win.DOMException(
+        "Clipboard access is not allowed here.",
+        "NotAllowedError",
+      );
+    const ask = (payload) =>
+      new win.Promise((resolve, reject) => {
+        seq += 1;
+        const id = seq;
+        const timer = win.setTimeout(() => {
+          if (pending.delete(id)) {
+            reject(refusal());
+          }
+        }, CALL_MS);
+        pending.set(id, { resolve, reject, timer });
+        try {
+          win[BINDING](JSON.stringify(Object.assign({ id }, payload)));
+        } catch (_e) {
+          pending.delete(id);
+          win.clearTimeout(timer);
+          reject(refusal());
+        }
+      });
+    const toBase64 = (blob) =>
+      new win.Promise((resolve, reject) => {
+        const reader = new win.FileReader();
+        reader.onload = () =>
+          resolve(String(reader.result).replace(/^data:[^,]*,/, ""));
+        reader.onerror = () => reject(reader.error);
+        reader.readAsDataURL(blob);
+      });
+    const fromBase64 = (data) => {
+      const binary = win.atob(data);
+      const bytes = new Uint8Array(binary.length);
+      for (let i = 0; i < binary.length; i += 1) {
+        bytes[i] = binary.charCodeAt(i);
+      }
+      return bytes;
+    };
+    const replacements = {
+      writeText(text) {
+        return ask({ op: "write", text: String(text) }).then(() => undefined);
+      },
+      write(items) {
+        const payload = { op: "write", text: "", html: "", files: [] };
+        const reads = [];
+        for (const item of Array.from(items || [])) {
+          for (const type of Array.from(item.types || [])) {
+            reads.push(
+              item.getType(type).then((blob) => {
+                if (type === "text/plain") {
+                  return blob.text().then((value) => {
+                    payload.text = value;
+                  });
+                }
+                if (type === "text/html") {
+                  return blob.text().then((value) => {
+                    payload.html = value;
+                  });
+                }
+                return toBase64(blob).then((data) => {
+                  payload.files.push({
+                    type,
+                    name: "clipboard." + (type.split("/")[1] || "bin"),
+                    data,
+                  });
+                });
+              }),
+            );
+          }
+        }
+        return win.Promise.all(reads)
+          .then(() => ask(payload))
+          .then(() => undefined);
+      },
+      readText() {
+        return ask({ op: "read" }).then((clip) => (clip && clip.text) || "");
+      },
+      read() {
+        return ask({ op: "read" }).then((clip) => {
+          const items = [];
+          const parts = {};
+          if (clip && clip.text) {
+            parts["text/plain"] = new win.Blob([clip.text], {
+              type: "text/plain",
+            });
+          }
+          if (clip && clip.html) {
+            parts["text/html"] = new win.Blob([clip.html], {
+              type: "text/html",
+            });
+          }
+          if (Object.keys(parts).length > 0) {
+            items.push(new win.ClipboardItem(parts));
+          }
+          for (const file of (clip && clip.files) || []) {
+            items.push(
+              new win.ClipboardItem({
+                [file.type]: new win.Blob([fromBase64(file.data)], {
+                  type: file.type,
+                }),
+              }),
+            );
+          }
+          return items;
+        });
+      },
+      execCommand(command, ...rest) {
+        const name = String(command).toLowerCase();
+        if (name !== "copy" && name !== "cut") {
+          return originals.execCommand.call(this, command, ...rest);
+        }
+        // Synchronous, as the browser's own is: the page's copy handlers run now, and what they or
+        // the selection give is sent on. Whether the agent's clipboard takes it is decided by the
+        // worker, which refuses it outside the agent's own commands.
+        const doc = this;
+        let el = doc.activeElement;
+        while (el && el.shadowRoot && el.shadowRoot.activeElement) {
+          el = el.shadowRoot.activeElement;
+        }
+        const got = capture(doc, el || doc.body, name === "cut");
+        if (!got.text && !got.html) {
+          return false;
+        }
+        if (name === "cut" && got.editable && got.from === "selection") {
+          originals.execCommand.call(doc, "delete");
+        }
+        ask({ op: "write", text: got.text, html: got.html }).catch(() => {});
+        return true;
+      },
+    };
+    const apply = (on) => {
+      for (const name of Object.keys(originals)) {
+        Object.defineProperty(owners[name], name, {
+          value: on ? replacements[name] : originals[name],
+          writable: true,
+          enumerable: true,
+          configurable: true,
+        });
+      }
+    };
+    const state = {
+      settle(id, ok, value) {
+        const entry = pending.get(id);
+        if (!entry) {
+          return;
+        }
+        pending.delete(id);
+        win.clearTimeout(entry.timer);
+        if (ok) {
+          entry.resolve(value);
+        } else {
+          entry.reject(refusal());
+        }
+      },
+      restore() {
+        apply(false);
+        for (const entry of pending.values()) {
+          win.clearTimeout(entry.timer);
+          entry.reject(refusal());
+        }
+        pending.clear();
+      },
+      arm() {
+        apply(true);
+      },
+    };
+    Object.defineProperty(win, KEY, { value: state });
+    apply(true);
+  };
+  const install = (win) => {
+    try {
+      if (win[KEY]) {
+        win[KEY].arm();
+      } else {
+        build(win);
+      }
+    } catch (_e) {
+      // A frame from another site, or one being torn down: nothing here can reach it.
+    }
+    try {
+      for (let i = 0; i < win.frames.length; i += 1) {
+        install(win.frames[i]);
+      }
+    } catch (_e) {
+      // The frame list of a window going away.
+    }
+  };
+  install(window);
+}
+
+function clipboardStandInScript() {
+  return (
+    "(" +
+    clipboardStandInFn.toString() +
+    ")(" +
+    JSON.stringify(CLIPBOARD_STATE_KEY) +
+    "," +
+    JSON.stringify(CLIPBOARD_BINDING) +
+    "," +
+    clipboardCaptureFn.toString() +
+    "," +
+    CLIPBOARD_PAGE_CALL_MS +
+    ")"
+  );
+}
+
+// Runs in the page: the browser's own clipboard functions back, in this document and in every
+// frame of it the page can reach.
+function clipboardRestoreFn(KEY) {
+  const restore = (win) => {
+    try {
+      if (win[KEY]) {
+        win[KEY].restore();
+      }
+    } catch (_e) {
+      // A frame from another site never had the stand-in.
+    }
+    try {
+      for (let i = 0; i < win.frames.length; i += 1) {
+        restore(win.frames[i]);
+      }
+    } catch (_e) {
+      // The frame list of a window going away.
+    }
+  };
+  restore(window);
+}
+
+// Put the page's own clipboard functions back. With the debugger still attached, through it;
+// after it has gone, through chrome.scripting, which needs none. Best effort either way: a page
+// scripts may not run on had no stand-in to take off.
+async function restorePageClipboard(tabId, { attached }) {
+  if (attached) {
+    await sendCdp(tabId, "Runtime.evaluate", {
+      expression:
+        "(" +
+        clipboardRestoreFn.toString() +
+        ")(" +
+        JSON.stringify(CLIPBOARD_STATE_KEY) +
+        ")",
+    }).catch(() => {});
+    return;
+  }
+  try {
+    if (
+      chrome.scripting &&
+      typeof chrome.scripting.executeScript === "function"
+    ) {
+      await Promise.resolve(
+        chrome.scripting.executeScript({
+          target: { tabId, allFrames: true },
+          world: "MAIN",
+          func: clipboardRestoreFn,
+          args: [CLIPBOARD_STATE_KEY],
+        }),
+      ).catch(() => {});
+    }
+  } catch (_e) {
+    // chrome://, the Web Store: no stand-in was ever there.
+  }
+}
+
+// The page's document, as a handle the copy and paste functions are called on, so what they are
+// given travels as call arguments and is never spliced into code.
+async function pageDocumentObjectId(tabId) {
+  const res = await sendCdp(tabId, "Runtime.evaluate", {
+    expression: "document",
+    objectGroup: CDP_OBJECT_GROUP,
+  });
+  const objectId = res && res.result && res.result.objectId;
+  if (!objectId) {
+    throw new Error("Could not reach the page to use the clipboard.");
+  }
+  return objectId;
+}
+
+async function callOnPage(tabId, fnSource, args) {
+  const call = await sendCdp(tabId, "Runtime.callFunctionOn", {
+    objectId: await pageDocumentObjectId(tabId),
+    functionDeclaration: fnSource,
+    arguments: (args || []).map((v) => ({ value: v })),
+    returnByValue: true,
+  });
+  if (!call || call.exceptionDetails || !call.result) {
+    const detail =
+      call && call.exceptionDetails
+        ? call.exceptionDetails.exception &&
+          call.exceptionDetails.exception.description
+        : "";
+    throw new Error(
+      "The page could not be reached to use the clipboard" +
+        (detail ? ": " + String(detail).slice(0, 200) : "."),
+    );
+  }
+  return call.result.value;
+}
+
+// The agent's copy or cut, from wherever the page has focus. Nothing selected leaves the clipboard
+// as it was, as a real copy does.
+async function copyForAgent(session, tabId, cut) {
+  const tab = tabStateOf(session, tabId);
+  const got =
+    (await callOnPage(
+      tabId,
+      "function(cut,maxText,maxHtml){return (" +
+        agentCopyFn.toString() +
+        ")(" +
+        clipboardTargetFn.toString() +
+        "," +
+        clipboardCaptureFn.toString() +
+        ",cut,maxText,maxHtml);}",
+      [cut, MAX_CLIPBOARD_TEXT_CHARS, MAX_CLIPBOARD_HTML_CHARS],
+    )) || {};
+  const op = cut ? "cut" : "copy";
+  if (got.crossFrame) {
+    return {
+      [op]: false,
+      note:
+        "Focus is inside a frame from another site, which cannot be copied from. Select text " +
+        "in the page itself, or use browser_read for its text.",
+    };
+  }
+  if (got.password) {
+    return { [op]: false, note: "A password field's contents are not copied." };
+  }
+  if (got.tooLarge) {
+    return {
+      [op]: false,
+      note: "The selection is larger than a clipboard holds; nothing was copied.",
+    };
+  }
+  if (!got.text && !got.html) {
+    return {
+      [op]: false,
+      note: "Nothing was selected, so nothing was copied; the clipboard is as it was.",
+    };
+  }
+  setClipboard(session, tab.agent, {
+    text: got.text,
+    html: got.html,
+    files: [],
+    source: op,
+  });
+  let removed = false;
+  if (cut && got.editable && got.from === "selection") {
+    // The page did not handle the cut itself, so the selection goes as a trusted key would take
+    // it -- through the page's own beforeinput, like any deletion.
+    await dispatchKey(tabId, KEY_DEFS.backspace, 0);
+    removed = true;
+  }
+  return Object.assign(
+    { [op]: true, from: got.from, removed: cut ? removed : undefined },
+    clipboardSummary(clipboardOf(session, tab.agent)),
+  );
+}
+
+// Insert @p text as typed input. A text field takes it in one piece, line breaks and all. A rich
+// region gets it line by line with Shift+Enter between: a plain Enter is "send" in every chat box,
+// and pasting must never send anything.
+async function insertPastedText(tabId, text, field) {
+  if (field) {
+    await sendCdp(tabId, "Input.insertText", { text });
+    return;
+  }
+  const lines = text.split(/\r\n|\r|\n/);
+  for (let i = 0; i < lines.length; i += 1) {
+    if (i > 0) {
+      await dispatchKey(tabId, KEY_DEFS.enter, MODIFIER_BITS.shift);
+    }
+    if (lines[i]) {
+      await sendCdp(tabId, "Input.insertText", { text: lines[i] });
+    }
+  }
+}
+
+// The agent's paste, into whatever the page has focus. @p plain drops markup and files, as
+// "paste without formatting" does.
+async function pasteForAgent(session, tabId, plain) {
+  const tab = tabStateOf(session, tabId);
+  const clip = clipboardOf(session, tab.agent);
+  if (!clip) {
+    return {
+      pasted: false,
+      note:
+        "This agent's clipboard is empty, so nothing was pasted. Copy something first, or put " +
+        "it there with browser_clipboard write.",
+    };
+  }
+  const offered = {
+    text: clip.text,
+    html: plain ? "" : clip.html,
+    files: plain
+      ? []
+      : clip.files.map((file) => ({
+          name: file.name,
+          type: file.type,
+          data: file.data,
+        })),
+  };
+  const got =
+    (await callOnPage(
+      tabId,
+      "function(clip){return (" +
+        agentPasteFn.toString() +
+        ")(" +
+        clipboardTargetFn.toString() +
+        ",clip);}",
+      [offered],
+    )) || {};
+  const where = got.target ? { target: got.target } : {};
+  if (got.handled === "page") {
+    return Object.assign(
+      { pasted: true, taken_by: "page", via: got.via },
+      where,
+    );
+  }
+  if (got.editable && offered.text) {
+    await insertPastedText(tabId, offered.text, got.field === true);
+    return Object.assign(
+      {
+        pasted: true,
+        taken_by: "inserted",
+        // A frame from another site cannot be looked into, so whether its focused element took the
+        // text is not known here; the reply says only what was done.
+        note: got.crossFrame
+          ? "Focus is inside a frame from another site, which cannot be looked into: the text " +
+            "was typed into whatever has focus there (formatting and files cannot reach it). " +
+            "Check the result with browser_screenshot."
+          : undefined,
+      },
+      where,
+    );
+  }
+  return Object.assign(
+    {
+      pasted: false,
+      note: got.editable
+        ? "The page took nothing from the paste, and the clipboard holds no text to type in."
+        : "Nothing editable has focus and the page did not take the paste. Focus a field first " +
+          "(browser_click or browser_focus), or pass its ref.",
+    },
+    where,
+  );
+}
+
+async function runClipboardOp(session, tabId, op) {
+  switch (op) {
+    case "copy":
+      return copyForAgent(session, tabId, false);
+    case "cut":
+      return copyForAgent(session, tabId, true);
+    case "paste":
+      return pasteForAgent(session, tabId, false);
+    case "pastePlain":
+      return pasteForAgent(session, tabId, true);
+    default:
+      throw new Error("Unknown clipboard operation: " + op);
+  }
+}
+
+// Select a ref'd element's contents, so copy and cut take that element rather than whatever
+// happened to be selected.
+async function selectForClipboard(tabId, backendNodeId) {
+  const objectId = await resolveNodeObjectId(tabId, backendNodeId);
+  const selected = await callOnNode(tabId, objectId, function () {
+    const el = this;
+    const win = el.ownerDocument.defaultView;
+    if (
+      el.tagName === "TEXTAREA" ||
+      (el.tagName === "INPUT" && typeof el.select === "function")
+    ) {
+      el.focus();
+      el.select();
+      return true;
+    }
+    if (typeof el.focus === "function") {
+      el.focus();
+    }
+    const range = el.ownerDocument.createRange();
+    range.selectNodeContents(el);
+    const selection = win.getSelection();
+    selection.removeAllRanges();
+    selection.addRange(range);
+    return true;
+  });
+  if (!selected) {
+    throw new Error("Could not select the element; take a fresh snapshot.");
+  }
+}
+
+// browser_clipboard. The clipboard is always the agent's that holds the tab.
+async function handleClipboard(session, tabId, args) {
+  const tab = tabStateOf(session, tabId);
+  const agent = tab.agent || "";
+  const action = String(args.action || "");
+  if (action === "write") {
+    const manifest = Array.isArray(args.files) ? args.files : [];
+    try {
+      const files = [];
+      for (const entry of manifest) {
+        const data = assembleUpload(session, entry.upload_id);
+        if (data === null) {
+          throw new Error(
+            "Part of " +
+              String(entry.name) +
+              " never arrived; nothing was written.",
+          );
+        }
+        files.push({
+          name: String(entry.name || "file"),
+          type:
+            String(entry.mime || "application/octet-stream").slice(
+              0,
+              MAX_CLIPBOARD_TYPE_CHARS,
+            ) || "application/octet-stream",
+          size: Number(entry.size) || 0,
+          data,
+        });
+      }
+      setClipboard(session, agent, {
+        text: typeof args.text === "string" ? args.text : "",
+        html: typeof args.html === "string" ? args.html : "",
+        files,
+        source: "tool",
+      });
+    } finally {
+      for (const entry of manifest) {
+        session.uploadChunks.delete(entry.upload_id);
+      }
+    }
+    return Object.assign(
+      { ok: true, action },
+      clipboardSummary(clipboardOf(session, agent)),
+    );
+  }
+  if (action === "read") {
+    const clip = clipboardOf(session, agent);
+    return Object.assign(
+      { ok: true, action },
+      clipboardSummary(clip),
+      clip ? { text: clip.text, html: clip.html } : {},
+    );
+  }
+  if (action === "clear") {
+    const had = session.clipboards.delete(agent);
+    return { ok: true, action, cleared: had };
+  }
+  await ensureAttached(session, tabId);
+  if (typeof args.backendNodeId === "number") {
+    requireSnapshotTab(session, tabId);
+    if (action === "paste") {
+      await handleFocus(session, tabId, args);
+    } else {
+      await selectForClipboard(tabId, args.backendNodeId);
+    }
+  }
+  if (action === "copy" || action === "cut") {
+    return Object.assign(
+      { ok: true, action },
+      await runClipboardOp(session, tabId, action),
+    );
+  }
+  if (action === "paste") {
+    return Object.assign(
+      { ok: true, action },
+      await runClipboardOp(
+        session,
+        tabId,
+        args.plain === true ? "pastePlain" : "paste",
+      ),
+    );
+  }
+  throw new Error(
+    "browser_clipboard action must be write, read, clear, copy, cut, or paste.",
+  );
+}
+
+// A page's clipboard call, through the stand-in's binding. Page-callable, so nothing it says is
+// trusted beyond what it asks for: honoured only inside the agent's own command window on this
+// tab, against this tab's agent's clipboard, and bounded like every other write.
+async function answerPageClipboard(session, tab, params) {
+  let call;
+  try {
+    call = JSON.parse(String(params.payload));
+  } catch (_e) {
+    return;
+  }
+  const id = call && Number.isInteger(call.id) ? call.id : null;
+  if (id === null || !Number.isInteger(params.executionContextId)) {
+    return;
+  }
+  const settle = (ok, value) =>
+    sendCdp(tab.id, "Runtime.callFunctionOn", {
+      executionContextId: params.executionContextId,
+      functionDeclaration:
+        "function(key,id,ok,value){var s=window[key];if(s){s.settle(id,ok,value);}}",
+      arguments: [
+        { value: CLIPBOARD_STATE_KEY },
+        { value: id },
+        { value: ok },
+        { value: value === undefined ? null : value },
+      ],
+    }).catch(() => {});
+  if (!(tab.inputUntil > Date.now()) || !session.tabs.has(tab.id)) {
+    return settle(false);
+  }
+  const agent = tab.agent || "";
+  if (call.op === "read") {
+    const clip = clipboardOf(session, agent);
+    session.clipboardDuringCommand = Object.assign(
+      {},
+      session.clipboardDuringCommand,
+      { page_read: true },
+    );
+    return settle(
+      true,
+      clip
+        ? {
+            text: clip.text,
+            html: clip.html,
+            files: clip.files.map((file) => ({
+              type: file.type,
+              data: file.data,
+            })),
+          }
+        : { text: "", html: "", files: [] },
+    );
+  }
+  if (call.op !== "write") {
+    return settle(false);
+  }
+  const files = [];
+  for (const file of Array.isArray(call.files) ? call.files : []) {
+    if (
+      !file ||
+      typeof file.data !== "string" ||
+      !/^[A-Za-z0-9+/]*={0,2}$/.test(file.data)
+    ) {
+      return settle(false);
+    }
+    files.push({
+      name: String(file.name || "clipboard").slice(0, 120),
+      type: String(file.type || "application/octet-stream").slice(
+        0,
+        MAX_CLIPBOARD_TYPE_CHARS,
+      ),
+      size: Math.floor((file.data.length * 3) / 4),
+      data: file.data,
+    });
+  }
+  try {
+    setClipboard(session, agent, {
+      text: typeof call.text === "string" ? call.text : "",
+      html: typeof call.html === "string" ? call.html : "",
+      files,
+      source: "page",
+    });
+  } catch (_e) {
+    return settle(false);
+  }
+  session.clipboardDuringCommand = Object.assign(
+    {},
+    session.clipboardDuringCommand,
+    { page_wrote: clipboardSummary(clipboardOf(session, agent)) },
+  );
+  return settle(true, null);
+}
+
 // The url/title nearly every reply in this file names its target by. A url the browser did not
 // give us is an unidentified page, and reporting it as "" would put that page's snapshot, read,
 // print, or navigation on record as a page with no address -- an observation nobody made. The
@@ -3577,6 +4656,21 @@ async function enableSessionDomains(session, state) {
   }).catch(() => {});
   await sendCdp(tabId, "Runtime.evaluate", {
     expression: filePickerShimScript(),
+  }).catch(() => {});
+  // The page's clipboard API, answered from the agent's clipboard (see "Agent clipboards"), in
+  // this document and every one after it. Unlike the picker's this is never inert: a page in a held
+  // tab must not reach the system clipboard at any time, only the agent's, and only when the agent
+  // is acting on it.
+  await sendCdp(tabId, "Runtime.addBinding", { name: CLIPBOARD_BINDING }).catch(
+    () => {},
+  );
+  await sendCdp(tabId, "Page.addScriptToEvaluateOnNewDocument", {
+    source: clipboardStandInScript(),
+  }).catch((e) => {
+    console.warn("[ChromeControlMCP] clipboard stand-in unavailable:", e);
+  });
+  await sendCdp(tabId, "Runtime.evaluate", {
+    expression: clipboardStandInScript(),
   }).catch(() => {});
 }
 
@@ -3734,8 +4828,10 @@ chrome.debugger.onDetach.addListener((source) => {
     held.tab.attached = false;
     setTabControlBadge(source.tabId, false); // control ended; clear the toolbar badge
     releaseTabState(held.session, held.tab);
-    // The frame drawn on the page outlives the attachment; take it off without one.
+    // The frame drawn on the page outlives the attachment; take it off without one. So does the
+    // clipboard stand-in, which has nothing to answer it now.
     void removeControlPresenceWithoutDebugger(source.tabId);
+    void restorePageClipboard(source.tabId, { attached: false });
   }
 });
 
@@ -3794,6 +4890,10 @@ chrome.debugger.onEvent.addListener((source, method, params) => {
     return;
   }
   if (method === "Runtime.bindingCalled") {
+    if (params && params.name === CLIPBOARD_BINDING) {
+      void answerPageClipboard(session, tab, params);
+      return;
+    }
     if (params && params.name === PICKER_BINDING) {
       // Page-callable, so what it says is only a hint: a page that calls it on its own records a
       // picker that browser_upload then finds nothing waiting for, and says so.
@@ -7971,6 +9071,14 @@ async function handlePressKey(session, tabId, args) {
   // browser_click/browser_focus and this call. Read the target first so the reply says WHERE the
   // key went, not only what was sent.
   const focus = await focusedElementInfo(tabId);
+  // Copy, cut and paste are the agent's own clipboard's, never the system's: answered here and
+  // not sent to Chrome as keys, which is what would read or write the clipboard every agent and
+  // the user share (see "Agent clipboards").
+  const clipboardOp = clipboardChord(def, modifiers);
+  if (clipboardOp) {
+    const clipboard = await runClipboardOp(session, tabId, clipboardOp);
+    return { ok: true, keys: String(args.keys), focus, clipboard };
+  }
   await dispatchKey(tabId, def, modifiers);
   return { ok: true, keys: String(args.keys), focus };
 }

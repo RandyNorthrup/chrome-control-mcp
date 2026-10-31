@@ -1,0 +1,3 @@
+== semgrep (python 3.12)
+exit=0
+Ran 221 rules on 51 files: 0 findings.

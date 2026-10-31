@@ -1,0 +1,6 @@
+== mutation: per-action validation removed from applyToolExtras
+mutated_exit=8
+FAIL!  : BrowserContractTests::buildCommand_clipboardTakesOnlyWhatEachActionUses() '!unknown.ok' returned FALSE. ()
+FAIL!  : BrowserContractTests::buildCommand_clipboardKeepsPathsOnThisSide() '!buildExtensionCommand( QStringLiteral("browser_clipboard"), QJsonObject{{QStringLiteral("action"), QStringLiteral("write")
+restored: true
+restored_exit=0

@@ -2,6 +2,53 @@
 
 All notable changes are documented here. Project follows [Semantic Versioning](https://semver.org/).
 
+## [1.9.0] - 2026-10-31
+
+Every agent gets a clipboard of its own.
+
+### Added
+
+- **Per-agent clipboards.** Agents shared the operating system's one clipboard with each other and
+  with the user: one agent's Ctrl+V pasted another's copy, or the user's, and its copy replaced
+  theirs. Each agent -- per server and agent name, like its tab group -- now has its own, held by
+  the extension in memory and emptied when the agent lets go of its last tab, its server exits, or
+  the user pauses the bridge. Nothing an agent does reads or writes the system clipboard.
+- **Copy, cut and paste keys** (`browser_press_key` with Control or Meta and C, X, V; Control+Insert,
+  Shift+Insert, Shift+Delete; Control/Meta+Shift+V for text only) are answered from the agent's
+  clipboard instead of being sent to Chrome. A copy runs the page's own `copy` handlers, as a real
+  one does, and otherwise takes the selection as text and HTML. A paste gives the focused element a
+  real `paste` event with `text/plain`, `text/html` and files, then `beforeinput insertFromPaste`,
+  and types the text in only if the page took neither -- whole into a field, line by line with
+  Shift+Enter elsewhere, so a paste never sends a chat message.
+- **`browser_clipboard`**: write text, HTML and files (by path, read like `browser_upload`'s), read,
+  clear, copy, cut, and paste (into the focused element or a ref; `plain` for text only). 53 tools.
+- The MCP `instructions` tell every client about it, and steer agents away from shell clipboard
+  commands, which every agent and the user share.
+
+### Fixed
+
+- A page's copy button clicked by an agent wrote the user's clipboard. Agent tabs run under focus
+  emulation, so a background page believed it was focused, and Chrome lets a focused page write.
+  In a held tab, `navigator.clipboard` and `document.execCommand('copy' | 'cut')` now use the
+  agent's clipboard, only while the agent's own input reaches that tab (and for 2 s after); a page
+  asking at any other time is refused. A tab handed back gets the browser's own functions again.
+- `Shift+Insert` and `Control+Insert` were refused as an unsupported key.
+- A `browser_upload` that the contract then rejected (a stale ref, say) had already sent its files,
+  which stayed in the extension's buffer until the session ended. Arguments are now checked before
+  any file is read or sent.
+
+### Changed
+
+- A command whose connection to the browser broke is told why. The server reported every failed
+  read as "browser did not reply within 30000 ms (connection reset)" -- also when the browser's
+  relay closed the connection a moment after the command went out, or sent something unreadable --
+  so a stalled browser could not be told from a broken bridge. Silence keeps that wording; a closed
+  connection now says "the browser's relay closed the connection N ms into <command>", and an
+  unreadable reply says so.
+- When a display-matrix screenshot fails, the suite asks Chrome over its own DevTools whether it
+  still answers, so the intermittent Windows 4K-capture stall can be placed: in Chrome, or in the
+  path through the extension.
+
 ## [1.8.2] - 2026-10-31
 
 ### Fixed

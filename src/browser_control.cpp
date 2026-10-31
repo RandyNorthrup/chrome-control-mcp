@@ -154,10 +154,12 @@ ToolResult BrowserControl::dispatch(const QString &name,
     }
   }
   syncSessionToConnection();
-  // The one tool that is not one command: its files go first, in pieces the
-  // bridge can carry, and the command that assigns them follows.
-  if (name == QLatin1String("browser_upload")) {
-    return invokeUpload(arguments);
+  // The calls that are not one command: their files go first, in pieces the
+  // bridge can carry, and the command that uses them follows.
+  if (name == QLatin1String("browser_upload") ||
+      (name == QLatin1String("browser_clipboard") &&
+       arguments.contains(QStringLiteral("paths")))) {
+    return invokeWithFiles(name, arguments);
   }
   const browser::BrowserBridgeSession::Outgoing outgoing =
       session_.beginCommand(name, arguments);
@@ -222,7 +224,18 @@ ToolResult BrowserControl::exchange(
           .image_mime = incoming.image_mime};
 }
 
-ToolResult BrowserControl::invokeUpload(const QJsonObject &arguments) {
+ToolResult BrowserControl::invokeWithFiles(const QString &name,
+                                           const QJsonObject &arguments) {
+  // Refuse a malformed call before any file is read or sent: chunks that went
+  // ahead of a command the contract then rejects would sit in the extension's
+  // buffer, which holds only a few uploads, until the session ended.
+  const QString refused = session_.argumentsError(name, arguments);
+  if (!refused.isEmpty()) {
+    return {.text = refused,
+            .is_error = true,
+            .image_base64 = {},
+            .image_mime = {}};
+  }
   // Read and bound the files BEFORE anything is sent: a refusal that arrives
   // after half a file is on the wire has already spent the bridge on bytes the
   // page was never going to get.
@@ -236,8 +249,8 @@ ToolResult BrowserControl::invokeUpload(const QJsonObject &arguments) {
     paths.append(value.toString());
   }
   const browser::UploadBatch batch = browser::readUploadFiles(
-      paths,
-      QString::fromLocal8Bit(qgetenv("CHROME_CONTROL_MCP_UPLOAD_ROOTS")));
+      paths, QString::fromLocal8Bit(qgetenv("CHROME_CONTROL_MCP_UPLOAD_ROOTS")),
+      name);
   if (!batch.ok) {
     return {.text = batch.error,
             .is_error = true,
@@ -284,7 +297,7 @@ ToolResult BrowserControl::invokeUpload(const QJsonObject &arguments) {
   // the manifest is added to that translated command: the paths themselves stop
   // here, so nothing downstream ever learns where on the disk a file came from.
   browser::BrowserBridgeSession::Outgoing apply =
-      session_.beginCommand(QStringLiteral("browser_upload"), arguments);
+      session_.beginCommand(name, arguments);
   if (apply.ok) {
     apply.frame.insert(QStringLiteral("files"), manifest);
   }

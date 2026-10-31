@@ -101,7 +101,20 @@ void setCloseOnExec(int fd) {
   }
 }
 
-bool waitForIo(int fd, short events, const IoDeadline &deadline) {
+// Why a read stopped short of a whole frame. Only one of these is the peer
+// going quiet. All of them used to be reported as though it were -- "did not
+// reply within 30000 ms" for a relay that had closed the connection a moment
+// after the command went out -- which left a failure with no way to tell a
+// stalled browser from a broken bridge.
+enum class ReadEnd : std::uint8_t {
+  Complete,
+  Silent,
+  Closed,
+  Malformed,
+  Cancelled
+};
+
+ReadEnd awaitIo(int fd, short events, const IoDeadline &deadline) {
   while (true) {
     pollfd descriptors[2]{{fd, events, 0}, {deadline.cancel_fd, POLLIN, 0}};
     const nfds_t count = deadline.cancel_fd >= 0 ? 2 : 1;
@@ -109,29 +122,44 @@ bool waitForIo(int fd, short events, const IoDeadline &deadline) {
     if (result < 0 && errno == EINTR) {
       continue;
     }
-    if (result <= 0) {
-      return false;
+    if (result == 0) {
+      return ReadEnd::Silent;
+    }
+    if (result < 0) {
+      return ReadEnd::Closed;
     }
     if (count == 2 && (descriptors[1].revents & POLLIN) != 0) {
-      return false;
+      return ReadEnd::Cancelled;
     }
     if ((descriptors[0].revents & events) != 0) {
-      return true;
+      return ReadEnd::Complete;
     }
     if ((descriptors[0].revents & (POLLERR | POLLHUP | POLLNVAL)) != 0) {
-      return false;
+      return ReadEnd::Closed;
     }
   }
 }
 
+bool waitForIo(int fd, short events, const IoDeadline &deadline) {
+  return awaitIo(fd, events, deadline) == ReadEnd::Complete;
+}
+
+// Reads exactly @p size bytes, or says why it could not in @p end.
 bool socketReadExact(int socket_fd, char *buffer, qsizetype size,
-                     const IoDeadline &whole_read) {
+                     const IoDeadline &whole_read, ReadEnd *end = nullptr) {
   // A copy, so a refreshed budget bounds this read and leaks into nothing else.
   IoDeadline deadline = whole_read;
   qsizetype offset = 0;
+  const auto stop = [end](ReadEnd why) {
+    if (end != nullptr) {
+      *end = why;
+    }
+    return false;
+  };
   while (offset < size) {
-    if (!waitForIo(socket_fd, POLLIN, deadline)) {
-      return false;
+    const ReadEnd waited = awaitIo(socket_fd, POLLIN, deadline);
+    if (waited != ReadEnd::Complete) {
+      return stop(waited);
     }
     // Analyzer loses track of the explicit unlock in serveConnected(); socket
     // I/O runs without mutex_ held.
@@ -143,7 +171,7 @@ bool socketReadExact(int socket_fd, char *buffer, qsizetype size,
       continue;
     }
     if (received <= 0) {
-      return false;
+      return stop(ReadEnd::Closed); // end of stream, or the socket failed
     }
     offset += received;
     deadline.noteProgress(); // bytes arriving is not a peer gone quiet
@@ -176,27 +204,65 @@ bool socketWriteAll(int socket_fd, const char *buffer, qsizetype size,
   return true;
 }
 
-bool readFrame(int socket_fd, const IoDeadline &deadline, QJsonObject *out) {
-  char header[kFrameHeaderBytes];
-  if (!socketReadExact(socket_fd, header, kFrameHeaderBytes, deadline) ||
-      parseFrame(QByteArray(header, kFrameHeaderBytes)).status ==
-          NativeFrame::Status::Error) {
+bool readFrame(int socket_fd, const IoDeadline &deadline, QJsonObject *out,
+               ReadEnd *end = nullptr) {
+  const auto malformed = [end]() {
+    if (end != nullptr) {
+      *end = ReadEnd::Malformed;
+    }
     return false;
+  };
+  char header[kFrameHeaderBytes];
+  if (!socketReadExact(socket_fd, header, kFrameHeaderBytes, deadline, end)) {
+    return false;
+  }
+  if (parseFrame(QByteArray(header, kFrameHeaderBytes)).status ==
+      NativeFrame::Status::Error) {
+    return malformed();
   }
   const quint32 length =
       qFromLittleEndian<quint32>(reinterpret_cast<const uchar *>(header));
   QByteArray frame(header, kFrameHeaderBytes);
   QByteArray body(static_cast<qsizetype>(length), Qt::Uninitialized);
-  if (!socketReadExact(socket_fd, body.data(), body.size(), deadline)) {
+  if (!socketReadExact(socket_fd, body.data(), body.size(), deadline, end)) {
     return false;
   }
   frame.append(body);
   const NativeFrame parsed = parseFrame(frame);
   if (parsed.status != NativeFrame::Status::Ok) {
-    return false;
+    return malformed();
   }
   *out = parsed.message;
   return true;
+}
+
+// What the caller is told about an exchange that ended without a reply, by why
+// the read ended. The silent case keeps the wording it has always had; the
+// others name what happened and when, so a closed connection a moment after the
+// command went out no longer reads as thirty seconds of silence.
+QString endedText(ReadEnd end, const QString &cmd, qint64 elapsed_ms,
+                  int io_timeout_ms) {
+  switch (end) {
+  case ReadEnd::Closed:
+    return QStringLiteral("the browser's relay closed the connection %1 ms "
+                          "into %2, before replying (connection reset)")
+        .arg(elapsed_ms)
+        .arg(cmd);
+  case ReadEnd::Malformed:
+    return QStringLiteral("the browser's reply to %1 could not be read: a "
+                          "malformed frame %2 ms in (connection reset)")
+        .arg(cmd)
+        .arg(elapsed_ms);
+  case ReadEnd::Cancelled:
+    return QStringLiteral(
+               "the server stopped while waiting for the browser's reply to %1")
+        .arg(cmd);
+  case ReadEnd::Complete:
+  case ReadEnd::Silent:
+    break;
+  }
+  return QStringLiteral("browser did not reply within %1 ms (connection reset)")
+      .arg(io_timeout_ms);
 }
 
 bool writeFrame(int socket_fd, const QJsonObject &message,
@@ -672,9 +738,11 @@ void BrowserBridgePipeServer::serveConnected() {
 
 bool BrowserBridgePipeServer::awaitReply(const QJsonObject &request,
                                          QJsonObject *reply, QString *why) {
-  const auto absolute_end = std::chrono::steady_clock::now() +
-                            std::chrono::milliseconds(options_.max_exchange_ms);
+  const auto started = std::chrono::steady_clock::now();
+  const auto absolute_end =
+      started + std::chrono::milliseconds(options_.max_exchange_ms);
   int beats = 0;
+  ReadEnd end = ReadEnd::Silent;
   // Whether the ceiling, rather than the silence budget, is what bounds the
   // read now in flight.
   //
@@ -686,7 +754,7 @@ bool BrowserBridgePipeServer::awaitReply(const QJsonObject &request,
   // read whose budget the ceiling set, which is a fact about the loop.
   bool ceiling_bounds_read = false;
   const auto whyItEnded = [&]() {
-    if (beats > 0 && ceiling_bounds_read) {
+    if (beats > 0 && ceiling_bounds_read && end == ReadEnd::Silent) {
       // Still working, and out of time. Say so rather than reporting a reset:
       // the connection is fine, and the caller's next move (a smaller job, a
       // longer-running tool) is not the one a transport failure calls for.
@@ -696,9 +764,11 @@ bool BrowserBridgePipeServer::awaitReply(const QJsonObject &request,
           .arg(options_.max_exchange_ms)
           .arg(beats);
     }
-    return QStringLiteral(
-               "browser did not reply within %1 ms (connection reset)")
-        .arg(options_.io_timeout_ms);
+    return endedText(end, request.value(QStringLiteral("cmd")).toString(),
+                     std::chrono::duration_cast<std::chrono::milliseconds>(
+                         std::chrono::steady_clock::now() - started)
+                         .count(),
+                     options_.io_timeout_ms);
   };
   for (;;) {
     // Whichever comes first: another silence budget, or the ceiling on the
@@ -716,7 +786,7 @@ bool BrowserBridgePipeServer::awaitReply(const QJsonObject &request,
     // longer than one budget to cross is not a silent peer.
     deadline.refresh_ms = options_.io_timeout_ms;
     deadline.absolute_end = absolute_end;
-    if (!readFrame(connection_fd_, deadline, reply)) {
+    if (!readFrame(connection_fd_, deadline, reply, &end)) {
       *why = whyItEnded();
       return false;
     }

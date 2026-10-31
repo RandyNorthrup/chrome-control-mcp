@@ -11,7 +11,7 @@
   <a href="https://github.com/RandyNorthrup/chrome-control-mcp/stargazers"><img alt="GitHub stars" src="https://img.shields.io/github/stars/RandyNorthrup/chrome-control-mcp?style=flat&color=f59e0b&logo=github"></a>
   <a href="LICENSE"><img alt="MIT License" src="https://img.shields.io/badge/license-MIT-14b8a6.svg"></a>
   <img alt="Windows, Linux, macOS" src="https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20%7C%20macOS-2563eb.svg">
-  <img alt="52 MCP tools" src="https://img.shields.io/badge/MCP%20tools-52-ff2d95.svg">
+  <img alt="53 MCP tools" src="https://img.shields.io/badge/MCP%20tools-53-ff2d95.svg">
 </p>
 
 <p align="center">
@@ -41,6 +41,7 @@
 | **Works beside you.** Agents drive background tabs over the DevTools protocol and never bring them to the front; a tab an agent's click opens goes behind the one you are looking at. Your keyboard stays yours. | **Cleans up after itself.** `browser_release`, or the agent's editor exiting, closes the tabs it opened and removes its group. Tabs it borrowed are handed back, never closed.                              |
 | **Uploads without dialogs.** File inputs, inputs a script creates, drop zones and `showOpenFilePicker` are all filled directly -- in background tabs, where Chrome would cancel a native dialog anyway.          | **Precise and semantic.** Accessibility snapshots with refs bound to their tab, real mouse and keyboard input, guarded coordinate clicks, and checks that refuse to act on a page that changed underneath.  |
 | **Always visible.** Every tab an agent holds shows a frame, a named badge and a cursor in its group's colour. After ten idle minutes an agent's highlight and debugger come off its tabs until its next command. | **Any MCP client.** Claude Code, Codex, VS Code, Cursor, Claude Desktop -- anything that speaks MCP over stdio. The server tells every client how to share the browser through the standard `instructions`. |
+| **A clipboard each.** Copy, cut and paste -- by key, by tool, or through a page's own copy buttons -- use the agent's own clipboard. Never yours, never another agent's, never the system's.                     | **Pastes like a person.** Any editor gets a real paste: text, formatting and images, through the same events your own Ctrl+V fires, with typed text as the fallback.                                        |
 
 ## Many agents, one browser
 
@@ -70,7 +71,9 @@ How it keeps agents apart, in the order they meet it:
    a colour no other live group has. A tab its own click opens joins the same group.
 3. **Nobody else's tab.** A tab another session holds is refused by name, and `browser_tabs` marks
    it `controlled_by_other_session` rather than hiding it.
-4. **Letting go.** `browser_release` (with `tab_id` to release only that agent's tabs, popups included) closes what the agent
+4. **Its own clipboard.** Copy, cut and paste keys, `browser_clipboard`, and a page's copy and paste
+   buttons in its tabs use the agent's own clipboard; your clipboard is never read or written.
+5. **Letting go.** `browser_release` (with `tab_id` to release only that agent's tabs, popups included) closes what the agent
    opened and hands back what it borrowed; `keep_open: true` leaves a page open for you. The tab
    you are looking at and the browser's last tab are never closed.
 
@@ -170,17 +173,17 @@ runs the new build.
 
 ## Tools at a glance
 
-All **52 tools** have strict JSON Schemas; the [tool reference](docs/TOOLS.md) documents each one.
+All **53 tools** have strict JSON Schemas; the [tool reference](docs/TOOLS.md) documents each one.
 
-| Group                  | Tools                                                                                                                                                                                                                                                            |
-| ---------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Look and read          | `browser_snapshot` `browser_read` `browser_screenshot` `browser_get_value` `browser_get_attribute` `browser_box` `browser_console` `browser_network` `browser_wait_for`                                                                                          |
-| Act on the page        | `browser_click` `browser_click_at` `browser_js_click` `browser_hover` `browser_drag` `browser_type` `browser_press_key` `browser_select` `browser_set_value` `browser_scroll` `browser_focus` `browser_reveal` `browser_media` `browser_dialog` `browser_upload` |
-| Navigate               | `browser_navigate` `browser_back` `browser_forward` `browser_reload`                                                                                                                                                                                             |
-| Tabs and windows       | `browser_tabs` `browser_new_tab` `browser_select_tab` `browser_close_tab` `browser_group_tabs` `browser_ungroup_tabs` `browser_windows` `browser_window` `browser_release`                                                                                       |
-| Browser state, devices | `browser_cookies` `browser_storage` `browser_permission` `browser_http_auth` `browser_emulate` `browser_download` `browser_print`                                                                                                                                |
-| Recording              | `browser_record_start` `browser_record_stop` -- a `.webm` of the agent's tab plus a `.timeline.json` of the commands that drove it                                                                                                                               |
-| Setup and updates      | `browser_extension_install` `browser_extension_status` `browser_extension_uninstall` `browser_update_status` `browser_update_check` `browser_update_apply`                                                                                                       |
+| Group                  | Tools                                                                                                                                                                                                                                                                                |
+| ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Look and read          | `browser_snapshot` `browser_read` `browser_screenshot` `browser_get_value` `browser_get_attribute` `browser_box` `browser_console` `browser_network` `browser_wait_for`                                                                                                              |
+| Act on the page        | `browser_click` `browser_click_at` `browser_js_click` `browser_hover` `browser_drag` `browser_type` `browser_press_key` `browser_select` `browser_set_value` `browser_scroll` `browser_focus` `browser_reveal` `browser_media` `browser_dialog` `browser_upload` `browser_clipboard` |
+| Navigate               | `browser_navigate` `browser_back` `browser_forward` `browser_reload`                                                                                                                                                                                                                 |
+| Tabs and windows       | `browser_tabs` `browser_new_tab` `browser_select_tab` `browser_close_tab` `browser_group_tabs` `browser_ungroup_tabs` `browser_windows` `browser_window` `browser_release`                                                                                                           |
+| Browser state, devices | `browser_cookies` `browser_storage` `browser_permission` `browser_http_auth` `browser_emulate` `browser_download` `browser_print`                                                                                                                                                    |
+| Recording              | `browser_record_start` `browser_record_stop` -- a `.webm` of the agent's tab plus a `.timeline.json` of the commands that drove it                                                                                                                                                   |
+| Setup and updates      | `browser_extension_install` `browser_extension_status` `browser_extension_uninstall` `browser_update_status` `browser_update_check` `browser_update_apply`                                                                                                                           |
 
 ## Staying up to date
 
@@ -259,15 +262,16 @@ permissions, and why each is needed, are in [docs/SECURITY.md](docs/SECURITY.md)
 
 ## Verification
 
-Measured for 1.8.2 on 2026-10-31, except the two rows marked 1.8.0, whose code later releases leave alone:
+Measured for 1.9.0 on 2026-10-31, except the two rows marked 1.8.0, whose code later releases leave alone:
 
 | Check                                                                                                                | Result                          |
 | -------------------------------------------------------------------------------------------------------------------- | ------------------------------- |
-| ctest suites -- MSVC, GCC and Clang, warnings as errors                                                              | Windows 22/22, Linux 21/21      |
+| ctest suites -- MSVC, GCC and Clang, warnings as errors                                                              | Windows 23/23, Linux 22/22      |
 | `clang-tidy`, exhaustive `cppcheck`, Semgrep, ASan + UBSan, TSan                                                     | clean                           |
-| Extension and tooling unit tests                                                                                     | 192/192                         |
+| Extension and tooling unit tests                                                                                     | 199/199                         |
 | Full live browser suite (isolated Chrome for Testing 153)                                                            | 48 tools, 177 cases, all pass   |
 | Multi-agent live suite: two servers, two agents behind one of them                                                   | 25/25                           |
+| Per-agent clipboard live suite: a sentinel on the user's clipboard survives every agent copy, cut and paste          | 24/24                           |
 | Live suites in CI on Windows, Linux and macOS                                                                        | pass                            |
 | (1.8.0) Real-world run in an everyday Chrome profile: real sites, real uploads, popups, Trusted Types pages, cleanup | 23/23                           |
 | (1.8.0) Reconnect attempts with no server running (process-spawn regression check)                                   | 6 in 75 s, unchanged from 1.7.0 |

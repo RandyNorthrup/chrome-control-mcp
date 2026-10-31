@@ -1,0 +1,63 @@
+== copy, cut and paste chords
+{
+ "mutated_exit": 1,
+ "expected_failure_seen": true,
+ "failed": [
+  "✖ copy, cut and paste chords are answered here and never reach Chrome as keys",
+  "✖ each agent pastes its own clipboard, never another agent's",
+  "✖ a paste the page does not take is typed: whole into a field, line by line elsewhere",
+  "✖ copying nothing leaves the clipboard as it was; a cut takes the selection out"
+ ],
+ "restored": true,
+ "restored_exit": 0
+}
+exit=0
+== each agent pastes its own
+{
+ "mutated_exit": 1,
+ "expected_failure_seen": true,
+ "failed": [
+  "✖ each agent pastes its own clipboard, never another agent's",
+  "✖ a page's clipboard call is honoured only inside the agent's own command on that tab",
+  "✖ a paste the page does not take is typed: whole into a field, line by line elsewhere",
+  "✖ copying nothing leaves the clipboard as it was; a cut takes the selection out",
+  "✖ an agent that lets go of its last tab lets go of its clipboard; others keep theirs",
+  "✖ a clipboard refuses what it cannot hold, and keeps what it had"
+ ],
+ "restored": true,
+ "restored_exit": 0
+}
+exit=0
+== a page's clipboard call
+{
+ "mutated_exit": 1,
+ "expected_failure_seen": true,
+ "failed": [
+  "✖ a page's clipboard call is honoured only inside the agent's own command on that tab"
+ ],
+ "restored": true,
+ "restored_exit": 0
+}
+exit=0
+== an agent that lets go
+{
+ "mutated_exit": 1,
+ "expected_failure_seen": true,
+ "failed": [
+  "✖ an agent that lets go of its last tab lets go of its clipboard; others keep theirs"
+ ],
+ "restored": true,
+ "restored_exit": 0
+}
+exit=0
+== a paste the page does not take
+{
+ "mutated_exit": 1,
+ "expected_failure_seen": true,
+ "failed": [
+  "✖ a paste the page does not take is typed: whole into a field, line by line elsewhere"
+ ],
+ "restored": true,
+ "restored_exit": 0
+}
+exit=0

@@ -1,0 +1,1130 @@
+{
+  "ok": true,
+  "executable": "/home/randy/ccmcp/build/chrome_control_mcp",
+  "fixture_origin": "http://127.0.0.1:33737",
+  "advertised_tool_count": 48,
+  "exercised_tool_count": 48,
+  "exercised_tools": [
+    "browser_back",
+    "browser_box",
+    "browser_click",
+    "browser_click_at",
+    "browser_close_tab",
+    "browser_console",
+    "browser_cookies",
+    "browser_dialog",
+    "browser_download",
+    "browser_drag",
+    "browser_emulate",
+    "browser_extension_install",
+    "browser_extension_status",
+    "browser_extension_uninstall",
+    "browser_focus",
+    "browser_forward",
+    "browser_get_attribute",
+    "browser_get_value",
+    "browser_group_tabs",
+    "browser_hover",
+    "browser_http_auth",
+    "browser_js_click",
+    "browser_media",
+    "browser_navigate",
+    "browser_network",
+    "browser_new_tab",
+    "browser_permission",
+    "browser_press_key",
+    "browser_print",
+    "browser_read",
+    "browser_record_start",
+    "browser_record_stop",
+    "browser_reload",
+    "browser_reveal",
+    "browser_screenshot",
+    "browser_scroll",
+    "browser_select",
+    "browser_select_tab",
+    "browser_set_value",
+    "browser_snapshot",
+    "browser_storage",
+    "browser_tabs",
+    "browser_type",
+    "browser_ungroup_tabs",
+    "browser_upload",
+    "browser_wait_for",
+    "browser_window",
+    "browser_windows"
+  ],
+  "case_count": 177,
+  "cases": [
+    {
+      "tool": "browser_extension_status",
+      "case": "extension status prepared",
+      "milliseconds": 1,
+      "status": "passed"
+    },
+    {
+      "tool": "browser_extension_install",
+      "case": "extension install idempotent",
+      "milliseconds": 0,
+      "status": "passed"
+    },
+    {
+      "tool": "browser_tabs",
+      "case": "capture baseline tabs",
+      "milliseconds": 26,
+      "status": "passed"
+    },
+    {
+      "tool": "browser_windows",
+      "case": "capture baseline windows",
+      "milliseconds": 52,
+      "status": "passed"
+    },
+    {
+      "tool": "browser_new_tab",
+      "case": "open fixture tab",
+      "milliseconds": 102,
+      "status": "passed"
+    },
+    {
+      "tool": "browser_snapshot",
+      "case": "snapshot fixture home",
+      "milliseconds": 78,
+      "status": "passed"
+    },
+    {
+      "tool": "browser_read",
+      "case": "read page text",
+      "milliseconds": 52,
+      "status": "passed"
+    },
+    {
+      "tool": "browser_read",
+      "case": "read page HTML",
+      "milliseconds": 53,
+      "status": "passed"
+    },
+    {
+      "tool": "browser_get_attribute",
+      "case": "read element attribute",
+      "milliseconds": 52,
+      "status": "passed"
+    },
+    {
+      "tool": "browser_box",
+      "case": "measure input box",
+      "milliseconds": 52,
+      "status": "passed"
+    },
+    {
+      "tool": "browser_focus",
+      "case": "focus input",
+      "milliseconds": 52,
+      "status": "passed"
+    },
+    {
+      "tool": "browser_type",
+      "case": "type initial value",
+      "milliseconds": 77,
+      "status": "passed"
+    },
+    {
+      "tool": "browser_get_value",
+      "case": "read typed value",
+      "milliseconds": 52,
+      "status": "passed"
+    },
+    {
+      "tool": "browser_press_key",
+      "case": "select input text with keyboard",
+      "milliseconds": 52,
+      "status": "passed"
+    },
+    {
+      "tool": "browser_type",
+      "case": "replace selected value",
+      "milliseconds": 77,
+      "status": "passed"
+    },
+    {
+      "tool": "browser_get_value",
+      "case": "verify replacement value",
+      "milliseconds": 52,
+      "status": "passed"
+    },
+    {
+      "tool": "browser_select",
+      "case": "select single option",
+      "milliseconds": 77,
+      "status": "passed"
+    },
+    {
+      "tool": "browser_select",
+      "case": "select multiple options",
+      "milliseconds": 78,
+      "status": "passed"
+    },
+    {
+      "tool": "browser_set_value",
+      "case": "check checkbox",
+      "milliseconds": 77,
+      "status": "passed"
+    },
+    {
+      "tool": "browser_set_value",
+      "case": "set range value",
+      "milliseconds": 77,
+      "status": "passed"
+    },
+    {
+      "tool": "browser_upload",
+      "case": "upload a file to the file input",
+      "milliseconds": 103,
+      "status": "passed"
+    },
+    {
+      "tool": "browser_wait_for",
+      "case": "the page read the uploaded file's own bytes",
+      "milliseconds": 52,
+      "status": "passed"
+    },
+    {
+      "tool": "browser_upload",
+      "case": "upload through the control that opens a hidden input",
+      "milliseconds": 102,
+      "status": "passed"
+    },
+    {
+      "tool": "browser_wait_for",
+      "case": "the page read the file delivered through its label",
+      "milliseconds": 52,
+      "status": "passed"
+    },
+    {
+      "tool": "browser_snapshot",
+      "case": "snapshot names hidden inputs",
+      "milliseconds": 78,
+      "status": "passed"
+    },
+    {
+      "tool": "browser_upload",
+      "case": "upload to a hidden input named directly",
+      "milliseconds": 103,
+      "status": "passed"
+    },
+    {
+      "tool": "browser_wait_for",
+      "case": "the page read the file put straight into its hidden input",
+      "milliseconds": 52,
+      "status": "passed"
+    },
+    {
+      "tool": "browser_click",
+      "case": "click normal button",
+      "milliseconds": 1083,
+      "status": "passed"
+    },
+    {
+      "tool": "browser_wait_for",
+      "case": "wait for click result",
+      "milliseconds": 52,
+      "status": "passed"
+    },
+    {
+      "tool": "browser_reveal",
+      "case": "reveal hover target",
+      "milliseconds": 77,
+      "status": "passed"
+    },
+    {
+      "tool": "browser_hover",
+      "case": "hover target",
+      "milliseconds": 1033,
+      "status": "passed"
+    },
+    {
+      "tool": "browser_wait_for",
+      "case": "wait for hover result",
+      "milliseconds": 52,
+      "status": "passed"
+    },
+    {
+      "tool": "browser_reveal",
+      "case": "reveal drag targets",
+      "milliseconds": 77,
+      "status": "passed"
+    },
+    {
+      "tool": "browser_drag",
+      "case": "drag source to target",
+      "milliseconds": 2115,
+      "status": "passed"
+    },
+    {
+      "tool": "browser_wait_for",
+      "case": "wait for drag result",
+      "milliseconds": 52,
+      "status": "passed"
+    },
+    {
+      "tool": "browser_reveal",
+      "case": "reveal media control",
+      "milliseconds": 77,
+      "status": "passed"
+    },
+    {
+      "tool": "browser_media",
+      "case": "set media volume",
+      "milliseconds": 52,
+      "status": "passed"
+    },
+    {
+      "tool": "browser_reveal",
+      "case": "reveal diagnostics",
+      "milliseconds": 77,
+      "status": "passed"
+    },
+    {
+      "tool": "browser_click",
+      "case": "click diagnostics",
+      "milliseconds": 1084,
+      "status": "passed"
+    },
+    {
+      "tool": "browser_console",
+      "case": "read the page's console",
+      "milliseconds": 52,
+      "status": "passed"
+    },
+    {
+      "tool": "browser_console",
+      "case": "read only console errors",
+      "milliseconds": 51,
+      "status": "passed"
+    },
+    {
+      "tool": "browser_network",
+      "case": "read the page's requests",
+      "milliseconds": 51,
+      "status": "passed"
+    },
+    {
+      "tool": "browser_network",
+      "case": "read only failed requests",
+      "milliseconds": 51,
+      "status": "passed"
+    },
+    {
+      "tool": "browser_record_start",
+      "case": "start recording",
+      "milliseconds": 77,
+      "status": "passed"
+    },
+    {
+      "tool": "browser_reveal",
+      "case": "move while recording",
+      "milliseconds": 77,
+      "status": "passed"
+    },
+    {
+      "tool": "browser_record_stop",
+      "case": "stop recording",
+      "milliseconds": 153,
+      "status": "passed"
+    },
+    {
+      "tool": "browser_box",
+      "case": "box of the nested scroll region",
+      "milliseconds": 52,
+      "status": "passed"
+    },
+    {
+      "tool": "browser_scroll",
+      "case": "scroll nested region",
+      "milliseconds": 103,
+      "status": "passed"
+    },
+    {
+      "tool": "browser_box",
+      "case": "box inside the nested scroller, before",
+      "milliseconds": 52,
+      "status": "passed"
+    },
+    {
+      "tool": "browser_scroll",
+      "case": "scroll nested region again",
+      "milliseconds": 3099,
+      "status": "passed"
+    },
+    {
+      "tool": "browser_box",
+      "case": "box inside the nested scroller, after",
+      "milliseconds": 53,
+      "status": "passed"
+    },
+    {
+      "tool": "browser_reveal",
+      "case": "reveal the page-scroll anchor",
+      "milliseconds": 77,
+      "status": "passed"
+    },
+    {
+      "tool": "browser_box",
+      "case": "box before page scroll",
+      "milliseconds": 53,
+      "status": "passed"
+    },
+    {
+      "tool": "browser_scroll",
+      "case": "scroll the page",
+      "milliseconds": 3103,
+      "status": "passed"
+    },
+    {
+      "tool": "browser_box",
+      "case": "box after page scroll",
+      "milliseconds": 53,
+      "status": "passed"
+    },
+    {
+      "tool": "browser_scroll",
+      "case": "scroll back to the top",
+      "milliseconds": 2475,
+      "status": "passed"
+    },
+    {
+      "tool": "browser_click",
+      "case": "click the div the page wired to a click",
+      "milliseconds": 102,
+      "status": "passed"
+    },
+    {
+      "tool": "browser_read",
+      "case": "read after wired click",
+      "milliseconds": 52,
+      "status": "passed"
+    },
+    {
+      "tool": "browser_hover",
+      "case": "hover the div the page wired to a hover",
+      "milliseconds": 78,
+      "status": "passed"
+    },
+    {
+      "tool": "browser_read",
+      "case": "read after wired hover",
+      "milliseconds": 52,
+      "status": "passed"
+    },
+    {
+      "tool": "browser_click",
+      "case": "click the card that only looks clickable",
+      "milliseconds": 103,
+      "status": "passed"
+    },
+    {
+      "tool": "browser_read",
+      "case": "read after card click",
+      "milliseconds": 52,
+      "status": "passed"
+    },
+    {
+      "tool": "browser_reveal",
+      "case": "reveal deep target",
+      "milliseconds": 78,
+      "status": "passed"
+    },
+    {
+      "tool": "browser_snapshot",
+      "case": "refresh refs before dialog and JavaScript click",
+      "milliseconds": 53,
+      "status": "passed"
+    },
+    {
+      "tool": "browser_reveal",
+      "case": "reveal prompt button",
+      "milliseconds": 77,
+      "status": "passed"
+    },
+    {
+      "tool": "browser_box",
+      "case": "verify prompt button geometry",
+      "milliseconds": 52,
+      "status": "passed"
+    },
+    {
+      "tool": "browser_dialog",
+      "case": "arm prompt acceptance",
+      "milliseconds": 25,
+      "status": "passed"
+    },
+    {
+      "tool": "browser_click",
+      "case": "open and accept prompt",
+      "milliseconds": 78,
+      "status": "passed"
+    },
+    {
+      "tool": "browser_dialog",
+      "case": "read last dialog",
+      "milliseconds": 26,
+      "status": "passed"
+    },
+    {
+      "tool": "browser_wait_for",
+      "case": "wait for prompt result",
+      "milliseconds": 52,
+      "status": "passed"
+    },
+    {
+      "tool": "browser_reveal",
+      "case": "reveal JavaScript-click target",
+      "milliseconds": 77,
+      "status": "passed"
+    },
+    {
+      "tool": "browser_js_click",
+      "case": "JavaScript click fallback",
+      "milliseconds": 77,
+      "status": "passed"
+    },
+    {
+      "tool": "browser_wait_for",
+      "case": "wait for JavaScript click result",
+      "milliseconds": 52,
+      "status": "passed"
+    },
+    {
+      "tool": "browser_reveal",
+      "case": "reveal coordinate-click target",
+      "milliseconds": 79,
+      "status": "passed"
+    },
+    {
+      "tool": "browser_screenshot",
+      "case": "capture viewport screenshot",
+      "milliseconds": 104,
+      "status": "passed"
+    },
+    {
+      "tool": "browser_box",
+      "case": "measure coordinate target",
+      "milliseconds": 52,
+      "status": "passed"
+    },
+    {
+      "tool": "browser_click_at",
+      "case": "coordinate click from screenshot geometry",
+      "milliseconds": 52,
+      "status": "passed"
+    },
+    {
+      "tool": "browser_wait_for",
+      "case": "wait for coordinate click result",
+      "milliseconds": 51,
+      "status": "passed"
+    },
+    {
+      "tool": "browser_emulate",
+      "case": "emulate 1x 1280x800",
+      "milliseconds": 52,
+      "status": "passed"
+    },
+    {
+      "tool": "browser_snapshot",
+      "case": "refresh refs at 1x 1280x800",
+      "milliseconds": 52,
+      "status": "passed"
+    },
+    {
+      "tool": "browser_js_click",
+      "case": "reset at 1x 1280x800",
+      "milliseconds": 78,
+      "status": "passed"
+    },
+    {
+      "tool": "browser_wait_for",
+      "case": "reset observed at 1x 1280x800",
+      "milliseconds": 52,
+      "status": "passed"
+    },
+    {
+      "tool": "browser_reveal",
+      "case": "reveal at 1x 1280x800",
+      "milliseconds": 77,
+      "status": "passed"
+    },
+    {
+      "tool": "browser_screenshot",
+      "case": "screenshot at 1x 1280x800",
+      "milliseconds": 104,
+      "status": "passed"
+    },
+    {
+      "tool": "browser_box",
+      "case": "measure at 1x 1280x800",
+      "milliseconds": 52,
+      "status": "passed"
+    },
+    {
+      "tool": "browser_click_at",
+      "case": "coordinate click at 1x 1280x800",
+      "milliseconds": 51,
+      "status": "passed"
+    },
+    {
+      "tool": "browser_wait_for",
+      "case": "coordinate click landed at 1x 1280x800",
+      "milliseconds": 52,
+      "status": "passed"
+    },
+    {
+      "tool": "browser_emulate",
+      "case": "emulate 1.25x 1024x768",
+      "milliseconds": 52,
+      "status": "passed"
+    },
+    {
+      "tool": "browser_snapshot",
+      "case": "refresh refs at 1.25x 1024x768",
+      "milliseconds": 53,
+      "status": "passed"
+    },
+    {
+      "tool": "browser_js_click",
+      "case": "reset at 1.25x 1024x768",
+      "milliseconds": 78,
+      "status": "passed"
+    },
+    {
+      "tool": "browser_wait_for",
+      "case": "reset observed at 1.25x 1024x768",
+      "milliseconds": 52,
+      "status": "passed"
+    },
+    {
+      "tool": "browser_reveal",
+      "case": "reveal at 1.25x 1024x768",
+      "milliseconds": 77,
+      "status": "passed"
+    },
+    {
+      "tool": "browser_screenshot",
+      "case": "screenshot at 1.25x 1024x768",
+      "milliseconds": 104,
+      "status": "passed"
+    },
+    {
+      "tool": "browser_box",
+      "case": "measure at 1.25x 1024x768",
+      "milliseconds": 52,
+      "status": "passed"
+    },
+    {
+      "tool": "browser_click_at",
+      "case": "coordinate click at 1.25x 1024x768",
+      "milliseconds": 52,
+      "status": "passed"
+    },
+    {
+      "tool": "browser_wait_for",
+      "case": "coordinate click landed at 1.25x 1024x768",
+      "milliseconds": 52,
+      "status": "passed"
+    },
+    {
+      "tool": "browser_emulate",
+      "case": "emulate 1.5x 800x600",
+      "milliseconds": 51,
+      "status": "passed"
+    },
+    {
+      "tool": "browser_snapshot",
+      "case": "refresh refs at 1.5x 800x600",
+      "milliseconds": 53,
+      "status": "passed"
+    },
+    {
+      "tool": "browser_js_click",
+      "case": "reset at 1.5x 800x600",
+      "milliseconds": 77,
+      "status": "passed"
+    },
+    {
+      "tool": "browser_wait_for",
+      "case": "reset observed at 1.5x 800x600",
+      "milliseconds": 52,
+      "status": "passed"
+    },
+    {
+      "tool": "browser_reveal",
+      "case": "reveal at 1.5x 800x600",
+      "milliseconds": 77,
+      "status": "passed"
+    },
+    {
+      "tool": "browser_screenshot",
+      "case": "screenshot at 1.5x 800x600",
+      "milliseconds": 104,
+      "status": "passed"
+    },
+    {
+      "tool": "browser_box",
+      "case": "measure at 1.5x 800x600",
+      "milliseconds": 52,
+      "status": "passed"
+    },
+    {
+      "tool": "browser_click_at",
+      "case": "coordinate click at 1.5x 800x600",
+      "milliseconds": 52,
+      "status": "passed"
+    },
+    {
+      "tool": "browser_wait_for",
+      "case": "coordinate click landed at 1.5x 800x600",
+      "milliseconds": 52,
+      "status": "passed"
+    },
+    {
+      "tool": "browser_emulate",
+      "case": "emulate 2x 390x844",
+      "milliseconds": 52,
+      "status": "passed"
+    },
+    {
+      "tool": "browser_snapshot",
+      "case": "refresh refs at 2x 390x844",
+      "milliseconds": 53,
+      "status": "passed"
+    },
+    {
+      "tool": "browser_js_click",
+      "case": "reset at 2x 390x844",
+      "milliseconds": 77,
+      "status": "passed"
+    },
+    {
+      "tool": "browser_wait_for",
+      "case": "reset observed at 2x 390x844",
+      "milliseconds": 52,
+      "status": "passed"
+    },
+    {
+      "tool": "browser_reveal",
+      "case": "reveal at 2x 390x844",
+      "milliseconds": 77,
+      "status": "passed"
+    },
+    {
+      "tool": "browser_screenshot",
+      "case": "screenshot at 2x 390x844",
+      "milliseconds": 131,
+      "status": "passed"
+    },
+    {
+      "tool": "browser_box",
+      "case": "measure at 2x 390x844",
+      "milliseconds": 51,
+      "status": "passed"
+    },
+    {
+      "tool": "browser_click_at",
+      "case": "coordinate click at 2x 390x844",
+      "milliseconds": 51,
+      "status": "passed"
+    },
+    {
+      "tool": "browser_wait_for",
+      "case": "coordinate click landed at 2x 390x844",
+      "milliseconds": 52,
+      "status": "passed"
+    },
+    {
+      "tool": "browser_emulate",
+      "case": "emulate 3x 360x640",
+      "milliseconds": 52,
+      "status": "passed"
+    },
+    {
+      "tool": "browser_snapshot",
+      "case": "refresh refs at 3x 360x640",
+      "milliseconds": 53,
+      "status": "passed"
+    },
+    {
+      "tool": "browser_js_click",
+      "case": "reset at 3x 360x640",
+      "milliseconds": 77,
+      "status": "passed"
+    },
+    {
+      "tool": "browser_wait_for",
+      "case": "reset observed at 3x 360x640",
+      "milliseconds": 52,
+      "status": "passed"
+    },
+    {
+      "tool": "browser_reveal",
+      "case": "reveal at 3x 360x640",
+      "milliseconds": 77,
+      "status": "passed"
+    },
+    {
+      "tool": "browser_screenshot",
+      "case": "screenshot at 3x 360x640",
+      "milliseconds": 132,
+      "status": "passed"
+    },
+    {
+      "tool": "browser_box",
+      "case": "measure at 3x 360x640",
+      "milliseconds": 53,
+      "status": "passed"
+    },
+    {
+      "tool": "browser_click_at",
+      "case": "coordinate click at 3x 360x640",
+      "milliseconds": 52,
+      "status": "passed"
+    },
+    {
+      "tool": "browser_wait_for",
+      "case": "coordinate click landed at 3x 360x640",
+      "milliseconds": 52,
+      "status": "passed"
+    },
+    {
+      "tool": "browser_emulate",
+      "case": "reset scale matrix",
+      "milliseconds": 52,
+      "status": "passed"
+    },
+    {
+      "tool": "browser_wait_for",
+      "case": "wait for shadow selector",
+      "milliseconds": 52,
+      "status": "passed"
+    },
+    {
+      "tool": "browser_wait_for",
+      "case": "wait for network idle",
+      "milliseconds": 52,
+      "status": "passed"
+    },
+    {
+      "tool": "browser_emulate",
+      "case": "apply mobile emulation",
+      "milliseconds": 52,
+      "status": "passed"
+    },
+    {
+      "tool": "browser_emulate",
+      "case": "reset emulation",
+      "milliseconds": 52,
+      "status": "passed"
+    },
+    {
+      "tool": "browser_storage",
+      "case": "set local storage",
+      "milliseconds": 52,
+      "status": "passed"
+    },
+    {
+      "tool": "browser_storage",
+      "case": "get local storage",
+      "milliseconds": 52,
+      "status": "passed"
+    },
+    {
+      "tool": "browser_storage",
+      "case": "list local storage keys",
+      "milliseconds": 52,
+      "status": "passed"
+    },
+    {
+      "tool": "browser_storage",
+      "case": "remove local storage key",
+      "milliseconds": 53,
+      "status": "passed"
+    },
+    {
+      "tool": "browser_storage",
+      "case": "set session storage",
+      "milliseconds": 53,
+      "status": "passed"
+    },
+    {
+      "tool": "browser_storage",
+      "case": "clear session storage",
+      "milliseconds": 52,
+      "status": "passed"
+    },
+    {
+      "tool": "browser_cookies",
+      "case": "set fixture cookie",
+      "milliseconds": 51,
+      "status": "passed"
+    },
+    {
+      "tool": "browser_cookies",
+      "case": "read fixture cookies",
+      "milliseconds": 53,
+      "status": "passed"
+    },
+    {
+      "tool": "browser_cookies",
+      "case": "remove fixture cookie",
+      "milliseconds": 52,
+      "status": "passed"
+    },
+    {
+      "tool": "browser_permission",
+      "case": "block fixture geolocation",
+      "milliseconds": 53,
+      "status": "passed"
+    },
+    {
+      "tool": "browser_permission",
+      "case": "restore fixture geolocation",
+      "milliseconds": 53,
+      "status": "passed"
+    },
+    {
+      "tool": "browser_download",
+      "case": "download fixture file",
+      "milliseconds": 304,
+      "status": "passed"
+    },
+    {
+      "tool": "browser_print",
+      "case": "print fixture PDF",
+      "milliseconds": 204,
+      "status": "passed"
+    },
+    {
+      "tool": "browser_navigate",
+      "case": "navigate to page two",
+      "milliseconds": 77,
+      "status": "passed"
+    },
+    {
+      "tool": "browser_wait_for",
+      "case": "wait for page-two URL",
+      "milliseconds": 53,
+      "status": "passed"
+    },
+    {
+      "tool": "browser_snapshot",
+      "case": "snapshot page two",
+      "milliseconds": 52,
+      "status": "passed"
+    },
+    {
+      "tool": "browser_back",
+      "case": "history back",
+      "milliseconds": 77,
+      "status": "passed"
+    },
+    {
+      "tool": "browser_forward",
+      "case": "history forward",
+      "milliseconds": 77,
+      "status": "passed"
+    },
+    {
+      "tool": "browser_reload",
+      "case": "reload page two",
+      "milliseconds": 52,
+      "status": "passed"
+    },
+    {
+      "tool": "browser_navigate",
+      "case": "return to fixture home",
+      "milliseconds": 78,
+      "status": "passed"
+    },
+    {
+      "tool": "browser_http_auth",
+      "case": "arm HTTP authentication",
+      "milliseconds": 51,
+      "status": "passed"
+    },
+    {
+      "tool": "browser_navigate",
+      "case": "navigate through HTTP authentication",
+      "milliseconds": 77,
+      "status": "passed"
+    },
+    {
+      "tool": "browser_snapshot",
+      "case": "snapshot authenticated page",
+      "milliseconds": 52,
+      "status": "passed"
+    },
+    {
+      "tool": "browser_http_auth",
+      "case": "clear HTTP authentication",
+      "milliseconds": 52,
+      "status": "passed"
+    },
+    {
+      "tool": "browser_new_tab",
+      "case": "open first group tab",
+      "milliseconds": 52,
+      "status": "passed"
+    },
+    {
+      "tool": "browser_new_tab",
+      "case": "open second group tab",
+      "milliseconds": 77,
+      "status": "passed"
+    },
+    {
+      "tool": "browser_tabs",
+      "case": "list tabs before grouping",
+      "milliseconds": 52,
+      "status": "passed"
+    },
+    {
+      "tool": "browser_group_tabs",
+      "case": "group fixture tabs",
+      "milliseconds": 52,
+      "status": "passed"
+    },
+    {
+      "tool": "browser_tabs",
+      "case": "refresh tabs after grouping",
+      "milliseconds": 52,
+      "status": "passed"
+    },
+    {
+      "tool": "browser_ungroup_tabs",
+      "case": "ungroup fixture tabs",
+      "milliseconds": 52,
+      "status": "passed"
+    },
+    {
+      "tool": "browser_tabs",
+      "case": "list tabs before selection",
+      "milliseconds": 52,
+      "status": "passed"
+    },
+    {
+      "tool": "browser_select_tab",
+      "case": "select primary fixture tab",
+      "milliseconds": 53,
+      "status": "passed"
+    },
+    {
+      "tool": "browser_windows",
+      "case": "OS focus after selecting a tab",
+      "milliseconds": 52,
+      "status": "passed"
+    },
+    {
+      "tool": "browser_tabs",
+      "case": "list tabs before closing group=one",
+      "milliseconds": 52,
+      "status": "passed"
+    },
+    {
+      "tool": "browser_close_tab",
+      "case": "close group=one tab",
+      "milliseconds": 54,
+      "status": "passed"
+    },
+    {
+      "tool": "browser_tabs",
+      "case": "list tabs before closing group=two",
+      "milliseconds": 52,
+      "status": "passed"
+    },
+    {
+      "tool": "browser_close_tab",
+      "case": "close group=two tab",
+      "milliseconds": 52,
+      "status": "passed"
+    },
+    {
+      "tool": "browser_windows",
+      "case": "list windows before create",
+      "milliseconds": 52,
+      "status": "passed"
+    },
+    {
+      "tool": "browser_window",
+      "case": "create fixture window",
+      "milliseconds": 932,
+      "status": "passed"
+    },
+    {
+      "tool": "browser_windows",
+      "case": "list windows after create",
+      "milliseconds": 53,
+      "status": "passed"
+    },
+    {
+      "tool": "browser_windows",
+      "case": "OS focus after opening a window",
+      "milliseconds": 52,
+      "status": "passed"
+    },
+    {
+      "tool": "browser_window",
+      "case": "retarget session to original window",
+      "milliseconds": 53,
+      "status": "passed"
+    },
+    {
+      "tool": "browser_tabs",
+      "case": "list tabs after window retarget",
+      "milliseconds": 52,
+      "status": "passed"
+    },
+    {
+      "tool": "browser_windows",
+      "case": "OS focus after window retarget",
+      "milliseconds": 52,
+      "status": "passed"
+    },
+    {
+      "tool": "browser_window",
+      "case": "close fixture window",
+      "milliseconds": 52,
+      "status": "passed"
+    },
+    {
+      "tool": "browser_extension_uninstall",
+      "case": "unregister extension bridge",
+      "milliseconds": 26,
+      "status": "passed"
+    },
+    {
+      "tool": "browser_extension_install",
+      "case": "restore extension bridge",
+      "milliseconds": 27,
+      "status": "passed"
+    },
+    {
+      "tool": "browser_extension_status",
+      "case": "verify restored extension state",
+      "milliseconds": 26,
+      "status": "passed"
+    },
+    {
+      "tool": "browser_tabs",
+      "case": "list tabs after the run",
+      "milliseconds": 52,
+      "status": "passed"
+    }
+  ],
+  "generated_files_cleaned": [
+    "/home/randy/Downloads/ChromeControlMCP/chrome-control-mcp-e2e-2347.txt",
+    "/home/randy/Downloads/ChromeControlMCP/page-20261031-155828-212.pdf"
+  ],
+  "chrome_state_restored": true,
+  "platform_notes": [],
+  "extension_attach_milliseconds": 627,
+  "error": null
+}

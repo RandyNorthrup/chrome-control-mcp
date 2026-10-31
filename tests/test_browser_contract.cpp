@@ -138,6 +138,8 @@ private slots:
   void catalog_releaseIsAdvertisedWithItsArguments();
   void buildCommand_releaseBuilds();
   void buildCommand_uploadWithoutRefFillsThePagesChooser();
+  void buildCommand_clipboardTakesOnlyWhatEachActionUses();
+  void buildCommand_clipboardKeepsPathsOnThisSide();
   void catalog_agentOnExactlyNewTabAndSelectTab();
   void buildCommand_agentIsValidatedAndCopied();
 };
@@ -506,10 +508,10 @@ void BrowserContractTests::catalog_advertisesDomFirstToolsWithStrictSchemas() {
   // set unconditionally
   // (nav/action/pointer/form/tab/wait/inspection/window/infra/print/
   // permission/storage/cookies/download/record/upload/http-auth/
-  // advanced-input/observability/release), 46 tools in all.
+  // advanced-input/observability/release/clipboard), 47 tools in all.
   // `>= 15` could not catch a tool silently dropped from or duplicated into the
   // catalog.
-  QCOMPARE(tools.size(), 46);
+  QCOMPARE(tools.size(), 47);
 
   QStringList names;
   for (const QJsonValue &value : tools) {
@@ -1614,6 +1616,7 @@ void BrowserContractTests::catalog_tabIdOnExactlyTheTabScopedTools() {
       QStringLiteral("browser_close_tab"),
       QStringLiteral("browser_select_tab"),
       QStringLiteral("browser_release"),
+      QStringLiteral("browser_clipboard"),
   };
   QSet<QString> advertised;
   const QHash<QString, QJsonObject> properties = catalogProperties();
@@ -1850,6 +1853,114 @@ void BrowserContractTests::buildCommand_uploadWithoutRefFillsThePagesChooser() {
   const QJsonObject schema = catalogSchema(QStringLiteral("browser_upload"));
   QCOMPARE(schema.value(QStringLiteral("required")).toArray(),
            QJsonArray{QStringLiteral("paths")});
+}
+
+// Each browser_clipboard action takes only what it uses. A call that hands
+// paste some text, or read a path, is refused naming the argument, rather than
+// half of it being silently ignored.
+void BrowserContractTests::buildCommand_clipboardTakesOnlyWhatEachActionUses() {
+  const QJsonObject ref_index{
+      {QStringLiteral("e4"), QJsonObject{{QStringLiteral("backendNodeId"), 77},
+                                         {QStringLiteral("tabId"), 9}}}};
+  const auto build = [&](const QJsonObject &arguments) {
+    return buildExtensionCommand(QStringLiteral("browser_clipboard"), arguments,
+                                 ref_index);
+  };
+  const auto act = [](const char *action) {
+    return QJsonObject{{QStringLiteral("action"), QLatin1String(action)}};
+  };
+  const auto with = [](QJsonObject arguments, const QString &key,
+                       const QJsonValue &value) {
+    arguments.insert(key, value);
+    return arguments;
+  };
+
+  // The six actions, and nothing else.
+  for (const char *action : {"read", "clear", "copy", "cut", "paste"}) {
+    const ExtensionCommand ok = build(act(action));
+    QVERIFY2(ok.ok, qPrintable(ok.error));
+    QCOMPARE(ok.command.value(QStringLiteral("cmd")).toString(),
+             QStringLiteral("clipboard"));
+    QCOMPARE(ok.command.value(QStringLiteral("action")).toString(),
+             QLatin1String(action));
+  }
+  QVERIFY(!build({}).ok);
+  const ExtensionCommand unknown = build(act("paste_everything"));
+  QVERIFY(!unknown.ok);
+  QVERIFY(unknown.error.contains(QStringLiteral("action must be")));
+
+  // write carries its content, and needs some.
+  const ExtensionCommand written =
+      build(with(act("write"), QStringLiteral("text"), QStringLiteral("hi")));
+  QVERIFY2(written.ok, qPrintable(written.error));
+  QCOMPARE(written.command.value(QStringLiteral("text")).toString(),
+           QStringLiteral("hi"));
+  QVERIFY(!build(act("write")).ok);
+
+  // Content only for write; a ref only for copy, cut and paste; plain only for
+  // paste.
+  const ExtensionCommand pasteText =
+      build(with(act("paste"), QStringLiteral("text"), QStringLiteral("x")));
+  QVERIFY(!pasteText.ok);
+  QVERIFY(pasteText.error.contains(QStringLiteral("only for action write")));
+  QVERIFY(!build(with(act("read"), QStringLiteral("paths"),
+                      QJsonArray{QStringLiteral("C:/a.png")}))
+               .ok);
+  QVERIFY(
+      !build(with(act("clear"), QStringLiteral("ref"), QStringLiteral("e4")))
+           .ok);
+  QVERIFY(
+      !build(with(act("copy"), QStringLiteral("plain"), QJsonValue(true))).ok);
+  const ExtensionCommand pasteInto =
+      build(with(act("paste"), QStringLiteral("ref"), QStringLiteral("e4")));
+  QVERIFY2(pasteInto.ok, qPrintable(pasteInto.error));
+  QCOMPARE(pasteInto.command.value(QStringLiteral("backendNodeId")).toInt(),
+           77);
+  QCOMPARE(pasteInto.command.value(QStringLiteral("tab_id")).toInt(), 9);
+  QVERIFY(
+      build(with(act("paste"), QStringLiteral("plain"), QJsonValue(true))).ok);
+
+  // Bounded below Chrome's 1 MiB host-to-browser message: 512 KiB of text and
+  // HTML together passes, one byte more is refused by name.
+  const QString half(256 * 1024, QLatin1Char('a'));
+  QVERIFY(build(with(with(act("write"), QStringLiteral("text"), half),
+                     QStringLiteral("html"), half))
+              .ok);
+  const ExtensionCommand over =
+      build(with(with(act("write"), QStringLiteral("text"), half),
+                 QStringLiteral("html"), half + QLatin1Char('a')));
+  QVERIFY(!over.ok);
+  QVERIFY(over.error.contains(QStringLiteral("512 KiB")));
+
+  // Not in the read-only profile's world: it is a mutating tool, and the
+  // schema names the actions it takes.
+  const QJsonObject action = catalogProperties()
+                                 .value(QStringLiteral("browser_clipboard"))
+                                 .value(QStringLiteral("action"))
+                                 .toObject();
+  QCOMPARE(action.value(QStringLiteral("enum")).toArray().size(), 6);
+}
+
+// Like browser_upload: the files are read and sent by the app, so a path never
+// reaches the extension, let alone a page.
+void BrowserContractTests::buildCommand_clipboardKeepsPathsOnThisSide() {
+  const ExtensionCommand cmd = buildExtensionCommand(
+      QStringLiteral("browser_clipboard"),
+      QJsonObject{{QStringLiteral("action"), QStringLiteral("write")},
+                  {QStringLiteral("paths"),
+                   QJsonArray{QStringLiteral("C:/secrets/passport.png")}},
+                  {QStringLiteral("tab_id"), 31}},
+      {});
+  QVERIFY2(cmd.ok, qPrintable(cmd.error));
+  QVERIFY(!cmd.command.contains(QStringLiteral("paths")));
+  QVERIFY(!QString::fromUtf8(QJsonDocument(cmd.command).toJson())
+               .contains(QStringLiteral("passport")));
+  QVERIFY(!buildExtensionCommand(
+               QStringLiteral("browser_clipboard"),
+               QJsonObject{{QStringLiteral("action"), QStringLiteral("write")},
+                           {QStringLiteral("paths"), QJsonArray{}}},
+               {})
+               .ok);
 }
 
 void BrowserContractTests::catalog_agentOnExactlyNewTabAndSelectTab() {

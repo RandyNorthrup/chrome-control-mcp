@@ -99,6 +99,14 @@ public:
   [[nodiscard]] Outgoing beginCommand(const QString &tool,
                                       const QJsonObject &arguments);
 
+  /// The refusal beginCommand would give this call's arguments -- a stale ref,
+  /// or one buildExtensionCommand rejects -- without starting anything. A call
+  /// that carries files asks first, so a call refused after its files had gone
+  /// cannot leave them stranded in the extension's buffer. Empty when the
+  /// arguments are acceptable.
+  [[nodiscard]] QString argumentsError(const QString &tool,
+                                       const QJsonObject &arguments) const;
+
   /// Build a command frame for an internal command the model never calls:
   /// today, the upload chunks that carry a file's bytes to the extension
   /// before the upload itself names the element to assign them to. It takes

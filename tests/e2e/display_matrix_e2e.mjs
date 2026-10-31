@@ -184,6 +184,41 @@ const centreOf = (box) => ({
   y: Math.round((box.top + box.bottom) / 2),
 });
 
+// Whether Chrome answers its own DevTools right now, and how fast: the browser process (version)
+// and the page's renderer (an evaluate in the geometry page). Bounded, so a stalled browser is
+// reported rather than waited on.
+async function devtoolsAnswers(devtools) {
+  const timed = async (label, probe) => {
+    const started = Date.now();
+    try {
+      await Promise.race([
+        probe(),
+        new Promise((_, reject) =>
+          setTimeout(() => reject(new Error("no answer in 5000 ms")), 5000),
+        ),
+      ]);
+      return `${label} answered DevTools in ${Date.now() - started} ms`;
+    } catch (error) {
+      return `${label} did not answer DevTools (${error.message})`;
+    }
+  };
+  const browserSide = await timed("the browser", async () => {
+    const response = await fetch(
+      `http://127.0.0.1:${devtools.port}/json/version`,
+    );
+    await response.json();
+  });
+  const pageSide = await timed("the page", async () => {
+    const page = await devtoolsPage(devtools, "/geometry");
+    try {
+      await page.send("Runtime.evaluate", { expression: "1 + 1" });
+    } finally {
+      page.close();
+    }
+  });
+  return `${browserSide}; ${pageSide}`;
+}
+
 // The DevTools endpoint of the dedicated browser, used for the one thing no tool does and a user
 // does with their hands: pinch the trackpad.
 async function devtoolsPage(devtools, urlPart) {
@@ -263,10 +298,20 @@ async function runConfig(config, { chrome, executable, fixture, extraArgs }) {
     const state = async () =>
       pageState((await client.tool("browser_read", { format: "text" })).text);
     const screenshot = async (fullPage = false) => {
+      const startedAt = Date.now();
       const outcome = await client.tool("browser_screenshot", {
         full_page: fullPage,
       });
-      assert.ok(!outcome.isError, `screenshot failed: ${outcome.text}`);
+      if (outcome.isError) {
+        // A screenshot that failed after silence (Windows CI, a 3840x2160-pixel capture, three
+        // times) leaves one question: did Chrome itself stop answering, or only the path through
+        // the extension? Ask Chrome directly, over its own DevTools, and put the answer in the
+        // failure.
+        assert.fail(
+          `screenshot failed after ${Date.now() - startedAt} ms: ${outcome.text}; ` +
+            (await devtoolsAnswers(devtools)),
+        );
+      }
       const image = outcome.result.content.find(
         (block) => block.type === "image",
       );

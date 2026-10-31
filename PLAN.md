@@ -3,12 +3,12 @@
 ## Release target
 
 Ship standalone, MIT-licensed Chrome Control MCP from `main` with the same browser tool surface on
-Windows, Linux, and macOS. Current release: 1.8.0 (2026-10-31).
+Windows, Linux, and macOS. Current release: 1.9.0 (2026-10-31).
 
 ## Completed
 
 - [x] Standalone project identity with no legacy product references
-- [x] 52 strict-schema MCP tools (46 browser, 6 native) and a reversible full Chrome E2E harness
+- [x] 53 strict-schema MCP tools (47 browser, 6 native) and a reversible full Chrome E2E harness
 - [x] Visible, non-intercepting, accessibility-hidden control presence, coloured and named per
       agent, drawn into every new document, and safe on pages that enforce Trusted Types
 - [x] Windows protected named-pipe bridge
@@ -31,6 +31,11 @@ Windows, Linux, and macOS. Current release: 1.8.0 (2026-10-31).
       (1.8.0)
 - [x] File pickers answered without a native dialog: script-created inputs, drop zones, and
       `showOpenFilePicker` (1.8.0)
+- [x] `browser_release` by `tab_id` releases the agent's tabs -- popups and its other named tabs
+      included -- and a tab Chrome will not close is never reported closed (1.8.2)
+- [x] A clipboard per agent, never the system's: keys, `browser_clipboard`, and the page's own
+      clipboard API in held tabs (1.9.0;
+      [docs/plans/per-agent-clipboard.md](docs/plans/per-agent-clipboard.md))
 - [x] Live Chrome E2E on a physical Linux desktop (Arch, Hyprland/Wayland, 150% scale, 2026-09-18)
 - [x] Live Chrome E2E on a physical macOS desktop (macOS 15.7.4 Intel, the user's own Chrome,
       2026-09-19), where the update path is also verified: install, managed layout, and an HTTPS
@@ -45,14 +50,21 @@ Windows, Linux, and macOS. Current release: 1.8.0 (2026-10-31).
       evidence for 1.8 is Windows only; CI covers all three platforms in Chrome for Testing.
 - [x] Explain the macOS `relay_forwardsProgressBeatsAndStillDeliversTheReply` failure on the
       `v1.8.0` tag's Quality run: a timing margin of about 125 ms in the test, widened in 1.8.1
-- [ ] Find why headless Chrome for Testing 153 stalls in the `1.75x-2194x1234-zoom100-classic`
-      pinch-3 display-matrix configuration on Windows: once in CI through a screenshot, and once in
-      six local runs through the suite's own DevTools pinch, a call the extension takes no part in
+- [ ] Find why headless Chrome for Testing 153 stalls on Windows in display-matrix configurations
+      that capture 3840x2160 device pixels: three CI screenshots (all on tag-push runs), and once
+      in six local runs through the suite's own DevTools pinch, a call the extension takes no part
+      in. Since 1.9.0 a failed screenshot reports whether Chrome still answers DevTools
       ([VERIFICATION.md](docs/VERIFICATION.md#open-a-chrome-stall-in-one-display-configuration))
 - [x] Restore the Semgrep gate: the job keeps its pinned Python 3.12, since `semgrep-core` crashes
       under the 3.15 the Qt install step switched it to (1.8.1)
 - [x] Run `test_browser_extension_tabs.mjs` and `test_release_versions.mjs` in ctest, and so in CI
       (1.8.1)
+- [ ] Support Chrome profiles (work, personal, other people), chosen per call: one server
+      connected to every profile's extension at once, `profile` on `browser_new_tab`, and each
+      tab's profile in `browser_tabs`. Today a server binds to whichever profile's extension reaches
+      it first, and an agent cannot choose. Decided 2026-10-31; next after 1.9.0.
+- [ ] Give an iframe element a ref in the snapshot. An editor inside a frame (TinyMCE's) shows up as
+      an `iframe` line with no ref, so an agent can reach it only by screenshot coordinates.
 - [ ] Support folder uploads; a page that asks for a folder is refused today.
 - [ ] Add Windows and Linux ARM64 build matrices when their Qt runner combinations are verified;
       macOS ARM64 builds and packages on a standard GitHub-hosted runner.

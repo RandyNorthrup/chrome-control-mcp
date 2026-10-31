@@ -1,6 +1,6 @@
 # Tool catalog
 
-The full profile advertises 52 tools: 46 browser tools, which reach Chrome through the extension,
+The full profile advertises 53 tools: 47 browser tools, which reach Chrome through the extension,
 and 6 native tools the server answers itself -- 3 to set up the extension's native-messaging host and
 3 to update the server. The [read-only profile](#read-only-profile) advertises 14.
 
@@ -98,8 +98,53 @@ that should show the exact control presence visible in Chrome.
 - `browser_select`
 - `browser_set_value`
 - `browser_upload`
+- `browser_clipboard`
 - `browser_media`
 - `browser_js_click`
+
+### Clipboards
+
+Every agent has a clipboard of its own, and nothing an agent does reaches the system clipboard --
+the one the user and every other program share. Chrome has no clipboard per tab or per extension,
+so the extension keeps one per agent: per session (MCP server) and agent name, exactly like the
+agent's tab group, or the session's shared one when no name was given. It lives in the extension's
+memory only, is never written anywhere, and is emptied when the agent lets go of its last tab, when
+its server exits, and when the user pauses the bridge.
+
+Three things use it:
+
+- **Copy, cut and paste keys.** `browser_press_key` with Control or Meta and C, X or V (and
+  Control+Insert, Shift+Insert, Shift+Delete; Control/Meta+Shift+V pastes without formatting) is
+  answered from the agent's clipboard instead of being sent to Chrome as a key. The reply carries
+  what happened under `clipboard`.
+- **`browser_clipboard`.** `write` puts `text`, `html` and/or files (`paths`, absolute, read by the
+  server exactly as for `browser_upload`) on it; `read` returns it; `clear` empties it; `copy` and
+  `cut` take the selection, or with a `ref` that element's contents; `paste` pastes into the focused
+  element, or into the `ref`, with `plain: true` for text only. Text and HTML may be at most 512 KiB
+  together in one write (Chrome accepts at most 1 MiB in one message from the server); larger text
+  goes in a file.
+- **The page's own copy and paste buttons.** In a tab an agent holds, `navigator.clipboard` and
+  `document.execCommand('copy' | 'cut')` use that agent's clipboard. A page may use it only while
+  one of the agent's own input commands on that tab is running and for 2 s after -- the moment a
+  person's click would give it -- and is refused outside it, as a page without clipboard permission
+  is. A reply says when the page wrote or read the agent's clipboard (`page_clipboard`). When the
+  tab is handed back the page gets the browser's own functions again.
+
+A copy is what a real copy is: the page's `copy` event runs first, and data a page puts there (a
+"read more" footer, rich formats) is what is copied; otherwise the selection is, as text and HTML.
+Nothing selected leaves the clipboard as it was, and a password field gives nothing. A paste is what
+a real paste is: a `paste` event carrying `text/plain`, `text/html` and `File`s -- where nearly every
+editor and every "paste an image anywhere" page reads one -- then, for an editable region whose page
+did not take it, a `beforeinput` of type `insertFromPaste` with the same data. If the page took
+neither, the text is typed in: whole into a text field, line by line with Shift+Enter elsewhere (a
+plain Enter sends a message in every chat box). HTML only ever reaches the page's own paste handler,
+which sanitizes it as it would a real paste. The reply's `taken_by` says which happened.
+
+Limits: inside a frame from another site, copy is not available and a paste is typed as text. A shell
+command an agent runs outside the browser (`Set-Clipboard`, `pbcopy`) still uses the system
+clipboard; the MCP instructions steer agents to `browser_clipboard` instead. On Linux, selecting
+text still sets the primary selection, as every selection in Chrome does. A clipboard does not
+survive the extension's service worker restarting.
 
 ### Uploads
 

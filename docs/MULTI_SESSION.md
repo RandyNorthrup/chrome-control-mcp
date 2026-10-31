@@ -170,6 +170,17 @@ accept one. Outside that window nothing is caught, so the user's own clicks open
 even in a held tab. Folder pickers are not supported yet: the reply says the page asked for a folder,
 and nothing is assigned.
 
+### Clipboards
+
+Agents used to share the operating system's one clipboard with each other and with the user: one
+agent's Ctrl+V pasted another's copy, or the user's, and a page's copy button clicked by an agent
+wrote the user's clipboard. Since 1.9.0 each agent has its own -- per session and agent name, like
+its tab group -- held by the extension in memory and cleared when the agent lets go. The agent's copy,
+cut and paste keys, `browser_clipboard`, and the page's own clipboard API in a held tab (honoured only
+during the agent's input commands on that tab, plus 2 s) all use it, and nothing an agent does reaches
+the system clipboard. The behaviour, what a paste delivers, and the limits are in
+[TOOLS.md](TOOLS.md#clipboards); the security model is in [SECURITY.md](SECURITY.md#clipboards).
+
 ### Not starting processes for nothing
 
 Every port is a process. The rules that keep it so: an attached relay's `bridge_servers` report

@@ -13,5 +13,7 @@
 *.psd1 text eol=crlf
 *.bat text eol=crlf
 *.cmd text eol=crlf
+# Evidence logs are bound by SHA-256 in docs/plans/*.md; a checkout must not rewrite their bytes.
+docs/plans/evidence/** text eol=lf
 *.crx binary
 *.png binary

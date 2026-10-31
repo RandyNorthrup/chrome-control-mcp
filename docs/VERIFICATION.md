@@ -5,10 +5,94 @@ after [Earlier evidence](#earlier-evidence) is a dated record of the build it na
 suite counts and versions were true of that build and are not current. A result is recorded here
 only when a command actually produced it.
 
-## Current: 1.8.2 (2026-10-31)
+## Current: 1.9.0 (2026-10-31)
 
-1.8.2 changes one thing: what `browser_release` lets go of, and how it closes tabs (extension, and
-the tool's description). Everything else is 1.8.1, whose evidence follows and still stands.
+1.9.0 adds per-agent clipboards (extension, `browser_clipboard`, the MCP `instructions`), checks a
+file-carrying call's arguments before sending its files, and names why a broken exchange ended.
+Everything else is 1.8.2 and 1.8.1, whose evidence follows and still stands. The plan, acceptance
+criteria and evidence ledger for the clipboard work are in
+[plans/per-agent-clipboard.md](plans/per-agent-clipboard.md); the raw outputs are in
+[plans/evidence/clipboard/](plans/evidence/clipboard/).
+
+### 1.9.0: suites
+
+| Where                                       | Result                                                                      |
+| ------------------------------------------- | --------------------------------------------------------------------------- |
+| Windows, local: ctest                       | 23/23                                                                       |
+| Linux, local: ctest                         | 22/22                                                                       |
+| Local: `npm run test:js`                    | 199/199 across 10 files                                                     |
+| Local: pre-commit, all files                | 15 hooks pass                                                               |
+| Linux, local: clang-tidy on the changed C++ | clean                                                                       |
+| Linux, local: Semgrep 1.174.0, Python 3.12  | 221 rules, 51 files, 0 findings                                             |
+| Built server, both profiles                 | 53 tools full, 14 read-only                                                 |
+| Linux, Chrome for Testing 153: clipboard    | 24/24, then 33 consecutive passes                                           |
+| Linux, Chrome for Testing 153: multi-agent  | 25/25                                                                       |
+| Linux, Chrome for Testing 153: interference | 10/10                                                                       |
+| Linux, Chrome for Testing 153: full suite   | ok: 48 tools, 177 live cases (`browser_clipboard` is the clipboard suite's) |
+
+`clipboard_e2e.mjs` runs two servers and three agents. A sentinel is put on the browser's own
+clipboard by a page the "user" opened, through DevTools, before any agent runs. The suite then
+checks, among its 24:
+
+- a write of text, HTML and an image;
+- pastes into an editor that reads the paste event, one that reads `beforeinput insertFromPaste`, a
+  bare editable region, an editor in a same-origin frame (files included) and a field in a frame from
+  another site (typed);
+- Control+C, X and V in a text field;
+- copy buttons built with `execCommand` and with `navigator.clipboard`, a paste button, and a page
+  reading the clipboard on its own (refused);
+- isolation from a second agent and from an agent on a second server;
+- a copy button in a page loaded after the agent took its tab;
+- the browser's own clipboard functions back after a tab is handed back, and the clipboard cleared
+  when its agent lets go;
+- the sentinel still on the browser's clipboard at the end, and never in an agent's page.
+
+### 1.9.0: red drills
+
+Each mutation reverted one behaviour, the check was seen to fail for that reason, and the source was
+restored and green again.
+
+- **Live, staged into the extension the browser loads** (log: `live-red-drills.txt`):
+  - _Copy, cut and paste sent to Chrome as keys again:_ the agent pasted the sentinel -- the user's
+    own clipboard -- into the rich editor.
+  - _No page stand-in at all:_ the page's copy buttons overwrote the user's clipboard (the sentinel
+    became `exec-copied-text`), and the page's own timed read got it.
+  - _No stand-in for documents loaded after the tab was taken:_ the copy button on the navigated page
+    wrote the user's clipboard.
+  - _No command window:_ the page's timed read succeeded.
+  - _No restore on handback:_ the page kept the stand-in.
+  - _One clipboard per agent name across every server:_ the second server's agent named `beta`
+    read the first server's `beta`'s clipboard.
+- **Unit** (`unit-red-drills.txt`): chord interception, per-agent keying, the command window,
+  clearing on release, and Shift+Enter (not Enter) between typed lines -- each fails its test.
+- **Contract** (`contract-red-drill.txt`): with `browser_clipboard`'s per-action checks removed,
+  both clipboard contract tests fail.
+- **Pipe** (`pipe-cause-red-drill.txt`): with every ending reported as silence again, the test of a
+  relay that closes mid-command fails.
+
+The two "no stand-in" drills are what the clipboard isolation exists for. They show that, without
+it, an agent's click on a page's copy button writes the user's clipboard, as 1.8 does.
+
+### 1.9.0: real editors, live
+
+An agent pasted a marker from its own clipboard with Control+V and copied it back with Control+A,
+Control+C. This ran in the dedicated Chrome for Testing, on Linux, with no accounts and nothing
+submitted (`real-sites*.json`). It passed on:
+
+- ProseMirror, Lexical, Slate (through `beforeinput`), Quill, Draft.js, CKEditor 5 and CodeMirror 6;
+- a plain form field on httpbin.org.
+
+TinyMCE could not be tried: its editor frame appears in the snapshot with no ref, so it is reachable
+only by screenshot coordinates. The same-origin frame path it would exercise is covered by the
+fixture instead. A snapshot ref for iframe elements is on [PLAN.md](../PLAN.md).
+
+### 1.9.0: one unexplained failure
+
+In the final pass, one run of the clipboard suite stopped on a `browser_click` that answered
+`browser did not reply within 30000 ms (connection reset)`, on Linux, at 1x, with no large capture
+involved. It did not recur in the 33 runs that followed. That message was also what the server
+said when the relay closed the connection, so the failure could have been either. Since 1.9.0 the
+server names which. See [Open: a Chrome stall](#open-a-chrome-stall-in-one-display-configuration).
 
 ### 1.8.2: release
 
@@ -127,6 +211,15 @@ So Chrome itself stalls, intermittently, in this configuration, and that stall i
 screenshot met. Why Chrome stalls is not established, and this stays open in
 [PLAN.md](../PLAN.md).
 
+Since then, the `v1.8.1` tag's Quality run met the same failure twice more on Windows, in
+`1x-3840x2160-zoom67-classic` (on its first screenshot) and `1x-3840x2160-zoom500-classic`. All three
+failures are captures of 3840x2160 device pixels, all on Windows, and all on tag-push runs -- the
+moment the release workflow's jobs start beside the Quality run's -- while every main-branch run's
+live suites passed, and the `v1.8.2` tag run passed whole. The error text says only that nothing
+arrived for 30 s; from 1.9.0 a failed screenshot in the matrix also reports whether Chrome still
+answers its own DevTools (the browser process and the page), which says on the next occurrence
+whether Chrome stalled or only the path through the extension.
+
 ### Chrome's file chooser, measured on Chrome 153
 
 - A file chooser opened in a tab that is not the active tab of its window is cancelled; the page
@@ -141,40 +234,41 @@ These are why file pickers are caught rather than shown
 
 - MCP initialize: protocol `2024-11-05`, server `chrome-control-mcp`, with client-agnostic
   `instructions`.
-- Full profile: 52 tools, 46 browser and 6 native. Read-only profile: 14 tools, 11 browser and 3
-  native. Pinned by `test_browser_mcp_server`, by `test_browser_contract` (46 browser tools), and by
+- Full profile: 53 tools, 47 browser and 6 native. Read-only profile: 14 tools, 11 browser and 3
+  native. Pinned by `test_browser_mcp_server`, by `test_browser_contract` (47 browser tools), and by
   `scripts/mcp_smoke.mjs`, which CI runs against every server it builds.
 - Bridge protocol: 2 (`kBrowserBridgeProtocol`, `BRIDGE_PROTOCOL`).
-- Extension version 1.8.1, ID `iojehhmnaigcejfcpmilpclmeljhlkaa`, native host
+- Extension version 1.9.0, ID `iojehhmnaigcejfcpmilpclmeljhlkaa`, native host
   `com.chromecontrolmcp.browser`, minimum Chrome 116. Delivered as an unpacked directory; no private
   key, packaged browser artifact, store account, or enterprise policy.
 
 ### Test suites
 
-| Suite                                 | Runs in        | Coverage                                                                                          |
-| ------------------------------------- | -------------- | ------------------------------------------------------------------------------------------------- |
-| `test_browser_contract`               | ctest          | 46 browser-tool schemas, command translation, `tab_id` and `agent` validation, refs bound to tabs |
-| `test_native_messaging`               | ctest          | native frame codec and host handshake                                                             |
-| `test_browser_bridge`                 | ctest          | reply correlation, per-tab snapshots and staleness, refs dropped for released tabs, client name   |
-| `test_browser_extension_installer`    | ctest          | public identity and isolated native-host lifecycle                                                |
-| `test_browser_uploads`                | ctest          | upload path rules, roots confinement, and byte-exact chunking                                     |
-| `test_browser_bridge_security`        | ctest          | ACL/permissions, nonce, per-pid rendezvous records, runtime-directory override                    |
-| `test_browser_bridge_pipe`            | ctest          | IPC handshake, peer verification, deadlines and beats, idle-peer departure, reconnect, sweep      |
-| `test_browser_bridge_relay`           | ctest          | relay/bridge/session end to end, offers of running servers only, `bridge_servers`, progress       |
-| `test_install_layout`                 | ctest          | version-directory safety, link swap under an open file, pruning, install lock                     |
-| `test_updater`                        | ctest          | asset naming, checksums, version order, staged install, an older build leaving a newer current    |
-| `test_browser_mcp_server`             | ctest          | identity, `instructions`, 52 tools, profiles, envelopes, schemas, MCP content                     |
-| `test_windows_process_identity`       | ctest, Windows | identity across a junction, from a child launched through one                                     |
-| `test_browser_extension_pure`         | both           | service-worker security, storage, geometry, and decision functions                                |
-| `test_browser_extension_transport`    | both           | reconnect backoff and pause, offers, readiness handshake, protocol mismatch, refused commands     |
-| `test_browser_extension_session`      | both           | what a tab stops believing when its debugger attachment ends                                      |
-| `test_browser_extension_multisession` | both           | one port per server, and the leases that keep sessions apart                                      |
-| `test_browser_extension_recording`    | both           | recording refusals, the timeline, and discard when the tab or session ends                        |
-| `test_browser_extension_offscreen`    | both           | the recorder host loaded for real, against a captureStream-less OffscreenCanvas                   |
-| `test_vscode_payload`                 | both           | VSIX payload rules, with red drills for a link that survives pruning                              |
-| `test_extension_install_cycle`        | ctest          | install, status and uninstall tools driven through the built server against a real registration   |
-| `test_browser_extension_tabs`         | both           | whose tab it is, popups, per-agent groups and names, release, parking, idle, file choosers        |
-| `test_release_versions`               | both           | one version everywhere, with its changelog entry and release note                                 |
+| Suite                                 | Runs in        | Coverage                                                                                                            |
+| ------------------------------------- | -------------- | ------------------------------------------------------------------------------------------------------------------- |
+| `test_browser_contract`               | ctest          | 47 browser-tool schemas, command translation, `tab_id`, `agent` and clipboard validation, refs bound to tabs        |
+| `test_native_messaging`               | ctest          | native frame codec and host handshake                                                                               |
+| `test_browser_bridge`                 | ctest          | reply correlation, per-tab snapshots and staleness, refs dropped for released tabs, client name                     |
+| `test_browser_extension_installer`    | ctest          | public identity and isolated native-host lifecycle                                                                  |
+| `test_browser_uploads`                | ctest          | upload path rules, roots confinement, and byte-exact chunking                                                       |
+| `test_browser_bridge_security`        | ctest          | ACL/permissions, nonce, per-pid rendezvous records, runtime-directory override                                      |
+| `test_browser_bridge_pipe`            | ctest          | IPC handshake, peer verification, deadlines and beats, idle-peer departure, why an exchange ended, reconnect, sweep |
+| `test_browser_bridge_relay`           | ctest          | relay/bridge/session end to end, offers of running servers only, `bridge_servers`, progress                         |
+| `test_install_layout`                 | ctest          | version-directory safety, link swap under an open file, pruning, install lock                                       |
+| `test_updater`                        | ctest          | asset naming, checksums, version order, staged install, an older build leaving a newer current                      |
+| `test_browser_mcp_server`             | ctest          | identity, `instructions`, 53 tools, profiles, envelopes, schemas, MCP content                                       |
+| `test_windows_process_identity`       | ctest, Windows | identity across a junction, from a child launched through one                                                       |
+| `test_browser_extension_pure`         | both           | service-worker security, storage, geometry, and decision functions                                                  |
+| `test_browser_extension_transport`    | both           | reconnect backoff and pause, offers, readiness handshake, protocol mismatch, refused commands                       |
+| `test_browser_extension_session`      | both           | what a tab stops believing when its debugger attachment ends                                                        |
+| `test_browser_extension_multisession` | both           | one port per server, and the leases that keep sessions apart                                                        |
+| `test_browser_extension_recording`    | both           | recording refusals, the timeline, and discard when the tab or session ends                                          |
+| `test_browser_extension_offscreen`    | both           | the recorder host loaded for real, against a captureStream-less OffscreenCanvas                                     |
+| `test_vscode_payload`                 | both           | VSIX payload rules, with red drills for a link that survives pruning                                                |
+| `test_extension_install_cycle`        | ctest          | install, status and uninstall tools driven through the built server against a real registration                     |
+| `test_browser_extension_tabs`         | both           | whose tab it is, popups, per-agent groups and names, release, parking, idle, file choosers                          |
+| `test_browser_extension_clipboard`    | both           | chords never sent as keys, one agent never reaching another's, the page command window, clearing                    |
+| `test_release_versions`               | both           | one version everywhere, with its changelog entry and release note                                                   |
 
 "Both" means ctest and `npm run test:js`; CI runs ctest on Windows, Linux and macOS.
 

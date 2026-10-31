@@ -1,0 +1,5 @@
+== mutation: every ending reported as silence (Windows pipe server)
+mutated_exit=8
+FAIL!  : BrowserBridgePipeTests::closingPeer_isReportedAsClosedNotSilent() 'exchange.error.startsWith( QStringLiteral("the browser's relay closed the connection
+restored: true
+restored_exit=0

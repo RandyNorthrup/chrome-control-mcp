@@ -1,0 +1,161 @@
+{
+  "ran_at": "2026-10-31T22:42:34.672Z",
+  "results": [
+    {
+      "site": "ProseMirror",
+      "url": "https://prosemirror.net/examples/basic/",
+      "result": "no editor found in the snapshot"
+    },
+    {
+      "site": "Lexical",
+      "url": "https://playground.lexical.dev/",
+      "editor": "- textbox \"Enter some rich text...\" [ref=e80] (editable,value=Welcome to the playground In case you were wondering what ",
+      "paste": {
+        "pasted": true,
+        "taken_by": "page",
+        "target": {
+          "id": "",
+          "tag": "div"
+        },
+        "via": "paste"
+      },
+      "marker_on_page": true,
+      "copy": {
+        "copied": true,
+        "from": "page"
+      },
+      "copied_back": true,
+      "result": "pass"
+    },
+    {
+      "site": "Slate",
+      "url": "https://www.slatejs.org/examples/richtext",
+      "editor": "- textbox \"Rich text editor\" [ref=e164] (editable,value=This is editable rich text much better than a <textarea>! S...)",
+      "paste": {
+        "pasted": true,
+        "taken_by": "page",
+        "target": {
+          "id": "",
+          "tag": "div"
+        },
+        "via": "beforeinput"
+      },
+      "marker_on_page": true,
+      "copy": {
+        "copied": true,
+        "from": "page"
+      },
+      "copied_back": true,
+      "result": "pass"
+    },
+    {
+      "site": "Quill",
+      "url": "https://quilljs.com/playground/snow",
+      "editor": "- textbox \"Code Editor for index.js\" [ref=e202] (editable,value=const quill = new Quill'#editor' { modules: { toolbar: [",
+      "paste": {
+        "pasted": true,
+        "taken_by": "page",
+        "target": {
+          "id": "",
+          "tag": "div"
+        },
+        "via": "paste"
+      },
+      "marker_on_page": true,
+      "copy": {
+        "copied": true,
+        "from": "page"
+      },
+      "copied_back": true,
+      "result": "pass"
+    },
+    {
+      "site": "Draft.js",
+      "url": "https://draftjs.org/",
+      "editor": "- textbox [ref=e329] (editable)",
+      "paste": {
+        "pasted": true,
+        "taken_by": "page",
+        "target": {
+          "id": "",
+          "tag": "div"
+        },
+        "via": "paste"
+      },
+      "marker_on_page": true,
+      "copy": {
+        "copied": true,
+        "from": "selection"
+      },
+      "copied_back": true,
+      "result": "pass"
+    },
+    {
+      "site": "CKEditor 5",
+      "url": "https://ckeditor.com/docs/ckeditor5/latest/examples/builds/classic-editor.html",
+      "editor": "- textbox \"Rich Text Editor. Editing area: main. Press Alt+0 for help.\" [ref=e390] (editable,value=The three greatest th",
+      "paste": {
+        "pasted": true,
+        "taken_by": "page",
+        "target": {
+          "id": "",
+          "tag": "figcaption"
+        },
+        "via": "paste"
+      },
+      "marker_on_page": true,
+      "copy": {
+        "copied": true,
+        "from": "page"
+      },
+      "copied_back": true,
+      "result": "pass"
+    },
+    {
+      "site": "TinyMCE (in a frame)",
+      "url": "https://www.tiny.cloud/docs/tinymce/latest/basic-example/",
+      "result": "no editor found in the snapshot"
+    },
+    {
+      "site": "CodeMirror 6",
+      "url": "https://codemirror.net/",
+      "editor": "- textbox [ref=e561] (editable,value=function hellowho = \"world\" { console.log`Hello ${who}!`...)",
+      "paste": {
+        "pasted": true,
+        "taken_by": "page",
+        "target": {
+          "id": "",
+          "tag": "div"
+        },
+        "via": "paste"
+      },
+      "marker_on_page": true,
+      "copy": {
+        "copied": true,
+        "from": "page"
+      },
+      "copied_back": true,
+      "result": "pass"
+    },
+    {
+      "site": "Plain form field",
+      "url": "https://httpbin.org/forms/post",
+      "editor": "- textbox \"Customer name:\" [ref=e638] (editable)",
+      "paste": {
+        "pasted": true,
+        "taken_by": "inserted",
+        "target": {
+          "id": "",
+          "tag": "input"
+        }
+      },
+      "marker_on_page": false,
+      "copy": {
+        "copied": true,
+        "from": "selection"
+      },
+      "copied_back": true,
+      "result": "fail"
+    }
+  ]
+}

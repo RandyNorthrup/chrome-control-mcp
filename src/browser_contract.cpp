@@ -365,6 +365,17 @@ QHash<QString, CmdSpec> formCommandSpecs() {
       // than showing a dialog, and an upload with no ref fills it.
       {QStringLiteral("browser_upload"),
        {QStringLiteral("upload"), QStringLiteral("optional"), {}}},
+      // The calling agent's own clipboard. Files, like browser_upload's, are
+      // read here and sent as bytes, so `paths` is validated but never copied
+      // into the command. The ref is what copy and cut take and what paste
+      // pastes into; the other actions refuse one (applyClipboardArgs).
+      {QStringLiteral("browser_clipboard"),
+       {QStringLiteral("clipboard"),
+        QStringLiteral("optional"),
+        {{QStringLiteral("action"), QStringLiteral("string"), true},
+         {QStringLiteral("text"), QStringLiteral("string"), false},
+         {QStringLiteral("html"), QStringLiteral("string"), false},
+         {QStringLiteral("plain"), QStringLiteral("bool"), false}}}},
   };
 }
 
@@ -618,6 +629,7 @@ const QSet<QString> &tabScopedCommands() {
       QStringLiteral("download"),     QStringLiteral("recordStart"),
       QStringLiteral("httpAuth"),     QStringLiteral("upload"),
       QStringLiteral("closeTab"),     QStringLiteral("selectTab"),
+      QStringLiteral("clipboard"),
   };
   return kCommands;
 }
@@ -1060,6 +1072,67 @@ QString applyUploadPaths(const QJsonObject &arguments) {
   return QString();
 }
 
+// The most text and HTML one browser_clipboard write may carry, together, in
+// UTF-8. Chrome accepts at most 1 MiB in one message from this server, and the
+// command's own framing shares that frame; a larger write is refused here, by
+// name, rather than failing as a frame that never arrives. Files have no such
+// limit: they travel in chunks.
+constexpr qsizetype kMaxClipboardWriteBytes = qsizetype{512} * 1024;
+
+// browser_clipboard's arguments, by action. Each action takes only what it
+// uses -- write its content, copy/cut/paste a ref, paste `plain` -- so a call
+// that hands paste some text, or read a path, is refused rather than having
+// half of it silently ignored.
+QString applyClipboardArgs(const QJsonObject &arguments) {
+  static const QStringList kActions{
+      QStringLiteral("write"), QStringLiteral("read"), QStringLiteral("clear"),
+      QStringLiteral("copy"),  QStringLiteral("cut"),  QStringLiteral("paste")};
+  const QString action = arguments.value(QStringLiteral("action")).toString();
+  if (!kActions.contains(action)) {
+    return QStringLiteral(
+        "action must be write, read, clear, copy, cut, or paste");
+  }
+  const bool writes = action == QLatin1String("write");
+  for (const QString &key : {QStringLiteral("text"), QStringLiteral("html"),
+                             QStringLiteral("paths")}) {
+    if (arguments.contains(key) && !writes) {
+      return QStringLiteral("%1 is only for action write").arg(key);
+    }
+  }
+  if (arguments.contains(QStringLiteral("ref")) &&
+      action != QLatin1String("copy") && action != QLatin1String("cut") &&
+      action != QLatin1String("paste")) {
+    return QStringLiteral("ref is only for actions copy, cut and paste");
+  }
+  if (arguments.contains(QStringLiteral("plain")) &&
+      action != QLatin1String("paste")) {
+    return QStringLiteral("plain is only for action paste");
+  }
+  if (!writes) {
+    return QString();
+  }
+  if (!arguments.contains(QStringLiteral("text")) &&
+      !arguments.contains(QStringLiteral("html")) &&
+      !arguments.contains(QStringLiteral("paths"))) {
+    return QStringLiteral("write needs text, html, or paths");
+  }
+  if (arguments.contains(QStringLiteral("paths"))) {
+    const QString paths = applyUploadPaths(arguments);
+    if (!paths.isEmpty()) {
+      return paths;
+    }
+  }
+  const qsizetype bytes =
+      arguments.value(QStringLiteral("text")).toString().toUtf8().size() +
+      arguments.value(QStringLiteral("html")).toString().toUtf8().size();
+  if (bytes > kMaxClipboardWriteBytes) {
+    return QStringLiteral(
+        "text and html may be at most 512 KiB together; write a larger text "
+        "from a file with paths");
+  }
+  return QString();
+}
+
 // Tool-specific extras the generic ref/scalar-arg copiers do not cover. Returns
 // an error string (empty on success).
 QString applyToolExtras(const QString &tool, const QJsonObject &arguments,
@@ -1075,6 +1148,9 @@ QString applyToolExtras(const QString &tool, const QJsonObject &arguments,
   }
   if (tool == QLatin1String("browser_upload")) {
     return applyUploadPaths(arguments);
+  }
+  if (tool == QLatin1String("browser_clipboard")) {
+    return applyClipboardArgs(arguments);
   }
   if (takesAgentName(tool)) {
     const QString agent = applyAgentName(arguments, command);
@@ -1110,7 +1186,8 @@ QSet<QString> allowedArgKeys(const QString &tool, const CmdSpec &spec) {
   if (tool == QLatin1String("browser_select")) {
     allowed.insert(QStringLiteral("values"));
   }
-  if (tool == QLatin1String("browser_upload")) {
+  if (tool == QLatin1String("browser_upload") ||
+      tool == QLatin1String("browser_clipboard")) {
     allowed.insert(QStringLiteral("paths"));
   }
   if (takesAgentName(tool)) {
@@ -1581,6 +1658,60 @@ void appendFormControlTools(QJsonArray &tools) {
                stringProperty(QStringLiteral(
                    "Numeric argument for seek/volume/rate (optional)."))}},
           QJsonArray{QStringLiteral("ref"), QStringLiteral("action")})));
+  QJsonObject clipboardAction = stringProperty(QStringLiteral(
+      "write: put text, html and/or files on your clipboard (replacing what "
+      "was there). read: return it. clear: empty it. copy / cut: the "
+      "selection (or [ref]'s contents) in the tab. paste: into the focused "
+      "element (or [ref])."));
+  clipboardAction.insert(
+      QStringLiteral("enum"),
+      QJsonArray{QStringLiteral("write"), QStringLiteral("read"),
+                 QStringLiteral("clear"), QStringLiteral("copy"),
+                 QStringLiteral("cut"), QStringLiteral("paste")});
+  tools.append(toolEntry(
+      QStringLiteral("browser_clipboard"),
+      QStringLiteral(
+          "Your own clipboard: each agent has one, separate from the user's "
+          "and every other agent's, and nothing you do reaches the system "
+          "clipboard. Copy, cut and paste keys in browser_press_key "
+          "(Control or Meta with C, X, V) use it, and so do a page's own copy "
+          "and paste buttons when you click them. Use this to put post text, "
+          "HTML or an image on it and paste it into any editor -- the page "
+          "gets a real paste, with formatting and files -- instead of a shell "
+          "clipboard command, which other agents and the user share. Files "
+          "are read by this server (absolute paths, as for browser_upload); "
+          "no path reaches the page. The clipboard is emptied when you "
+          "release your last tab."),
+      toolSchema(
+          QJsonObject{
+              {QStringLiteral("action"), clipboardAction},
+              {QStringLiteral("text"),
+               stringProperty(QStringLiteral(
+                   "write: plain text (optional; text and html together "
+                   "at most 512 KiB)."))},
+              {QStringLiteral("html"),
+               stringProperty(QStringLiteral(
+                   "write: the same content as HTML, for editors that keep "
+                   "formatting (optional)."))},
+              {QStringLiteral("paths"),
+               QJsonObject{{QStringLiteral("type"), QStringLiteral("array")},
+                           {QStringLiteral("items"),
+                            QJsonObject{{QStringLiteral("type"),
+                                         QStringLiteral("string")}}},
+                           {QStringLiteral("description"),
+                            QStringLiteral("write: absolute paths of files "
+                                           "(images, documents) to put on "
+                                           "the clipboard (optional).")}}},
+              {QStringLiteral("ref"),
+               stringProperty(QStringLiteral(
+                   "copy / cut: the element whose contents to take; paste: "
+                   "the element to paste into (optional)."))},
+              {QStringLiteral("plain"),
+               typedProperty(QStringLiteral("boolean"),
+                             QStringLiteral("paste: text only, without "
+                                            "formatting or files "
+                                            "(optional)."))}},
+          QJsonArray{QStringLiteral("action")})));
 }
 
 void appendTabTools(QJsonArray &tools) {

@@ -105,6 +105,42 @@ names through `browser_upload`. The user's own clicks on an upload button, even 
 the ordinary dialog. A `showOpenFilePicker` call is answered with a read-only handle: the page can
 read the file, and is offered no way to write back to it.
 
+## Clipboards
+
+The system clipboard is shared by the user and every program they run, and holds whatever they
+copied last -- often a password, a message, a code. Agents never touch it:
+
+- **Nothing an agent does reads or writes it.** An agent's copy, cut and paste keys are answered
+  from that agent's own clipboard and never sent to Chrome as keys. A page in a tab an agent holds
+  gets a stand-in for `navigator.clipboard` and `document.execCommand('copy' | 'cut')` that answers
+  from the same place. Before 1.9.0 a page's copy button clicked by an agent wrote the system
+  clipboard: agent tabs run under focus emulation, so a background page believed it was focused,
+  and Chrome lets a focused page write. The extension declares no clipboard permission.
+- **No agent reaches another's.** A clipboard belongs to one agent of one session, keyed like its
+  tab group. Another agent on the same server, an agent on another server, and a page in another
+  agent's tab cannot read or write it.
+- **A page is not given it freely.** The stand-in answers a page only while one of the agent's own
+  input commands on that tab is running and for 2 s after -- the window a person's click would give
+  a real page -- and only from that tab's agent's clipboard. Outside it the page is refused, as a
+  page without clipboard permission is. The binding the stand-in uses is visible to the page, so a
+  page can ask whenever it likes; it is the worker, not the page, that decides, and a page's write
+  is bounded and validated like every other.
+- **Only in memory, and not for long.** A clipboard is held by the extension's service worker,
+  never written to `chrome.storage` or disk, bounded (2 MiB of text, 2 MiB of HTML, 10 files within
+  the upload ceiling), and cleared when its agent lets go of its last tab, when its session ends,
+  and when the user pauses the bridge.
+- **Markup is not injected.** Pasted HTML is only offered to the page's own paste handler, which
+  sanitizes it as it would a real paste; the fallback types text only.
+- **Files follow the upload rules.** `browser_clipboard write` reads files exactly as
+  `browser_upload` does: absolute paths, `CHROME_CONTROL_MCP_UPLOAD_ROOTS`, 16 MiB each, sent in
+  pieces, and no path reaches the browser. The tool is absent from the read-only profile.
+
+What this does not cover: a page that deliberately reaches around the stand-in (it is installed on
+the prototypes, in every document and same-origin frame of a held tab, but a determined page is
+outside the threat model); a frame from another site inside a held tab, which the stand-in cannot
+reach; a shell command the agent runs itself outside the browser; and, on Linux, the primary
+selection Chrome sets for every text selection.
+
 ## Defenses
 
 Transport and identity:

@@ -17,10 +17,10 @@ means the command ran and succeeded; a gate that did not run, or runs only in pa
 | Semantic analysis     | Semgrep 1.174.0, `--config auto --error`                                                                                                                                                 | CI static-analysis job                          |
 | Secret scan           | Gitleaks 8.30.1 over the full history                                                                                                                                                    | pre-commit, CI quality job                      |
 | Dependency audit      | `npm audit --audit-level=low`, root and `vscode/`                                                                                                                                        | CI quality job                                  |
-| Unit and integration  | ctest: 22 suites on Windows, 21 elsewhere, every JavaScript suite among them; `npm run test:js`: the 9 JavaScript files that need no built server                                        | ctest in CI on three platforms; `test:js` local |
+| Unit and integration  | ctest: 23 suites on Windows, 22 elsewhere, every JavaScript suite among them; `npm run test:js`: the 10 JavaScript files that need no built server                                       | ctest in CI on three platforms; `test:js` local |
 | Sanitizers            | ASan + UBSan and TSan, separate Linux GCC Debug builds, no suppressions                                                                                                                  | CI                                              |
 | Packaged-server smoke | `scripts/mcp_smoke.mjs`, full and read-only profiles, tool counts pinned                                                                                                                 | CI after every native build; release workflow   |
-| Live browser          | display matrix, full browser E2E, user interference, multi-agent, in Chrome for Testing 153.0.8010.52                                                                                    | CI on three platforms                           |
+| Live browser          | display matrix, full browser E2E, user interference, multi-agent, per-agent clipboard, in Chrome for Testing 153.0.8010.52                                                               | CI on three platforms                           |
 
 The Quality workflow runs on every push. The release workflow, on a version tag, builds the four
 archives, runs ctest and the smoke test on each, and refuses a tag whose version does not match the
@@ -36,11 +36,11 @@ project's ([RELEASES.md](RELEASES.md)).
 | Native compile, warnings as errors | Pass   | MSVC, GCC and Clang, locally and in CI                                                        |
 | clang-tidy, exhaustive cppcheck    | Pass   | CI on `fce2acb`                                                                               |
 | Semgrep                            | Pass   | CI on `fce2acb`: 221 rules, 53 files, 0 findings under Python 3.12; crashed under 3.15 before |
-| ctest                              | Pass   | 22/22 Windows, 21/21 Linux and macOS, locally and in CI on `fce2acb`                          |
-| JavaScript suites                  | Pass   | 192/192 under `npm run test:js`; every one of them also runs in ctest                         |
+| ctest                              | Pass   | 23/23 Windows, 22/22 Linux, locally                                                           |
+| JavaScript suites                  | Pass   | 199/199 under `npm run test:js`; every one of them also runs in ctest                         |
 | Sanitizers                         | Pass   | ASan + UBSan and TSan, 21/21 each, in CI on `fce2acb`                                         |
 | Live browser suites                | Pass   | CI on three platforms on `fce2acb`; Chrome for Testing 153 on Linux locally                   |
-| CHANGELOG updated                  | Pass   | `CHANGELOG.md` `[1.8.2]`                                                                      |
+| CHANGELOG updated                  | Pass   | `CHANGELOG.md` `[1.9.0]`                                                                      |
 
 Not covered by this table: Chrome for Testing intermittently stalls in one Windows display-matrix
 configuration, met once in CI and once in six local runs; see

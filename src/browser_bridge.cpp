@@ -353,6 +353,18 @@ BrowserBridgeSession::refuse(const QString &reason) {
   return {.frame = QJsonObject{}, .ok = false, .error = reason};
 }
 
+QString
+BrowserBridgeSession::argumentsError(const QString &tool,
+                                     const QJsonObject &arguments) const {
+  QString stale = staleRefError(arguments);
+  if (!stale.isEmpty()) {
+    return stale;
+  }
+  const ExtensionCommand command =
+      buildExtensionCommand(tool, arguments, ref_index_);
+  return command.ok ? QString() : command.error;
+}
+
 BrowserBridgeSession::Outgoing
 BrowserBridgeSession::beginCommand(const QString &tool,
                                    const QJsonObject &arguments) {

@@ -46,12 +46,14 @@ struct UploadBatch {
   QString error;
 };
 
-/// Read @p paths for one browser_upload call. @p roots is the value of
+/// Read @p paths for one call of @p tool (browser_upload, or browser_clipboard
+/// writing files), which its refusals name. @p roots is the value of
 /// CHROME_CONTROL_MCP_UPLOAD_ROOTS: when non-empty, a file outside every root
 /// is refused. Symlinks and `..` are resolved before that test, so a path
 /// cannot point inside a root and read outside it.
-[[nodiscard]] UploadBatch readUploadFiles(const QStringList &paths,
-                                          const QString &roots);
+[[nodiscard]] UploadBatch
+readUploadFiles(const QStringList &paths, const QString &roots,
+                const QString &tool = QStringLiteral("browser_upload"));
 
 /// True when @p canonical_path sits inside one of @p roots (or roots is
 /// empty, which means the operator set no restriction). Exposed for tests.
