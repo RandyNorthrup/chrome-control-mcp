@@ -2,9 +2,42 @@
 
 All notable changes are documented here. Project follows [Semantic Versioning](https://semver.org/).
 
-## [Unreleased]
+## [1.8.1] - 2026-10-31
 
-Nothing yet.
+### Fixed
+
+- `browser_upload` reported a successful upload as `files: []` on pages that read the file and then
+  empty their input -- GitHub's uploaders do exactly that. The reply now lists what was delivered,
+  read before the page's own handlers run, and says `page_cleared_input: true` when the page reset
+  it. Found uploading this repository's social preview through the tool itself.
+- An agent named in anything but ASCII lost its name. The server accepts any printable name, but
+  the extension kept only ASCII, so `café` was titled `caf` and a name with no ASCII at all put
+  that agent's tabs in the session's shared group. Names in any script are kept; control and format
+  characters are still dropped, and the length is counted in characters, not UTF-16 units.
+- The MCP `instructions` every client receives said held tabs carry a pink frame. Since 1.8.0 the
+  frame is in the colour of the tab's group.
+- The Semgrep gate had stopped running. The Qt install step switched the analysis job to the newest
+  Python, 3.15, under which `semgrep-core` crashes at start-up ("failed to create domain backup
+  thread"); reproduced locally, and the same scan under the job's pinned 3.12 is clean. The job now
+  keeps its own Python.
+- Two JavaScript suites ran only under `npm run test:js`, which CI never calls:
+  `test_browser_extension_tabs` (most of 1.8.0's tab handling) and `test_release_versions`. ctest,
+  and so CI on all three platforms, now runs both.
+- A relay test failed once on the macOS runner with nothing wrong: its beats were 250 ms apart
+  against a 400 ms silence budget, so one late wake-up was enough. The budget is now outlasted by
+  half again rather than by a quarter, and the assertion that names the server's reason comes
+  first, so a real failure says why.
+
+### Changed
+
+- Agents' tab-group colours are handed out pink, cyan, orange, blue, green, yellow, red, then
+  purple. Purple used to come second, and beside the first agent's pink it was the hardest pair to
+  tell apart.
+- The README, the VS Code Marketplace page and the docs are rewritten for 1.8: a new banner and
+  social preview, screenshots of three agents from two clients in one window, setup for any MCP
+  client, tools grouped by job, and current verification figures. The Marketplace listing gains a
+  matching description, keywords and gallery colour.
+- Dev-only tooling pins `minimatch` and `glob` past advisories published since 1.7.0.
 
 ## [1.8.0] - 2026-10-31
 

@@ -1,21 +1,30 @@
 # Tool catalog
 
-Full profile advertises 52 tools: 44 live browser tools, 2 recording tools, 3 extension lifecycle
-tools, and 3 self-update tools.
+The full profile advertises 52 tools: 46 browser tools, which reach Chrome through the extension,
+and 6 native tools the server answers itself -- 3 to set up the extension's native-messaging host and
+3 to update the server. The [read-only profile](#read-only-profile) advertises 14.
 
-## Tabs, agents, and `tab_id`
+Every tool advertises strict JSON Schema with `additionalProperties: false`. Exact descriptions,
+argument types, enums, bounds, and defaults come from live `tools/list`; this page explains how the
+tools fit together rather than duplicating a large schema that could drift from source.
+
+## Sharing the browser: tabs, agents, and `tab_id`
 
 One server serves one MCP client, and several agents can share that client: sub-agents, parallel
-tasks. The session's _current tab_ is shared by all of them, so an agent that leans on it is one
-other agent's `browser_new_tab` away from acting on the wrong page. The initialize result's
-standard MCP `instructions` tell every client this, and the tools are built around it:
+tasks. The server cannot tell them apart. A call that names no tab acts on the session's _current
+tab_, which every agent on the server shares, so an agent that leans on it is one other agent's
+`browser_new_tab` away from acting on the wrong page. The initialize result's standard MCP
+`instructions` tell every client this, and the tools are built around it:
 
 - **`tab_id` on every tab-scoped tool.** Each tool whose command acts on one tab takes an optional
-  positive integer `tab_id`; omitted, the call uses the session's current tab as before. An agent
-  opens its own tab with `browser_new_tab` -- the reply carries its `tab_id` -- and passes it on
-  every call. The set of tools that take it is generated from the command list, not written into
-  each schema, and a test pins it. `browser_select_tab` takes `tab_id` or `index` (exactly one);
-  `browser_close_tab` takes either or neither (neither closes the session's tab).
+  positive integer `tab_id`; omitted, the call uses the session's current tab. An agent opens its
+  own tab with `browser_new_tab` -- the reply carries its `tab_id` -- and passes it on every call.
+  Naming a tab does not make it current, so it never moves another agent. The set of tools that take
+  it is generated from the command list, not written into each schema, and a test pins it.
+  `browser_select_tab` takes exactly one of `tab_id` or `index`; `browser_close_tab` takes either or
+  neither (neither closes the session's current tab). Both reply with the `tab_id` they acted on.
+- **`browser_new_tab` opens in the background.** With no `url` it opens `about:blank` rather than
+  Chrome's new-tab page, which the debugger cannot attach to.
 - **Refs are bound to their tab.** A ref acts on the tab its snapshot came from, whatever tab is
   current; the snapshot text carries a `tab_id:` line after the title. A call whose own `tab_id`
   names a different tab than its ref is refused naming both, and a `browser_drag` whose `ref` and
@@ -24,18 +33,39 @@ standard MCP `instructions` tell every client this, and the tools are built arou
 - **Ref names are never reused.** New elements are numbered above every ref the server has issued,
   on any tab, for its whole life. A ref from before a navigation, a reconnect, or a closed tab
   answers "Unknown element ref" instead of silently naming whatever took its number.
-- **`agent` on `browser_new_tab` and `browser_select_tab`.** A short name (1-24 printable
-  characters after trimming; anything else is refused, not cleaned up) for the agent doing the work.
-  Tabs with the same name share one tab group with its own colour, so the user can tell agents
-  apart; tabs a page opens from them join the same group. Omitted, the tab joins the session's
-  shared group.
+- **A tab another session holds is refused**, naming that session. `browser_tabs` lists every tab in
+  the session's window and marks which are the session's (`held`, `current`, `agent`,
+  `opened_by_session`) and which another session holds (`controlled_by_other_session`); its
+  `your_tabs` lists every tab the session holds, in any window.
+- **`agent` on `browser_new_tab` and `browser_select_tab`.** A short name for the agent doing the
+  work: 1-24 printable characters after trimming; anything else is refused, not cleaned up. Tabs
+  with the same name share one tab group (one per window), titled `AI · <name>`, so the user can
+  tell agents apart; tabs a page opens from them join the same group. Omitted, the tab joins the
+  session's shared group. Any script works: `café` and `研究` are titled as given (before 1.8.1 the
+  extension kept only ASCII, so `café` became `caf` and a name with no ASCII joined the shared
+  group).
+- **What a command caused is in its reply.** A tab the command's page opened is listed in
+  `opened_tabs` (with its `tab_id`, its URL, and whether it became current), and a file picker the
+  page asked for in `file_chooser`. See [MULTI_SESSION.md](MULTI_SESSION.md#popups) for how a popup
+  is told apart from a tab the user opened.
 - **`browser_release` when the task is done.** Tabs the session opened are closed; tabs it borrowed
-  from the user are handed back, never closed; the AI tab group and highlight are removed.
-  `tab_id` releases only that tab, which is what an agent sharing the server should do.
-  `keep_open: true` hands the tabs it opened to the user instead of closing them.
+  from the user are handed back, never closed; the tab group and highlight are removed. The tab the
+  user is looking at and the browser's last tab are never closed. `tab_id` releases only that tab,
+  which is what an agent sharing the server should do. `keep_open: true` hands the tabs it opened to
+  the user instead of closing them. The reply lists what was `closed`, `handed_back`, and
+  `kept_open`.
 
-The extension titles the tab group with the client's `clientInfo.name` from `initialize`, sent on
-every command frame cut down to printable text of at most 32 characters.
+An agent that never calls `browser_release` is still cleaned up: when its server exits its tabs are
+released the same way, and after ten minutes without a command its tabs are stood down -- left open
+and held, but with the debugger detached and the group greyed -- until its next command.
+[MULTI_SESSION.md](MULTI_SESSION.md#letting-go) has the full table.
+
+Each group is titled with the agent's name when one was given, otherwise with the MCP client's
+`clientInfo.name` from `initialize` (`AI · <client>`), otherwise `AI CONTROL`. The client name is
+sent on every command frame, with control and format characters dropped and cut to at most 32
+characters. Each group gets a
+colour no other live group has; the first is pink. The frame and badge drawn on the page and the
+toolbar badge use the same colour and name, so a page can be matched to its agent at a glance.
 
 ## Navigation and capture
 
@@ -67,16 +97,36 @@ that should show the exact control presence visible in Chrome.
 - `browser_media`
 - `browser_js_click`
 
-`browser_upload` attaches local files to a page's file input, as the user's own picker would: the
-page receives real `File` objects and runs its `input`/`change` handlers. File dialogs are
-intercepted and never shown, so clicking a file input -- or the button that opens one -- replies
-that a file chooser opened; `browser_upload` with `paths` and no `ref` then fills that chooser.
-The ref is optional for exactly that reason. Given, it may name the input itself or the control
-that opens it, because nearly every page hides the real `<input type="file">` behind a styled
-button, label, or menu item. Hidden inputs are listed in the snapshot as
-`filechooser "name" [ref=eN] (hidden)`, so either can be named. A control with several file inputs
-in scope is refused rather than guessed at. See [`SECURITY.md`](SECURITY.md) for the limits and
-`CHROME_CONTROL_MCP_UPLOAD_ROOTS`.
+### Uploads
+
+`browser_upload` gives a page local files as the user's own picker would: the page receives real
+`File` objects and runs its own handlers. It can reach the page three ways:
+
+- **A picker the page opened.** While one of the agent's input or navigation commands is running,
+  and for 2 s after, a file picker the page opens on that tab is caught instead of shown -- an
+  `<input type="file">` and `showOpenFilePicker` alike -- and the command's reply says so in
+  `file_chooser`. `browser_upload` with `paths` and no `ref` then fills it. This is the only way to
+  reach an input a script creates and clicks without adding it to the document, which no ref could
+  name. A `showOpenFilePicker` answer is a read-only file handle.
+- **A ref to the input, or to the control that opens it.** Nearly every page hides the real
+  `<input type="file">` behind a styled button, label, or menu item, so either may be named. Hidden
+  inputs are listed in the snapshot as `filechooser "name" [ref=eN] (hidden)`. A control with several
+  file inputs in scope is refused rather than guessed at. The input gets the files and its `input`
+  and `change` events.
+- **A ref to a drop zone.** An element with no file input near it gets the files as a drag and drop.
+  If it does not accept the drag, the call fails rather than report an upload nobody saw.
+
+The reply lists the `files` delivered (name, size and type) and how: `delivered_by` is `input`,
+`drop` or `picker`. `page_cleared_input: true` means the page's own handler took the files and
+emptied its input, as many upload widgets do; the files were delivered, and an empty input afterwards
+is not a failed upload.
+
+More than one file needs an input or picker that takes several. Folder pickers are not supported
+yet: a page asking for a folder is told so and nothing is assigned. Outside the command window above
+nothing is caught, so the user's own clicks on an upload button open the ordinary dialog, even in a
+tab the assistant holds. The window exists because Chrome cancels a file dialog in a tab that is not
+the active tab of its window and shows one over the user's work when it is (measured on Chrome
+153). See [`SECURITY.md`](SECURITY.md#uploads) for the limits and `CHROME_CONTROL_MCP_UPLOAD_ROOTS`.
 
 ### Controls the page wires up itself
 
@@ -134,9 +184,9 @@ without it a page that simply does not work gives no reason why.
 Read it when an action appeared to do nothing. A click that changed nothing usually threw, and
 until this existed nothing in the toolset could see that.
 
-`browser_network` reports the requests the page made since the session attached: method, URL,
-resource type, status, MIME type, and the milliseconds until the response arrived. A request that
-never got a response carries the browser's error text instead of a status, because a transport
+`browser_network` reports the requests the page made since the session attached to that tab: method,
+URL, resource type, status, MIME type, and the milliseconds until the response arrived. A request
+that never got a response carries the browser's error text instead of a status, because a transport
 failure has no status and reporting `0` would read as a server answering `0`. `failed_only: true`
 narrows to failures and `4xx`/`5xx`.
 
@@ -152,8 +202,8 @@ the single most useful entry in the log every time. And a `fetch()` whose body i
 finishes loading at all, so it would sit in flight for the life of the session. `ms` is therefore
 what the server took, not what the body cost to stream.
 
-Both are rings with a hard cap, because every field in them is written by the site. Each reply
-says what it left out in two different senses, and they mean different things:
+Both are per-tab rings with a hard cap, because every field in them is written by the site. Each
+reply says what it left out in two different senses, and they mean different things:
 
 - `omitted` -- entries this reply did not carry, because `limit` was smaller than the buffer.
 - `dropped` -- entries the buffer itself discarded to stay bounded.
@@ -164,12 +214,12 @@ that asked for nothing when it is still waiting.
 
 ### Why there is no JavaScript evaluation tool
 
-An arbitrary-JavaScript tool would void most of the defenses in `docs/SECURITY.md` in a single
-call: it reads and writes storage outside the isolated world that verifies the live origin, it
-redefines `window.confirm` past the dialog policy, it clicks without any of the freshness gating
+An arbitrary-JavaScript tool would void most of the defenses in [`SECURITY.md`](SECURITY.md) in a
+single call: it reads and writes storage outside the isolated world that verifies the live origin,
+it redefines `window.confirm` past the dialog policy, it clicks without any of the freshness gating
 that `[ref]` and coordinate actions require, `browser_navigate` refuses `javascript:` URLs and this
-would be the same thing through another door, and it can delete the AI CONTROL overlay that is the
-user's only signal a session is driving the tab.
+would be the same thing through another door, and it can delete the control frame and badge that
+are the user's only on-page signal that a session is driving the tab.
 
 It also cannot be made safe by narrowing it: there is no read-only `Runtime.evaluate`, so a
 "read-only eval" would be a promise the code could not keep. `browser_console` and
@@ -190,8 +240,9 @@ one narrow escape hatch, for an element that will not take a real click.
 
 ## Recording
 
-`browser_record_start` records the session's tab to a `.webm`; `browser_record_stop` ends it and
-returns where it was saved. Video only -- no audio is captured.
+`browser_record_start` records one tab -- the one `tab_id` names, or the session's current tab -- to
+a `.webm`; `browser_record_stop` ends it and returns where it was saved. Video only -- no audio is
+captured.
 
 The video never comes back through a tool reply. The bridge is one command, one reply, with hard
 caps on the reply (16 MiB for a screenshot, 8 MiB for text), so a recording of any length could not
@@ -205,18 +256,21 @@ Two rules, both refusals rather than silent substitutions:
 
 - **A second start for a session is refused.** Restarting would discard the first recording with no
   way to tell it had happened.
-- **Changing tabs is refused while recording.** A recording follows one tab, and ending it because
-  the operator changed tabs would lose the video to an action they could have done in the other
-  order. `browser_select_tab`, `browser_new_tab`, and `browser_window new`/`focus` all refuse;
-  `browser_window close` does not, because it does not retarget the session.
+- **Changing the current tab is refused while recording.** A recording follows one tab, and ending
+  it because the operator changed tabs would lose the video to an action they could have done in the
+  other order. `browser_select_tab`, `browser_new_tab`, and `browser_window new`/`focus` all refuse;
+  `browser_window close` does not, because it does not retarget the session. Calls that name another
+  held tab with `tab_id` still work, and do not move the recording.
 
-If the session ends while recording -- the bridge drops, the tab closes, DevTools detaches -- the
-recording is **discarded**, not finalized. The frames stop arriving and the encoded bytes cover only
-part of what was asked for, so writing them out would hand back a file that looks complete and is
-not.
+If the recorded tab's debugger attachment ends -- the tab closes or is released, the user takes it
+back, DevTools opens, the relay drops -- or the session ends, the recording is **discarded**, not
+finalized. The frames stop arriving and the encoded bytes cover only part of what was asked for, so
+writing them out would hand back a file that looks complete and is not. A session that is recording
+is never stood down for idleness.
 
 Frames come from the DevTools protocol, not `chrome.tabCapture`; see
-[SECURITY.md](SECURITY.md) for why, and for what the `offscreen` permission does and does not grant.
+[SECURITY.md](SECURITY.md#recording-is-not-an-escalation) for why, and for what the `offscreen`
+permission does and does not grant.
 
 ## Coordinates, display scale, zoom, and pinch
 
@@ -226,9 +280,9 @@ scale (a Windows 125% setting, a Retina panel, a Linux fractional scale) times t
 and the image's origin is the visual viewport's.
 
 - `browser_click_at` and `browser_drag`'s `from_x`/`from_y`/`to_x`/`to_y` are pixels of the most
-  recent viewport screenshot. They are bound to that image: if the page scrolls, zooms, pinches,
-  resizes, reloads, or navigates in between, the call is refused rather than converted against a
-  render the pixel no longer names.
+  recent viewport screenshot of that tab. They are bound to that image: if the page scrolls, zooms,
+  pinches, resizes, reloads, or navigates in between, the call is refused rather than converted
+  against a render the pixel no longer names.
 - `browser_box` reports the element's CSS geometry and `screenshot_center`, the same point in
   screenshot pixels -- ready for `browser_click_at` at any scale, zoom, or pinch.
 - `browser_click` by `[ref]` aims at the centre of the element's box, and when something covers the
@@ -291,7 +345,16 @@ version is installed.
 A copy running from a build tree or an unpacked download cannot update in place, because the file
 that would have to be replaced is the one executing. `browser_update_apply` moves such a copy into
 the managed layout first and then installs the newest release on top of it. That move is the only
-time the client's command path changes.
+time the client's command path changes. `chrome_control_mcp --install` makes the same move from a
+shell, without an MCP client. Neither ever moves `current` back: a build older than the version
+already current leaves that version in place and says so, which is what keeps an editor that
+installs its bundled build on every start from rolling an update back.
+
+A new build takes effect when the MCP client next starts the server, so restart it. Chrome does not
+reload an unpacked extension when its files change, so reload it at `chrome://extensions` (or
+restart Chrome) as well. The extension and the server must speak the same bridge protocol: when a
+server speaks a newer one than the loaded extension, the extension reloads itself once; otherwise
+every command is refused with a message saying which side to update.
 
 Install root, unless `CHROME_CONTROL_MCP_INSTALL_ROOT` names another:
 
@@ -308,13 +371,9 @@ same origin over the same transport, and this project ships no signing key.
 Unpacking uses the system `tar`, which reads both the zip shipped for Windows and the gzipped tar
 shipped elsewhere. Windows 10 1803 and later include one.
 
-Every tool advertises strict JSON Schema with `additionalProperties: false`. Exact descriptions,
-argument types, enums, bounds, and defaults come from live `tools/list`; this avoids duplicating a
-large schema that could drift from source.
-
 ## Read-only profile
 
-`CHROME_CONTROL_MCP_SECURITY_PROFILE=read_only` advertises only:
+`CHROME_CONTROL_MCP_SECURITY_PROFILE=read_only` advertises 14 tools, 11 browser and 3 native:
 
 - `browser_box`
 - `browser_console`
@@ -331,7 +390,9 @@ large schema that could drift from source.
 - `browser_wait_for`
 - `browser_windows`
 
+`browser_focus`, `browser_hover` and `browser_reveal` are absent because they change what the page
+shows -- focus, hover state, scroll position. `browser_release` is absent because it closes tabs.
 `browser_update_apply` is absent by design: it replaces the program on disk, which is a mutation
 whatever the browser profile says.
 
-Server also refuses non-read-only calls if a client invokes hidden tool names directly.
+The server also refuses non-read-only calls if a client invokes hidden tool names directly.

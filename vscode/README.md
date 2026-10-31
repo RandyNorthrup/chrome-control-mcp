@@ -1,30 +1,34 @@
-# Chrome Control MCP
+<p align="center">
+  <img src="https://raw.githubusercontent.com/RandyNorthrup/chrome-control-mcp/main/docs/assets/banner.png" alt="Chrome Control MCP: let AI agents use your real Chrome, each in its own tabs, beside you, cleaned up when done" width="100%">
+</p>
 
-**Visible, precise Chrome control for AI assistants. Local by design.**
+**Let AI agents use the Chrome you already use -- signed in as you, in tabs of their own, visibly,
+and without ever taking your screen.**
 
 This extension installs the [Chrome Control MCP](https://github.com/RandyNorthrup/chrome-control-mcp)
-server and registers it with the editor, so its 47 browser tools are available to chat without
-editing an `mcp.json` or knowing a path.
+server and registers it with VS Code, so its 52 tools are available to chat without editing an
+`mcp.json` or knowing a path. The same server works with any MCP client -- Claude Code, Codex,
+Cursor, Claude Desktop -- and several of them can share one browser at once.
 
-Active automation stays visible: a pink frame, an **AI CONTROL** badge, and a pulsing agent cursor
-show when an assistant is driving Chrome, and the tab under control sits in a pink **AI CONTROL**
-tab group so it is identifiable in the tab strip without opening it.
+![Three agents from two MCP clients in one Chrome window, each with its own coloured tab group and matching page frame](https://raw.githubusercontent.com/RandyNorthrup/chrome-control-mcp/main/docs/assets/agents-window.png)
 
 ## What it does
 
-| Capability         | Included                                                                         |
-| ------------------ | -------------------------------------------------------------------------------- |
-| Works beside you   | Drives its own visible tab; never changes which tab is in front or takes focus   |
-| Semantic control   | Accessibility-tree snapshots with stable element refs                            |
-| Real input         | Click, type, keys, hover, drag, select, scroll, dialogs, and media               |
-| File upload        | Attach local files to a page's file input, as the user's own picker would        |
-| Visual reasoning   | Viewport and full-page PNG capture, and guarded coordinate clicks                |
-| Browser management | Navigation, tabs, tab groups, windows, emulation, and waits                      |
-| Browser state      | Cookies, local and session storage, permissions, downloads, print, and HTTP auth |
-| In-place updates   | The server updates itself without overwriting the copy that is running           |
+| Capability              | Included                                                                                                    |
+| ----------------------- | ----------------------------------------------------------------------------------------------------------- |
+| Many agents at once     | Several editors, and several agents inside one, each in its own tabs and coloured tab group                 |
+| Your tabs stay yours    | A tab you open never joins an AI group; drag a tab in to hand it over, out to take it back                  |
+| Works beside you        | Drives background tabs and never brings them to the front; an agent's popup goes behind your tab            |
+| Always visible          | A frame, a named badge and a cursor in the agent's colour on every tab it holds                             |
+| Cleans up after itself  | `browser_release`, or the editor exiting, closes what the agent opened; borrowed tabs are handed back       |
+| Uploads without dialogs | File inputs, script-created inputs, drop zones and `showOpenFilePicker`, filled directly in background tabs |
+| Semantic control        | Accessibility snapshots with element refs bound to the tab they came from                                   |
+| Real input              | Click, type, keys, hover, drag, select, scroll, dialogs and media                                           |
+| Browser state           | Cookies, storage, permissions, downloads, print, HTTP auth, emulation, and tab recording to `.webm`         |
+| In-place updates        | The server updates itself without overwriting the copy that is running                                      |
 
-The server talks to your ordinary Chrome through native messaging and the Chrome DevTools
-Protocol. It opens no TCP listener, and nothing leaves your machine.
+The server talks to your ordinary Chrome through native messaging and the Chrome DevTools Protocol.
+It opens no network listener, and nothing leaves your machine.
 
 ## Setup
 
@@ -32,35 +36,35 @@ Installing this extension does the first two steps for you:
 
 1. **The server is installed** into a per-user directory on first activation. Nothing needs
    administrator rights.
-2. **The editor is told about it** through the MCP server provider API, so no configuration file
-   needs editing.
-3. **Chrome has to be pointed at the extension folder once**, by you. Run **Chrome Control MCP:
+2. **VS Code is told about it** through the MCP server definition provider API, so no
+   configuration file needs editing.
+3. **Chrome has to be pointed at the extension folder once, by you.** Run **Chrome Control MCP:
    Show the Chrome extension folder to load** from the command palette: it copies the folder path
    and opens it. Then in Chrome open `chrome://extensions`, turn on **Developer mode**, choose
    **Load unpacked**, and pick that folder.
 
 **That third step cannot be automated, and this extension does not pretend otherwise.** Branded
-Chrome 137 and later ignore `--load-extension`; only Chromium and Chrome for Testing still honour
-it. Installing by enterprise policy needs a Web Store listing and a packaged, signed extension,
-which this project deliberately does not have. Driving Chrome's own windows with a UI-automation
-tool is not an install path either: it takes over your screen and breaks on any Chrome or locale
-change.
+Chrome ignores `--load-extension`, and installing by enterprise policy needs a Web Store listing
+and a signed package, which this project deliberately does not have. It is a one-time step:
+updates reuse the same folder.
 
-It is a one-time step. Updates reuse the same folder and need no further clicks.
+## Using it with several agents
+
+Each agent should open its own tab with `browser_new_tab` -- optionally with a short `agent` name,
+which gives its tabs their own coloured group -- and pass the returned `tab_id` to every call. The
+server tells every client this itself, through the standard MCP `instructions`. When an agent is
+done it calls `browser_release`: tabs it opened close, tabs it borrowed are handed back.
 
 ## Updating
 
-The server updates itself. Ask your assistant to run `browser_update_check`, then
-`browser_update_apply`.
+Marketplace updates and the server's own updater (`browser_update_check`, then
+`browser_update_apply`) converge on the same install, and from 1.8.0 on an older copy never rolls a
+newer one back. Each version is installed into its own directory behind a stable link, so the
+editor's server command, Chrome's extension folder and the native-messaging registration never
+change.
 
-A running executable cannot be overwritten on Windows, so the update does not try to. Each version
-is installed into its own directory and a stable link is repointed at it, which works while the
-server is running. The editor's server command, Chrome's unpacked-extension folder, and the
-native-messaging registration all point through that link, so none of them changes when a new
-version lands.
-
-Updating this extension from the marketplace and letting the server update itself converge on the
-same install; whichever is newer is the one that runs.
+After an update, reload VS Code and press reload on the extension at `chrome://extensions` so both
+run the new build.
 
 ## Commands
 
@@ -71,11 +75,10 @@ same install; whichever is newer is the one that runs.
 
 ## Security
 
-The server pins the extension origin, limits and validates IPC, authenticates the
-same-user/same-executable relay, rejects stale element refs and screenshot coordinates, bounds
-payloads, and exposes strict JSON Schemas. Windows uses a current-user ACL-protected named pipe;
-Linux and macOS use a mode-`0600` Unix socket in a private runtime directory plus operating-system
-peer credentials.
+The server pins the extension origin, authenticates the same-user, same-executable relay, limits
+and validates every IPC message, refuses stale element refs and screenshot coordinates, and exposes
+strict JSON Schemas. Windows uses a current-user ACL-protected named pipe; Linux and macOS use a
+mode-`0600` Unix socket in a private directory with peer credentials.
 
 For inspection-only use, set these in the server environment:
 
@@ -84,7 +87,7 @@ CHROME_CONTROL_MCP_SECURITY_PROFILE=read_only
 CHROME_CONTROL_MCP_REDACT_SENSITIVE_OUTPUT=true
 ```
 
-The read-only profile exposes 12 tools and independently rejects hidden mutating calls.
+The read-only profile exposes 14 tools and independently refuses hidden mutating calls.
 
 ## Requirements
 
@@ -92,12 +95,12 @@ The read-only profile exposes 12 tools and independently rejects hidden mutating
 - Windows x64, Linux x64, or macOS (Apple silicon or Intel)
 
 Builds are intentionally unsigned and unnotarized; this project has no signing key and does not
-require one.
+need one.
 
 ## Links
 
 [Repository](https://github.com/RandyNorthrup/chrome-control-mcp) ·
-[Tool catalog](https://github.com/RandyNorthrup/chrome-control-mcp/blob/main/docs/TOOLS.md) ·
+[Tool reference](https://github.com/RandyNorthrup/chrome-control-mcp/blob/main/docs/TOOLS.md) ·
 [Security](https://github.com/RandyNorthrup/chrome-control-mcp/blob/main/docs/SECURITY.md) ·
 [Verification](https://github.com/RandyNorthrup/chrome-control-mcp/blob/main/docs/VERIFICATION.md)
 

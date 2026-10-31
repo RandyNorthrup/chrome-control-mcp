@@ -1740,10 +1740,7 @@ function beginCommand(session, msg) {
   // model-free (it is the client's own self-description, forwarded by the server), but still
   // bounded and stripped to printable text before it reaches the tab strip.
   if (typeof msg.client === "string") {
-    const label = msg.client
-      .replace(/[^\x20-\x7e]/g, "")
-      .trim()
-      .slice(0, 32);
+    const label = tabStripText(msg.client, 32);
     if (label !== session.label) {
       session.label = label;
       queueGroupSync(session);
@@ -2023,15 +2020,18 @@ async function explainUnreachablePage(tab, error) {
 const CONTROL_GROUP_TITLE = "AI CONTROL";
 const CONTROL_GROUP_PREFIX = "AI · ";
 const IDLE_GROUP_SUFFIX = " (idle)";
+// In the order groups are given them. Pink first, the colour the page frame always had; then the
+// colours that sit furthest from it and from each other, so two or three agents side by side are
+// told apart at a glance. Purple is last: next to pink it is the hardest pair to tell apart.
 const SESSION_COLORS = [
   "pink",
-  "purple",
   "cyan",
   "orange",
   "blue",
   "green",
   "yellow",
   "red",
+  "purple",
 ];
 
 // The colours Chrome draws its tab groups in, so the frame on the page matches the group exactly.
@@ -7526,15 +7526,22 @@ async function handleUpload(session, tabId, args) {
       return { ok: false, error: "that file input is disabled" };
     }
     el.files = transfer.files;
-    // A page learns about a user's choice through these two events; a site listening for only one
-    // of them would otherwise never see the file.
-    el.dispatchEvent(new Event("input", { bubbles: true }));
-    el.dispatchEvent(new Event("change", { bubbles: true }));
+    // What the input holds is read BEFORE the page hears about it: many sites read the file in
+    // their change handler and then empty the input (GitHub does), and a list read afterwards
+    // reported a successful upload as no files at all.
     const assigned = [];
     for (const file of el.files) {
       assigned.push({ name: file.name, size: file.size, type: file.type });
     }
-    return { ok: true, files: assigned, delivered_by: "input" };
+    // A page learns about a user's choice through these two events; a site listening for only one
+    // of them would otherwise never see the file.
+    el.dispatchEvent(new Event("input", { bubbles: true }));
+    el.dispatchEvent(new Event("change", { bubbles: true }));
+    const reply = { ok: true, files: assigned, delivered_by: "input" };
+    if (el.files.length === 0 && assigned.length > 0) {
+      reply.page_cleared_input = true; // the page took the files and reset its input, as sites do
+    }
+    return reply;
   };
   // The page gets one self-contained declaration: the resolver's own source in place of the name
   // the worker knows it by. Nothing is re-implemented for the page, so what runs there and what
@@ -7568,7 +7575,17 @@ async function handleUpload(session, tabId, args) {
   if (chooser) {
     tab.fileChooser = null; // answered; the page has its files
   }
-  return { ok: true, files: value.files, delivered_by: value.delivered_by };
+  const reply = {
+    ok: true,
+    files: value.files,
+    delivered_by: value.delivered_by,
+  };
+  // The page's own change handler took the files and emptied its input, as most upload widgets
+  // do. Said so the model does not read an input that is empty again as an upload that failed.
+  if (value.page_cleared_input === true) {
+    reply.page_cleared_input = true;
+  }
+  return reply;
 }
 
 // Answer a File System Access picker the page is waiting on (see filePickerShimScript) with the
@@ -8853,17 +8870,25 @@ async function tabByIndex(session, index) {
   return tab;
 }
 
+// Text bound for the tab strip, by the server's own rule for agent names: control and format
+// characters (a bidi override would reorder the title), unassigned code points, lone surrogates
+// and line or paragraph separators are dropped, and the length is counted in code points, so a cut
+// never splits a surrogate pair. Any script survives: stripping to ASCII turned "café" into "caf"
+// and a name with no ASCII at all into none, which put that agent's tabs in the shared group.
+function tabStripText(text, maxChars) {
+  return Array.from(text.replace(/[\p{C}\p{Zl}\p{Zp}]/gu, "").trim())
+    .slice(0, maxChars)
+    .join("")
+    .trim();
+}
+
 // The agent name a tool call gave, as the group key it becomes, or undefined when none was given.
 // The server validates it; this is the second, local bound on what reaches the tab strip.
 function agentArg(args) {
   if (!args || typeof args.agent !== "string") {
     return undefined;
   }
-  const agent = args.agent
-    .replace(/[^\x20-\x7e]/g, "")
-    .trim()
-    .slice(0, 24);
-  return agent || undefined;
+  return tabStripText(args.agent, 24) || undefined;
 }
 
 async function handleSelectTab(session, args) {

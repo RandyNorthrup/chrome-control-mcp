@@ -3,55 +3,65 @@
 ## Profiles
 
 Unset `CHROME_CONTROL_MCP_SECURITY_PROFILE` means full access: navigation, input, tabs, cookies,
-permissions, downloads, storage mutation, printing, HTTP auth, and extension lifecycle.
+permissions, downloads, storage mutation, printing, HTTP auth, uploads, recording, and extension
+lifecycle.
 
-MCP client owns human approval. Use read-only unless client reliably confirms mutating tools:
+The MCP client owns human approval. Use read-only unless the client reliably confirms mutating
+tools:
 
 ```text
 CHROME_CONTROL_MCP_SECURITY_PROFILE=read_only
 CHROME_CONTROL_MCP_REDACT_SENSITIVE_OUTPUT=true
 ```
 
-Exact `read_only` enables restricted profile. Any other non-empty profile token fails closed to
-read-only. Redaction accepts exact `true` or `false`; other non-empty values fail closed to
-redaction.
+Exact `read_only` enables the restricted profile ([TOOLS.md](TOOLS.md#read-only-profile) lists its
+14 tools). Any other non-empty profile token fails closed to read-only. Redaction accepts exact
+`true` or `false`; other non-empty values fail closed to redaction.
 
 Redaction is best-effort text masking. Screenshots and unmodeled secret shapes remain outside its
 guarantee.
 
 ## Extension permissions
 
-The extension asks for exactly what it uses, and the set is chosen rather than accumulated:
+The extension asks for exactly what it uses, and the set is chosen rather than accumulated. From
+`browser/extension/manifest.json`:
 
 | Permission        | What it is for                                                                                                             |
 | ----------------- | -------------------------------------------------------------------------------------------------------------------------- |
 | `nativeMessaging` | the bridge to the MCP server                                                                                               |
 | `debugger`        | every page action, over the DevTools protocol                                                                              |
 | `tabs`            | resolving and listing tabs                                                                                                 |
-| `tabGroups`       | the tab-strip mark that shows which tab is under control                                                                   |
+| `tabGroups`       | the per-agent tab groups that show which tabs are under control                                                            |
 | `contentSettings` | `browser_permission`                                                                                                       |
 | `cookies`         | `browser_cookies`                                                                                                          |
 | `downloads`       | `browser_download`, and landing a recording as a file                                                                      |
 | `offscreen`       | a hidden document to run the video encoder in                                                                              |
-| `alarms`          | re-arming the bridge after the service worker is retired                                                                   |
-| `storage`         | the pause switch, the reconnect backoff, and which tabs each session holds across a worker restart                         |
+| `alarms`          | re-arming the bridge after the service worker is retired, and standing idle sessions down                                  |
+| `storage`         | the pause switch, the reconnect backoff, the once-per-protocol reload, and which tabs each session holds across a restart  |
 | `scripting`       | taking the control frame off a page whose debugger attachment has already ended                                            |
 | `webNavigation`   | knowing which tab a link or script opened a new tab from, so an agent's popup is the agent's and the user's new tab is not |
-| `<all_urls>`      | the assistant can be asked to drive any page the user can open                                                             |
+| `<all_urls>`      | (host permission) the assistant can be asked to drive any page the user can open                                           |
 
-`scripting` runs one fixed function -- remove the three overlay elements by id -- and nothing
-else; it is the only way to clear the frame from a page after the user cancels Chrome's debugging
-bar or opens DevTools, when the debugger can no longer reach it.
+Together these amount to full control of the browser. Use trusted builds only.
+
+`scripting` runs one fixed function -- remove the overlay's own elements (frame, badge, cursor, and
+their stylesheet) by id -- and nothing else. It is the only way to clear the frame from a page after
+the user cancels Chrome's debugging bar or opens DevTools, when the debugger can no longer reach
+it. `webNavigation` is used only for `onCreatedNavigationTarget`, which names the tab a new tab was
+opened from; the handler ignores, and records nothing about, any new tab that was not opened from a
+tab the assistant holds.
+
+`activeTab` and `tabCapture` are not requested; the next section says why.
 
 ### Recording is not an escalation
 
-`browser_record_start` records the session's tab by taking frames from the DevTools protocol
-(`Page.startScreencast`) — the same channel already used for every click, every snapshot and every
+`browser_record_start` records one held tab by taking frames from the DevTools protocol
+(`Page.startScreencast`) -- the same channel already used for every click, every snapshot and every
 screenshot. It captures video only; there is no audio.
 
 It deliberately does NOT use `chrome.tabCapture`, which would be the obvious API for it. Chrome
 requires the `activeTab` grant for tab capture, and that grant comes only from a user invoking the
-extension on that specific tab — a toolbar click, a context menu, a keyboard shortcut. An
+extension on that specific tab -- a toolbar click, a context menu, a keyboard shortcut. An
 agent-driven start has no such invocation, so tabCapture could not work here without asking the
 user to click something before every recording. `activeTab` is therefore not requested either.
 
@@ -60,13 +70,13 @@ no access to the user's browsing; `MediaRecorder` needs a DOM and the service wo
 
 `debugger` is already held and is strictly more powerful than `tabCapture` would be: anything that
 can read the page and synthesize input can already reconstruct what a recording would show. Chrome
-displays its own indicator while a tab is being debugged, so the user can see that the session is
+displays its own indicator while a tab is being debugged, so the user can see that a session is
 attached.
 
 Recordings are written through `chrome.downloads` to a relative path under the user's downloads
 folder, validated the same way `browser_download` validates a filename: no absolute path, no `..`.
-The video never travels back through the bridge — a reply is capped far below the size of any real
-recording — so `browser_record_stop` returns a path.
+The video never travels back through the bridge -- a reply is capped far below the size of any real
+recording -- so `browser_record_stop` returns a path.
 
 ## Uploads
 
@@ -89,27 +99,58 @@ Unset, the variable means no restriction, and an assistant with this tool can at
 user can read. That is the same reach the user has in their own browser, which is the model this
 project works to, but it is worth choosing deliberately.
 
+File pickers are caught only on a tab the session holds, only while one of its own input or
+navigation commands is running and for 2 s after, and only to be answered with files the agent
+names through `browser_upload`. The user's own clicks on an upload button, even in a held tab, get
+the ordinary dialog. A `showOpenFilePicker` call is answered with a read-only handle: the page can
+read the file, and is offered no way to write back to it.
+
 ## Defenses
 
-- Native host accepts only pinned extension origin.
-- Windows named pipe has current-user DACL and Medium-integrity no-write-up label.
-- Linux/macOS runtime directory and socket are owner-only; peer credentials verify UID and PID.
-- Relay verifies recorded server process and same executable image.
-- Optional production gate requires Chrome in relay process ancestry.
-- Endpoint name contains random nonce; private rendezvous is project-scoped.
-- Token + protocol handshake authenticates each connection.
+Transport and identity:
+
+- The native host accepts only the pinned extension origin.
+- The Windows named pipe has a current-user DACL and a Medium-integrity no-write-up label.
+- The Linux/macOS runtime directory and socket are owner-only; peer credentials verify UID and PID.
+- The relay verifies the recorded server process and that it runs the same executable image; the
+  server verifies the relay's identity the same way.
+- The server requires a Chrome process among the relay's ancestors. That gate is on in production
+  and relaxed only by the unit tests.
+- The endpoint name contains a random nonce; the private rendezvous is project-scoped.
+- A token plus protocol handshake authenticates each connection, and a protocol mismatch refuses
+  every command rather than guessing at a frame shape.
 - Native frames, JSON-RPC lines, screenshots, text, and other major payloads are bounded.
-- One outstanding command prevents reply mispairing.
-- New relay generation invalidates old refs.
-- Ref actions fail when page or session changed.
-- Coordinate clicks require fresh viewport screenshot fingerprint.
-- Screenshots hide control presence unless caller explicitly sets `include_control_overlay: true`.
-- Storage operations use isolated world, verify live origin, and call pristine Storage methods.
-- Dialog defaults reject confirm/prompt; explicit response is one-shot.
+- One outstanding command per server prevents reply mispairing.
+
+Sessions and tabs:
+
+- A tab one session holds is refused to every other session, naming the holder. Chrome's
+  one-debugger-client-per-tab rule backs this for the DevTools protocol; the lease covers tabs,
+  windows, cookies and downloads.
+- A tab counts as the assistant's only if it opened it, its own command's page opened it, it was
+  given it, or the user dragged it into its group. The user's own new tabs -- Ctrl+T, the new-tab
+  button, a middle-click -- stay the user's, and a popup the agent's page brings to the front is put
+  back behind the tab the user had in front.
+- Release never closes a tab the session borrowed, the tab the user is looking at, or the browser's
+  last tab.
+- Agent and client names reach the tab strip only as short printable text, and the page only as a
+  string assigned to `textContent`, never as markup or code.
+
+Page actions:
+
+- A new relay generation invalidates old refs.
+- A ref acts only on the tab its snapshot came from, and fails once that tab's page changes. Ref
+  names are never reused, so a stale ref is refused rather than naming a new element.
+- Coordinate clicks require a fresh viewport screenshot fingerprint of the same tab.
+- Screenshots hide control presence unless the caller explicitly sets
+  `include_control_overlay: true`.
+- Storage operations use an isolated world, verify the live origin, and call pristine Storage
+  methods.
+- Dialog defaults reject confirm/prompt; an explicit response is one-shot.
 - Download URL and relative filename validation fail closed.
-- Recording filenames are validated the same way, and a recording is refused a second
-  start or a tab change rather than silently replacing or ending the first.
-- A session that ends mid-recording discards the encoder and the partial bytes rather than
+- Recording filenames are validated the same way, and a recording is refused a second start or a
+  change of current tab rather than silently replacing or ending the first.
+- A recording whose tab or session ends discards the encoder and the partial bytes rather than
   writing a truncated file that would read as a finished one.
 - Console, exception, and network records are bounded rings of bounded entries: every field in
   them is page-controlled, and what the ring discards is counted rather than silently forgotten.
@@ -117,8 +158,11 @@ project works to, but it is worth choosing deliberately.
   checks, the dialog policy, the freshness gating on ref and coordinate actions, and the refusal
   of `javascript:` URLs, and could remove the control overlay that shows a session is driving.
 - Strict schemas reject unknown arguments and wrong types.
-- Compiler warnings are errors; static analysis, secret scan, dependency audit, and sanitizers run as
-  release gates.
+
+Build:
+
+- Compiler warnings are errors. Static analysis, secret scan, dependency audit, and sanitizers run
+  in CI on every push; [QUALITY.md](QUALITY.md) lists the gates and their current state.
 
 ## Browser identity
 
@@ -127,20 +171,16 @@ project works to, but it is worth choosing deliberately.
 - Windows pipe prefix: `ChromeControlMCP_BrowserBridge`
 - Unix runtime namespace: `chrome-control-mcp-<uid>`
 
-Manifest public identity field pins unpacked extension ID. It is not secret and cannot sign a
-package. Project creates, stores, and requires no private extension key.
+The manifest's public identity field pins the unpacked extension ID. It is not secret and cannot
+sign a package. The project creates, stores, and requires no private extension key.
 
-## Chrome privileges
+## What setup writes
 
-Extension requests `nativeMessaging`, `debugger`, `tabs`, `tabGroups`, `contentSettings`,
-`cookies`, `downloads`, and `<all_urls>`. Full browser control needs these privileges. Use trusted
-builds only.
-
-Preparation writes only current-user native-host registration and generated host manifest.
-Uninstall removes only this project's registration and manifest. Loading and removing unpacked
+Preparation writes only the current-user native-host registration and the generated host manifest.
+Uninstall removes only this project's registration and manifest. Loading and removing the unpacked
 extension remain explicit user actions in `chrome://extensions`.
 
 ## Reporting vulnerabilities
 
-Do not publish credential material or working exploit details in a public issue. Use repository
+Do not publish credential material or working exploit details in a public issue. Use the repository
 owner's private GitHub security-reporting channel when available.

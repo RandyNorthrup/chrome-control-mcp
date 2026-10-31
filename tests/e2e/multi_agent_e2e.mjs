@@ -153,6 +153,22 @@ async function main() {
       alphaRow?.group_id !== betaRow?.group_id,
       "and the two agents' groups are different groups",
     );
+    // A name with no ASCII in it: the extension once stripped it to nothing, and the tab fell into
+    // the session's shared group.
+    const named = await one.client.json("browser_new_tab", {
+      url: `${fixture.origin}/page2`,
+      agent: "研究",
+    });
+    const namedRow = (await one.client.json("browser_tabs")).tabs.find(
+      (t) => t.tab_id === named.tab_id,
+    );
+    check(
+      namedRow?.group === "AI · 研究" &&
+        namedRow?.group_id !== alphaRow?.group_id &&
+        namedRow?.group_id !== betaRow?.group_id,
+      "an agent named in any script gets its own group under its whole name",
+      JSON.stringify(namedRow?.group),
+    );
 
     // -- A second server --------------------------------------------------------------
     two = await startServer(executable, "suite-two");
@@ -195,6 +211,12 @@ async function main() {
     check(
       !attached.isError,
       "a file input the page created and clicked is filled without a ref",
+      attached.text,
+    );
+    check(
+      /"name":"hello\.txt"/.test(attached.text) &&
+        /"page_cleared_input":true/.test(attached.text),
+      "the reply names the file, and says the page emptied its input",
       attached.text,
     );
     const attachedText = await until(async () => {
@@ -331,7 +353,7 @@ async function main() {
 
   const failed = checks.filter((entry) => entry.status !== "passed");
   const report = {
-    ok: failure === null && failed.length === 0 && checks.length === 22,
+    ok: failure === null && failed.length === 0 && checks.length === 24,
     checks,
     error: failure ? String(failure.stack || failure) : null,
   };

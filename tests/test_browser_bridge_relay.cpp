@@ -152,7 +152,7 @@ struct SlowFakeExtension {
 // expires exactly as before.
 struct BeatingFakeExtension {
   QJsonObject last_command;
-  int beats_to_send{3};
+  int beats_to_send{5};
   int beats_sent{0};
   int beat_gap_ms{250};
 
@@ -399,20 +399,23 @@ void BrowserBridgeRelayTests::
 }
 
 // The whole path, end to end: a handler that outlives the server's silence
-// budget four times over, beating as it works, over a real pipe with the real
-// relay in between.
+// budget, beating as it works, over a real pipe with the real relay in between.
 //
 // Every piece has to hold or this fails. The extension beats; the relay reads
 // past the beats instead of handing the first one up as the reply, and forwards
 // each from the thread that owns the pipe; the server restarts its deadline on
-// each and keeps waiting. Before this, the server tore the connection down at
-// 400 ms and the caller was told the browser had reset -- for a command that
-// was working the entire time.
+// each and keeps waiting. Before this, the server tore the connection down when
+// the budget ran out and the caller was told the browser had reset -- for a
+// command that was working the entire time.
 void BrowserBridgeRelayTests::
     relay_forwardsProgressBeatsAndStillDeliversTheReply() {
   QTemporaryDir dir;
   auto options = serverOptions(dir.filePath(QStringLiteral("r.json")));
-  options.io_timeout_ms = 400; // four beats at 250 ms each outlast this
+  // Six 250 ms gaps outlast this by half again, so only the beats can carry
+  // the exchange to its reply. Each gap is a 250 ms sleep plus up to one relay
+  // drain poll; at 400 ms that left the macOS runner barely 125 ms of
+  // scheduling slack, and one late wake-up failed the test with nothing wrong.
+  options.io_timeout_ms = 1000;
   BrowserBridgePipeServer server(options);
   QString error;
   QVERIFY2(server.start(&error), qPrintable(error));
@@ -436,8 +439,10 @@ void BrowserBridgeRelayTests::
                   {QStringLiteral("id"), QStringLiteral("b-1")},
                   {QStringLiteral("cmd"), QStringLiteral("download")}});
   relay.join();
-  QVERIFY(pumped.load());
+  // The server's side first: when the relay's pump fails it is because the
+  // server gave up, and only the server's error says why.
   QVERIFY2(exchange.ok, qPrintable(exchange.error));
+  QVERIFY(pumped.load());
   // The REPLY came up, not the first beat wearing its id.
   QCOMPARE(exchange.reply.value(QStringLiteral("type")).toString(),
            QStringLiteral("result"));
@@ -445,8 +450,8 @@ void BrowserBridgeRelayTests::
                .toObject()
                .value(QStringLiteral("worked_for_ms"))
                .toInt(),
-           1000);
-  QCOMPARE(extension.beats_sent, 3);
+           1500);
+  QCOMPARE(extension.beats_sent, 5);
   // And the extension was asked for them: the server sets the flag, so an older
   // extension that ignores it is still held to the plain silence budget rather
   // than being relied on to beat.

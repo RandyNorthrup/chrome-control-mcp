@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.25)
 
-project(chrome_control_mcp VERSION 1.8.0 LANGUAGES CXX)
+project(chrome_control_mcp VERSION 1.8.1 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -418,6 +418,22 @@ if(BUILD_TESTING)
                 "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_browser_extension_transport.mjs"
     )
     set_tests_properties(test_browser_extension_transport PROPERTIES TIMEOUT 120)
+
+    # Ctrl+T, popups, drag in and out, release, park and resume, idle, file choosers: most of
+    # 1.8.0's tab handling. It shipped running only under npm run test:js, which CI never calls.
+    add_test(NAME test_browser_extension_tabs
+        COMMAND "${NODE_EXECUTABLE}" --test
+                "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_browser_extension_tabs.mjs"
+    )
+    set_tests_properties(test_browser_extension_tabs PROPERTIES TIMEOUT 120)
+
+    # Every version string agrees, and the version being shipped has its changelog entry and
+    # release note -- checked on each push, not first discovered by the release workflow.
+    add_test(NAME test_release_versions
+        COMMAND "${NODE_EXECUTABLE}" --test
+                "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_release_versions.mjs"
+    )
+    set_tests_properties(test_release_versions PROPERTIES TIMEOUT 120)
 
     add_test(NAME test_vscode_payload
         COMMAND "${NODE_EXECUTABLE}" --test

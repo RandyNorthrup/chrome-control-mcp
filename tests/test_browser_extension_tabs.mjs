@@ -30,6 +30,7 @@ const EXPORTED = [
   "standDownIdle",
   "noteOfferedServers",
   "probeForServers",
+  "agentArg",
   "agentColor",
   "presenceLook",
   "pendingLeases",
@@ -545,6 +546,49 @@ test("each agent's tabs get their own group, in their own colour, matched on the
     b.worker.presenceLook(tabA.id).hex,
     b.worker.presenceLook(tabB.id).hex,
   );
+});
+
+test("an agent named in any script keeps its own group and its whole name", async () => {
+  // The server accepts any printable name; the extension used to strip it to ASCII, so "café"
+  // became "caf" and a name with no ASCII in it joined the session's shared group.
+  const b = await attachedBrowser();
+  const tabA = b.addTab({});
+  const tabB = b.addTab({});
+  const tabC = b.addTab({});
+  b.worker.holdTab(
+    b.session,
+    b.copy(tabA),
+    "opened",
+    b.worker.agentArg({ agent: "café" }),
+  );
+  b.worker.holdTab(
+    b.session,
+    b.copy(tabB),
+    "opened",
+    b.worker.agentArg({ agent: "研究" }),
+  );
+  b.worker.holdTab(b.session, b.copy(tabC), "opened");
+  await settle();
+  await settle();
+
+  const titleOf = (tab) => b.groups.get(b.tabs.get(tab.id).groupId).title;
+  assert.equal(titleOf(tabA), "AI · café");
+  assert.equal(titleOf(tabB), "AI · 研究");
+  assert.notEqual(
+    b.tabs.get(tabB.id).groupId,
+    b.tabs.get(tabC.id).groupId,
+    "a name with no ASCII is not the shared group",
+  );
+  assert.equal(b.worker.presenceLook(tabB.id).label, "AI · 研究");
+});
+
+test("a name is still bounded for the tab strip: no control characters, 24 characters at most", async () => {
+  const { worker } = await attachedBrowser();
+  assert.equal(worker.agentArg({ agent: "a‮b\u0007c d" }), "abcd");
+  assert.equal(worker.agentArg({ agent: "‏\u0000" }), undefined);
+  // 25 astral characters: the cut is on code points, never inside a surrogate pair.
+  assert.equal(worker.agentArg({ agent: "😀".repeat(25) }), "😀".repeat(24));
+  assert.equal(worker.agentArg({ agent: "  ok  " }), "ok");
 });
 
 test("every held tab is attached and marked, not only the one being driven", async () => {

@@ -84,11 +84,14 @@ jobs:
         with:
           python-version: "3.12"
 
+      # Keep the Python pinned above: left to itself the action switches the job to the newest
+      # 3.x, and semgrep-core segfaults at start-up under Python 3.15.
       - uses: jurplel/install-qt-action@v4
         with:
           version: "6.10.0"
           arch: linux_gcc_64
           cache: true
+          setup-python: false
 
       - name: Install analyzers
         run: |

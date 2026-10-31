@@ -243,6 +243,8 @@ function uploadShapesPage() {
   input.addEventListener('change', () => {
     document.getElementById('attached').textContent =
       'attached: ' + [...input.files].map((f) => f.name + ':' + f.size).join(',');
+    // Read, then reset -- as GitHub's own uploaders do. The tool's reply must still name the file.
+    input.value = '';
   });
   input.click();
 });
