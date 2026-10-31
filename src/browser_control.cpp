@@ -12,10 +12,38 @@
 #include <QJsonValue>
 #include <QStringList>
 
+#include <thread>
+
 namespace chrome_control_mcp {
+
+namespace {
+
+// What an extension reports when the bridge it was handed speaks another
+// protocol version -- matched by text because it arrives as the extension's
+// own error message, not as a field.
+constexpr QLatin1StringView kProtocolMismatchMarker{"Bridge protocol mismatch"};
+
+// The one thing that fixes a protocol mismatch. Chrome does not reload an
+// unpacked extension when its files change, so after an update the copy
+// Chrome is running is routinely older (or newer) than the server talking to
+// it, and the mismatch text alone names the versions without saying what to
+// do about them.
+QString protocolMismatchGuidance() {
+  return QStringLiteral(
+      " Reload the Chrome Control MCP extension at chrome://extensions (or "
+      "restart Chrome) so Chrome loads the copy installed with this server.");
+}
+
+} // namespace
 
 bool BrowserControl::start(QString *error) {
   started_ = pipe_.start(error);
+  if (started_) {
+    // start() publishes the rendezvous record: an extension that is running
+    // will find it within one of its retry periods, so a call made in the next
+    // little while is worth holding for that rather than refusing.
+    published_at_ = Clock::now();
+  }
   return started_;
 }
 
@@ -49,6 +77,9 @@ bool BrowserControl::handles(const QString &name) {
 void BrowserControl::syncSessionToConnection() {
   const bool connected = pipe_.clientConnected();
   const quint64 generation = pipe_.connectionGeneration();
+  if (connected) {
+    last_connected_at_ = Clock::now();
+  }
   if (connected && generation != observed_generation_) {
     session_.onHostConnected();
     observed_generation_ = generation;
@@ -57,8 +88,32 @@ void BrowserControl::syncSessionToConnection() {
   }
 }
 
+bool BrowserControl::relayPlausiblyAttaching() const {
+  const Clock::time_point now = Clock::now();
+  const auto recent = [now](const std::optional<Clock::time_point> &when) {
+    return when.has_value() && now - *when < kRelayAttachGrace;
+  };
+  return recent(published_at_) || recent(last_connected_at_);
+}
+
+void BrowserControl::awaitAttachingRelay() const {
+  const Clock::time_point deadline = Clock::now() + relay_attach_wait_;
+  while (!pipe_.clientConnected() && Clock::now() < deadline) {
+    std::this_thread::sleep_for(kRelayAttachPoll);
+  }
+}
+
 ToolResult BrowserControl::invoke(const QString &name,
                                   const QJsonObject &arguments) {
+  ToolResult result = dispatch(name, arguments);
+  if (result.is_error && result.text.contains(kProtocolMismatchMarker)) {
+    result.text += protocolMismatchGuidance();
+  }
+  return result;
+}
+
+ToolResult BrowserControl::dispatch(const QString &name,
+                                    const QJsonObject &arguments) {
   // A server that stood down at launch (another instance owned the bridge at
   // that instant) tries again on demand: the owner may have been a short-lived
   // tool listing that has long since exited, and a browser tool call is the
@@ -87,6 +142,15 @@ ToolResult BrowserControl::invoke(const QString &name,
               .is_error = true,
               .image_base64 = {},
               .image_mime = {}};
+    }
+    // The first call of a newly started agent routinely lands before the
+    // extension has found this server, and a call just after an extension
+    // reload lands while it reattaches. Refusing those sends the agent off to
+    // diagnose a browser that is seconds from working, so they wait a little
+    // -- but only when an attachment is plausibly on its way, so a server with
+    // no browser at all still answers at once.
+    if (relayPlausiblyAttaching()) {
+      awaitAttachingRelay();
     }
   }
   syncSessionToConnection();

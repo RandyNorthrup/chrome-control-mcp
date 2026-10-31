@@ -11,6 +11,9 @@
 #include <QHash>
 #include <QtEndian>
 
+#include <chrono>
+#include <cstdint>
+
 #include <tlhelp32.h>
 
 namespace chrome_control_mcp {
@@ -211,6 +214,28 @@ ConnectResult waitForConnection(HANDLE pipe, HANDLE shutdown_event) {
   }
   CloseHandle(overlapped.hEvent);
   return result;
+}
+
+// What the relay on an idle connection is doing, seen without consuming a byte.
+enum class IdlePeer : std::uint8_t {
+  Present, // connected and quiet, as it should be between commands
+  Gone,    // closed its end, or died
+  Talking  // bytes arrived with no command outstanding
+};
+
+// Look at an idle connection without reading from it. PeekNamedPipe neither
+// blocks nor consumes, so this cannot take part of a frame -- and while idle
+// there is no frame to take: the relay writes only to answer a command.
+IdlePeer idlePeerState(HANDLE pipe) {
+  DWORD available = 0;
+  if (PeekNamedPipe(pipe, nullptr, 0, nullptr, &available, nullptr) == FALSE) {
+    // ERROR_BROKEN_PIPE once the relay has closed its end. This is the server
+    // end of a named pipe we created, so -- unlike the relay's look at its
+    // stdin -- there is no "not a pipe" failure to mistake for a hangup: any
+    // failure is a connection that cannot carry the next command.
+    return IdlePeer::Gone;
+  }
+  return available == 0 ? IdlePeer::Present : IdlePeer::Talking;
 }
 
 // Pure ancestor-chain check: from `pid`, climb up to max_depth ancestors via
@@ -491,9 +516,31 @@ bool BrowserBridgePipeServer::verifyPeer(QString *why) const {
 void BrowserBridgePipeServer::serveConnected() {
   while (true) {
     std::unique_lock<std::mutex> lock(mutex_);
-    cv_.wait(lock, [this] { return has_request_ || !running_; });
+    // Wait in slices, never for as long as it takes. From inside a wait only a
+    // command can end, a relay that died between commands is indistinguishable
+    // from one that is idle -- and the single pipe instance stayed held for it,
+    // refusing every relay Chrome started afterwards, until a command happened
+    // along to fail.
+    const bool asked = cv_.wait_for(
+        lock, std::chrono::milliseconds(kBrowserBridgeIdlePeerCheckMs),
+        [this] { return has_request_ || !running_; });
     if (!running_) {
       return;
+    }
+    if (!asked) {
+      // Looked at with the lock released, as all pipe I/O is. A command posted
+      // meanwhile is safe either way: a live relay serves it on the next pass,
+      // and for a dead one this returns, run() marks the connection gone, and
+      // the sender -- which wakes on exactly that -- fails it. run() clears the
+      // slot before it serves another relay, so it never reaches the next one.
+      lock.unlock();
+      if (idlePeerState(pipe_) != IdlePeer::Present) {
+        // Gone, or talking with nothing asked. The second is not a relay that
+        // is keeping to the protocol, and its bytes left unread would be taken
+        // as the reply to the NEXT command, before that command was even sent.
+        return;
+      }
+      continue;
     }
     const QJsonObject request = request_frame_;
     has_request_ = false;
@@ -625,11 +672,14 @@ BrowserBridgePipeServer::sendCommandAwaitReply(const QJsonObject &frame) {
             .error =
                 QStringLiteral("A browser action is already in progress.")};
   }
-  // Pin the connection identity: if the relay disconnects and a fresh one
-  // replaces it while we wait, the generation changes. Waking on a generation
-  // change (not on connected_, which oscillates false->true across a reconnect)
-  // is what stops the sender from silently sleeping through its own
-  // connection's death and hanging for the life of the next session.
+  // Pin the connection identity, and wake on either sign that it has ended.
+  // The generation changes when a fresh relay replaces this one, and it cannot
+  // be missed -- connected_ oscillates false->true across a reconnect, so a
+  // sender watching only that could sleep through both edges and hang for the
+  // life of the next session. connected_ going false is the prompt sign: the
+  // I/O thread drops an idle connection whose relay has gone, possibly just
+  // after this request was posted, and no successor need ever arrive to move
+  // the generation on.
   const quint64 my_generation = generation_;
   // Ask the extension to report progress while it works. The deadline belongs
   // to this transport, so the request for the beats that hold it open belongs
@@ -641,7 +691,8 @@ BrowserBridgePipeServer::sendCommandAwaitReply(const QJsonObject &frame) {
   has_response_ = false;
   cv_.notify_all();
   cv_.wait(lock, [this, my_generation] {
-    return has_response_ || !running_ || generation_ != my_generation;
+    return has_response_ || !running_ || !connected_ ||
+           generation_ != my_generation;
   });
   // Always clear the slot on the way out: if the connection died before the I/O
   // thread consumed the request, leaving has_request_ set would make the NEXT

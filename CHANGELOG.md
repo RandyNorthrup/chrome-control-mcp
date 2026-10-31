@@ -6,6 +6,93 @@ All notable changes are documented here. Project follows [Semantic Versioning](h
 
 Nothing yet.
 
+## [1.8.0] - 2026-10-31
+
+Several agents in one browser, each in its own tabs, and nothing left behind when they are done.
+Every item below was reported from daily use; the design record is in
+[docs/MULTI_SESSION.md](docs/MULTI_SESSION.md#180-agents-not-servers).
+
+### Fixed
+
+- A second editor's server could go hours without reaching the browser. Measured: two servers
+  running, one relay. The server held its single pipe instance for a relay that had died with
+  Chrome, and only noticed when it next sent a command; every relay in between was refused with
+  `ERROR_PIPE_BUSY`. An idle server now checks its connection every 250 ms and listens again as
+  soon as the relay is gone. Relays offer only servers that are running.
+- A server that starts while another is attached is found in about a second. The attached relay
+  reports changes to the set of running servers (`bridge_servers`) from its own directory check,
+  which starts no process; it used to wait for a probe on a thirty-second alarm.
+- Opening a tab yourself -- Ctrl+T, the new-tab button, a middle-click -- while an AI tab was in
+  front pulled the new tab into the AI group and moved the assistant onto it. Chrome names the tab
+  you were looking at as the new tab's opener, and the extension took that to mean the assistant
+  opened it. A tab is now the assistant's only if it opened it, its own command's page opened it,
+  it was given it, or you dragged it into the AI group; Chrome's own grouping of your tab is undone.
+- Agents sharing one server retargeted each other. The server kept one current tab and one set of
+  element refs, so one agent's `browser_new_tab` or snapshot moved the other's next click. Refs are
+  now bound to the tab they came from and never reused, and every tab-scoped tool takes `tab_id`.
+- Closing the tab the assistant was driving left the rest of its group unmarked, and the frame
+  could vanish after a navigation. Every held tab is now attached and marked, and the frame is
+  drawn into each new document as it is created rather than re-drawn after it raced the page.
+- When a session ended only the tab it was driving was ungrouped, so tabs Chrome had added to the
+  group kept an "AI CONTROL" group with nobody behind it, and tabs the assistant opened stayed open.
+- An upload button whose script creates and clicks a file input could not be used: the input is in
+  no document, so no ref could name it, and Chrome cancels the file dialog in a tab that is not in
+  front (measured on Chrome 153). File pickers a page opens during an agent's command are now
+  caught instead of shown, and `browser_upload` with no ref fills them.
+- Opening an editor rolled an update back. The VS Code extension installs the build it bundles on
+  every editor start, and that install repointed the managed `current` link at itself even when a
+  newer version was already current -- leaving Chrome on an extension newer than the server its
+  relay now launched. An older build now leaves a newer install in place and says so.
+- The control highlight broke on pages that enforce Trusted Types -- YouTube, Gmail, Google Docs,
+  Chrome's own error pages. The cursor was built with `innerHTML`, which those pages refuse, so it
+  was never drawn, and the exception it threw landed in the page's console, where
+  `browser_console` reported it to the agent as the page's own error. It is built node by node now.
+- A link that opens a new tab (`target=_blank`) left that tab behind as a stray, in front of the
+  user. Such a link opens with no opener Chrome names to an extension, so the tab was never matched
+  to the agent whose click opened it, and Chrome switched the user's window to it. The tab is now
+  matched through the browser's own record of where it was opened from (and, failing that, the
+  page's own request to open it), joins the agent's group, and the tab the user had in front is put
+  back in front. Found on the-internet.herokuapp.com; covered by the live suite.
+- A page Chrome will not let an extension control -- its own "Privacy error" and other warning
+  pages, the browser's pages, another extension's -- answered every command with a bare
+  "Cannot attach to this target." The reply now says what the page is and what to do.
+
+### Added
+
+- `browser_release`: the agent saying it is done. Tabs it opened are closed, tabs it borrowed are
+  handed back (never closed), and its group and marking are removed. `tab_id` releases one tab;
+  `keep_open` hands opened tabs over instead of closing them. The tab you are looking at and the
+  browser's last tab are never closed.
+- Cleanup without being asked: when a server exits its tabs are released the same way; after ten
+  minutes without a command a session is stood down (debugger detached, which removes Chrome's
+  debugging bar, marking removed, group greyed and titled "idle") and its next command resumes it.
+  A relay that drops and comes back resumes its tabs instead.
+- `tab_id` on every tab-scoped tool, `tab_id` in `browser_new_tab`, `browser_select_tab` and
+  `browser_close_tab` replies, and `your_tabs` in `browser_tabs`.
+- `agent` on `browser_new_tab` and `browser_select_tab`: each agent's tabs get their own group,
+  titled for it, in a colour no other group has; the frame and badge on the page use the same
+  colour and name.
+- `browser_upload` delivers files by drag and drop to a drop zone with no input, and answers a
+  page's `showOpenFilePicker`. Folder pickers are not supported yet.
+- MCP `instructions` telling any client how to share the browser: its own tab, `tab_id`, refs bound
+  to tabs, uploads without a dialog, and `browser_release` when done.
+- `tests/e2e/multi_agent_e2e.mjs`: two servers and two agents in one live browser, run in CI.
+
+### Changed
+
+- Bridge protocol 2. The extension and the server must be the same release; a mismatch says which
+  side to update. A Chrome still running an older copy of the extension reloads it once by itself.
+- `browser_new_tab` with no `url` opens `about:blank` rather than the new-tab page, which the
+  debugger cannot attach to.
+- The extension requests two new permissions: `scripting`, used only to take the frame off a page
+  whose debugger attachment has already ended, and `webNavigation`, used only to learn which tab a
+  new tab was opened from.
+- With a relay attached, the extension's background probe for new servers runs every five minutes
+  instead of every thirty seconds, and a server that refuses it is set aside on a doubling interval
+  -- fewer processes started than before, not more.
+- One server still carries one command at a time: two agents sharing a server are isolated, not
+  concurrent. Separate servers run in parallel.
+
 ## [1.7.0] - 2026-09-25
 
 The three things 1.6.1 shipped without fixing, and the reason each one had survived: none of them

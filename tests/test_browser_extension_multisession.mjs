@@ -21,6 +21,7 @@ const EXPORTED = [
   "handleSelectTab",
   "leaseHolder",
   "requireUnleasedTab",
+  "makeTabState",
 ];
 const LIVE = "sessions, ports: () => [...sessions].map((s) => s.port)";
 const PROTOCOL = 1;
@@ -43,6 +44,12 @@ function bootWorker() {
     LIVE,
   );
   return { worker, opened };
+}
+
+// Make @p tabId one @p session holds and acts on by default, as adopting or opening it would.
+function holdIn(worker, session, tabId) {
+  session.tabs.set(tabId, worker.makeTabState(tabId, "adopted"));
+  session.currentTabId = tabId;
 }
 
 const offer = (port, servers) =>
@@ -131,7 +138,7 @@ async function twoSessions(tabId) {
   offer(opened[1], ["100", "200"]);
   await settle();
   const [first, second] = [...worker.sessions];
-  first.sessionTabId = tabId;
+  holdIn(worker, first, tabId);
   return { worker, first, second };
 }
 
@@ -139,7 +146,7 @@ test("selecting a tab the other session drives is refused", async () => {
   // The whole path, not just the predicate: browser_select_tab resolves an
   // index against this session's own listing and then takes the tab.
   const { worker, second } = await twoSessionsWithBrowser(7);
-  second.sessionTabId = 9; // it has a tab of its own, in the same window
+  holdIn(worker, second, 9); // it has a tab of its own, in the same window
   second.sessionWindowId = 1;
   second.lastTabListing = {
     windowId: 1,
@@ -154,13 +161,13 @@ test("selecting a tab the other session drives is refused", async () => {
     /driven by another Chrome Control MCP session/,
     "the tab the first session holds is refused",
   );
-  assert.equal(second.sessionTabId, 9, "and the session did not move to it");
+  assert.equal(second.currentTabId, 9, "and the session did not move to it");
 
   // Its own tab is still selectable, so the refusal is about the lease and not
   // about selection being broken.
   const taken = await worker.handleSelectTab(second, { index: 1 });
   assert.equal(taken.ok, true);
-  assert.equal(second.sessionTabId, 9);
+  assert.equal(second.currentTabId, 9);
 });
 
 // The same two sessions, plus enough of chrome.tabs for a real selection to
@@ -191,7 +198,7 @@ async function twoSessionsWithBrowser(tabId) {
   offer(opened[1], ["100", "200"]);
   await settle();
   const [first, second] = [...worker.sessions];
-  first.sessionTabId = tabId;
+  holdIn(worker, first, tabId);
   first.sessionWindowId = 1;
   return { worker, first, second };
 }
@@ -226,7 +233,7 @@ test("a tab held by another session is marked in the listing, not hidden", async
 // dispatchCommand builds its argument list positionally:
 //
 //   const params = [session];
-//   if (entry.tab) params.push(await activeTabId(session));
+//   if (entry.tab) params.push(await commandTabId(session, args));
 //   if (entry.args) params.push(args);
 //
 // so every handler must declare exactly those parameters, session first. A
@@ -279,7 +286,13 @@ test("the command table is not empty, so the check above cannot pass vacuously",
 // tab is being driven by another session", advising the caller to open a new
 // tab, which is what it had just refused.
 
-const WINDOW_EXPORTS = ["connect", "sessionWindow", "leaseHolder", "sessions"];
+const WINDOW_EXPORTS = [
+  "connect",
+  "sessionWindow",
+  "leaseHolder",
+  "sessions",
+  "makeTabState",
+];
 
 function bootWithFrontTab(frontTab) {
   const opened = [];
@@ -318,13 +331,13 @@ test("a session can name its window while another session holds the tab in front
 
   const [first, second] = [...worker.sessions];
   // The first session is driving the tab the user is looking at.
-  first.sessionTabId = front.id;
+  holdIn(worker, first, front.id);
   first.sessionWindowId = front.windowId;
   assert.equal(worker.leaseHolder(front.id, second), first);
 
   // The second session has no tab of its own yet, which is exactly when it
   // needs to open one.
-  assert.equal(second.sessionTabId, null);
+  assert.equal(second.currentTabId, null);
   assert.equal(
     await worker.sessionWindow(second),
     front.windowId,
@@ -332,7 +345,7 @@ test("a session can name its window while another session holds the tab in front
   );
   // And asking must not have quietly taken the tab either.
   assert.equal(
-    second.sessionTabId,
+    second.currentTabId,
     null,
     "the session adopted a tab it was not given",
   );

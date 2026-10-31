@@ -91,6 +91,10 @@ const NOT_EXERCISED_HERE = new Map([
   ["browser_update_check", "reaches the network; covered by test_updater"],
   ["browser_update_status", "reads the install layout, not the browser"],
   ["browser_update_apply", "replaces the program on disk; never in a test run"],
+  [
+    "browser_release",
+    "closes the tabs this suite works in; driven by multi_agent_e2e.mjs",
+  ],
 ]);
 
 const sleep = (milliseconds) =>

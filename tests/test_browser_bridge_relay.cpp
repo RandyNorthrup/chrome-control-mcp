@@ -6,21 +6,30 @@
 #include "chrome_control_mcp/browser_bridge_security.h"
 #include "chrome_control_mcp/browser_control.h"
 
+#include <QCoreApplication>
+#include <QDir>
 #include <QElapsedTimer>
+#include <QFile>
 #include <QJsonArray>
 #include <QJsonObject>
+#include <QProcess>
 #include <QTemporaryDir>
 #include <QtTest/QtTest>
 
 #include <atomic>
 #include <chrono>
+#include <cstring>
+#include <mutex>
 #include <thread>
+#include <vector>
 
 using chrome_control_mcp::bridgeImageMismatchText;
+using chrome_control_mcp::BridgeServerWatcher;
 using chrome_control_mcp::BrowserBridgePipeServer;
 using chrome_control_mcp::BrowserControl;
 using chrome_control_mcp::browserInputClosed;
 using chrome_control_mcp::closeNativeIpcHandle;
+using chrome_control_mcp::kBrowserBridgeProtocol;
 using chrome_control_mcp::kInvalidNativeIpcHandle;
 using chrome_control_mcp::NativeIpcHandle;
 using chrome_control_mcp::relayConnect;
@@ -31,6 +40,13 @@ using chrome_control_mcp::ToolResult;
 using chrome_control_mcp::writeRendezvousRecord;
 
 namespace {
+
+// A copy of this test binary started with this flag only waits. That gives a
+// test a live process of the bridge's own image to point a record at -- which
+// is what a relay has to recognise as a running server -- without building a
+// second program for it.
+constexpr char kLingerFlag[] = "--linger-as-a-server";
+constexpr int kLingerSeconds = 30;
 
 template <typename Predicate>
 bool waitUntil(Predicate predicate, int timeout_ms) {
@@ -54,10 +70,14 @@ BrowserBridgePipeServer::Options serverOptions(const QString &rendezvous) {
 // A fake extension for relayPumpOnce: capture the forwarded command, then
 // answer it by echoing the correlation id with a canned payload. browser_write
 // runs before browser_read in the pump, so the id is captured before the reply
-// is built.
+// is built. It answers as bridge protocol 2 does for a command that touched a
+// tab -- naming the tab and its DOM generation -- or, with reply_error set,
+// with an error frame carrying that text.
 struct FakeExtension {
   QJsonObject last_command;
   QJsonObject reply_payload;
+  int tab_id{1};
+  QString reply_error;
 
   chrome_control_mcp::BrowserWriteFn writer() {
     return [this](const QJsonObject &command) {
@@ -67,9 +87,18 @@ struct FakeExtension {
   }
   chrome_control_mcp::BrowserReadFn reader() {
     return [this](QJsonObject *out) {
+      if (!reply_error.isEmpty()) {
+        *out = QJsonObject{
+            {QStringLiteral("type"), QStringLiteral("error")},
+            {QStringLiteral("id"), last_command.value(QStringLiteral("id"))},
+            {QStringLiteral("error"), reply_error}};
+        return true;
+      }
       *out = QJsonObject{
           {QStringLiteral("type"), QStringLiteral("result")},
           {QStringLiteral("id"), last_command.value(QStringLiteral("id"))},
+          {QStringLiteral("tabId"), tab_id},
+          {QStringLiteral("domEpoch"), 1},
           {QStringLiteral("payload"), reply_payload}};
       return true;
     };
@@ -164,6 +193,10 @@ private slots:
   void relayConnect_rejectsForeignServerPid();
   void imageMismatchText_namesBothCopiesAndTheFix();
   void selectRecord_honoursTheSessionTheExtensionNamed();
+  void liveRecords_offerOnlyServersThatAreRunning();
+  void serverIds_areThePidsInTheOrderGiven();
+  void serverWatch_reportsChangesToTheLiveSetAndNothingElse();
+  void serverWatch_stopsPromptlyAndWhenTheSinkCloses();
   void relayHandshake_rejectsBadToken();
   void relayHandshake_rejectsProtocolMismatch();
   void relay_forwardsCommandAndReplyOverRealPipe();
@@ -171,6 +204,8 @@ private slots:
   void relay_forwardsProgressBeatsAndStillDeliversTheReply();
   void control_notConnectedReportsError();
   void control_snapshotRoundTripsThroughRelay();
+  void control_waitsForARelayThatIsAttaching();
+  void control_protocolMismatchSaysHowToFixIt();
   void browserPresence_openInputIsNotClosed();
   void browserPresence_waitingBytesAreNotAHangup();
   void browserPresence_closedWriteEndIsAHangup();
@@ -186,7 +221,7 @@ void BrowserBridgeRelayTests::relayConnect_rejectsForeignServerPid() {
   // to a foreign server.
   const RendezvousRecord record{
       QStringLiteral("\\\\.\\pipe\\ChromeControlMCP_BrowserBridge_bogus"),
-      QStringLiteral("deadbeef"), 1, 999'999};
+      QStringLiteral("deadbeef"), kBrowserBridgeProtocol, 999'999};
   QString error;
   QVERIFY(writeRendezvousRecord(path, record, &error));
 
@@ -426,11 +461,19 @@ void BrowserBridgeRelayTests::control_notConnectedReportsError() {
   BrowserControl control(serverOptions(dir.filePath(QStringLiteral("r.json"))));
   QString error;
   QVERIFY2(control.start(&error), qPrintable(error));
+  // The server published a moment ago, so a call now waits for a relay before
+  // refusing. Shortened so the refusal this test expects does not cost the
+  // production wait -- and measured, so the wait is shown to happen.
+  constexpr int kWaitMs = 300;
+  control.setRelayAttachWait(std::chrono::milliseconds(kWaitMs));
 
   // No relay has connected: every browser tool call is a clean, model-readable
   // error.
+  QElapsedTimer timer;
+  timer.start();
   const ToolResult result =
       control.invoke(QStringLiteral("browser_snapshot"), {});
+  QVERIFY(timer.elapsed() >= kWaitMs);
   QVERIFY(result.is_error);
   // The refusal itself is fixed text. What may follow it is a diagnosis of the
   // native-host registration, which depends on what this machine has
@@ -489,17 +532,109 @@ void BrowserBridgeRelayTests::control_snapshotRoundTripsThroughRelay() {
   QVERIFY(waitUntil([&control] { return control.clientConnected(); }, 5000));
   const ToolResult result =
       control.invoke(QStringLiteral("browser_snapshot"), {});
-  QVERIFY2(!result.is_error, qPrintable(result.text));
-  QCOMPARE(
-      result.text,
-      QStringLiteral("url: https://example.test/\ntitle: Example\nelements: 1\n"
-                     "  - button \"Sign in\" [ref=e1]\n"));
-
+  // Checked, not asserted, so a failure still stops the pump thread below
+  // instead of leaving it joinable at return (which aborts the whole binary
+  // and hides every other result).
+  const bool ok = !result.is_error;
   running = false;
   control.stop(); // tears down the pipe; the relay's next pipe read fails and
                   // it exits
   relay.join();
   closeNativeIpcHandle(pipe);
+  QVERIFY2(ok, qPrintable(result.text));
+  QCOMPARE(result.text,
+           QStringLiteral("url: https://example.test/\ntitle: Example\n"
+                          "tab_id: 1\nelements: 1\n"
+                          "  - button \"Sign in\" [ref=e1]\n"));
+}
+
+// The first call of a newly started agent lands before the extension has found
+// the server. It must be held for the attach, not refused into a diagnosis of
+// a browser that is a second from working.
+void BrowserBridgeRelayTests::control_waitsForARelayThatIsAttaching() {
+  QTemporaryDir dir;
+  const QString path = dir.filePath(QStringLiteral("r.json"));
+  BrowserControl control(serverOptions(path));
+  QString error;
+  QVERIFY2(control.start(&error), qPrintable(error));
+
+  FakeExtension extension;
+  extension.reply_payload = QJsonObject{
+      {QStringLiteral("url"), QStringLiteral("https://example.test/")},
+      {QStringLiteral("title"), QStringLiteral("Example")},
+      {QStringLiteral("nodes"), QJsonArray{}}};
+  std::atomic<bool> running{true};
+  std::atomic<NativeIpcHandle> pipe{kInvalidNativeIpcHandle};
+  // The relay arrives only after the call has started waiting.
+  std::thread relay([&] {
+    std::this_thread::sleep_for(std::chrono::milliseconds(400));
+    QString token;
+    QString why;
+    int protocol = 0;
+    const NativeIpcHandle handle = relayConnect(path, &token, &protocol, &why);
+    if (handle == kInvalidNativeIpcHandle ||
+        !relayHandshake(handle, token, protocol, &why)) {
+      return;
+    }
+    pipe = handle;
+    while (running.load() &&
+           relayPumpOnce(handle, extension.reader(), extension.writer())) {
+    }
+  });
+
+  QVERIFY(!control.clientConnected());
+  const ToolResult result =
+      control.invoke(QStringLiteral("browser_snapshot"), {});
+  const bool ok = !result.is_error;
+  running = false;
+  control.stop();
+  relay.join();
+  if (pipe.load() != kInvalidNativeIpcHandle) {
+    closeNativeIpcHandle(pipe.load());
+  }
+  QVERIFY2(ok, qPrintable(result.text));
+  QVERIFY(result.text.startsWith(QStringLiteral("url: https://example.test/")));
+}
+
+// A protocol mismatch is reported by the extension in its own words, which
+// name two version numbers and not the fix. The fix is always the same, so it
+// is appended.
+void BrowserBridgeRelayTests::control_protocolMismatchSaysHowToFixIt() {
+  QTemporaryDir dir;
+  const QString path = dir.filePath(QStringLiteral("r.json"));
+  BrowserControl control(serverOptions(path));
+  QString error;
+  QVERIFY2(control.start(&error), qPrintable(error));
+
+  QString token;
+  int protocol = 0;
+  const NativeIpcHandle pipe = relayConnect(path, &token, &protocol, &error);
+  QVERIFY2(pipe != kInvalidNativeIpcHandle, qPrintable(error));
+  QVERIFY2(relayHandshake(pipe, token, protocol, &error), qPrintable(error));
+
+  FakeExtension extension;
+  extension.reply_error =
+      QStringLiteral("Bridge protocol mismatch: host 2, extension 1");
+  std::atomic<bool> running{true};
+  std::thread relay([&] {
+    while (running.load() &&
+           relayPumpOnce(pipe, extension.reader(), extension.writer())) {
+    }
+  });
+  const bool attached =
+      waitUntil([&control] { return control.clientConnected(); }, 5000);
+  const ToolResult result =
+      control.invoke(QStringLiteral("browser_snapshot"), {});
+  running = false;
+  control.stop();
+  relay.join();
+  closeNativeIpcHandle(pipe);
+  QVERIFY(attached);
+  QVERIFY(result.is_error);
+  QVERIFY2(result.text.startsWith(QStringLiteral(
+               "Bridge protocol mismatch: host 2, extension 1 Reload the "
+               "Chrome Control MCP extension at chrome://extensions")),
+           qPrintable(result.text));
 }
 
 // Which record a relay connects to is now the extension's choice, so the rule
@@ -658,5 +793,272 @@ void BrowserBridgeRelayTests::browserPresence_invalidInputIsClosed() {
   QVERIFY(browserInputClosed(kInvalidNativeIpcHandle));
 }
 
-QTEST_MAIN(BrowserBridgeRelayTests)
+// -- Which servers the extension is told about -------------------------------
+//
+// A listing of rendezvous records is a listing of files, and a server that
+// crashes leaves its file behind until another server starts and sweeps it.
+// The extension picks from what it is offered with no way to tell a dead pid
+// from a live one, so a stale record cost it a port and a failed connection.
+
+namespace {
+
+// A dead pid far above any live process, as the pipe suite uses.
+constexpr qint64 kAbsentPid = 0x7FFF'FFF0;
+
+// Something that is running but is not this program.
+bool startStranger(QProcess *stranger) {
+#ifdef Q_OS_WIN
+  stranger->start(QStringLiteral("cmd.exe"),
+                  {QStringLiteral("/c"), QStringLiteral("ping"),
+                   QStringLiteral("-n"), QStringLiteral("30"),
+                   QStringLiteral("127.0.0.1")});
+#else
+  stranger->start(QStringLiteral("sleep"), {QStringLiteral("30")});
+#endif
+  return stranger->waitForStarted(10'000);
+}
+
+// A running copy of this very program, which is what a server is.
+bool startLingerer(QProcess *lingerer) {
+  lingerer->start(QCoreApplication::applicationFilePath(),
+                  {QString::fromLatin1(kLingerFlag)});
+  return lingerer->waitForStarted(10'000);
+}
+
+QString recordFor(const QTemporaryDir &dir, qint64 pid) {
+  const QString path =
+      QDir(dir.path())
+          .filePath(QStringLiteral("browser_bridge-%1.json").arg(pid));
+  const RendezvousRecord record{QStringLiteral("endpoint-%1").arg(pid),
+                                QStringLiteral("t"), kBrowserBridgeProtocol,
+                                pid};
+  return writeRendezvousRecord(path, record, nullptr) ? path : QString();
+}
+
+void endProcess(QProcess *process) {
+  process->kill();
+  process->waitForFinished(10'000);
+}
+
+} // namespace
+
+void BrowserBridgeRelayTests::liveRecords_offerOnlyServersThatAreRunning() {
+  QTemporaryDir dir;
+  QVERIFY(dir.isValid());
+
+  QProcess newer_server;
+  QProcess older_server;
+  QProcess stranger;
+  QVERIFY2(startLingerer(&newer_server), "could not start a copy of us");
+  QVERIFY2(startLingerer(&older_server), "could not start a copy of us");
+  QVERIFY2(startStranger(&stranger), "could not start a stranger process");
+
+  const QString newer = recordFor(dir, newer_server.processId());
+  const QString older = recordFor(dir, older_server.processId());
+  // Left by a server that crashed: the pid is gone.
+  const QString crashed = recordFor(dir, kAbsentPid);
+  // A pid that has since been reused by some other program.
+  const QString reused = recordFor(dir, stranger.processId());
+  // A record naming this process. The relay is never a server, so a record
+  // naming it is not one it could attach to.
+  const QString self = recordFor(dir, chrome_control_mcp::currentProcessId());
+  // Unreadable, so there is no pid in it to check.
+  const QString garbled =
+      QDir(dir.path()).filePath(QStringLiteral("browser_bridge-12345.json"));
+  {
+    QFile file(garbled);
+    QVERIFY(file.open(QIODevice::WriteOnly | QIODevice::Truncate));
+    QVERIFY(file.write("not a record") > 0);
+  }
+  for (const QString &path : {newer, older, crashed, reused, self}) {
+    QVERIFY2(!path.isEmpty(), "could not write a record");
+  }
+
+  // Interleaved, in the newest-first order a listing hands over: the living
+  // keep their places relative to each other, and nothing else survives.
+  const QStringList listed{crashed, newer, reused, garbled, older, self};
+  QCOMPARE(chrome_control_mcp::liveRendezvousRecords(listed),
+           (QStringList{newer, older}));
+
+  // A server that exits drops out of the listing, which is what the watcher
+  // relies on to report it gone. Polled rather than asserted at once: on
+  // Windows a process object outlives its exit for as long as anything still
+  // holds a handle to it, and something other than this test may, briefly.
+  endProcess(&older_server);
+  QVERIFY(waitUntil(
+      [&listed, &newer] {
+        return chrome_control_mcp::liveRendezvousRecords(listed) ==
+               QStringList{newer};
+      },
+      5000));
+
+  endProcess(&newer_server);
+  endProcess(&stranger);
+  QVERIFY(waitUntil(
+      [&listed] {
+        return chrome_control_mcp::liveRendezvousRecords(listed).isEmpty();
+      },
+      5000));
+}
+
+void BrowserBridgeRelayTests::serverIds_areThePidsInTheOrderGiven() {
+  QCOMPARE(chrome_control_mcp::rendezvousServerIds(
+               {QStringLiteral("/run/ccmcp/browser_bridge-300.json"),
+                QStringLiteral("/run/ccmcp/not-a-record.json"),
+                QStringLiteral("/run/ccmcp/browser_bridge-100.json")}),
+           (QStringList{QStringLiteral("300"), QStringLiteral("100")}));
+  QVERIFY(chrome_control_mcp::rendezvousServerIds({}).isEmpty());
+}
+
+namespace {
+
+// Short, so the watcher's passes are cheap to wait through; what is under test
+// is what it reports, not how often it looks.
+constexpr int kTestWatchMs = 20;
+// Ten passes at kTestWatchMs: long enough that a frame which should not be sent
+// would have been.
+constexpr int kQuietWindowMs = 200;
+
+// What the extension would receive, captured from the watcher's thread.
+struct FrameSink {
+  std::mutex mutex;
+  std::vector<QJsonObject> frames;
+
+  chrome_control_mcp::BrowserWriteFn writer() {
+    return [this](const QJsonObject &frame) {
+      const std::lock_guard<std::mutex> lock(mutex);
+      frames.push_back(frame);
+      return true;
+    };
+  }
+  std::size_t count() {
+    const std::lock_guard<std::mutex> lock(mutex);
+    return frames.size();
+  }
+  QJsonObject at(std::size_t index) {
+    const std::lock_guard<std::mutex> lock(mutex);
+    return frames.at(index);
+  }
+};
+
+// The live set the watcher sees, changed by the test as servers come and go.
+struct LiveServers {
+  std::mutex mutex;
+  QStringList ids;
+
+  BridgeServerWatcher::ListFn lister() {
+    return [this] {
+      const std::lock_guard<std::mutex> lock(mutex);
+      return ids;
+    };
+  }
+  void set(const QStringList &next) {
+    const std::lock_guard<std::mutex> lock(mutex);
+    ids = next;
+  }
+};
+
+QJsonObject serversNotice(const QStringList &ids) {
+  return QJsonObject{
+      {QStringLiteral("type"), QStringLiteral("bridge_servers")},
+      {QStringLiteral("servers"), QJsonArray::fromStringList(ids)}};
+}
+
+} // namespace
+
+// A relay offers its list once. Before the watcher, a server started after
+// that -- a second editor opening -- waited for the extension's 30 s alarm to
+// be found. The watcher reports a changed set within one pass, and stays quiet
+// otherwise: the extension acts on each notice, so a notice for nothing is not
+// free.
+void BrowserBridgeRelayTests::
+    serverWatch_reportsChangesToTheLiveSetAndNothingElse() {
+  FrameSink sink;
+  LiveServers live;
+  // Same servers as the offer, in a different order: a server re-publishing
+  // its record moves it to the front of the listing, and nothing started.
+  live.set({QStringLiteral("200"), QStringLiteral("300")});
+  BridgeServerWatcher watcher({QStringLiteral("300"), QStringLiteral("200")},
+                              live.lister(), sink.writer(), kTestWatchMs);
+  QTest::qWait(kQuietWindowMs);
+  QCOMPARE(sink.count(), std::size_t{0});
+
+  // A server starts. The notice is the whole set, newest first, in exactly the
+  // documented shape and nothing more.
+  live.set(
+      {QStringLiteral("400"), QStringLiteral("300"), QStringLiteral("200")});
+  QVERIFY(waitUntil([&sink] { return sink.count() == 1; }, 2000));
+  QCOMPARE(sink.at(0),
+           serversNotice({QStringLiteral("400"), QStringLiteral("300"),
+                          QStringLiteral("200")}));
+  // Reported once, not on every pass that sees it.
+  QTest::qWait(kQuietWindowMs);
+  QCOMPARE(sink.count(), std::size_t{1});
+
+  // Servers leaving are news too.
+  live.set({QStringLiteral("300")});
+  QVERIFY(waitUntil([&sink] { return sink.count() == 2; }, 2000));
+  QCOMPARE(sink.at(1), serversNotice({QStringLiteral("300")}));
+
+  // Down to none at all, which is reported as an empty list, not skipped.
+  live.set({});
+  QVERIFY(waitUntil([&sink] { return sink.count() == 3; }, 2000));
+  QCOMPARE(sink.at(2), serversNotice({}));
+
+  watcher.stop();
+  live.set({QStringLiteral("500")});
+  QTest::qWait(kQuietWindowMs);
+  QCOMPARE(sink.count(), std::size_t{3}); // stopped means stopped
+}
+
+void BrowserBridgeRelayTests::serverWatch_stopsPromptlyAndWhenTheSinkCloses() {
+  {
+    // The relay joins the watcher on its way out, and a relay that lingers
+    // holds the server's pipe. So stopping cannot wait out the interval.
+    FrameSink sink;
+    LiveServers live;
+    BridgeServerWatcher watcher({}, live.lister(), sink.writer(), 60'000);
+    QElapsedTimer timer;
+    timer.start();
+    watcher.stop();
+    QVERIFY2(
+        timer.elapsed() < 2000,
+        qPrintable(QStringLiteral("stop took %1 ms").arg(timer.elapsed())));
+    watcher.stop(); // and a second stop is harmless
+  }
+
+  // A write that fails means stdout -- and so Chrome -- is gone. The watcher
+  // stops there rather than listing on into a closed pipe.
+  std::atomic<int> listings{0};
+  std::atomic<int> writes{0};
+  BridgeServerWatcher watcher(
+      {},
+      [&listings] {
+        listings.fetch_add(1);
+        return QStringList{QStringLiteral("1")};
+      },
+      [&writes](const QJsonObject &) {
+        writes.fetch_add(1);
+        return false;
+      },
+      kTestWatchMs);
+  QVERIFY(waitUntil([&writes] { return writes.load() == 1; }, 2000));
+  QTest::qWait(kQuietWindowMs);
+  QCOMPARE(writes.load(), 1);
+  QCOMPARE(listings.load(), 1);
+}
+
+int main(int argc, char *argv[]) {
+  if (argc >= 2 && std::strcmp(argv[1], kLingerFlag) == 0) {
+    // Killed by the test that started it; the bound only stops an orphan
+    // outliving a test that died before it could.
+    std::this_thread::sleep_for(std::chrono::seconds(kLingerSeconds));
+    return 0;
+  }
+  QCoreApplication app(argc, argv);
+  BrowserBridgeRelayTests tests;
+  QTEST_SET_MAIN_SOURCE_PATH
+  return QTest::qExec(&tests, argc, argv);
+}
+
 #include "test_browser_bridge_relay.moc"

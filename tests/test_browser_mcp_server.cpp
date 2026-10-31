@@ -53,6 +53,9 @@ class BrowserMcpServerTests : public QObject {
 
 private slots:
   void initializeReportsStandaloneIdentity();
+  void initializeCarriesClientAgnosticInstructions();
+  void initializeHandsTheSanitizedClientNameToBrowserControl();
+  void releaseIsAdvertisedAndNotReadOnly();
   void fullCatalogContainsEveryBrowserAndInstallerTool();
   void readOnlyCatalogFiltersMutatingTools();
   void updateToolsAreServedNativelyNotThroughTheBridge();
@@ -77,13 +80,104 @@ void BrowserMcpServerTests::initializeReportsStandaloneIdentity() {
            QStringLiteral("chrome-control-mcp"));
 }
 
+// MCP `instructions` reach whatever client connects, so they say how the tools
+// fit together when agents share the server or the browser -- and name no
+// client, because any of them may be the one reading.
+void BrowserMcpServerTests::initializeCarriesClientAgnosticInstructions() {
+  const auto response = handleRequest(request(QStringLiteral("initialize"), 1));
+  QVERIFY(response.has_value());
+  const QString instructions = response->value(QStringLiteral("result"))
+                                   .toObject()
+                                   .value(QStringLiteral("instructions"))
+                                   .toString();
+  QVERIFY(!instructions.isEmpty());
+  for (const QString &needed : {
+           QStringLiteral("browser_new_tab"),
+           QStringLiteral("tab_id"),
+           QStringLiteral("bound to the tab"),
+           QStringLiteral("agent"),
+           QStringLiteral("refused"),
+           QStringLiteral("browser_upload"),
+           QStringLiteral("browser_release"),
+           QStringLiteral("handed back"),
+           QStringLiteral("keep_open:true"),
+       }) {
+    QVERIFY2(instructions.contains(needed), qPrintable(needed));
+  }
+  for (const QString &client : {
+           QStringLiteral("Claude"),
+           QStringLiteral("Codex"),
+           QStringLiteral("Copilot"),
+           QStringLiteral("Cursor"),
+           QStringLiteral("Anthropic"),
+           QStringLiteral("OpenAI"),
+       }) {
+    QVERIFY2(!instructions.contains(client, Qt::CaseInsensitive),
+             qPrintable(client));
+  }
+}
+
+// clientInfo.name titles the tab group the extension marks this session's tabs
+// with, so it is captured at initialize -- through the same sanitizer the
+// frames use -- and a re-initialize without one clears it.
+void BrowserMcpServerTests::
+    initializeHandsTheSanitizedClientNameToBrowserControl() {
+  BrowserControl browser;
+  QVERIFY(browser.clientName().isEmpty());
+  const auto named = handleRequest(
+      request(QStringLiteral("initialize"), 1,
+              QJsonObject{{QStringLiteral("clientInfo"),
+                           QJsonObject{{QStringLiteral("name"),
+                                        QStringLiteral("\u0007 my-client\n "
+                                                       "with a name far too "
+                                                       "long to keep")},
+                                       {QStringLiteral("version"),
+                                        QStringLiteral("1")}}}}),
+      &browser);
+  QVERIFY(named.has_value());
+  QCOMPARE(browser.clientName(),
+           QStringLiteral("my-client with a name far too lo"));
+
+  const auto unnamed = handleRequest(
+      request(QStringLiteral("initialize"), 2,
+              QJsonObject{{QStringLiteral("clientInfo"),
+                           QJsonObject{{QStringLiteral("name"), 42}}}}),
+      &browser);
+  QVERIFY(unnamed.has_value());
+  QVERIFY(browser.clientName().isEmpty());
+}
+
+void BrowserMcpServerTests::releaseIsAdvertisedAndNotReadOnly() {
+  QVERIFY(!mcpToolIsReadOnly(QStringLiteral("browser_release")));
+  BrowserControl browser;
+  const auto full =
+      handleRequest(request(QStringLiteral("tools/list"), 2), &browser);
+  QVERIFY(full.has_value());
+  QVERIFY(catalogNames(*full).contains(QStringLiteral("browser_release")));
+
+  McpServerPolicy policy;
+  policy.read_only_profile = true;
+  const auto readOnly =
+      handleRequest(request(QStringLiteral("tools/list"), 3), &browser, policy);
+  QVERIFY(readOnly.has_value());
+  QVERIFY(!catalogNames(*readOnly).contains(QStringLiteral("browser_release")));
+  const auto refused = handleRequest(
+      toolCall(QStringLiteral("browser_release")), &browser, policy);
+  QVERIFY(refused.has_value());
+  QCOMPARE(refused->value(QStringLiteral("error"))
+               .toObject()
+               .value(QStringLiteral("code"))
+               .toInt(),
+           -32602);
+}
+
 void BrowserMcpServerTests::fullCatalogContainsEveryBrowserAndInstallerTool() {
   BrowserControl browser;
   const auto response =
       handleRequest(request(QStringLiteral("tools/list"), 2), &browser);
   QVERIFY(response.has_value());
   const QSet<QString> names = catalogNames(*response);
-  QCOMPARE(names.size(), 51);
+  QCOMPARE(names.size(), 52);
   for (const QString &expected : {
            QStringLiteral("browser_navigate"),
            QStringLiteral("browser_snapshot"),

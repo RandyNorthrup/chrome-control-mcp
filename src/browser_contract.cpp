@@ -87,6 +87,18 @@ bool asBackendId(const QJsonValue &value, qint64 *out) {
   return true;
 }
 
+// The number in a ref name ("e29" -> 29), or 0 for anything not shaped
+// e<digits>. Only ever applied to names this module issued, but parsed rather
+// than assumed so a malformed carried index lowers nothing.
+qint64 refNumber(const QString &ref) {
+  if (!ref.startsWith(QLatin1Char('e'))) {
+    return 0;
+  }
+  bool ok = false;
+  const qint64 number = ref.mid(1).toLongLong(&ok);
+  return ok && number > 0 ? number : 0;
+}
+
 // An interactable role we still show even with no accessible name, because the
 // model may need to act on it (e.g. an icon-only button).
 bool roleIsStructuralNoise(const QString &role) {
@@ -345,10 +357,14 @@ QHash<QString, CmdSpec> formCommandSpecs() {
         {{QStringLiteral("action"), QStringLiteral("string"), true},
          {QStringLiteral("value"), QStringLiteral("string"), false}}}},
       // The paths stay on this side: the app reads the files and sends their
-      // bytes, so the command that reaches the extension names an element and
-      // the files delivered for it, never a location on the user's disk.
+      // bytes, so the command that reaches the extension names an element (or
+      // none) and the files delivered for it, never a location on the user's
+      // disk. The ref is optional because a page that opens its own file
+      // chooser -- the usual case, behind a styled button -- has already said
+      // which input it wants: the extension intercepts that chooser rather
+      // than showing a dialog, and an upload with no ref fills it.
       {QStringLiteral("browser_upload"),
-       {QStringLiteral("upload"), QStringLiteral("required"), {}}},
+       {QStringLiteral("upload"), QStringLiteral("optional"), {}}},
   };
 }
 
@@ -385,10 +401,12 @@ QHash<QString, CmdSpec> pageAndTabCommandSpecs() {
         {{QStringLiteral("failed_only"), QStringLiteral("bool"), false},
          {QStringLiteral("limit"), QStringLiteral("int"), false},
          {QStringLiteral("clear"), QStringLiteral("bool"), false}}}},
+      // index is optional only because tab_id is the other way to name the
+      // tab; exactly one of the two is enforced in applyToolExtras.
       {QStringLiteral("browser_select_tab"),
        {QStringLiteral("selectTab"),
         QStringLiteral("none"),
-        {{QStringLiteral("index"), QStringLiteral("int"), true}}}},
+        {{QStringLiteral("index"), QStringLiteral("int"), false}}}},
       {QStringLiteral("browser_new_tab"),
        {QStringLiteral("newTab"),
         QStringLiteral("none"),
@@ -407,6 +425,14 @@ QHash<QString, CmdSpec> pageAndTabCommandSpecs() {
        {QStringLiteral("ungroupTabs"),
         QStringLiteral("none"),
         {{QStringLiteral("tab_indices"), QStringLiteral("string"), false}}}},
+      // Ending a task. Its tab_id is not in this list: it is added the way
+      // every tab-scoped tool's is (acceptsTabId), so it is validated by the
+      // same rule, but release is not tab-scoped -- without one it lets go of
+      // every tab the session holds.
+      {QStringLiteral("browser_release"),
+       {QStringLiteral("release"),
+        QStringLiteral("none"),
+        {{QStringLiteral("keep_open"), QStringLiteral("bool"), false}}}},
   };
 }
 
@@ -566,9 +592,90 @@ const QHash<QString, CmdSpec> &commandSpecs() {
   return kSpecs;
 }
 
+// The commands that act on exactly one tab. Each takes an optional tab_id so a
+// caller can name its own tab instead of riding the session's current one --
+// which is shared by every agent on this server, so without it one agent
+// opening a tab silently retargets the next call of every other. Kept as one
+// list of extension commands, not of tools, so the schema property, the
+// allowed-argument set and the frame field all follow from it together.
+const QSet<QString> &tabScopedCommands() {
+  static const QSet<QString> kCommands{
+      QStringLiteral("snapshot"),     QStringLiteral("read"),
+      QStringLiteral("navigate"),     QStringLiteral("back"),
+      QStringLiteral("forward"),      QStringLiteral("reload"),
+      QStringLiteral("click"),        QStringLiteral("clickAt"),
+      QStringLiteral("hover"),        QStringLiteral("drag"),
+      QStringLiteral("dialog"),       QStringLiteral("type"),
+      QStringLiteral("select"),       QStringLiteral("setValue"),
+      QStringLiteral("media"),        QStringLiteral("pressKey"),
+      QStringLiteral("scroll"),       QStringLiteral("screenshot"),
+      QStringLiteral("waitFor"),      QStringLiteral("console"),
+      QStringLiteral("network"),      QStringLiteral("getValue"),
+      QStringLiteral("getAttribute"), QStringLiteral("box"),
+      QStringLiteral("focus"),        QStringLiteral("reveal"),
+      QStringLiteral("jsClick"),      QStringLiteral("emulate"),
+      QStringLiteral("print"),        QStringLiteral("storage"),
+      QStringLiteral("download"),     QStringLiteral("recordStart"),
+      QStringLiteral("httpAuth"),     QStringLiteral("upload"),
+      QStringLiteral("closeTab"),     QStringLiteral("selectTab"),
+  };
+  return kCommands;
+}
+
+// Every tab-scoped command takes tab_id, and so does release, which uses it to
+// let go of one tab rather than all of them.
+bool acceptsTabId(const QString &cmd) {
+  return commandIsTabScoped(cmd) || cmd == QLatin1String("release");
+}
+
+// The tab_id argument, validated exactly like any other int argument (type,
+// int32 range) plus the positive check in argSemanticError.
+const ArgSpec &tabIdArgSpec() {
+  static const ArgSpec kSpec{QStringLiteral("tab_id"), QStringLiteral("int"),
+                             false};
+  return kSpec;
+}
+
+// Send the command to the tab @p ref's snapshot came from. A ref names a node
+// in ONE document; the same backendNodeId on another tab is another node, so a
+// ref acted on anywhere but its own tab is a silent wrong target. The binding
+// therefore decides the tab, and a tab_id the caller also passed must agree:
+// when they disagree neither is the safe one to pick, so the call is refused
+// naming both. An entry with no tabId at all is unbound (an index built
+// without bindings) and adds nothing. Empty on success.
+QString bindRefTab(const QString &ref, const QJsonObject &entry,
+                   QJsonObject &command) {
+  if (!entry.contains(QStringLiteral("tabId"))) {
+    return QString();
+  }
+  qint64 ref_tab = 0;
+  if (!tabIdFromJson(entry.value(QStringLiteral("tabId")), &ref_tab)) {
+    return QStringLiteral("Element ref '%1' is not bound to a valid tab; call "
+                          "browser_snapshot to refresh")
+        .arg(ref);
+  }
+  const QJsonValue asked = command.value(QStringLiteral("tab_id"));
+  if (asked.isUndefined()) {
+    command.insert(QStringLiteral("tab_id"), ref_tab);
+    return QString();
+  }
+  if (asked.toInteger() != ref_tab) {
+    return QStringLiteral(
+               "Element ref '%1' belongs to tab %2, but tab_id %3 was passed. "
+               "A ref acts only on the tab its snapshot came from: drop "
+               "tab_id, or call browser_snapshot with tab_id %3 for that "
+               "tab's refs.")
+        .arg(ref)
+        .arg(ref_tab)
+        .arg(asked.toInteger());
+  }
+  return QString();
+}
+
 // Resolve an optional/required `ref` argument to a backendNodeId via the
 // current snapshot index. Returns an error string (empty on success) and, on
-// success with a present ref, writes backendNodeId into `command`.
+// success with a present ref, writes backendNodeId -- and the tab_id the ref
+// is bound to -- into `command`.
 QString resolveRef(const QJsonObject &args, const QJsonObject &ref_index,
                    bool required, QJsonObject &command) {
   const QJsonValue ref_value = args.value(QStringLiteral("ref"));
@@ -588,9 +695,13 @@ QString resolveRef(const QJsonObject &args, const QJsonObject &ref_index,
                "Unknown element ref '%1'; call browser_snapshot to refresh")
         .arg(ref);
   }
-  command.insert(
-      QStringLiteral("backendNodeId"),
-      ref_index.value(ref).toObject().value(QStringLiteral("backendNodeId")));
+  const QJsonObject entry = ref_index.value(ref).toObject();
+  QString unbound = bindRefTab(ref, entry, command);
+  if (!unbound.isEmpty()) {
+    return unbound;
+  }
+  command.insert(QStringLiteral("backendNodeId"),
+                 entry.value(QStringLiteral("backendNodeId")));
   return QString();
 }
 
@@ -675,6 +786,13 @@ QString directionSemanticError(const QJsonValue &value) {
 // "left" default; direction is trimmed and lower-cased the same way. Empty on
 // success or for a key that carries no modeled constraint.
 QString argSemanticError(const QString &key, const QJsonValue &value) {
+  // Chrome never issues tab id 0 or a negative one; refusing them here keeps a
+  // placeholder or an off-by-one from reaching the extension as a real tab.
+  if (key == QLatin1String("tab_id")) {
+    return value.toInt() > 0
+               ? QString()
+               : QStringLiteral("tab_id must be a positive integer");
+  }
   if (key == QLatin1String("button")) {
     return buttonSemanticError(value);
   }
@@ -737,9 +855,117 @@ QString applyDragExtra(const QJsonObject &arguments,
                "Unknown element ref '%1'; call browser_snapshot to refresh")
         .arg(to_ref);
   }
+  const QJsonObject to_entry = ref_index.value(to_ref).toObject();
+  // A drag is one pointer gesture on one page. Its two ends on two tabs is not
+  // a drag anyone can perform, and sending it would press on one tab and
+  // release wherever the other end's coordinates happen to fall on it. Named
+  // as a cross-tab drag rather than left to bindRefTab, whose message would
+  // blame a tab_id the caller never passed.
+  const QString from_ref = arguments.value(QStringLiteral("ref")).toString();
+  qint64 from_tab = 0;
+  qint64 to_tab = 0;
+  if (!from_ref.isEmpty() &&
+      tabIdFromJson(
+          ref_index.value(from_ref).toObject().value(QStringLiteral("tabId")),
+          &from_tab) &&
+      tabIdFromJson(to_entry.value(QStringLiteral("tabId")), &to_tab) &&
+      from_tab != to_tab) {
+    return QStringLiteral("to_ref '%1' is on tab %2 but ref '%3' is on tab "
+                          "%4; a drag cannot cross tabs")
+        .arg(to_ref)
+        .arg(to_tab)
+        .arg(from_ref)
+        .arg(from_tab);
+  }
+  QString unbound = bindRefTab(to_ref, to_entry, command);
+  if (!unbound.isEmpty()) {
+    return unbound;
+  }
   command.insert(QStringLiteral("to_backendNodeId"),
-                 ref_index.value(to_ref).toObject().value(
-                     QStringLiteral("backendNodeId")));
+                 to_entry.value(QStringLiteral("backendNodeId")));
+  return QString();
+}
+
+// The tools that take an `agent` name: the two that make a tab this session's,
+// which is the moment the extension decides which tab group -- and so which
+// colour -- the tab joins. browser_window new is left out: a window's tabs
+// are grouped by the tab calls made in it.
+bool takesAgentName(const QString &tool) {
+  return tool == QLatin1String("browser_new_tab") ||
+         tool == QLatin1String("browser_select_tab");
+}
+
+// Longest agent name, in characters (code points). Short because it becomes a
+// tab-group title in a tab strip that has room for a word, not a sentence.
+constexpr qsizetype kMaxAgentNameChars = 24;
+
+// A character an agent name may hold. QChar::isPrint already refuses every
+// Other_* category -- control and format characters (bidi overrides that
+// would reorder the title), unassigned code points, and lone surrogates; line
+// and paragraph separators pass that rule and still break a one-line title.
+bool agentNameCharIsPrintable(char32_t point) {
+  const QChar::Category category = QChar::category(point);
+  return QChar::isPrint(point) && category != QChar::Separator_Line &&
+         category != QChar::Separator_Paragraph;
+}
+
+// browser_new_tab / browser_select_tab's `agent`: tabs given the same name
+// share one tab group with its own colour, so the user can tell agents apart.
+// The only normalization is trimming the ends; anything else wrong with it -- a
+// control character, a lone surrogate, nothing left, more than 24 characters
+// -- is refused rather than stripped or cut, because a name changed behind
+// the caller's back lands its tabs in a group it did not ask for. Copied into
+// the command trimmed. Empty on success.
+QString applyAgentName(const QJsonObject &arguments, QJsonObject &command) {
+  if (!arguments.contains(QStringLiteral("agent"))) {
+    return QString();
+  }
+  const QJsonValue value = arguments.value(QStringLiteral("agent"));
+  if (!value.isString()) {
+    return QStringLiteral("agent must be a string");
+  }
+  const QString name = value.toString().trimmed();
+  qsizetype characters = 0;
+  for (qsizetype i = 0; i < name.size(); ++i) {
+    char32_t point = name.at(i).unicode();
+    // A well-formed pair is one character; a half on its own falls through as
+    // a surrogate code point, which is not printable and is refused.
+    if (QChar::isHighSurrogate(point) && i + 1 < name.size() &&
+        name.at(i + 1).isLowSurrogate()) {
+      point = QChar::surrogateToUcs4(name.at(i), name.at(i + 1));
+      ++i;
+    }
+    if (!agentNameCharIsPrintable(point)) {
+      return QStringLiteral(
+          "agent must contain only printable characters (no control "
+          "characters)");
+    }
+    ++characters;
+  }
+  if (characters < 1 || characters > kMaxAgentNameChars) {
+    return QStringLiteral("agent must be 1 to %1 characters after trimming")
+        .arg(kMaxAgentNameChars);
+  }
+  command.insert(QStringLiteral("agent"), name);
+  return QString();
+}
+
+// Which tab browser_select_tab and browser_close_tab mean. index is positional
+// (from a listing) and tab_id is stable; given both they can disagree, and
+// neither may silently win on a call that retargets the session or closes a
+// tab. select_tab needs exactly one -- it has no "current tab" default to fall
+// back on -- and close_tab at most one, keeping "neither" as the session's own
+// tab. Empty on success.
+QString tabChoiceError(const QString &tool, const QJsonObject &arguments) {
+  const bool by_index = arguments.contains(QStringLiteral("index"));
+  const bool by_id = arguments.contains(QStringLiteral("tab_id"));
+  if (tool == QLatin1String("browser_select_tab") && by_index == by_id) {
+    return QStringLiteral(
+        "browser_select_tab needs exactly one of index or tab_id");
+  }
+  if (tool == QLatin1String("browser_close_tab") && by_index && by_id) {
+    return QStringLiteral("browser_close_tab takes index or tab_id, not both");
+  }
   return QString();
 }
 
@@ -850,17 +1076,30 @@ QString applyToolExtras(const QString &tool, const QJsonObject &arguments,
   if (tool == QLatin1String("browser_upload")) {
     return applyUploadPaths(arguments);
   }
+  if (takesAgentName(tool)) {
+    const QString agent = applyAgentName(arguments, command);
+    if (!agent.isEmpty()) {
+      return agent;
+    }
+  }
+  if (tool == QLatin1String("browser_select_tab") ||
+      tool == QLatin1String("browser_close_tab")) {
+    return tabChoiceError(tool, arguments);
+  }
   return QString();
 }
 
 // The set of argument keys a tool legitimately accepts: its scalar arg specs,
-// the ref/to_ref endpoints, and browser_select's `values`. Mirrors the
-// additionalProperties:false the schema advertises so a caller cannot smuggle
-// an unmodeled key past this layer.
+// the ref/to_ref endpoints, tab_id for a command that takes one, and
+// browser_select's `values`. Mirrors the additionalProperties:false the schema
+// advertises so a caller cannot smuggle an unmodeled key past this layer.
 QSet<QString> allowedArgKeys(const QString &tool, const CmdSpec &spec) {
   QSet<QString> allowed;
   if (spec.m_ref_mode != QLatin1String("none")) {
     allowed.insert(QStringLiteral("ref"));
+  }
+  if (acceptsTabId(spec.m_cmd)) {
+    allowed.insert(tabIdArgSpec().m_key);
   }
   for (const ArgSpec &arg : spec.m_args) {
     allowed.insert(arg.m_key);
@@ -873,6 +1112,9 @@ QSet<QString> allowedArgKeys(const QString &tool, const CmdSpec &spec) {
   }
   if (tool == QLatin1String("browser_upload")) {
     allowed.insert(QStringLiteral("paths"));
+  }
+  if (takesAgentName(tool)) {
+    allowed.insert(QStringLiteral("agent"));
   }
   return allowed;
 }
@@ -901,6 +1143,69 @@ QJsonObject stringProperty(const QString &description) {
 QJsonObject typedProperty(const QString &type, const QString &description) {
   return QJsonObject{{QStringLiteral("type"), type},
                      {QStringLiteral("description"), description}};
+}
+
+// A tab_id property. The minimum is advertised as well as enforced
+// (argSemanticError), so a client that validates schemas refuses a 0 before it
+// is sent.
+QJsonObject tabIdProperty(const QString &description) {
+  QJsonObject property = typedProperty(QStringLiteral("integer"), description);
+  property.insert(QStringLiteral("minimum"), 1);
+  return property;
+}
+
+// The `agent` property on the tools that make a tab this session's. Length is
+// advertised as well as enforced (applyAgentName); maxLength counts UTF-16
+// units in some validators, which only ever makes them stricter than ours.
+QJsonObject agentProperty() {
+  QJsonObject property = stringProperty(QStringLiteral(
+      "A short name for the agent doing this work (e.g. \"research\"). Tabs "
+      "with the same name share one tab group with its own colour, so the "
+      "user can tell agents apart; tabs a page opens from them join the same "
+      "group. Omit to use the session's shared group."));
+  property.insert(QStringLiteral("minLength"), 1);
+  property.insert(QStringLiteral("maxLength"),
+                  static_cast<int>(kMaxAgentNameChars));
+  return property;
+}
+
+// What tab_id means on a tool that acts on one tab. The last sentence is the
+// reason it exists: the session's current tab is shared by every agent on this
+// server, so an agent that leans on it is one other agent's browser_new_tab
+// away from acting on the wrong page.
+QString tabIdDescription() {
+  return QStringLiteral(
+      "Chrome tab id to act on (from browser_new_tab or browser_tabs). Omit "
+      "to use this session's current tab. When several agents share this "
+      "server, each should pass its own tab's id on every call.");
+}
+
+// Add tab_id to every tab-scoped tool's schema, from the command specs rather
+// than by hand in thirty-odd schemas: a tool whose command acts on one tab
+// gets it and no other tool does, by construction, and a new tab-scoped tool
+// cannot ship without it. A tool that declares its own tab_id (select_tab and
+// close_tab, where omitting it means something different) keeps that one.
+QJsonArray withTabIdArguments(const QJsonArray &tools,
+                              const QHash<QString, CmdSpec> &specs) {
+  QJsonArray out;
+  for (const QJsonValue value : tools) {
+    QJsonObject tool = value.toObject();
+    const auto spec =
+        specs.constFind(tool.value(QStringLiteral("name")).toString());
+    if (spec != specs.constEnd() && commandIsTabScoped(spec->m_cmd)) {
+      QJsonObject schema = tool.value(QStringLiteral("inputSchema")).toObject();
+      QJsonObject properties =
+          schema.value(QStringLiteral("properties")).toObject();
+      if (!properties.contains(QStringLiteral("tab_id"))) {
+        properties.insert(QStringLiteral("tab_id"),
+                          tabIdProperty(tabIdDescription()));
+        schema.insert(QStringLiteral("properties"), properties);
+        tool.insert(QStringLiteral("inputSchema"), schema);
+      }
+    }
+    out.append(tool);
+  }
+  return out;
 }
 
 QJsonObject toolSchema(const QJsonObject &properties,
@@ -1207,18 +1512,22 @@ void appendFormControlTools(QJsonArray &tools) {
       QStringLiteral(
           "Give a file input one or more local files, exactly as the user "
           "picking them would: the page receives real File objects and its "
-          "input/change handlers run. [ref] may name the file input itself or "
-          "the control that opens it -- the button, label, or menu item a "
-          "person would click -- because most pages hide the real input behind "
-          "one; a hidden input is also listed in the snapshot as filechooser "
-          "(hidden). Pass absolute paths; more than one needs an input marked "
-          "multiple. Files are read by this server and sent over the bridge; "
-          "no path reaches the page."),
+          "input/change handlers run. File dialogs are intercepted and never "
+          "shown, so clicking a file input or the button that opens one "
+          "reports that a file chooser opened; then call this with just paths "
+          "and no ref to fill that chooser. Or name the input directly: [ref] "
+          "may be the file input itself or the control that opens it -- the "
+          "button, label, or menu item a person would click -- and a hidden "
+          "input is also listed in the snapshot as filechooser (hidden). Pass "
+          "absolute paths; more than one needs an input marked multiple. "
+          "Files are read by this server and sent over the bridge; no path "
+          "reaches the page."),
       toolSchema(
           QJsonObject{
               {QStringLiteral("ref"),
-               stringProperty(
-                   QStringLiteral("Target file input ref, e.g. \"e5\"."))},
+               stringProperty(QStringLiteral(
+                   "Target file input ref, e.g. \"e5\" (optional; omit to fill "
+                   "the file chooser the page opened)."))},
               {QStringLiteral("paths"),
                QJsonObject{{QStringLiteral("type"), QStringLiteral("array")},
                            {QStringLiteral("items"),
@@ -1227,7 +1536,7 @@ void appendFormControlTools(QJsonArray &tools) {
                            {QStringLiteral("description"),
                             QStringLiteral(
                                 "Absolute paths of the files to attach.")}}}},
-          QJsonArray{QStringLiteral("ref"), QStringLiteral("paths")})));
+          QJsonArray{QStringLiteral("paths")})));
   tools.append(toolEntry(
       QStringLiteral("browser_set_value"),
       QStringLiteral(
@@ -1337,47 +1646,82 @@ void appendTabTools(QJsonArray &tools) {
   tools.append(toolEntry(
       QStringLiteral("browser_select_tab"),
       QStringLiteral(
-          "Make the tab at the given index the session's tab. The tab is NOT "
-          "brought to the front and its window is never raised: the browser "
-          "goes on showing whichever tab its user chose, and this session "
-          "drives its own in the background. Call browser_tabs first: "
-          "an index is only meaningful against a listing, and the call is "
-          "refused if the tabs moved since that listing so the index cannot "
-          "land on a tab you did not choose."),
+          "Make a tab the session's tab, named by tab_id or by index -- give "
+          "exactly one. The tab is NOT brought to the front and its window is "
+          "never raised: the browser goes on showing whichever tab its user "
+          "chose, and this session drives its own in the background. An index "
+          "is only meaningful against a listing, so call browser_tabs first; "
+          "the call is refused if the tabs moved since that listing so the "
+          "index cannot land on a tab you did not choose."),
       toolSchema(
-          QJsonObject{{QStringLiteral("index"),
-                       typedProperty(QStringLiteral("integer"),
-                                     QStringLiteral("Zero-based tab index from "
-                                                    "the last browser_tabs "
-                                                    "listing."))}},
-          QJsonArray{QStringLiteral("index")})));
+          QJsonObject{
+              {QStringLiteral("index"),
+               typedProperty(QStringLiteral("integer"),
+                             QStringLiteral("Zero-based tab index from the "
+                                            "last browser_tabs listing "
+                                            "(give this or tab_id)."))},
+              {QStringLiteral("tab_id"),
+               tabIdProperty(QStringLiteral(
+                   "Chrome tab id to make the session's tab (from "
+                   "browser_new_tab or browser_tabs; give this or index)."))},
+              {QStringLiteral("agent"), agentProperty()}},
+          {})));
   tools.append(toolEntry(
       QStringLiteral("browser_new_tab"),
       QStringLiteral(
           "Open a new tab in the session's window, optionally navigating to a "
           "URL. It opens in the BACKGROUND -- the browser goes on showing "
           "whichever tab its user chose -- and becomes the session's tab, "
-          "marked in the tab strip while this session drives it."),
+          "marked in the tab strip while this session drives it. The reply "
+          "carries its tab_id: pass that to every later call, so another "
+          "agent sharing this server cannot retarget you."),
       toolSchema(
           QJsonObject{{QStringLiteral("url"), stringProperty(QStringLiteral(
-                                                  "URL to open (optional)."))}},
+                                                  "URL to open (optional)."))},
+                      {QStringLiteral("agent"), agentProperty()}},
           {})));
   tools.append(toolEntry(
       QStringLiteral("browser_close_tab"),
       QStringLiteral(
-          "Close the tab at index, or the session's tab if omitted. When you "
-          "pass "
-          "an "
-          "index, call browser_tabs first: closing is not undoable, so the "
-          "index is "
-          "checked against that listing and refused if the tabs moved."),
+          "Close the tab named by tab_id or index, or the session's tab if "
+          "neither is given. When you pass an index, call browser_tabs first: "
+          "closing is not undoable, so the index is checked against that "
+          "listing and refused if the tabs moved."),
       toolSchema(
-          QJsonObject{{QStringLiteral("index"),
-                       typedProperty(
-                           QStringLiteral("integer"),
-                           QStringLiteral("Zero-based tab index from the last "
-                                          "browser_tabs listing (optional; "
-                                          "omit for the active tab)."))}},
+          QJsonObject{
+              {QStringLiteral("index"),
+               typedProperty(
+                   QStringLiteral("integer"),
+                   QStringLiteral("Zero-based tab index from the last "
+                                  "browser_tabs listing (optional; give this "
+                                  "or tab_id, not both)."))},
+              {QStringLiteral("tab_id"),
+               tabIdProperty(QStringLiteral(
+                   "Chrome tab id to close (from browser_new_tab or "
+                   "browser_tabs; optional; give this or index, not "
+                   "both)."))}},
+          {})));
+  tools.append(toolEntry(
+      QStringLiteral("browser_release"),
+      QStringLiteral(
+          "Call this when your task is done. Tabs this session opened are "
+          "closed; tabs it borrowed from the user are handed back, never "
+          "closed; the AI tab group and the highlight are removed. When other "
+          "agents share this server, pass your tab_id to release only your own "
+          "tab. Pass keep_open:true to hand the tabs you opened to the user "
+          "instead of closing them."),
+      toolSchema(
+          QJsonObject{
+              {QStringLiteral("tab_id"),
+               tabIdProperty(QStringLiteral(
+                   "Release only this tab (optional; omit to release every "
+                   "tab this session holds)."))},
+              {QStringLiteral("keep_open"),
+               typedProperty(
+                   QStringLiteral("boolean"),
+                   QStringLiteral("Leave the tabs this session opened open for "
+                                  "the user instead of closing them "
+                                  "(optional; default false)."))}},
           {})));
   tools.append(toolEntry(
       QStringLiteral("browser_group_tabs"),
@@ -1895,12 +2239,31 @@ void appendOmittedFramesNote(const QJsonObject &capture, QString &outline) {
 
 } // namespace
 
+bool commandIsTabScoped(const QString &cmd) {
+  return tabScopedCommands().contains(cmd);
+}
+
+bool tabIdFromJson(const QJsonValue &value, qint64 *out) {
+  qint64 id = 0;
+  if (!asBackendId(value, &id) || id > std::numeric_limits<int>::max()) {
+    return false;
+  }
+  *out = id;
+  return true;
+}
+
 SnapshotView renderSnapshot(const QJsonObject &capture) {
-  return renderSnapshot(capture, QJsonObject{});
+  return renderSnapshot(capture, QJsonObject{}, 1);
 }
 
 SnapshotView renderSnapshot(const QJsonObject &capture,
                             const QJsonObject &carried_index) {
+  return renderSnapshot(capture, carried_index, 1);
+}
+
+SnapshotView renderSnapshot(const QJsonObject &capture,
+                            const QJsonObject &carried_index,
+                            qint64 first_new_ref) {
   SnapshotView view;
   view.url =
       oneLine(capture.value(QStringLiteral("url")).toString(), kMaxUrlChars);
@@ -1930,7 +2293,10 @@ SnapshotView renderSnapshot(const QJsonObject &capture,
       taken.insert(it.key());
     }
   }
-  int next_ref = 0;
+  // The last number issued; the first new node takes the one after it. Never
+  // below e1, and never below the caller's floor, so a name the session issued
+  // earlier and has since dropped cannot come back on a different node.
+  qint64 next_ref = std::max<qint64>(first_new_ref, 1) - 1;
   int emitted = 0;
   // The extension caps its own node walk and marks the capture truncated; honor
   // that marker so the model is told the outline is partial even though our
@@ -1978,6 +2344,7 @@ SnapshotView renderSnapshot(const QJsonObject &capture,
         }
       }
       taken.insert(ref);
+      view.highest_ref = std::max(view.highest_ref, refNumber(ref));
       ++view.element_count;
       ref_index.insert(
           ref, QJsonObject{{QStringLiteral("backendNodeId"), backend_id},
@@ -2022,7 +2389,7 @@ QJsonArray browserToolCatalog() {
   appendRecordTools(tools);
   appendHttpAuthTool(tools);
   appendAdvancedInputTools(tools);
-  return tools;
+  return withTabIdArguments(tools, commandSpecs());
 }
 
 ExtensionCommand buildExtensionCommand(const QString &tool,
@@ -2039,6 +2406,15 @@ ExtensionCommand buildExtensionCommand(const QString &tool,
     return fail(unknown);
   }
   QJsonObject command{{QStringLiteral("cmd"), spec.m_cmd}};
+  // tab_id first: a ref resolved below checks its own tab binding against the
+  // tab the caller named, so the caller's choice has to be in the frame by
+  // then.
+  if (acceptsTabId(spec.m_cmd)) {
+    const QString error = copyArg(arguments, tabIdArgSpec(), command);
+    if (!error.isEmpty()) {
+      return fail(error);
+    }
+  }
   if (spec.m_ref_mode != QLatin1String("none")) {
     const QString error =
         resolveRef(arguments, ref_index,

@@ -52,18 +52,54 @@ while no relay is connected, so a record lost to anything short of the server ex
 a restart.
 
 The Chrome-launched relay cannot be told which server it is for on argv, so it asks. It lists the
-published records, sends them to the extension as `bridge_offers`, and connects to the one the
-extension names in `attach_session`. The relay speaks first because the extension has no filesystem
-access and so has no server to name until it is offered one. A server the extension asks for that is
-no longer published yields no connection rather than a substitute.
+records of servers that are still running, sends them to the extension as `bridge_offers`, and
+connects to the one the extension names in `attach_session`. Only running servers are offered
+because a crashed server's record stays on disk until another server starts and sweeps it, and the
+extension cannot tell a dead pid from a live one. The relay speaks first because the extension has
+no filesystem access and so has no server to name until it is offered one. A server the extension
+asks for that is no longer published yields no connection rather than a substitute.
+
+The frames on the relay's stdio, in the order they can appear:
+
+| Frame                                    | Direction         | When                                                       |
+| ---------------------------------------- | ----------------- | ---------------------------------------------------------- |
+| `bridge_offers {protocol, servers}`      | relay → extension | first, before anything else                                |
+| `attach_session {session}`               | extension → relay | only in answer to `bridge_offers`                          |
+| `bridge_ready {protocol}`                | relay → extension | the chosen server welcomed the relay; pumping starts       |
+| `bridge_unavailable {error}`             | relay → extension | instead of `bridge_ready`, after which the relay exits     |
+| `bridge_servers {servers}`               | relay → extension | while pumping, whenever the set of running servers changes |
+| `command`, `cancel`                      | relay → extension | forwarded from the server                                  |
+| `progress`, then one `result` or `error` | extension → relay | only in answer to a `command`                              |
+
+`bridge_servers` is how a server started later is found. A relay offers its list once, so before it
+existed a second editor opening was noticed only when the extension's 30 s alarm next opened a port.
+While it pumps, the relay now lists the running servers again every second and sends the whole set,
+newest first, whenever it differs from the set it last reported -- which starts as the offer. Order
+alone is not a change: a server re-publishing its record moves it to the front of the listing
+without anything having started or stopped. The frame asks for no answer and must not get one,
+because nothing ever travels from the extension to the relay unprompted -- an older relay would read
+such a frame as the reply to a command it had not sent. An extension older than the frame logs an
+unexpected type and ignores it, and its alarm still finds new servers, only more slowly. Every frame
+the relay writes -- the pump's, a forwarded cancel, this notice, and the exit path's last flush --
+goes out under one lock, so two threads can never interleave a frame.
 
 The extension holds one native port per server and one session per port -- Chrome starts a separate
 host process per port, and the relay behind it attaches to exactly one server. Each port's listeners
 close over their session, so an arriving frame never has to be matched back to one; only the
 browser's own events need routing, because they name a tab and nothing else. It retries the native
-connection every 2 s while its service worker is alive and from a 30 s alarm otherwise, and that
-alarm doubles as how a server started later is noticed: a relay offers its list once, so an
-established session would not otherwise hear about a second editor opening.
+connection every 2 s while its service worker is alive and from a 30 s alarm otherwise; the alarm is
+also the fallback for noticing a server started later, for an extension or relay that predates
+`bridge_servers`.
+
+A server serves one relay at a time on an endpoint with a single instance, so a relay that has gone
+must be let go promptly or the next one is turned away -- `ERROR_PIPE_BUSY` on Windows, parked
+unanswered in the listen backlog elsewhere. The relay speaks on the pipe only to answer a command,
+so while it is idle the server looks at the connection every 250 ms without reading from it: a
+hangup ends the connection, and so do bytes arriving with no command outstanding, which a relay
+keeping to the protocol never sends and which would otherwise be read as the reply to the next
+command. Before this check a server whose relay died between commands -- Chrome restarting, the
+extension reloading -- held the endpoint until a command happened along to fail; one was observed
+unreachable for a whole day.
 
 Sessions are kept apart by a tab lease. A tab is held by the session that adopted it or has a
 debugger attachment on it, and the second session to reach for it is refused by name. Chrome already
@@ -89,7 +125,8 @@ There is no private key, package signing, browser-store dependency, or enterpris
 
 1. Assistant sends `tools/call` over MCP stdio.
 2. MCP dispatch validates JSON-RPC envelope, security profile, arguments, and schema.
-3. `BrowserBridgeSession` translates tool call. Element refs resolve only against latest snapshot.
+3. `BrowserBridgeSession` translates tool call. Element refs resolve only against the latest
+   snapshot of the tab they came from, and the command is sent to that tab.
 4. Platform bridge sends one correlated command to authenticated relay.
 5. Relay forwards command through Chrome native messaging.
 6. Extension acts through CDP and returns exactly one result or error.

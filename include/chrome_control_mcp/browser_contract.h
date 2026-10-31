@@ -32,13 +32,17 @@ namespace chrome_control_mcp::browser {
 /// tree). `ref_index` maps each assigned element ref (e.g. "e5") to a small
 /// object carrying the CDP `backendNodeId` plus role/name, so a later
 /// click/type by ref resolves back to the exact node. `element_count` is how
-/// many interactable refs were assigned.
+/// many interactable refs were assigned. `highest_ref` is the largest ref
+/// number in `ref_index` (carried or new), 0 when it is empty: a caller that
+/// must never hand out the same name twice keeps the maximum of it across
+/// snapshots and passes one more as the next snapshot's first_new_ref.
 struct SnapshotView {
   QString url;
   QString title;
   QString outline;
   QJsonObject ref_index;
   int element_count{0};
+  qint64 highest_ref{0};
 };
 
 /// One translated extension command. `ok` is false with a human-readable
@@ -81,16 +85,49 @@ struct ExtensionCommand {
 [[nodiscard]] SnapshotView renderSnapshot(const QJsonObject &capture,
                                           const QJsonObject &carried_index);
 
+/// The same, with a floor under every NEW ref number: a node never seen before
+/// is named e<first_new_ref> or above, never below.
+///
+/// Carrying by backendNodeId stops a ref moving to the node next door within
+/// one document. It does nothing about a ref that has LEFT the index -- its
+/// node went away, the page navigated, the snapshot came from another tab --
+/// and is then issued again for whatever happens to be numbered there next. A
+/// model still holding the old one gets a silent wrong target instead of
+/// "Unknown element ref". The session keeps a high-water mark of every ref it
+/// has issued and passes one more, so no name is ever reused for the life of
+/// the server. Values below 1 are treated as 1.
+[[nodiscard]] SnapshotView renderSnapshot(const QJsonObject &capture,
+                                          const QJsonObject &carried_index,
+                                          qint64 first_new_ref);
+
+/// True iff the extension command @p cmd acts on one tab, and so takes the
+/// optional `tab_id` argument that names it. Exposed so the session can tell a
+/// tab-scoped reply that failed to say which tab it touched (fail closed) from
+/// a command that never touched one (nothing to reconcile).
+[[nodiscard]] bool commandIsTabScoped(const QString &cmd);
+
+/// Read a Chrome tab id: a positive JSON integer no larger than a 32-bit int,
+/// which is what chrome.tabs hands out. Anything else -- a string, a fraction,
+/// zero, a negative, a magnitude past int32 -- is refused rather than coerced,
+/// so a malformed id can never be mistaken for a real tab. One definition for
+/// the ref bindings here and the reply frames the session reads, so a tab id
+/// either side stores is always one the model could pass back as `tab_id`.
+[[nodiscard]] bool tabIdFromJson(const QJsonValue &value, qint64 *out);
+
 /// The browser tool catalog advertised to the model: one entry per tool with a
 /// strict JSON-Schema `inputSchema` (`additionalProperties:false`). DOM-first,
 /// so the primary act-on-element tools take a `ref` from the latest snapshot.
+/// Every tab-scoped tool also takes an optional `tab_id`.
 [[nodiscard]] QJsonArray browserToolCatalog();
 
 /// Translate a model tool call into the extension command envelope. `ref_index`
-/// is the index from the most recent renderSnapshot for the target tab, used to
-/// resolve any `ref` argument to a `backendNodeId`. Never throws: bad input
-/// comes back as `ok == false` with a reason the model can read and recover
-/// from.
+/// maps each live ref to `{backendNodeId, role, name, tabId}`, used to resolve
+/// any `ref`/`to_ref` argument to a `backendNodeId` AND to the tab its snapshot
+/// came from: the command is sent with that `tab_id`, and a call whose own
+/// `tab_id` names a different tab is refused rather than letting either one
+/// win. An entry without `tabId` is unbound and adds no `tab_id`. Never throws:
+/// bad input comes back as `ok == false` with a reason the model can read and
+/// recover from.
 [[nodiscard]] ExtensionCommand
 buildExtensionCommand(const QString &tool, const QJsonObject &arguments,
                       const QJsonObject &ref_index);

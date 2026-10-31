@@ -38,7 +38,12 @@ inline constexpr int kMaxHostToBrowserBytes = 1024 * 1024;
 
 /// Version of the browser-control bridge protocol spoken over native messaging.
 /// Bump when the message shapes change so both ends can detect a mismatch.
-inline constexpr int kBrowserBridgeProtocol = 1;
+///
+/// 2: command frames carry a `tab_id`. An extension speaking 1 would not refuse
+/// the field, it would silently ignore it and act on whatever tab it had
+/// pinned -- a click landing in the wrong page rather than an error -- so the
+/// version moves and the mismatch is refused at bridge_ready instead.
+inline constexpr int kBrowserBridgeProtocol = 2;
 
 /// One attempt to decode a frame from the front of a byte buffer.
 struct NativeFrame {

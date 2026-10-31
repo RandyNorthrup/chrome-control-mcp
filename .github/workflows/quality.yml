@@ -305,6 +305,16 @@ jobs:
           ${{ matrix.chrome-args }} tests/e2e/user_interference_e2e.mjs
           | tee user-interference-e2e.json
 
+      # Two servers and two agents in one browser: separate tabs, refs and groups, no reaching
+      # into another's tab, file pickers answered without a dialog, and cleanup on release and exit.
+      - name: Multi-agent E2E
+        shell: bash
+        run: >-
+          node tests/e2e/isolated_run.mjs --chrome="${{ steps.chrome.outputs.path }}"
+          --executable="${{ matrix.executable }}"
+          ${{ matrix.chrome-args }} tests/e2e/multi_agent_e2e.mjs
+          | tee multi-agent-e2e.json
+
       # What each suite measured, kept whether it passed or failed: the reports carry the
       # per-configuration numbers a failure has to be read against.
       - name: Keep the suites' reports

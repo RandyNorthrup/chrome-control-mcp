@@ -51,6 +51,20 @@ inline constexpr int kBrowserBridgeDefaultIoTimeoutMs = 30'000;
 /// never returns.
 inline constexpr int kBrowserBridgeMaxExchangeMs = 180'000;
 
+/// How often, in milliseconds, the server looks at an IDLE connection to see
+/// whether its relay is still there.
+///
+/// The relay speaks on the pipe only to answer a command, so between commands
+/// the server had nothing to read and never looked. A relay that died there --
+/// Chrome restarting, the extension reloading, both routine -- left the server
+/// holding its single pipe instance as "connected" until the next command
+/// happened to fail, and every relay Chrome started meanwhile was refused with
+/// ERROR_PIPE_BUSY. Observed live on Windows: a server started the previous day
+/// had been unreachable all day. Short enough that the next relay is admitted
+/// well inside the extension's 2 s retry; long enough that an idle server costs
+/// nothing measurable.
+inline constexpr int kBrowserBridgeIdlePeerCheckMs = 250;
+
 /// Whether a DIFFERENT, still-running process of this same program owns the
 /// bridge described by the rendezvous record at @p rendezvous_path.
 ///
@@ -58,7 +72,9 @@ inline constexpr int kBrowserBridgeMaxExchangeMs = 180'000;
 /// pid has exited or now resolves to a foreign image. A record a crashed server
 /// left behind is therefore taken over rather than treated as an owner that
 /// will never release it, and a stale or forged record whose pid has since been
-/// reused by some other program does not get to keep the bridge hostage.
+/// reused by some other program does not get to keep the bridge hostage. The
+/// relay asks the same question to decide which records are worth offering the
+/// extension, since a record outlives a server that crashed.
 ///
 /// Platform-specific, because identifying the program behind a pid is; the
 /// callers are not.
@@ -167,6 +183,11 @@ private:
   [[nodiscard]] bool createPipeResources(QString *error);
   void run();
   bool handshake();
+  // Serve commands on the verified connection until it ends: an exchange
+  // fails, the server stops, or -- looked at every
+  // kBrowserBridgeIdlePeerCheckMs while no command is waiting -- the relay has
+  // gone or has spoken unprompted. Returning is what makes run() mark the
+  // connection gone and listen for the next relay.
   void serveConnected();
   // Read the reply to @p request, reading past the progress beats the extension
   // sends while it is still working. Each beat restarts the silence budget;

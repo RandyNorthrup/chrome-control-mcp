@@ -84,6 +84,7 @@ private slots:
   void stagedReleaseRefusesAnUnsafeVersionName();
   void stagedReleaseRefusesAnEmptyStagingDirectory();
   void stagedReleaseRefusesWithoutTheInstallLock();
+  void anOlderBuildLeavesANewerInstallCurrent();
 };
 
 void UpdaterTests::assetNameMatchesThePublishedPackageName() {
@@ -133,6 +134,61 @@ void UpdaterTests::newerVersionComparesNumericallyAndRefusesGarbage() {
   // An unparseable tag must never look like an upgrade.
   QVERIFY(!isNewerVersion(QStringLiteral("nightly"), QStringLiteral("1.3.1")));
   QVERIFY(!isNewerVersion(QStringLiteral("1.3.2"), QString{}));
+}
+
+// The VS Code extension asks the build it bundles to install itself on every
+// editor start. When a newer version is already current -- an update applied
+// through browser_update_apply, or a newer build installed by hand -- that
+// older build used to repoint the link at itself, so opening an editor quietly
+// rolled the update back. It must leave the newer version where it is; a
+// newer build must still install over an older one.
+void UpdaterTests::anOlderBuildLeavesANewerInstallCurrent() {
+  QTemporaryDir temporary;
+  QVERIFY(temporary.isValid());
+  const InstallLayout layout = InstallLayout::forRoot(
+      QDir(temporary.path()).filePath(QStringLiteral("root")));
+  {
+    const InstallLock lock =
+        InstallLock::acquire(layout, kInstallLockWaitMs, nullptr);
+    QVERIFY(lock.held());
+    QVERIFY(QDir().mkpath(layout.versions));
+    const QString staged =
+        stageRelease(layout.versions, QStringLiteral("1.9.0"));
+    QVERIFY(!staged.isEmpty());
+    const UpdateApplyResult installed =
+        installStagedRelease(lock, configFor(layout, QStringLiteral("1.9.0")),
+                             QStringLiteral("1.9.0"), staged);
+    QVERIFY2(installed.ok, qPrintable(installed.error));
+  }
+
+  // An editor's bundled copy, outside the install root, one version behind.
+  const QString older =
+      stageRelease(QDir(temporary.path()).filePath(QStringLiteral("editor")),
+                   QStringLiteral("1.8.0"));
+  QVERIFY(!older.isEmpty());
+  UpdaterConfig config = configFor(layout, QStringLiteral("1.8.0"));
+  config.executable_path = QDir(older).filePath(executableName());
+  const UpdateApplyResult kept = adoptRunningInstall(config);
+  QVERIFY2(kept.ok, qPrintable(kept.error));
+  QVERIFY(kept.unchanged);
+  QVERIFY(kept.newer_installed);
+  QCOMPARE(kept.installed_version, QStringLiteral("1.9.0"));
+  QCOMPARE(currentVersion(layout), QStringLiteral("1.9.0"));
+  QCOMPARE(readMarker(layout.current), QStringLiteral("1.9.0"));
+  QVERIFY(!QFileInfo::exists(layout.versionDirectory(QStringLiteral("1.8.0"))));
+
+  // The guard is about direction only: a newer copy still installs.
+  const QString newer =
+      stageRelease(QDir(temporary.path()).filePath(QStringLiteral("editor2")),
+                   QStringLiteral("2.0.0"));
+  QVERIFY(!newer.isEmpty());
+  UpdaterConfig upgrade = configFor(layout, QStringLiteral("2.0.0"));
+  upgrade.executable_path = QDir(newer).filePath(executableName());
+  const UpdateApplyResult adopted = adoptRunningInstall(upgrade);
+  QVERIFY2(adopted.ok, qPrintable(adopted.error));
+  QVERIFY(!adopted.newer_installed);
+  QCOMPARE(currentVersion(layout), QStringLiteral("2.0.0"));
+  QCOMPARE(readMarker(layout.current), QStringLiteral("2.0.0"));
 }
 
 void UpdaterTests::stagedReleaseInstallsAndRepointsTheLink() {

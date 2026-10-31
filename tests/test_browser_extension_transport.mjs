@@ -45,7 +45,7 @@ const EXPORTED = [
 const LIVE =
   "sessions, peek: () => { const s = [...sessions][0]; return s ? {" +
   " port: s.port, bridgeReady: s.bridgeReady," +
-  " commandGeneration: s.commandGeneration, domEpoch: s.domEpoch," +
+  " commandGeneration: s.commandGeneration, tabs: s.tabs.size," +
   " serverId: s.serverId, health: s.health, surplus: s.surplus } : {}; }," +
   " retryDelay: () => reconnectDelayMs, paused: () => bridgePaused";
 
@@ -74,7 +74,7 @@ function bootWorker() {
 
 // The protocol the shipped worker speaks. Deliberately written out rather than read from the
 // worker: a test that imported the constant would agree with any value, including a wrong one.
-const PROTOCOL = 1;
+const PROTOCOL = 2;
 
 function ready(port, protocol = PROTOCOL) {
   port.emit({ type: "bridge_ready", protocol });
@@ -470,7 +470,7 @@ test("an unrecognised frame type changes nothing", async () => {
   const after = worker.peek();
   assert.equal(after.bridgeReady, before.bridgeReady);
   assert.equal(after.commandGeneration, before.commandGeneration);
-  assert.equal(after.domEpoch, before.domEpoch);
+  assert.equal(after.tabs, before.tabs);
   assert.equal(worker.peek().health.connected, true);
   assert.deepEqual(port.posted, []);
   assert.equal(port.connected, true, "and the port stays up");

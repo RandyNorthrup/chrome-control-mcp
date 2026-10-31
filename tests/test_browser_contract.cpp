@@ -3,9 +3,11 @@
 
 #include "chrome_control_mcp/browser_contract.h"
 
+#include <QHash>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QSet>
 #include <QtTest/QtTest>
 
 #include <utility>
@@ -34,6 +36,37 @@ QJsonObject node(int backend, const QString &role, const QString &name,
                      {QStringLiteral("visible"), true},
                      {QStringLiteral("depth"), depth},
                      {QStringLiteral("bounds"), bounds(80, 20)}};
+}
+
+// A ref index entry as the session keeps it: bound to the tab its snapshot
+// came from.
+QJsonObject boundRef(int backend, int tab) {
+  return QJsonObject{{QStringLiteral("backendNodeId"), backend},
+                     {QStringLiteral("tabId"), tab}};
+}
+
+// Each catalog entry's inputSchema properties, by tool name.
+QHash<QString, QJsonObject> catalogProperties() {
+  QHash<QString, QJsonObject> properties;
+  for (const QJsonValue &value : browserToolCatalog()) {
+    const QJsonObject tool = value.toObject();
+    properties.insert(tool.value(QStringLiteral("name")).toString(),
+                      tool.value(QStringLiteral("inputSchema"))
+                          .toObject()
+                          .value(QStringLiteral("properties"))
+                          .toObject());
+  }
+  return properties;
+}
+
+QJsonObject catalogSchema(const QString &name) {
+  for (const QJsonValue &value : browserToolCatalog()) {
+    const QJsonObject tool = value.toObject();
+    if (tool.value(QStringLiteral("name")).toString() == name) {
+      return tool.value(QStringLiteral("inputSchema")).toObject();
+    }
+  }
+  return QJsonObject{};
 }
 
 } // namespace
@@ -96,6 +129,17 @@ private slots:
   void buildCommand_rejectsFractionalAndOutOfRangeInt();
   void buildCommand_rejectsWrongTypedRef();
   void buildCommand_rejectsMalformedSelectValues();
+  void renderSnapshot_newRefsStartAtTheFloor();
+  void catalog_tabIdOnExactlyTheTabScopedTools();
+  void buildCommand_tabIdIsValidatedAndCopied();
+  void buildCommand_refBindsItsTabAndRefusesAnother();
+  void buildCommand_dragRefusesEndpointsOnTwoTabs();
+  void buildCommand_selectAndCloseTabTakeIndexOrTabId();
+  void catalog_releaseIsAdvertisedWithItsArguments();
+  void buildCommand_releaseBuilds();
+  void buildCommand_uploadWithoutRefFillsThePagesChooser();
+  void catalog_agentOnExactlyNewTabAndSelectTab();
+  void buildCommand_agentIsValidatedAndCopied();
 };
 
 void BrowserContractTests::
@@ -462,10 +506,10 @@ void BrowserContractTests::catalog_advertisesDomFirstToolsWithStrictSchemas() {
   // set unconditionally
   // (nav/action/pointer/form/tab/wait/inspection/window/infra/print/
   // permission/storage/cookies/download/record/upload/http-auth/
-  // advanced-input/observability), 45 tools in all.
+  // advanced-input/observability/release), 46 tools in all.
   // `>= 15` could not catch a tool silently dropped from or duplicated into the
   // catalog.
-  QCOMPARE(tools.size(), 45);
+  QCOMPARE(tools.size(), 46);
 
   QStringList names;
   for (const QJsonValue &value : tools) {
@@ -1501,6 +1545,396 @@ void BrowserContractTests::buildCommand_rejectsMalformedSelectValues() {
       refIndex);
   QVERIFY(!badItem.ok);
   QVERIFY(badItem.error.contains(QStringLiteral("values")));
+}
+
+// The floor the session passes so a name is never issued twice: new nodes are
+// numbered from it, a carried ref below it keeps its own number, and
+// highest_ref reports the largest name in the view either way.
+void BrowserContractTests::renderSnapshot_newRefsStartAtTheFloor() {
+  const QJsonObject capture{
+      {QStringLiteral("url"), QStringLiteral("https://example.com/")},
+      {QStringLiteral("nodes"),
+       QJsonArray{
+           node(11, QStringLiteral("button"), QStringLiteral("Kept"), true),
+           node(12, QStringLiteral("button"), QStringLiteral("New"), true),
+           node(13, QStringLiteral("link"), QStringLiteral("Newer"), true)}}};
+  const QJsonObject carried{
+      {QStringLiteral("e3"),
+       QJsonObject{{QStringLiteral("backendNodeId"), 11}}}};
+  const SnapshotView view = renderSnapshot(capture, carried, 10);
+  QVERIFY(view.outline.contains(QStringLiteral("\"Kept\" [ref=e3]")));
+  QVERIFY(view.outline.contains(QStringLiteral("\"New\" [ref=e10]")));
+  QVERIFY(view.outline.contains(QStringLiteral("\"Newer\" [ref=e11]")));
+  QCOMPARE(view.highest_ref, qint64(11));
+  // Without a floor, numbering is what it always was.
+  QCOMPARE(renderSnapshot(capture).highest_ref, qint64(3));
+  QCOMPARE(renderSnapshot(QJsonObject{}).highest_ref, qint64(0));
+}
+
+// tab_id is added from the command specs, so the set of tools that advertise
+// it is pinned here against the list of extension commands that act on one
+// tab -- plus browser_release, which takes it to let go of one tab only. A
+// tool gaining or losing it by accident fails this.
+void BrowserContractTests::catalog_tabIdOnExactlyTheTabScopedTools() {
+  const QSet<QString> expected{
+      QStringLiteral("browser_snapshot"),
+      QStringLiteral("browser_read"),
+      QStringLiteral("browser_navigate"),
+      QStringLiteral("browser_back"),
+      QStringLiteral("browser_forward"),
+      QStringLiteral("browser_reload"),
+      QStringLiteral("browser_click"),
+      QStringLiteral("browser_click_at"),
+      QStringLiteral("browser_hover"),
+      QStringLiteral("browser_drag"),
+      QStringLiteral("browser_dialog"),
+      QStringLiteral("browser_type"),
+      QStringLiteral("browser_select"),
+      QStringLiteral("browser_set_value"),
+      QStringLiteral("browser_media"),
+      QStringLiteral("browser_press_key"),
+      QStringLiteral("browser_scroll"),
+      QStringLiteral("browser_screenshot"),
+      QStringLiteral("browser_wait_for"),
+      QStringLiteral("browser_console"),
+      QStringLiteral("browser_network"),
+      QStringLiteral("browser_get_value"),
+      QStringLiteral("browser_get_attribute"),
+      QStringLiteral("browser_box"),
+      QStringLiteral("browser_focus"),
+      QStringLiteral("browser_reveal"),
+      QStringLiteral("browser_js_click"),
+      QStringLiteral("browser_emulate"),
+      QStringLiteral("browser_print"),
+      QStringLiteral("browser_storage"),
+      QStringLiteral("browser_download"),
+      QStringLiteral("browser_record_start"),
+      QStringLiteral("browser_http_auth"),
+      QStringLiteral("browser_upload"),
+      QStringLiteral("browser_close_tab"),
+      QStringLiteral("browser_select_tab"),
+      QStringLiteral("browser_release"),
+  };
+  QSet<QString> advertised;
+  const QHash<QString, QJsonObject> properties = catalogProperties();
+  for (auto it = properties.constBegin(); it != properties.constEnd(); ++it) {
+    if (!it.value().contains(QStringLiteral("tab_id"))) {
+      continue;
+    }
+    advertised.insert(it.key());
+    const QJsonObject tab_id =
+        it.value().value(QStringLiteral("tab_id")).toObject();
+    QCOMPARE(tab_id.value(QStringLiteral("type")).toString(),
+             QStringLiteral("integer"));
+    QCOMPARE(tab_id.value(QStringLiteral("minimum")).toInt(), 1);
+  }
+  QCOMPARE(advertised, expected);
+  // The generic description says why it matters when agents share a server.
+  QVERIFY(properties.value(QStringLiteral("browser_click"))
+              .value(QStringLiteral("tab_id"))
+              .toObject()
+              .value(QStringLiteral("description"))
+              .toString()
+              .contains(QStringLiteral("several agents share this server")));
+}
+
+void BrowserContractTests::buildCommand_tabIdIsValidatedAndCopied() {
+  const ExtensionCommand ok = buildExtensionCommand(
+      QStringLiteral("browser_navigate"),
+      QJsonObject{{QStringLiteral("url"), QStringLiteral("https://a.test/")},
+                  {QStringLiteral("tab_id"), 412}},
+      {});
+  QVERIFY2(ok.ok, qPrintable(ok.error));
+  QCOMPARE(ok.command.value(QStringLiteral("tab_id")).toInt(), 412);
+  // Omitted: no field, and the extension uses the session's current tab.
+  const ExtensionCommand omitted = buildExtensionCommand(
+      QStringLiteral("browser_reload"), QJsonObject{}, {});
+  QVERIFY(omitted.ok);
+  QVERIFY(!omitted.command.contains(QStringLiteral("tab_id")));
+  // Refused, never coerced.
+  for (const QJsonValue &bad :
+       {QJsonValue(0), QJsonValue(-3), QJsonValue(2.5),
+        QJsonValue(QStringLiteral("412")), QJsonValue(1e12)}) {
+    const ExtensionCommand refused =
+        buildExtensionCommand(QStringLiteral("browser_reload"),
+                              QJsonObject{{QStringLiteral("tab_id"), bad}}, {});
+    QVERIFY(!refused.ok);
+    QVERIFY2(refused.error.contains(QStringLiteral("tab_id")),
+             qPrintable(refused.error));
+  }
+  // A tool that does not act on one tab does not take it.
+  const ExtensionCommand listing =
+      buildExtensionCommand(QStringLiteral("browser_tabs"),
+                            QJsonObject{{QStringLiteral("tab_id"), 3}}, {});
+  QVERIFY(!listing.ok);
+  QVERIFY(listing.error.contains(QStringLiteral("Unknown argument")));
+}
+
+void BrowserContractTests::buildCommand_refBindsItsTabAndRefusesAnother() {
+  const QJsonObject refIndex{{QStringLiteral("e8"), boundRef(4242, 101)}};
+  const ExtensionCommand bound = buildExtensionCommand(
+      QStringLiteral("browser_click"),
+      QJsonObject{{QStringLiteral("ref"), QStringLiteral("e8")}}, refIndex);
+  QVERIFY2(bound.ok, qPrintable(bound.error));
+  QCOMPARE(bound.command.value(QStringLiteral("tab_id")).toInt(), 101);
+  QCOMPARE(bound.command.value(QStringLiteral("backendNodeId")).toInt(), 4242);
+
+  const ExtensionCommand conflicting = buildExtensionCommand(
+      QStringLiteral("browser_click"),
+      QJsonObject{{QStringLiteral("ref"), QStringLiteral("e8")},
+                  {QStringLiteral("tab_id"), 202}},
+      refIndex);
+  QVERIFY(!conflicting.ok);
+  QVERIFY2(conflicting.error.contains(QStringLiteral("tab 101")) &&
+               conflicting.error.contains(QStringLiteral("tab_id 202")),
+           qPrintable(conflicting.error));
+
+  // A binding that is not a tab id is refused rather than ignored.
+  const QJsonObject corrupt{
+      {QStringLiteral("e9"),
+       QJsonObject{{QStringLiteral("backendNodeId"), 5},
+                   {QStringLiteral("tabId"), QStringLiteral("101")}}}};
+  QVERIFY(!buildExtensionCommand(
+               QStringLiteral("browser_click"),
+               QJsonObject{{QStringLiteral("ref"), QStringLiteral("e9")}},
+               corrupt)
+               .ok);
+}
+
+void BrowserContractTests::buildCommand_dragRefusesEndpointsOnTwoTabs() {
+  const QJsonObject refIndex{{QStringLiteral("e1"), boundRef(10, 101)},
+                             {QStringLiteral("e2"), boundRef(20, 202)},
+                             {QStringLiteral("e3"), boundRef(30, 101)}};
+  const ExtensionCommand across = buildExtensionCommand(
+      QStringLiteral("browser_drag"),
+      QJsonObject{{QStringLiteral("ref"), QStringLiteral("e1")},
+                  {QStringLiteral("to_ref"), QStringLiteral("e2")}},
+      refIndex);
+  QVERIFY(!across.ok);
+  QVERIFY2(across.error.contains(QStringLiteral("cannot cross tabs")),
+           qPrintable(across.error));
+
+  const ExtensionCommand same = buildExtensionCommand(
+      QStringLiteral("browser_drag"),
+      QJsonObject{{QStringLiteral("ref"), QStringLiteral("e1")},
+                  {QStringLiteral("to_ref"), QStringLiteral("e3")}},
+      refIndex);
+  QVERIFY2(same.ok, qPrintable(same.error));
+  QCOMPARE(same.command.value(QStringLiteral("tab_id")).toInt(), 101);
+  QCOMPARE(same.command.value(QStringLiteral("to_backendNodeId")).toInt(), 30);
+
+  // to_ref alone still has to agree with a tab_id the caller passed.
+  const ExtensionCommand toOnly = buildExtensionCommand(
+      QStringLiteral("browser_drag"),
+      QJsonObject{{QStringLiteral("to_ref"), QStringLiteral("e2")},
+                  {QStringLiteral("tab_id"), 101}},
+      refIndex);
+  QVERIFY(!toOnly.ok);
+}
+
+// select_tab has no current-tab default, so it needs exactly one way of naming
+// the tab; close_tab takes at most one and closes the session's tab without.
+void BrowserContractTests::buildCommand_selectAndCloseTabTakeIndexOrTabId() {
+  const ExtensionCommand byId =
+      buildExtensionCommand(QStringLiteral("browser_select_tab"),
+                            QJsonObject{{QStringLiteral("tab_id"), 55}}, {});
+  QVERIFY2(byId.ok, qPrintable(byId.error));
+  QCOMPARE(byId.command.value(QStringLiteral("tab_id")).toInt(), 55);
+  QVERIFY(!byId.command.contains(QStringLiteral("index")));
+
+  const ExtensionCommand both = buildExtensionCommand(
+      QStringLiteral("browser_select_tab"),
+      QJsonObject{{QStringLiteral("tab_id"), 55}, {QStringLiteral("index"), 1}},
+      {});
+  QVERIFY(!both.ok);
+  QVERIFY(both.error.contains(QStringLiteral("exactly one")));
+  QVERIFY(
+      !buildExtensionCommand(QStringLiteral("browser_select_tab"), {}, {}).ok);
+  QVERIFY(catalogSchema(QStringLiteral("browser_select_tab"))
+              .value(QStringLiteral("required"))
+              .toArray()
+              .isEmpty());
+
+  QVERIFY(
+      buildExtensionCommand(QStringLiteral("browser_close_tab"), {}, {}).ok);
+  QVERIFY(buildExtensionCommand(QStringLiteral("browser_close_tab"),
+                                QJsonObject{{QStringLiteral("tab_id"), 55}}, {})
+              .ok);
+  QVERIFY(!buildExtensionCommand(QStringLiteral("browser_close_tab"),
+                                 QJsonObject{{QStringLiteral("tab_id"), 55},
+                                             {QStringLiteral("index"), 1}},
+                                 {})
+               .ok);
+}
+
+void BrowserContractTests::catalog_releaseIsAdvertisedWithItsArguments() {
+  const QJsonObject schema = catalogSchema(QStringLiteral("browser_release"));
+  QVERIFY(!schema.isEmpty());
+  QCOMPARE(schema.value(QStringLiteral("additionalProperties")).toBool(true),
+           false);
+  QVERIFY(schema.value(QStringLiteral("required")).toArray().isEmpty());
+  const QJsonObject properties =
+      schema.value(QStringLiteral("properties")).toObject();
+  QCOMPARE(properties.keys(), (QStringList{QStringLiteral("keep_open"),
+                                           QStringLiteral("tab_id")}));
+  QCOMPARE(properties.value(QStringLiteral("keep_open"))
+               .toObject()
+               .value(QStringLiteral("type"))
+               .toString(),
+           QStringLiteral("boolean"));
+  QCOMPARE(properties.value(QStringLiteral("tab_id"))
+               .toObject()
+               .value(QStringLiteral("type"))
+               .toString(),
+           QStringLiteral("integer"));
+  for (const QJsonValue &value : browserToolCatalog()) {
+    const QJsonObject tool = value.toObject();
+    if (tool.value(QStringLiteral("name")).toString() ==
+        QLatin1String("browser_release")) {
+      const QString description =
+          tool.value(QStringLiteral("description")).toString();
+      QVERIFY(description.contains(QStringLiteral("task is done")));
+      QVERIFY(description.contains(QStringLiteral("never closed")));
+      QVERIFY(description.contains(QStringLiteral("tab_id")));
+    }
+  }
+}
+
+void BrowserContractTests::buildCommand_releaseBuilds() {
+  const ExtensionCommand all =
+      buildExtensionCommand(QStringLiteral("browser_release"), {}, {});
+  QVERIFY2(all.ok, qPrintable(all.error));
+  QCOMPARE(all.command.value(QStringLiteral("cmd")).toString(),
+           QStringLiteral("release"));
+  QVERIFY(!all.command.contains(QStringLiteral("tab_id")));
+
+  const ExtensionCommand one =
+      buildExtensionCommand(QStringLiteral("browser_release"),
+                            QJsonObject{{QStringLiteral("tab_id"), 9},
+                                        {QStringLiteral("keep_open"), true}},
+                            {});
+  QVERIFY2(one.ok, qPrintable(one.error));
+  QCOMPARE(one.command.value(QStringLiteral("tab_id")).toInt(), 9);
+  QCOMPARE(one.command.value(QStringLiteral("keep_open")).toBool(), true);
+
+  QVERIFY(!buildExtensionCommand(QStringLiteral("browser_release"),
+                                 QJsonObject{{QStringLiteral("tab_id"), 0}}, {})
+               .ok);
+  QVERIFY(!buildExtensionCommand(QStringLiteral("browser_release"),
+                                 QJsonObject{{QStringLiteral("keep_open"),
+                                              QStringLiteral("yes")}},
+                                 {})
+               .ok);
+}
+
+// A page that opens its own file chooser has already said which input it
+// wants; the extension intercepts that chooser, and an upload with no ref
+// fills it. The paths still stay on this side.
+void BrowserContractTests::buildCommand_uploadWithoutRefFillsThePagesChooser() {
+  const ExtensionCommand cmd = buildExtensionCommand(
+      QStringLiteral("browser_upload"),
+      QJsonObject{{QStringLiteral("paths"),
+                   QJsonArray{QStringLiteral("C:/secrets/passport.png")}},
+                  {QStringLiteral("tab_id"), 31}},
+      {});
+  QVERIFY2(cmd.ok, qPrintable(cmd.error));
+  QCOMPARE(cmd.command.value(QStringLiteral("cmd")).toString(),
+           QStringLiteral("upload"));
+  QVERIFY(!cmd.command.contains(QStringLiteral("backendNodeId")));
+  QCOMPARE(cmd.command.value(QStringLiteral("tab_id")).toInt(), 31);
+  QVERIFY(!QString::fromUtf8(QJsonDocument(cmd.command).toJson())
+               .contains(QStringLiteral("passport")));
+  // Still refused without paths.
+  QVERIFY(!buildExtensionCommand(QStringLiteral("browser_upload"), {}, {}).ok);
+
+  const QJsonObject schema = catalogSchema(QStringLiteral("browser_upload"));
+  QCOMPARE(schema.value(QStringLiteral("required")).toArray(),
+           QJsonArray{QStringLiteral("paths")});
+}
+
+void BrowserContractTests::catalog_agentOnExactlyNewTabAndSelectTab() {
+  QSet<QString> advertised;
+  const QHash<QString, QJsonObject> properties = catalogProperties();
+  for (auto it = properties.constBegin(); it != properties.constEnd(); ++it) {
+    if (it.value().contains(QStringLiteral("agent"))) {
+      advertised.insert(it.key());
+    }
+  }
+  QCOMPARE(advertised, (QSet<QString>{QStringLiteral("browser_new_tab"),
+                                      QStringLiteral("browser_select_tab")}));
+  const QJsonObject agent = properties.value(QStringLiteral("browser_new_tab"))
+                                .value(QStringLiteral("agent"))
+                                .toObject();
+  QCOMPARE(agent.value(QStringLiteral("type")).toString(),
+           QStringLiteral("string"));
+  QCOMPARE(agent.value(QStringLiteral("maxLength")).toInt(), 24);
+  QVERIFY(agent.value(QStringLiteral("description"))
+              .toString()
+              .contains(QStringLiteral("share one tab group")));
+}
+
+// The agent name picks the tab group, and so the colour, the user sees. Ends
+// are trimmed; anything else wrong is refused, because a name altered behind
+// the caller's back puts its tabs in a group it did not ask for.
+void BrowserContractTests::buildCommand_agentIsValidatedAndCopied() {
+  const ExtensionCommand ok = buildExtensionCommand(
+      QStringLiteral("browser_new_tab"),
+      QJsonObject{{QStringLiteral("agent"), QStringLiteral("  research  ")}},
+      {});
+  QVERIFY2(ok.ok, qPrintable(ok.error));
+  QCOMPARE(ok.command.value(QStringLiteral("agent")).toString(),
+           QStringLiteral("research"));
+
+  const ExtensionCommand select = buildExtensionCommand(
+      QStringLiteral("browser_select_tab"),
+      QJsonObject{{QStringLiteral("tab_id"), 4},
+                  {QStringLiteral("agent"), QStringLiteral("triage bot")}},
+      {});
+  QVERIFY2(select.ok, qPrintable(select.error));
+  QCOMPARE(select.command.value(QStringLiteral("agent")).toString(),
+           QStringLiteral("triage bot"));
+
+  // 24 characters is the limit; a character outside the BMP counts as one.
+  const QString longest(24, QLatin1Char('a'));
+  QVERIFY(buildExtensionCommand(QStringLiteral("browser_new_tab"),
+                                QJsonObject{{QStringLiteral("agent"), longest}},
+                                {})
+              .ok);
+  const QString emoji =
+      QString(23, QLatin1Char('a')) + QStringLiteral("\U0001F50D");
+  QVERIFY(buildExtensionCommand(QStringLiteral("browser_new_tab"),
+                                QJsonObject{{QStringLiteral("agent"), emoji}},
+                                {})
+              .ok);
+
+  for (const QJsonValue &bad : {
+           QJsonValue(7), QJsonValue(QStringLiteral("")),
+           QJsonValue(QStringLiteral("   ")),
+           QJsonValue(QString(25, QLatin1Char('a'))),
+           QJsonValue(QStringLiteral("re\u0007search")),
+           QJsonValue(QStringLiteral("re\tsearch")),
+           // A bidi override, built at run time because the compiler refuses
+           // one written into a literal.
+           QJsonValue(QStringLiteral("re") + QChar(0x202E) +
+                      QStringLiteral("search")),
+           QJsonValue(QStringLiteral("re\u2028search")),
+           QJsonValue(QString(QChar(0xD83D))), // a lone surrogate half
+       }) {
+    const ExtensionCommand refused =
+        buildExtensionCommand(QStringLiteral("browser_new_tab"),
+                              QJsonObject{{QStringLiteral("agent"), bad}}, {});
+    QVERIFY(!refused.ok);
+    QVERIFY2(refused.error.contains(QStringLiteral("agent")),
+             qPrintable(refused.error));
+  }
+  // Not a tool that takes one.
+  QVERIFY(
+      !buildExtensionCommand(
+           QStringLiteral("browser_navigate"),
+           QJsonObject{{QStringLiteral("url"), QStringLiteral("https://a/")},
+                       {QStringLiteral("agent"), QStringLiteral("x")}},
+           {})
+           .ok);
 }
 
 QTEST_MAIN(BrowserContractTests)

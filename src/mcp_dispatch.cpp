@@ -86,6 +86,29 @@ QJsonObject errorResponse(const QJsonValue &id, int code,
                                   {QStringLiteral("message"), message}}}};
 }
 
+// The standard MCP `instructions` a client hands its model alongside the tool
+// list. It carries what no single tool description can: how the tools fit
+// together when several agents share this server or the browser. Written for
+// any MCP client, so it names no client and assumes nothing about one.
+QString serverInstructions() {
+  return QStringLiteral(
+      "This server drives the user's real Chrome browser. Open your own tab "
+      "with browser_new_tab and pass its tab_id to every browser call: other "
+      "agents may share this server or the browser, and a call without tab_id "
+      "acts on whichever tab is current. When several agents share this "
+      "server, each should also pass its own short agent name to "
+      "browser_new_tab so its tabs get their own coloured tab group. Element "
+      "refs from browser_snapshot are bound to the tab they came from. Tabs "
+      "you work in show an \"AI\" tab group and a pink frame; a tab held by "
+      "another session is refused. Clicking a file input never opens a "
+      "dialog: the reply says a file chooser opened, then call browser_upload "
+      "with paths (ref optional). When your task is done, call "
+      "browser_release (with your tab_id when other agents share the "
+      "server): tabs you opened are closed, tabs you borrowed are handed "
+      "back, not closed; pass keep_open:true to leave a page open for the "
+      "user.");
+}
+
 QJsonObject initializeResult() {
   return QJsonObject{
       {QStringLiteral("protocolVersion"),
@@ -94,7 +117,24 @@ QJsonObject initializeResult() {
        QJsonObject{{QStringLiteral("tools"), QJsonObject{}}}},
       {QStringLiteral("serverInfo"),
        QJsonObject{{QStringLiteral("name"), serverName()},
-                   {QStringLiteral("version"), serverVersion()}}}};
+                   {QStringLiteral("version"), serverVersion()}}},
+      {QStringLiteral("instructions"), serverInstructions()}};
+}
+
+// Hand the connecting client's name to browser control, which titles the tab
+// group marking this session's tabs with it. A missing or non-string name
+// clears it rather than keeping a previous client's: a re-initialize is a new
+// client, and an unknown one is better than a wrong one.
+void captureClientName(const QJsonObject &request, BrowserControl *browser) {
+  if (browser == nullptr) {
+    return;
+  }
+  const QJsonValue name = request.value(QStringLiteral("params"))
+                              .toObject()
+                              .value(QStringLiteral("clientInfo"))
+                              .toObject()
+                              .value(QStringLiteral("name"));
+  browser->setClientName(name.isString() ? name.toString() : QString());
 }
 
 // The full tool catalog: built-in native tools plus, when browser control is
@@ -445,6 +485,7 @@ std::optional<QJsonObject> handleRequest(const QJsonObject &request,
   }
 
   if (method == QLatin1String("initialize")) {
+    captureClientName(request, browser);
     return resultResponse(id, initializeResult());
   }
   if (method == QLatin1String("tools/list")) {

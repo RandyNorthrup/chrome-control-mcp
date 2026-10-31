@@ -223,6 +223,49 @@ function pageTwo() {
   );
 }
 
+// The three ways a page asks for a file that no ref can reach through an ordinary input: a button
+// whose script creates an input on the fly and clicks it (the input is in no document), a drop
+// zone with no input at all, and the File System Access picker. Each writes what it received into
+// its own status line, so a check reads the page's own account rather than the tool's.
+function uploadShapesPage() {
+  return htmlPage(
+    "Upload shapes",
+    `<button id="attach" type="button">Attach a file</button>
+<p id="attached">attached: none</p>
+<div id="dropzone" role="button" tabindex="0" aria-label="Drop files here"
+  style="width:300px;height:120px;border:2px dashed #888;margin:12px 0">Drop files here</div>
+<p id="dropped">dropped: none</p>
+<button id="pick" type="button">Open with picker</button>
+<p id="picked">picked: none</p>`,
+    `document.getElementById('attach').addEventListener('click', () => {
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.addEventListener('change', () => {
+    document.getElementById('attached').textContent =
+      'attached: ' + [...input.files].map((f) => f.name + ':' + f.size).join(',');
+  });
+  input.click();
+});
+const zone = document.getElementById('dropzone');
+zone.addEventListener('dragover', (e) => e.preventDefault());
+zone.addEventListener('drop', (e) => {
+  e.preventDefault();
+  document.getElementById('dropped').textContent =
+    'dropped: ' + [...e.dataTransfer.files].map((f) => f.name + ':' + f.size).join(',');
+});
+document.getElementById('pick').addEventListener('click', async () => {
+  try {
+    const [handle] = await window.showOpenFilePicker();
+    const file = await handle.getFile();
+    document.getElementById('picked').textContent =
+      'picked: ' + handle.name + ':' + file.size + ':' + (await file.text());
+  } catch (e) {
+    document.getElementById('picked').textContent = 'picked: ' + e.name;
+  }
+});`,
+  );
+}
+
 function protectedPage() {
   return htmlPage(
     "Authenticated Fixture",
@@ -458,6 +501,23 @@ export async function startFixtureServer() {
     }
     if (url.pathname === "/page2") {
       send(200, "text/html; charset=utf-8", pageTwo());
+      return;
+    }
+    if (url.pathname === "/popup") {
+      // A link that opens a new tab the way most sites do it: target=_blank, which implies
+      // noopener -- so Chrome names no opener for the new tab to an extension.
+      send(
+        200,
+        "text/html; charset=utf-8",
+        htmlPage(
+          "Popup source",
+          `<a id="popup-link" href="/page2?from=popup" target="_blank">Open the popup</a>`,
+        ),
+      );
+      return;
+    }
+    if (url.pathname === "/uploads") {
+      send(200, "text/html; charset=utf-8", uploadShapesPage());
       return;
     }
     if (url.pathname === "/api/delay") {

@@ -26,6 +26,7 @@
 using chrome_control_mcp::BrowserBridgePipeServer;
 using chrome_control_mcp::closeNativeIpcHandle;
 using chrome_control_mcp::encodeFrame;
+using chrome_control_mcp::kBrowserBridgeProtocol;
 using chrome_control_mcp::kInvalidNativeIpcHandle;
 using chrome_control_mcp::NativeFrame;
 using chrome_control_mcp::NativeIpcHandle;
@@ -229,10 +230,14 @@ NativeIpcHandle connectAndHandshake(const QString &name, const QString &token) {
   if (handle == kInvalidNativeIpcHandle) {
     return handle;
   }
+  // The version from its one definition: a literal here would have to be found
+  // and raised by hand every time the protocol moves, and a stale one fails
+  // every handshake in the suite rather than the one test that is about it.
   const bool sent = clientWrite(
-      handle, QJsonObject{{QStringLiteral("type"), QStringLiteral("hello")},
-                          {QStringLiteral("token"), token},
-                          {QStringLiteral("protocol"), 1}});
+      handle,
+      QJsonObject{{QStringLiteral("type"), QStringLiteral("hello")},
+                  {QStringLiteral("token"), token},
+                  {QStringLiteral("protocol"), kBrowserBridgeProtocol}});
   QJsonObject welcome;
   if (!sent || !clientRead(handle, &welcome) ||
       welcome.value(QStringLiteral("type")).toString() !=
@@ -298,6 +303,10 @@ private slots:
   void slowFrame_transferHoldsTheConnectionOpen();
   void endlessPeer_absoluteCapAbandonsTheCommand();
   void reconnect_secondClientServedWithNewGeneration();
+  void idlePeer_departureIsNoticedWithoutACommand();
+  void idlePeer_departureFreesThePipeForTheNextRelay();
+  void idlePeer_unpromptedFrameDropsTheConnection();
+  void idlePeer_commandRacingTheDepartureFailsAndIsNeverReplayed();
   void doubleStop_isSafe();
   void restartAfterStopWorksAndDoubleStartRefused();
   void stop_keepsRendezvousOwnedByAnotherProcess();
@@ -340,10 +349,11 @@ void BrowserBridgePipeTests::handshake_refusesForgedTokenAndUnknownType() {
   HandshakeAttempt forged;
   std::thread forged_client([&] {
     forged = attemptHandshake(
-        name, QJsonObject{{QStringLiteral("type"), QStringLiteral("hello")},
-                          {QStringLiteral("token"),
-                           real_token + QStringLiteral("_forged")},
-                          {QStringLiteral("protocol"), 1}});
+        name,
+        QJsonObject{
+            {QStringLiteral("type"), QStringLiteral("hello")},
+            {QStringLiteral("token"), real_token + QStringLiteral("_forged")},
+            {QStringLiteral("protocol"), kBrowserBridgeProtocol}});
   });
   forged_client.join();
   QVERIFY(forged.connected); // pipe opened -- the refusal is the token gate,
@@ -360,9 +370,10 @@ void BrowserBridgePipeTests::handshake_refusesForgedTokenAndUnknownType() {
   HandshakeAttempt bad_type;
   std::thread type_client([&] {
     bad_type = attemptHandshake(
-        name, QJsonObject{{QStringLiteral("type"), QStringLiteral("attach")},
-                          {QStringLiteral("token"), real_token},
-                          {QStringLiteral("protocol"), 1}});
+        name,
+        QJsonObject{{QStringLiteral("type"), QStringLiteral("attach")},
+                    {QStringLiteral("token"), real_token},
+                    {QStringLiteral("protocol"), kBrowserBridgeProtocol}});
   });
   type_client.join();
   QVERIFY(!bad_type.got_frame); // wrong first-frame type is dropped before any
@@ -832,6 +843,238 @@ void BrowserBridgePipeTests::reconnect_secondClientServedWithNewGeneration() {
            QStringLiteral("b-2"));
   client_b.join();
   QVERIFY(client_ok.load());
+  server.stop();
+}
+
+// -- A relay that leaves while nothing is being asked of it ------------------
+//
+// The server only ever looked at its connection while it had a command to
+// send. A relay that went away between commands -- Chrome restarting, the
+// extension reloading, both routine -- left the server holding its one pipe
+// instance "connected" until the next command happened to fail, and every
+// relay Chrome started in the meantime was turned away with ERROR_PIPE_BUSY.
+// Observed live on Windows: a server started the day before had been
+// unreachable all day, because nothing had sent it a command since its relay
+// died. These pin that the server notices on its own.
+
+namespace {
+
+// Far longer than any of these tests run, so no exchange deadline can be what
+// notices the departure: if the server lets go inside the test's window, it was
+// the idle check that did it.
+constexpr int kNoDeadlineInPlayMs = 60'000;
+
+// The bound on noticing. The check runs several times a second, so this is
+// generous; it exists so that a server which never notices FAILS the test
+// rather than hanging it.
+constexpr int kDepartureNoticedWithinMs = 2'000;
+
+// How long a command that raced the departure may take to be refused. Well
+// under kNoDeadlineInPlayMs, so a sender left waiting for a connection that is
+// already gone cannot pass by timing out.
+constexpr int kRacingCommandSettledWithinMs = 5'000;
+
+} // namespace
+
+void BrowserBridgePipeTests::idlePeer_departureIsNoticedWithoutACommand() {
+  QTemporaryDir dir;
+  BrowserBridgePipeServer server(
+      testOptions(dir.filePath(QStringLiteral("r.json")), kNoDeadlineInPlayMs));
+  QString error;
+  QVERIFY2(server.start(&error), qPrintable(error));
+
+  const NativeIpcHandle relay =
+      connectAndHandshake(server.pipeName(), server.token());
+  QVERIFY(relay != kInvalidNativeIpcHandle);
+  QVERIFY(waitUntil([&server] { return server.clientConnected(); }, 5000));
+  closeNativeIpcHandle(relay); // gone, and no command was ever sent
+
+  QVERIFY2(waitUntil([&server] { return !server.clientConnected(); },
+                     kDepartureNoticedWithinMs),
+           "the server still believes a relay that left is connected");
+  // And the next caller is told so at once, rather than being handed a
+  // connection that will fail it.
+  const auto exchange = server.sendCommandAwaitReply(
+      QJsonObject{{QStringLiteral("type"), QStringLiteral("command")},
+                  {QStringLiteral("id"), QStringLiteral("b-1")},
+                  {QStringLiteral("cmd"), QStringLiteral("snapshot")}});
+  QVERIFY(!exchange.ok);
+  QCOMPARE(exchange.error, QStringLiteral("Browser not connected."));
+  server.stop();
+}
+
+// The half of the fault a user actually sees: the NEXT relay is turned away.
+// Nothing here sends a command, because nothing did in the field either.
+void BrowserBridgePipeTests::idlePeer_departureFreesThePipeForTheNextRelay() {
+  QTemporaryDir dir;
+  BrowserBridgePipeServer server(
+      testOptions(dir.filePath(QStringLiteral("r.json")), kNoDeadlineInPlayMs));
+  QString error;
+  QVERIFY2(server.start(&error), qPrintable(error));
+  const QString name = server.pipeName();
+  const QString token = server.token();
+
+  const NativeIpcHandle first = connectAndHandshake(name, token);
+  QVERIFY(first != kInvalidNativeIpcHandle);
+  QVERIFY(waitUntil([&server] { return server.connectionGeneration() == 1; },
+                    5000));
+  closeNativeIpcHandle(first);
+
+  // On a thread, because against a server that never noticed the first relay
+  // leave, this connect is refused for as long as it retries (Windows:
+  // ERROR_PIPE_BUSY) or its hello is never answered (POSIX: it sits in the
+  // listen backlog). The test has to fail on that, not hang on it.
+  std::atomic<bool> welcomed{false};
+  std::thread second([&] {
+    const NativeIpcHandle handle = connectAndHandshake(name, token);
+    if (handle != kInvalidNativeIpcHandle) {
+      welcomed.store(true);
+      closeNativeIpcHandle(handle);
+    }
+  });
+  // Both sides of the handshake, so stop() below cannot race the welcome: a
+  // named pipe discards unread bytes on disconnect.
+  const bool admitted = waitUntil(
+      [&] { return welcomed.load() && server.connectionGeneration() == 2; },
+      kDepartureNoticedWithinMs + 3000);
+  server.stop(); // releases a second relay that the server never turned to
+  second.join();
+  QVERIFY2(admitted, "a relay that left with no command outstanding still "
+                     "holds the pipe, and the next relay was turned away");
+}
+
+// The relay speaks on the pipe only to answer a command. A frame with no
+// command outstanding is a peer out of step with the protocol -- and left
+// unread it would be taken as the reply to the NEXT command, which would then
+// be "answered" before it was even sent.
+void BrowserBridgePipeTests::idlePeer_unpromptedFrameDropsTheConnection() {
+  QTemporaryDir dir;
+  BrowserBridgePipeServer server(
+      testOptions(dir.filePath(QStringLiteral("r.json")), kNoDeadlineInPlayMs));
+  QString error;
+  QVERIFY2(server.start(&error), qPrintable(error));
+
+  const NativeIpcHandle relay =
+      connectAndHandshake(server.pipeName(), server.token());
+  QVERIFY(relay != kInvalidNativeIpcHandle);
+  QVERIFY(waitUntil([&server] { return server.clientConnected(); }, 5000));
+  // Not flushed: on Windows FlushFileBuffers waits for the server to READ the
+  // bytes, and a server that only peeks never will.
+  QVERIFY(clientWrite(
+      relay, QJsonObject{{QStringLiteral("type"), QStringLiteral("result")},
+                         {QStringLiteral("id"), QStringLiteral("unasked")},
+                         {QStringLiteral("payload"), QJsonObject{}}}));
+
+  QVERIFY2(waitUntil([&server] { return !server.clientConnected(); },
+                     kDepartureNoticedWithinMs),
+           "a peer that spoke unprompted is still being served");
+  closeNativeIpcHandle(relay);
+  server.stop();
+}
+
+// The drop decides on its own thread, so a command can arrive while it is
+// deciding. Whichever side wins, the command must FAIL -- promptly, not after
+// a successor relay happens to arrive -- and it must never be executed on the
+// connection that comes next. Swept across the window in which the idle check
+// can land, since which side wins is a matter of timing.
+void BrowserBridgePipeTests::
+    idlePeer_commandRacingTheDepartureFailsAndIsNeverReplayed() {
+  QTemporaryDir dir;
+  BrowserBridgePipeServer server(
+      testOptions(dir.filePath(QStringLiteral("r.json")), kNoDeadlineInPlayMs));
+  QString error;
+  QVERIFY2(server.start(&error), qPrintable(error));
+  const QString name = server.pipeName();
+  const QString token = server.token();
+
+  // Every way a command can fail against a relay that has just gone, and
+  // nothing else. The last is the existing wording for a reply read that hit
+  // end-of-stream, which names the budget even though it ended at once.
+  const QStringList refusals{
+      QStringLiteral("Browser not connected."),
+      QStringLiteral("Browser connection closed before it replied."),
+      QStringLiteral("browser did not accept the command (timeout or reset)"),
+      QStringLiteral("browser did not reply within %1 ms (connection reset)")
+          .arg(kNoDeadlineInPlayMs)};
+
+  constexpr int kRounds = 12;
+  constexpr int kStepMs = 25; // 0..275 ms after the departure: one full check
+  quint64 generation = 0;
+  for (int round = 0; round < kRounds; ++round) {
+    const NativeIpcHandle doomed = connectAndHandshake(name, token);
+    QVERIFY(doomed != kInvalidNativeIpcHandle);
+    ++generation;
+    QVERIFY(waitUntil(
+        [&] {
+          return server.clientConnected() &&
+                 server.connectionGeneration() == generation;
+        },
+        5000));
+    closeNativeIpcHandle(doomed);
+    sleepMilliseconds(round * kStepMs);
+
+    std::atomic<bool> settled{false};
+    BrowserBridgePipeServer::Exchange outcome;
+    std::thread sender([&] {
+      outcome = server.sendCommandAwaitReply(
+          QJsonObject{{QStringLiteral("type"), QStringLiteral("command")},
+                      {QStringLiteral("id"), QStringLiteral("stale")},
+                      {QStringLiteral("cmd"), QStringLiteral("snapshot")}});
+      settled.store(true);
+    });
+    const bool prompt = waitUntil([&] { return settled.load(); },
+                                  kRacingCommandSettledWithinMs);
+    if (!prompt) {
+      server.stop(); // the only thing left that wakes a stranded sender
+    }
+    sender.join();
+    QVERIFY2(prompt, qPrintable(QStringLiteral("round %1: a command that raced "
+                                               "the departure was left waiting")
+                                    .arg(round)));
+    QVERIFY(!outcome.ok);
+    QVERIFY2(refusals.contains(outcome.error), qPrintable(outcome.error));
+    QVERIFY(waitUntil([&server] { return !server.clientConnected(); },
+                      kDepartureNoticedWithinMs));
+  }
+
+  // The relay that comes next is asked only what it is asked: none of the
+  // commands above reaches it.
+  std::atomic<bool> replied{false};
+  QString first_id;
+  std::thread successor([&] {
+    const NativeIpcHandle handle = connectAndHandshake(name, token);
+    if (handle == kInvalidNativeIpcHandle) {
+      return;
+    }
+    QJsonObject command;
+    if (clientRead(handle, &command)) {
+      first_id = command.value(QStringLiteral("id")).toString();
+      clientWrite(
+          handle,
+          QJsonObject{
+              {QStringLiteral("type"), QStringLiteral("result")},
+              {QStringLiteral("id"), command.value(QStringLiteral("id"))},
+              {QStringLiteral("payload"), QJsonObject{}}});
+      flushClient(handle);
+      replied.store(true);
+    }
+    closeNativeIpcHandle(handle);
+  });
+  ++generation;
+  QVERIFY(waitUntil(
+      [&] {
+        return server.clientConnected() &&
+               server.connectionGeneration() == generation;
+      },
+      5000));
+  const auto served = server.sendCommandAwaitReply(
+      QJsonObject{{QStringLiteral("type"), QStringLiteral("command")},
+                  {QStringLiteral("id"), QStringLiteral("fresh")},
+                  {QStringLiteral("cmd"), QStringLiteral("snapshot")}});
+  successor.join();
+  QVERIFY2(served.ok, qPrintable(served.error));
+  QVERIFY(replied.load());
+  QCOMPARE(first_id, QStringLiteral("fresh"));
   server.stop();
 }
 

@@ -69,6 +69,7 @@ const EXPORTED = [
   "boundedCount",
   "CLICK_SAMPLES",
   "shotMatchesRender",
+  "makeTabState",
   "scrollAmountPx",
   "selectCallArgs",
   "originsMatch",
@@ -120,6 +121,15 @@ function loadWorker(overrides = {}) {
 }
 
 const w = loadWorker();
+
+// A tab the session holds with the debugger on it, as the dispatcher leaves it before a handler
+// runs: a handler only ever acts on a tab its session holds.
+function holdAttached(session, tabId) {
+  const tab = w.makeTabState(tabId, "opened");
+  tab.attached = true;
+  session.tabs.set(tabId, tab);
+  return tab;
+}
 
 test("storage uses debugger-allowed domains, never blocked DOMStorage", () => {
   assert.doesNotMatch(workerSource, /["']DOMStorage\./);
@@ -318,29 +328,17 @@ test("shotMatchesRender sees a pinch, not only a scroll or zoom", () => {
   };
   const now = { ...shot, ok: true };
   // A screenshot's coordinates are meaningful only against the DOM generation
-  // it was captured at, so the check is against a session, not a global.
-  const session = w.makeSession();
-  assert.equal(w.shotMatchesRender(session, shot, now), true);
-  assert.equal(
-    w.shotMatchesRender(session, shot, { ...now, scale: 1.5 }),
-    false,
-  );
-  assert.equal(
-    w.shotMatchesRender(session, shot, { ...now, offsetX: 133 }),
-    false,
-  );
-  assert.equal(
-    w.shotMatchesRender(session, shot, { ...now, offsetY: 76 }),
-    false,
-  );
-  assert.equal(w.shotMatchesRender(session, shot, { ...now, dpr: 2.2 }), false);
-  assert.equal(
-    w.shotMatchesRender(session, shot, { ...now, ok: false }),
-    false,
-  );
+  // it was captured at, so the check is against the tab it was taken of.
+  const tab = w.makeTabState(1, "opened");
+  assert.equal(w.shotMatchesRender(tab, shot, now), true);
+  assert.equal(w.shotMatchesRender(tab, shot, { ...now, scale: 1.5 }), false);
+  assert.equal(w.shotMatchesRender(tab, shot, { ...now, offsetX: 133 }), false);
+  assert.equal(w.shotMatchesRender(tab, shot, { ...now, offsetY: 76 }), false);
+  assert.equal(w.shotMatchesRender(tab, shot, { ...now, dpr: 2.2 }), false);
+  assert.equal(w.shotMatchesRender(tab, shot, { ...now, ok: false }), false);
   // A navigation since the capture retires it, whatever the geometry says.
-  session.domEpoch += 1;
-  assert.equal(w.shotMatchesRender(session, shot, now), false);
+  tab.domEpoch += 1;
+  assert.equal(w.shotMatchesRender(tab, shot, now), false);
 });
 
 // A DOM just real enough for the naming walk: tag, id, parent, and the sibling links it counts
@@ -1032,9 +1030,8 @@ test("nothing moved with room left is waited out, not called rest", async () => 
     [["BODY/DIV[0]#scroll-region", 0, 600]],
   );
   const session = pending.worker.makeSession();
-  session.attachedTabId = 1;
-  session.lastSnapshotTabId = 1;
-  session.lastSnapshotEpoch = session.domEpoch;
+  holdAttached(session, 1);
+  session.tabs.get(1).lastSnapshotEpoch = session.tabs.get(1).domEpoch;
   const reply = crossRealm(
     await pending.worker.handleScroll(session, 1, {
       backendNodeId: 7,
@@ -1067,9 +1064,8 @@ test("nothing moved with nowhere to go is answered at once", async () => {
     [["BODY/DIV[0]#scroll-region", 600, 600]],
   );
   const session = atEdge.worker.makeSession();
-  session.attachedTabId = 1;
-  session.lastSnapshotTabId = 1;
-  session.lastSnapshotEpoch = session.domEpoch;
+  holdAttached(session, 1);
+  session.tabs.get(1).lastSnapshotEpoch = session.tabs.get(1).domEpoch;
   const reply = crossRealm(
     await atEdge.worker.handleScroll(session, 1, {
       backendNodeId: 7,
@@ -1100,11 +1096,10 @@ test("a scroll whose point misses its element is refused, not aimed at a strange
     { hit: "DIV#shadow-host", target: "DIV#scroll-region", onTarget: false },
   ]);
   const session = missed.worker.makeSession();
-  session.attachedTabId = 1;
+  holdAttached(session, 1);
   // requireSnapshotTab: the ref must come from a snapshot of THIS tab, at the DOM the page is
   // still on.
-  session.lastSnapshotTabId = 1;
-  session.lastSnapshotEpoch = session.domEpoch;
+  session.tabs.get(1).lastSnapshotEpoch = session.tabs.get(1).domEpoch;
   await assert.rejects(
     () =>
       missed.worker.handleScroll(session, 1, {
@@ -1134,11 +1129,10 @@ test("a point that slips once is re-resolved and the scroll goes ahead", async (
     { hit: "DIV#scroll-region", target: "DIV#scroll-region", onTarget: true },
   ]);
   const session = recovered.worker.makeSession();
-  session.attachedTabId = 1;
+  holdAttached(session, 1);
   // requireSnapshotTab: the ref must come from a snapshot of THIS tab, at the DOM the page is
   // still on.
-  session.lastSnapshotTabId = 1;
-  session.lastSnapshotEpoch = session.domEpoch;
+  session.tabs.get(1).lastSnapshotEpoch = session.tabs.get(1).domEpoch;
   const reply = crossRealm(
     await recovered.worker.handleScroll(session, 1, {
       backendNodeId: 7,
@@ -1238,6 +1232,13 @@ test("the cursor nudge moves an existing cursor and admits when there is none", 
     full.includes("118") && full.includes("79"),
     "the full overlay build uses the same tip offset as the nudge",
   );
+  // A Trusted Types page (YouTube, Gmail, Chrome's error pages) refuses an innerHTML assignment and
+  // throws, which left the cursor undrawn and put an exception the extension caused into the page's
+  // console. The overlay is built node by node instead.
+  assert.ok(
+    !full.includes("innerHTML"),
+    "the overlay must not use innerHTML; Trusted Types pages reject it",
+  );
   // It must not rebuild anything: those are the costs it exists to avoid.
   for (const expensive of ["innerHTML", "cssText", "svg", "@keyframes"]) {
     assert.ok(
@@ -1326,9 +1327,8 @@ test("a drag that fails mid-path raises no unhandled rejection", async () => {
         Promise.resolve({ id: 1, url: "https://example.test/" }),
     });
     const session = worker.makeSession();
-    session.attachedTabId = 1;
-    session.lastSnapshotTabId = 1;
-    session.lastSnapshotEpoch = session.domEpoch;
+    holdAttached(session, 1);
+    session.tabs.get(1).lastSnapshotEpoch = session.tabs.get(1).domEpoch;
 
     await assert.rejects(() =>
       worker.handleDrag(session, 1, {
@@ -1425,7 +1425,7 @@ function readerWorker() {
     "tabs.get": () => Promise.resolve({ id: 1, url: "https://example.test/" }),
   });
   const session = worker.makeSession();
-  session.attachedTabId = 1;
+  holdAttached(session, 1);
   return { worker, session };
 }
 
@@ -1434,20 +1434,20 @@ function readerWorker() {
 test("browser_console separates silence from lost history", async () => {
   const { worker, session } = readerWorker();
   for (let i = 0; i < 5; i += 1) {
-    session.consoleEntries.push({
+    session.tabs.get(1).consoleEntries.push({
       level: "log",
       text: "m" + i,
       source: "console",
       at: null,
     });
   }
-  session.consoleEntries.push({
+  session.tabs.get(1).consoleEntries.push({
     level: "error",
     text: "TypeError: x is not a function",
     source: "exception",
     at: "https://x.test/a.js:42",
   });
-  session.consoleDropped = 7;
+  session.tabs.get(1).consoleDropped = 7;
 
   const all = crossRealm(await worker.handleConsole(session, 1, {}));
   assert.equal(all.total, 6);
@@ -1480,8 +1480,8 @@ test("browser_console separates silence from lost history", async () => {
     await worker.handleConsole(session, 1, { clear: true }),
   );
   assert.equal(drained.cleared, true);
-  assert.equal(session.consoleEntries.length, 0);
-  assert.equal(session.consoleDropped, 0);
+  assert.equal(session.tabs.get(1).consoleEntries.length, 0);
+  assert.equal(session.tabs.get(1).consoleDropped, 0);
 });
 
 // The media element's own controls load dozens of data: icons. Logging them filled the ring and
@@ -1504,7 +1504,7 @@ test("inline content is not a network request", () => {
 
 test("browser_network reports failures, and what is still in flight", async () => {
   const { worker, session } = readerWorker();
-  session.networkEntries.push(
+  session.tabs.get(1).networkEntries.push(
     {
       method: "GET",
       url: "https://x.test/ok",
@@ -1536,7 +1536,7 @@ test("browser_network reports failures, and what is still in flight", async () =
       ms: 3,
     },
   );
-  session.networkPending.set("req-9", {
+  session.tabs.get(1).networkPending.set("req-9", {
     method: "GET",
     url: "https://x.test/slow",
     startedMs: Date.now(),
@@ -1565,7 +1565,7 @@ test("browser_network reports failures, and what is still in flight", async () =
     await worker.handleNetwork(session, 1, { clear: true }),
   );
   assert.equal(drained.cleared, true);
-  assert.equal(session.networkEntries.length, 0);
+  assert.equal(session.tabs.get(1).networkEntries.length, 0);
 });
 
 // Found on a Windows VM driving real sites: a label copied out of the snapshot did not select

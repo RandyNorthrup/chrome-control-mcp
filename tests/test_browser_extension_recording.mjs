@@ -26,7 +26,8 @@ const EXPORTED = [
   "handleSelectTab",
   "handleNewTab",
   "handleWindow",
-  "releaseAttachedState",
+  "releaseTabState",
+  "makeTabState",
   "noteCommandForRecording",
 ];
 const LIVE = "only: () => [...sessions][0]";
@@ -76,6 +77,9 @@ function bootWorker({ stopAnswer } = {}) {
     },
     LIVE,
   );
+  // The tab every test records. A command reaches a handler only for a tab its session holds
+  // (the dispatcher sees to that), so the session holds it here as the dispatcher would have.
+  worker.only().tabs.set(7, worker.makeTabState(7, "opened"));
   return { worker, toRecorder, cdp, downloads };
 }
 
@@ -151,7 +155,7 @@ test("stopping returns a path and a timeline, never the bytes", async () => {
 
   // Two commands run while recording.
   worker.noteCommandForRecording(session, "b-1", "navigate");
-  session.domEpoch += 1;
+  session.tabs.get(7).domEpoch += 1;
   worker.noteCommandForRecording(session, "b-2", "click");
 
   const stopped = await worker.handleRecordStop(session);
@@ -207,7 +211,7 @@ test("RED DRILL: a session ending mid-recording leaves no encoder and no file", 
   await worker.handleRecordStart(session, 7, { filename: "runs/doomed.webm" });
   const id = session.recording.id;
 
-  worker.releaseAttachedState(session);
+  worker.releaseTabState(session, session.tabs.get(7));
   await settle();
 
   assert.equal(session.recording, null, "the session stops claiming to record");
@@ -256,7 +260,8 @@ test("moving to another tab while recording is refused, not silently ended", asy
 
 test("a release with nothing recording asks the encoder for nothing", async () => {
   const { worker, toRecorder } = bootWorker();
-  worker.releaseAttachedState(worker.only());
+  const session = worker.only();
+  worker.releaseTabState(session, session.tabs.get(7));
   await settle();
   assert.equal(sentTo(toRecorder, "record.discard").length, 0);
 });

@@ -23,18 +23,25 @@ guarantee.
 
 The extension asks for exactly what it uses, and the set is chosen rather than accumulated:
 
-| Permission        | What it is for                                                 |
-| ----------------- | -------------------------------------------------------------- |
-| `nativeMessaging` | the bridge to the MCP server                                   |
-| `debugger`        | every page action, over the DevTools protocol                  |
-| `tabs`            | resolving and listing tabs                                     |
-| `tabGroups`       | the tab-strip mark that shows which tab is under control       |
-| `contentSettings` | `browser_permission`                                           |
-| `cookies`         | `browser_cookies`                                              |
-| `downloads`       | `browser_download`, and landing a recording as a file          |
-| `offscreen`       | a hidden document to run the video encoder in                  |
-| `alarms`          | re-arming the bridge after the service worker is retired       |
-| `<all_urls>`      | the assistant can be asked to drive any page the user can open |
+| Permission        | What it is for                                                                                                             |
+| ----------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| `nativeMessaging` | the bridge to the MCP server                                                                                               |
+| `debugger`        | every page action, over the DevTools protocol                                                                              |
+| `tabs`            | resolving and listing tabs                                                                                                 |
+| `tabGroups`       | the tab-strip mark that shows which tab is under control                                                                   |
+| `contentSettings` | `browser_permission`                                                                                                       |
+| `cookies`         | `browser_cookies`                                                                                                          |
+| `downloads`       | `browser_download`, and landing a recording as a file                                                                      |
+| `offscreen`       | a hidden document to run the video encoder in                                                                              |
+| `alarms`          | re-arming the bridge after the service worker is retired                                                                   |
+| `storage`         | the pause switch, the reconnect backoff, and which tabs each session holds across a worker restart                         |
+| `scripting`       | taking the control frame off a page whose debugger attachment has already ended                                            |
+| `webNavigation`   | knowing which tab a link or script opened a new tab from, so an agent's popup is the agent's and the user's new tab is not |
+| `<all_urls>`      | the assistant can be asked to drive any page the user can open                                                             |
+
+`scripting` runs one fixed function -- remove the three overlay elements by id -- and nothing
+else; it is the only way to clear the frame from a page after the user cancels Chrome's debugging
+bar or opens DevTools, when the debugger can no longer reach it.
 
 ### Recording is not an escalation
 

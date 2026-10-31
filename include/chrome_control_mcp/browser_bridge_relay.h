@@ -7,9 +7,12 @@
 
 #include <QJsonObject>
 #include <QString>
+#include <QStringList>
 
+#include <condition_variable>
 #include <functional>
 #include <mutex>
+#include <thread>
 #include <vector>
 
 /// @file browser_bridge_relay.h
@@ -77,6 +80,81 @@ inline constexpr int kRelayAttachTimeoutMs = 5000;
 /// did not choose. Pure, so the rule is testable without a relay.
 [[nodiscard]] QString selectRendezvousRecord(const QStringList &records,
                                              const QString &wanted);
+
+/// The records among @p records whose server is still running as an instance
+/// of this program, in the order given (newest first, as the listing returns
+/// them).
+///
+/// A listing is of FILES, and a server that crashes leaves its file behind:
+/// the sweep that removes such records runs only when a server starts. Offered
+/// one, the extension can choose a pid that will never answer, and that port is
+/// spent on a connection that cannot be made. A record that cannot be read, or
+/// that names this very process -- a relay is never a server -- is left out
+/// too.
+[[nodiscard]] QStringList liveRendezvousRecords(const QStringList &records);
+
+/// The ids the extension is offered for @p records: each record's pid as a
+/// string, in the same order. A path not named like a record is skipped. Pure.
+[[nodiscard]] QStringList rendezvousServerIds(const QStringList &records);
+
+/// How often, in milliseconds, a pumping relay lists the live servers again
+/// to see whether the set has changed.
+inline constexpr int kRelayServerWatchMs = 1000;
+
+/// Tells the extension, while the relay pumps, whenever the set of live
+/// servers changes: `{"type":"bridge_servers","servers":["<pid>", ...]}`,
+/// newest first, written through @p write.
+///
+/// A relay offers its list once, when it connects. A server that started
+/// afterwards -- a second editor opening -- was therefore found only when the
+/// extension's 30 s alarm next opened a port to ask, so the new window waited
+/// up to half a minute for a browser that was already there. Listing again
+/// every @p interval_ms on this thread cuts that to about a second.
+///
+/// "Changed" is a change of SET, measured against the last set reported, which
+/// starts as the list the extension was offered. Order alone is not news: a
+/// server re-publishing its record moves it to the front of the listing
+/// without anything having started or stopped.
+///
+/// The frame runs relay -> extension only and asks for no answer. An extension
+/// older than the frame logs an unexpected type and carries on, so it is safe
+/// in that skew; and nothing is added to the extension -> relay direction,
+/// where an unprompted frame would be read as the reply to a command. @p write
+/// must be safe to call alongside the pump's own writes -- in the relay every
+/// stdout write takes one lock -- and once it fails (stdout is gone) the
+/// watcher stops.
+class BridgeServerWatcher {
+public:
+  /// The live servers' ids right now, newest first.
+  using ListFn = std::function<QStringList()>;
+
+  BridgeServerWatcher(QStringList offered, ListFn list_live,
+                      BrowserWriteFn write,
+                      int interval_ms = kRelayServerWatchMs);
+  ~BridgeServerWatcher();
+
+  BridgeServerWatcher(const BridgeServerWatcher &) = delete;
+  BridgeServerWatcher &operator=(const BridgeServerWatcher &) = delete;
+  BridgeServerWatcher(BridgeServerWatcher &&) = delete;
+  BridgeServerWatcher &operator=(BridgeServerWatcher &&) = delete;
+
+  /// Stop listing and join the thread. Prompt whatever the interval, because
+  /// the relay joins this on its way out and a relay that lingers holds the
+  /// server's pipe. Call from the owning thread; a second call does nothing.
+  void stop();
+
+private:
+  void run();
+
+  QStringList reported_; ///< Touched only by the watcher thread once started.
+  ListFn list_live_;
+  BrowserWriteFn write_;
+  int interval_ms_;
+  std::mutex mutex_;
+  std::condition_variable cv_;
+  bool stopping_{false};
+  std::thread thread_; ///< Last, so it starts after everything it reads.
+};
 
 /// The beats an extension sends while a command it was given is still
 /// running, waiting to be written to the pipe by the thread that owns it.
@@ -214,18 +292,26 @@ inline constexpr int kBrowserPresencePollMs = 250;
 /// starts a new one on the next port connection. The exit skips static
 /// destructors on purpose, because another thread may be mid-write on the pipe
 /// and running them underneath it would be the only way this could crash.
+///
+/// Its final flush takes the lock every stdout frame is written under, so it
+/// never lands inside a frame -- but waits for it only briefly, since a writer
+/// holding it longer is wedged on a pipe nobody reads, and waiting would keep
+/// alive the very process this exists to end.
 void watchForBrowserExit();
 
 /// Run the full relay against Chrome's stdio. The sequence is:
 ///
-///   1. list the published rendezvous records and offer them to the extension
-///      as `{type:"bridge_offers", protocol, servers:[<pid>, ...]}`
+///   1. list the rendezvous records of servers that are still running and
+///      offer them to the extension as
+///      `{type:"bridge_offers", protocol, servers:[<pid>, ...]}`
 ///   2. wait (bounded by kRelayAttachTimeoutMs) for
 ///      `{type:"attach_session", session:"<pid>"}` naming the one to take
 ///   3. connect to that record, verify the server's code identity, and complete
 ///      the token/protocol handshake
 ///   4. announce `{type:"bridge_ready", protocol}` and pump relayPumpOnce until
-///      either side closes
+///      either side closes, while a BridgeServerWatcher sends
+///      `{type:"bridge_servers", servers:[<pid>, ...]}` whenever the set of
+///      running servers changes
 ///
 /// Any failure before step 4 writes a single `bridge_unavailable` frame and
 /// exits 0, so Chrome relaunches the host on the next port connection.

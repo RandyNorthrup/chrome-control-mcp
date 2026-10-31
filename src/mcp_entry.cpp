@@ -205,7 +205,13 @@ int runInstall() {
     // sends the reader looking for their change in a copy that never
     // received it.
     payload.insert(QStringLiteral("installed"), !result.unchanged);
-    if (result.unchanged) {
+    if (result.newer_installed) {
+      payload.insert(
+          QStringLiteral("note"),
+          QStringLiteral("Version %1 is installed and current, which is newer "
+                         "than this copy (%2), so it was left in place.")
+              .arg(result.installed_version, serverVersion()));
+    } else if (result.unchanged) {
       payload.insert(
           QStringLiteral("note"),
           QStringLiteral("Version %1 was already installed and already "

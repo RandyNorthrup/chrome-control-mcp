@@ -76,9 +76,10 @@ mcpValidateArgsAgainstSchema(const QJsonObject &input_schema,
 ///
 /// When @p browser is non-null, its `browser_*` tools are merged into
 /// `tools/list` and a matching `tools/call` is routed to it (live browser
-/// control). When null (the default, and every pure unit test), only the
-/// built-in native tools are advertised and a browser_* call falls through to
-/// the unknown-tool error.
+/// control), and `initialize` hands it the client's `clientInfo.name`. When
+/// null (the default, and every pure unit test), only the built-in native
+/// tools are advertised and a browser_* call falls through to the unknown-tool
+/// error.
 [[nodiscard]] std::optional<QJsonObject>
 handleRequest(const QJsonObject &request, BrowserControl *browser = nullptr,
               const McpServerPolicy &policy = {});

@@ -24,37 +24,47 @@
 
 ![Chrome Control MCP driving UI Test Automation Playground with its visible pink control frame, AI CONTROL badge, and agent cursor](docs/assets/chrome-control-overlay-playground.png)
 
-Active automation stays visible: pink frame, **AI CONTROL** badge, and pulsing agent cursor show
-when an assistant controls Chrome, and the tab under control sits in a pink **AI CONTROL** tab
-group, so it is identifiable in the tab strip without opening it. Model-facing screenshots hide the
-page overlay by default; documentation captures can opt in.
+Active automation stays visible: a coloured frame, an **AI CONTROL** badge, and a pulsing agent
+cursor show on every tab an assistant holds, and those tabs sit in a tab group of the same colour,
+so they are identifiable in the tab strip without opening them. Each agent gets its own colour and a
+group named for it (**AI · research**, **AI · writer**), so several agents side by side are told
+apart at a glance. Model-facing screenshots hide the page overlay by default; documentation captures
+can opt in.
 
 ## Why this project
 
-| Capability           | Included                                                                                                                                                                                                            |
-| -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Works beside you     | Session drives its own visible tab and never changes which tab is in front, raises a window, or asks for OS focus. `browser_window new` reports `took_os_focus` when a compositor focuses the new window regardless |
-| Semantic control     | Accessibility-tree snapshots with stable element refs                                                                                                                                                               |
-| Real input           | Click, type, keys, hover, drag, select, scroll, dialogs, and media                                                                                                                                                  |
-| File upload          | Attach local files to a page's file input, as the user's own picker would                                                                                                                                           |
-| Visual reasoning     | Viewport/full-page PNG capture and guarded coordinate clicks                                                                                                                                                        |
-| Browser management   | Navigation, tabs, tab groups, windows, emulation, and waits                                                                                                                                                         |
-| Browser state        | Cookies, local/session storage, permissions, downloads, print, and HTTP auth                                                                                                                                        |
-| A session per editor | Several editors drive Chrome at once, each owning its own tab and unable to touch another's                                                                                                                         |
-| Tab recording        | Record the session's tab to a `.webm` with a machine-readable timeline of the commands that ran                                                                                                                     |
-| Extension lifecycle  | Prepare, inspect, and unregister current-user native-host integration                                                                                                                                               |
-| In-place updates     | Check, download, verify, and install a new release without overwriting the running executable                                                                                                                       |
+| Capability             | Included                                                                                                                                                                                                            |
+| ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Works beside you       | Session drives its own visible tab and never changes which tab is in front, raises a window, or asks for OS focus. `browser_window new` reports `took_os_focus` when a compositor focuses the new window regardless |
+| Semantic control       | Accessibility-tree snapshots with stable element refs                                                                                                                                                               |
+| Real input             | Click, type, keys, hover, drag, select, scroll, dialogs, and media                                                                                                                                                  |
+| File upload            | Give a page local files through its file input, an input its script creates, a drop zone, or a File System Access picker -- in background tabs, and never through a native dialog                                   |
+| Visual reasoning       | Viewport/full-page PNG capture and guarded coordinate clicks                                                                                                                                                        |
+| Browser management     | Navigation, tabs, tab groups, windows, emulation, and waits                                                                                                                                                         |
+| Browser state          | Cookies, local/session storage, permissions, downloads, print, and HTTP auth                                                                                                                                        |
+| Many agents at once    | Several editors, and several agents inside one, drive Chrome at once, each in its own tabs and coloured group, unable to touch another's                                                                            |
+| Cleans up after itself | An agent's tabs close when it releases them or its editor exits; tabs it borrowed from you are handed back, never closed                                                                                            |
+| Tab recording          | Record the session's tab to a `.webm` with a machine-readable timeline of the commands that ran                                                                                                                     |
+| Extension lifecycle    | Prepare, inspect, and unregister current-user native-host integration                                                                                                                                               |
+| In-place updates       | Check, download, verify, and install a new release without overwriting the running executable                                                                                                                       |
 
-All **49 MCP tools** use strict JSON Schemas. Long-lived MCP process preserves session and
+All **52 MCP tools** use strict JSON Schemas. Long-lived MCP process preserves session and
 element-ref state while Chrome remains an ordinary user-controlled browser.
 
-Since 1.5.0 several servers run side by side -- one per editor window -- and each gets its own
-session, its own tab, and no way to reach another session's tab. A second editor takes a tab the
-normal way: `browser_new_tab` opens one in the background and makes it that session's. Asking for a
-tab another session is driving is refused by name, so "busy" reads differently from "gone", and
-`browser_tabs` marks such a tab `controlled_by_other_session` rather than hiding it -- the operator
-sees the whole window either way. The constraints that shaped this, and the ones that ruled other
-designs out, are in [docs/MULTI_SESSION.md](docs/MULTI_SESSION.md).
+Several servers run side by side -- one per editor window or MCP client -- and several agents can
+share one server. Each agent opens its own tab with `browser_new_tab` (optionally naming itself with
+`agent`) and passes the returned `tab_id` to every call; element refs are bound to the tab they came
+from, so one agent's snapshot never retargets another's click. Asking for a tab another session is
+driving is refused by name, so "busy" reads differently from "gone", and `browser_tabs` marks such a
+tab `controlled_by_other_session` rather than hiding it. The server says all of this to every client
+through the standard MCP `instructions` field, so it works the same with any MCP client.
+
+Which tabs are the assistant's is never guessed: a tab you open is yours, even from an AI tab with
+Ctrl+T or a middle-click, and is never pulled into its group. Drag a tab into an AI group to hand it
+over; drag one out to take it back. When an agent calls `browser_release`, or its editor exits, the
+tabs it opened close and its group goes; after ten minutes without a command its tabs are stood
+down (no highlight, no debugging bar, group greyed) and picked back up by its next command. The
+design record is [docs/MULTI_SESSION.md](docs/MULTI_SESSION.md).
 
 Recording a run is two tools:
 

@@ -15,6 +15,7 @@
 #include <algorithm>
 #include <cerrno>
 #include <chrono>
+#include <cstdint>
 #include <cstring>
 #include <system_error>
 #include <thread>
@@ -202,6 +203,67 @@ bool writeFrame(int socket_fd, const QJsonObject &message,
                 const IoDeadline &deadline) {
   const QByteArray frame = encodeFrame(message);
   return socketWriteAll(socket_fd, frame.constData(), frame.size(), deadline);
+}
+
+// What the relay on an idle connection is doing, seen without consuming a byte.
+enum class IdlePeer : std::uint8_t {
+  Present, // connected and quiet, as it should be between commands
+  Gone,    // closed its end, or died
+  Talking  // bytes arrived with no command outstanding
+};
+
+// Whether a failed non-blocking peek only means "nothing there after all".
+// Spelled as a function because EAGAIN and EWOULDBLOCK are the same value on
+// Linux and not guaranteed to be elsewhere, and comparing errno against both
+// inline reads as a redundant expression to the analyzer.
+bool peekWouldBlock(int error) {
+#if EAGAIN == EWOULDBLOCK
+  return error == EAGAIN;
+#else
+  return error == EAGAIN || error == EWOULDBLOCK;
+#endif
+}
+
+// Look at an idle connection without reading from it: poll with no timeout,
+// then a peek that never blocks. Neither consumes, so this cannot take part of
+// a frame -- and while idle there is no frame to take: the relay writes only
+// to answer a command.
+IdlePeer idlePeerState(int socket_fd) {
+  pollfd watched{socket_fd, POLLIN, 0};
+  int ready = ::poll(&watched, 1, 0);
+  while (ready < 0 && errno == EINTR) {
+    ready = ::poll(&watched, 1, 0);
+  }
+  if (ready <= 0) {
+    // Nothing to report -- or poll itself failed, which says nothing about the
+    // peer. The next check asks again.
+    return IdlePeer::Present;
+  }
+  if ((watched.revents & (POLLHUP | POLLERR | POLLNVAL)) != 0) {
+    return IdlePeer::Gone;
+  }
+  if ((watched.revents & POLLIN) == 0) {
+    return IdlePeer::Present;
+  }
+  // Readable is either bytes or end-of-stream, and the platforms disagree on
+  // which they flag: Linux raises POLLHUP for a stream socket whose peer has
+  // closed, macOS may only mark it readable. A one-byte peek tells them apart.
+  char probe = 0;
+  // Runs with mutex_ released (see serveConnected); the analyzer loses track
+  // of the explicit unlock there, as it does for the reads above.
+  // NOLINTBEGIN(clang-analyzer-unix.BlockInCriticalSection)
+  ssize_t peeked = ::recv(socket_fd, &probe, 1, MSG_PEEK | MSG_DONTWAIT);
+  while (peeked < 0 && errno == EINTR) {
+    peeked = ::recv(socket_fd, &probe, 1, MSG_PEEK | MSG_DONTWAIT);
+  }
+  // NOLINTEND(clang-analyzer-unix.BlockInCriticalSection)
+  if (peeked > 0) {
+    return IdlePeer::Talking;
+  }
+  if (peeked == 0) {
+    return IdlePeer::Gone; // orderly end-of-stream: the relay closed its end
+  }
+  return peekWouldBlock(errno) ? IdlePeer::Present : IdlePeer::Gone;
 }
 
 enum class ConnectResult : std::uint8_t { Connected, Shutdown, Error };
@@ -541,9 +603,31 @@ bool BrowserBridgePipeServer::verifyPeer(QString *why) const {
 void BrowserBridgePipeServer::serveConnected() {
   while (true) {
     std::unique_lock<std::mutex> lock(mutex_);
-    cv_.wait(lock, [this] { return has_request_ || !running_; });
+    // Wait in slices, never for as long as it takes. From inside a wait only a
+    // command can end, a relay that died between commands is indistinguishable
+    // from one that is idle -- and the connection stayed held for it, with
+    // every relay Chrome started afterwards parked unanswered in the listen
+    // backlog, until a command happened along to fail.
+    const bool asked = cv_.wait_for(
+        lock, std::chrono::milliseconds(kBrowserBridgeIdlePeerCheckMs),
+        [this] { return has_request_ || !running_; });
     if (!running_) {
       return;
+    }
+    if (!asked) {
+      // Looked at with the lock released, as all socket I/O is. A command
+      // posted meanwhile is safe either way: a live relay serves it on the next
+      // pass, and for a dead one this returns, run() marks the connection gone,
+      // and the sender -- which wakes on exactly that -- fails it. run() clears
+      // the slot before it serves another relay, so it never reaches the next.
+      lock.unlock();
+      if (idlePeerState(connection_fd_) != IdlePeer::Present) {
+        // Gone, or talking with nothing asked. The second is not a relay that
+        // is keeping to the protocol, and its bytes left unread would be taken
+        // as the reply to the NEXT command, before that command was even sent.
+        return;
+      }
+      continue;
     }
     const QJsonObject request = request_frame_;
     has_request_ = false;
@@ -662,6 +746,13 @@ BrowserBridgePipeServer::sendCommandAwaitReply(const QJsonObject &frame) {
             .error =
                 QStringLiteral("A browser action is already in progress.")};
   }
+  // Pin the connection identity, and wake on either sign that it has ended.
+  // The generation changes when a fresh relay replaces this one, and it cannot
+  // be missed -- connected_ oscillates false->true across a reconnect, so a
+  // sender watching only that could sleep through both edges. connected_ going
+  // false is the prompt sign: the I/O thread drops an idle connection whose
+  // relay has gone, possibly just after this request was posted, and no
+  // successor need ever arrive to move the generation on.
   const quint64 my_generation = generation_;
   // Ask the extension to report progress while it works. The deadline belongs
   // to this transport, so the request for the beats that hold it open belongs
@@ -673,7 +764,8 @@ BrowserBridgePipeServer::sendCommandAwaitReply(const QJsonObject &frame) {
   has_response_ = false;
   cv_.notify_all();
   cv_.wait(lock, [this, my_generation] {
-    return has_response_ || !running_ || generation_ != my_generation;
+    return has_response_ || !running_ || !connected_ ||
+           generation_ != my_generation;
   });
   const bool got_response = has_response_;
   Exchange result{};

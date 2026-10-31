@@ -72,6 +72,11 @@ struct UpdateApplyResult {
   // answer ok, and a caller that cannot tell them apart will believe a
   // rebuilt same-version tree landed when it did not.
   bool unchanged{false};
+  // True when nothing was changed because a NEWER version is already current.
+  // An older build asked to install itself -- an editor starting with the
+  // build it bundles -- leaves the newer one in place rather than rolling it
+  // back; installed_version then names the version that stays current.
+  bool newer_installed{false};
 };
 
 /// The release-asset base name this build needs, for @p version: the operating

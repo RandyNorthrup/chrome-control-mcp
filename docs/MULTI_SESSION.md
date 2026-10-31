@@ -247,6 +247,83 @@ click.
 
 ## Until then
 
-The current behaviour is the mitigation: the second window serves its native tools, says browser
-control is unavailable, and retries on every browser tool call, so it takes the browser over as soon
-as the first server exits. Closing the other VS Code window is enough to hand it over.
+_Historical, superseded by 1.5.0 and then by the section below._ The second window served its native
+tools, said browser control was unavailable, and retried on every browser tool call, so it took the
+browser over as soon as the first server exited.
+
+## 1.8.0: agents, not servers
+
+1.5.0 made the unit of isolation the **server**. Daily use showed that was the wrong unit, and that
+three things the design took for granted were not true.
+
+### What went wrong in practice
+
+1. **A second server could be stranded for hours.** Measured on a workstation: two servers running,
+   one relay. The unattached server had published its record the evening before. Its pipe has one
+   instance, and the server only looked at the pipe when it sent a command — so when the relay died
+   (Chrome restarting), the server held a dead connection until its next tool call, and every relay
+   in between got `ERROR_PIPE_BUSY`. The server now checks an idle connection every 250 ms and
+   re-listens the moment its relay is gone. Relays offer only servers that are running, and an
+   attached relay tells the extension when the set of running servers changes (`bridge_servers`),
+   so a new editor is attached in about a second without the extension starting a process to ask.
+2. **Several agents share one server.** Sub-agents and parallel tasks of one client sit behind one
+   MCP connection, and the server cannot tell them apart. With one current tab and one ref index
+   per server, agent B opening a tab moved agent A. So the tab is now addressed per call (`tab_id`
+   on every tab-scoped tool), every element ref is bound to the tab its snapshot came from and never
+   reused for the life of the server, and the extension holds **many** tabs per session, each with
+   its own debugger attachment, snapshot generation, screenshot transform, dialog arm and logs.
+   Nothing about a page is session-wide any more. An agent may name itself (`agent` on
+   `browser_new_tab`); its tabs then get their own group and colour.
+3. **An opener is not an author.** Chrome sets `openerTabId` for the user's own Ctrl+T and
+   middle-click, and it puts a tab opened from a grouped tab into that group. Following openers is
+   how the user's new tab was pulled into the AI group with the session moved onto it. A tab now
+   belongs to a session only if the session opened it (`browser_new_tab`, `browser_window new`), its
+   page opened it while one of its input or navigation commands was running (plus a 2 s grace), it
+   was given it (`browser_select_tab`), or the user dragged it into the session's group. Anything
+   else is the user's, and is taken back out of an AI group Chrome put it in.
+
+### Holding, marking, and letting go
+
+- Every held tab is attached and marked: the frame and badge are registered with
+  `Page.addScriptToEvaluateOnNewDocument`, so each new document draws them as it is created —
+  re-drawing on `Page.frameNavigated` raced the new document and lost.
+- A held tab dragged out of the AI group is the user's again; a tab dragged into one is lent. The
+  worker's own group/ungroup calls are recognised and not read as either.
+- Two origins: **opened** tabs are closed when released; **adopted** tabs are handed back (group
+  and marking removed), never closed. The tab the user is looking at, and the browser's last tab,
+  are never closed.
+- `browser_release` releases one tab (`tab_id`) or everything; `keep_open` hands opened tabs over
+  instead of closing them.
+- A lost port **parks** the session: tabs detached but still held. The next offer decides — the
+  server is still running, so a port attaches to it and resumes; or it is gone, so its tabs are
+  released as if by `browser_release`. Holdings are mirrored to `chrome.storage.session` so a
+  restarted worker can do the same.
+- Ten minutes without a command stands a session down: debugger detached (taking Chrome's
+  debugging bar with it), marking removed, group greyed and titled "(idle)". Its next command
+  resumes all of it.
+
+### File pickers
+
+Measured on Chrome 153: a file chooser opened in a tab that is not the active tab of its window is
+cancelled (the page gets `cancel`); in an active tab of an unfocused window a native dialog opens
+over whatever the user is doing. Neither is usable by an agent. While a command that can open one is
+running (and for 2 s after), pickers are caught instead: `<input type=file>` through
+`Page.setInterceptFileChooserDialog`, and `showOpenFilePicker` through a stand-in installed only on
+held tabs. `browser_upload` with no ref fills what was caught; with a ref to a drop zone that has
+no input it delivers the files as a drop, and reports failure if the element does not accept one.
+Outside that window nothing is caught, so the user's own clicks open the ordinary dialog. Folder
+pickers are not supported yet.
+
+### Not starting processes for nothing
+
+Every port is a process. The rules that keep it so: an attached relay's `bridge_servers` report
+costs nothing; a probe runs only when a report names a server nothing holds, and at most one at a
+time; with an attached relay the alarm's probe is a five-minute safety net, not a thirty-second
+tick; a server that refused the extension is set aside on a doubling interval (one minute to thirty)
+rather than retried on every offer; and the 1.7.0 reconnect backoff and pause switch are unchanged.
+
+### Still serial within one server
+
+One server still carries one command at a time over its pipe. Two agents behind one server are
+isolated from each other, not concurrent: a long `browser_wait_for` from one delays the other's next
+call. Separate servers run in parallel.

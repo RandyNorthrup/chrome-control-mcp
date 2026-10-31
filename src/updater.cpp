@@ -586,6 +586,29 @@ UpdateApplyResult adoptRunningInstall(const UpdaterConfig &config) {
                             .arg(QDir::toNativeSeparators(layout.versions)));
   }
 
+  // A newer version is already current -- an update applied through
+  // browser_update_apply, or a newer build installed by hand. This path runs
+  // on every editor start with whatever build the VS Code extension bundles,
+  // and it used to repoint the link at that build regardless: opening an
+  // editor silently rolled the update back, and left Chrome loading an
+  // extension the relay it now launched no longer spoke to. An older build
+  // leaves a newer one in place and says which one stays current.
+  const QString current = currentVersion(layout);
+  if (isNewerVersion(current, version) &&
+      QFileInfo(QDir(layout.current).filePath(installedExecutableName()))
+          .isFile()) {
+    UpdateApplyResult kept;
+    kept.ok = true;
+    kept.unchanged = true;
+    kept.newer_installed = true;
+    kept.adopted_from = source;
+    kept.previous_version = current;
+    kept.installed_version = current;
+    kept.executable_path = currentExecutable(layout);
+    kept.extension_path = currentExtensionDirectory(layout);
+    return kept;
+  }
+
   // This version is already installed and already current. Copying it again
   // would be pure work, and this path runs on every editor start for the VS
   // Code extension, so say so instead.

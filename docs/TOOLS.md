@@ -1,8 +1,41 @@
 # Tool catalog
 
-Full profile advertises 51 tools: 43 live browser tools, 2 recording tools, 3 extension lifecycle
-tools, and 3
-self-update tools.
+Full profile advertises 52 tools: 44 live browser tools, 2 recording tools, 3 extension lifecycle
+tools, and 3 self-update tools.
+
+## Tabs, agents, and `tab_id`
+
+One server serves one MCP client, and several agents can share that client: sub-agents, parallel
+tasks. The session's _current tab_ is shared by all of them, so an agent that leans on it is one
+other agent's `browser_new_tab` away from acting on the wrong page. The initialize result's
+standard MCP `instructions` tell every client this, and the tools are built around it:
+
+- **`tab_id` on every tab-scoped tool.** Each tool whose command acts on one tab takes an optional
+  positive integer `tab_id`; omitted, the call uses the session's current tab as before. An agent
+  opens its own tab with `browser_new_tab` -- the reply carries its `tab_id` -- and passes it on
+  every call. The set of tools that take it is generated from the command list, not written into
+  each schema, and a test pins it. `browser_select_tab` takes `tab_id` or `index` (exactly one);
+  `browser_close_tab` takes either or neither (neither closes the session's tab).
+- **Refs are bound to their tab.** A ref acts on the tab its snapshot came from, whatever tab is
+  current; the snapshot text carries a `tab_id:` line after the title. A call whose own `tab_id`
+  names a different tab than its ref is refused naming both, and a `browser_drag` whose `ref` and
+  `to_ref` came from two tabs is refused. Staleness is per tab: one agent's page navigating leaves
+  every other tab's refs live.
+- **Ref names are never reused.** New elements are numbered above every ref the server has issued,
+  on any tab, for its whole life. A ref from before a navigation, a reconnect, or a closed tab
+  answers "Unknown element ref" instead of silently naming whatever took its number.
+- **`agent` on `browser_new_tab` and `browser_select_tab`.** A short name (1-24 printable
+  characters after trimming; anything else is refused, not cleaned up) for the agent doing the work.
+  Tabs with the same name share one tab group with its own colour, so the user can tell agents
+  apart; tabs a page opens from them join the same group. Omitted, the tab joins the session's
+  shared group.
+- **`browser_release` when the task is done.** Tabs the session opened are closed; tabs it borrowed
+  from the user are handed back, never closed; the AI tab group and highlight are removed.
+  `tab_id` releases only that tab, which is what an agent sharing the server should do.
+  `keep_open: true` hands the tabs it opened to the user instead of closing them.
+
+The extension titles the tab group with the client's `clientInfo.name` from `initialize`, sent on
+every command frame cut down to printable text of at most 32 characters.
 
 ## Navigation and capture
 
@@ -35,12 +68,15 @@ that should show the exact control presence visible in Chrome.
 - `browser_js_click`
 
 `browser_upload` attaches local files to a page's file input, as the user's own picker would: the
-page receives real `File` objects and runs its `input`/`change` handlers. The ref may name the
-input itself or the control that opens it, because nearly every page hides the real
-`<input type="file">` behind a styled button, label, or menu item. Hidden inputs are listed in the
-snapshot as `filechooser "name" [ref=eN] (hidden)`, so either can be named. A control with several
-file inputs in scope is refused rather than guessed at. See [`SECURITY.md`](SECURITY.md) for the
-limits and `CHROME_CONTROL_MCP_UPLOAD_ROOTS`.
+page receives real `File` objects and runs its `input`/`change` handlers. File dialogs are
+intercepted and never shown, so clicking a file input -- or the button that opens one -- replies
+that a file chooser opened; `browser_upload` with `paths` and no `ref` then fills that chooser.
+The ref is optional for exactly that reason. Given, it may name the input itself or the control
+that opens it, because nearly every page hides the real `<input type="file">` behind a styled
+button, label, or menu item. Hidden inputs are listed in the snapshot as
+`filechooser "name" [ref=eN] (hidden)`, so either can be named. A control with several file inputs
+in scope is refused rather than guessed at. See [`SECURITY.md`](SECURITY.md) for the limits and
+`CHROME_CONTROL_MCP_UPLOAD_ROOTS`.
 
 ### Controls the page wires up itself
 
@@ -75,6 +111,7 @@ them exactly as they take a button's.
 - `browser_ungroup_tabs`
 - `browser_windows`
 - `browser_window`
+- `browser_release`
 
 ## Inspection and synchronization
 
