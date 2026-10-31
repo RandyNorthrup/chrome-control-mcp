@@ -28,19 +28,19 @@ project's ([RELEASES.md](RELEASES.md)).
 
 ## Status, 2026-10-31
 
-| Gate                               | Status      | Evidence                                                                                    |
-| ---------------------------------- | ----------- | ------------------------------------------------------------------------------------------- |
-| Formatting, lint, secret scan      | Pass        | CI quality job on `0ebfbfc`                                                                 |
-| Dependency audit                   | Pass        | CI quality job on `0ebfbfc`, after pinning past `minimatch` advisories                      |
-| PowerShell analysis                | Pass        | CI on `0ebfbfc`                                                                             |
-| Native compile, warnings as errors | Pass        | MSVC, GCC and Clang, locally and in CI                                                      |
-| clang-tidy, exhaustive cppcheck    | Pass        | local Clang build; CI on `0ebfbfc`                                                          |
-| Semgrep                            | Pass, local | 221 rules, 0 findings under Python 3.12; in CI it had crashed under Python 3.15 until 1.8.1 |
-| ctest                              | Pass        | 22/22 Windows and 21/21 Linux locally; Windows, Linux and macOS in CI                       |
-| JavaScript suites                  | Pass        | 190/190 under `npm run test:js`; every one of them also runs in ctest                       |
-| Sanitizers                         | Pass        | ASan + UBSan and TSan in CI on `0ebfbfc`                                                    |
-| Live browser suites                | Pass        | CI on three platforms on `0ebfbfc`; Chrome for Testing 153 on Linux locally                 |
-| CHANGELOG updated                  | Pass        | `CHANGELOG.md` `[1.8.1]`                                                                    |
+| Gate                               | Status | Evidence                                                                                      |
+| ---------------------------------- | ------ | --------------------------------------------------------------------------------------------- |
+| Formatting, lint, secret scan      | Pass   | CI quality job on `fce2acb`                                                                   |
+| Dependency audit                   | Pass   | CI quality job on `fce2acb`                                                                   |
+| PowerShell analysis                | Pass   | CI on `fce2acb`                                                                               |
+| Native compile, warnings as errors | Pass   | MSVC, GCC and Clang, locally and in CI                                                        |
+| clang-tidy, exhaustive cppcheck    | Pass   | CI on `fce2acb`                                                                               |
+| Semgrep                            | Pass   | CI on `fce2acb`: 221 rules, 53 files, 0 findings under Python 3.12; crashed under 3.15 before |
+| ctest                              | Pass   | 22/22 Windows, 21/21 Linux and macOS, locally and in CI on `fce2acb`                          |
+| JavaScript suites                  | Pass   | 190/190 under `npm run test:js`; every one of them also runs in ctest                         |
+| Sanitizers                         | Pass   | ASan + UBSan and TSan, 21/21 each, in CI on `fce2acb`                                         |
+| Live browser suites                | Pass   | CI on three platforms on `fce2acb`; Chrome for Testing 153 on Linux locally                   |
+| CHANGELOG updated                  | Pass   | `CHANGELOG.md` `[1.8.1]`                                                                      |
 
 Not covered by this table: Chrome for Testing intermittently stalls in one Windows display-matrix
 configuration, met once in CI and once in six local runs; see

@@ -33,6 +33,26 @@ New in these counts, each red-drilled (the fix reverted, the test seen to fail, 
 - The relay's progress-beat test with its wider margin fails, naming the server's reason ("browser
   did not reply within 1000 ms"), when the relay stops forwarding beats.
 
+### CI on `fce2acb`
+
+Every job of the Quality run on `fce2acb`, the 1.8.1 change set, passed:
+
+| Job                                       | Result                                                                                                  |
+| ----------------------------------------- | ------------------------------------------------------------------------------------------------------- |
+| Format, lint, and secret scan             | passed                                                                                                  |
+| PowerShell static analysis                | passed                                                                                                  |
+| Windows, Linux, macOS build and tests     | ctest 22/22 on Windows, 21/21 on Linux and macOS; the built server smoked in both profiles              |
+| ASan + UBSan, TSan                        | 21/21 each                                                                                              |
+| Native and semantic static analysis       | clang-tidy and exhaustive cppcheck clean; Semgrep under Python 3.12.15: 221 rules, 53 files, 0 findings |
+| Windows, Linux, macOS live browser suites | passed, each with the display matrix at 35/35 configurations and 3,335 checks                           |
+
+The live browser jobs run against Chrome for Testing 153.0.8010.52, pinned in the workflow: the
+display-scale, zoom and pinch matrix, the user interference suite, and the multi-agent suite (with
+its new checks for an agent named `研究` and for `page_cleared_input`) on all three platforms, and the
+full browser suite, 48 tools exercised, on Windows and macOS. The Linux runner's Chrome never answers
+a screenshot under an emulated fractional device scale, so the full suite does not run there; the
+workflow records why.
+
 ### Semgrep
 
 The analysis job's Semgrep step had crashed before scanning since Python 3.15 reached the runners.
@@ -165,8 +185,9 @@ node tools/backoff_probe.mjs <chrome> <unpacked extension dir> [seconds]
 
 ### Claim boundary
 
-Verified for 1.8.1: source build and automated suites on Windows and Linux locally; a clean
-Semgrep scan locally; the live suites in Chrome for Testing on Linux locally; and, for everything
+Verified for 1.8.1: source build and automated suites on Windows and Linux locally and on all three
+platforms in CI; strict native analysis and a clean Semgrep scan; sanitizers; the live suites in
+Chrome for Testing on all three platforms in CI and on Linux locally; and, for everything
 1.8.1 leaves unchanged, the 1.8.0 evidence below, including a real-world run in a real Chrome
 profile on Windows. Not verified: a real Chrome profile on macOS or Linux; why Chrome stalls in the
 one display configuration above. No Linux machine has ever installed a release through

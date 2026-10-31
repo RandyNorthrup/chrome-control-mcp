@@ -5,10 +5,10 @@
 <p align="center">
   <a href="https://github.com/RandyNorthrup/chrome-control-mcp/actions/workflows/quality.yml"><img alt="Quality" src="https://github.com/RandyNorthrup/chrome-control-mcp/actions/workflows/quality.yml/badge.svg"></a>
   <a href="https://github.com/RandyNorthrup/chrome-control-mcp/releases/latest"><img alt="Release" src="https://img.shields.io/github/v/release/RandyNorthrup/chrome-control-mcp?color=ff2d95"></a>
-  <a href="https://marketplace.visualstudio.com/items?itemName=RandyNorthrup.chrome-control-mcp"><img alt="VS Code Marketplace" src="https://img.shields.io/visual-studio-marketplace/v/RandyNorthrup.chrome-control-mcp?color=0ea5e9&label=marketplace"></a>
-  <a href="https://marketplace.visualstudio.com/items?itemName=RandyNorthrup.chrome-control-mcp"><img alt="Marketplace installs" src="https://img.shields.io/visual-studio-marketplace/i/RandyNorthrup.chrome-control-mcp?color=0ea5e9&label=installs"></a>
+  <a href="https://marketplace.visualstudio.com/items?itemName=RandyNorthrup.chrome-control-mcp"><img alt="VS Code Marketplace" src="https://vsmarketplacebadges.dev/version/RandyNorthrup.chrome-control-mcp.svg?color=0ea5e9&label=marketplace"></a>
+  <a href="https://marketplace.visualstudio.com/items?itemName=RandyNorthrup.chrome-control-mcp"><img alt="Marketplace installs" src="https://vsmarketplacebadges.dev/installs/RandyNorthrup.chrome-control-mcp.svg?color=0ea5e9&label=installs"></a>
   <a href="https://github.com/RandyNorthrup/chrome-control-mcp/releases"><img alt="Downloads" src="https://img.shields.io/github/downloads/RandyNorthrup/chrome-control-mcp/total?color=22c55e&label=downloads"></a>
-  <a href="https://github.com/RandyNorthrup/chrome-control-mcp/stargazers"><img alt="GitHub stars" src="https://img.shields.io/github/stars/RandyNorthrup/chrome-control-mcp?color=f59e0b&logo=github"></a>
+  <a href="https://github.com/RandyNorthrup/chrome-control-mcp/stargazers"><img alt="GitHub stars" src="https://img.shields.io/github/stars/RandyNorthrup/chrome-control-mcp?style=flat&color=f59e0b&logo=github"></a>
   <a href="LICENSE"><img alt="MIT License" src="https://img.shields.io/badge/license-MIT-14b8a6.svg"></a>
   <img alt="Windows, Linux, macOS" src="https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20%7C%20macOS-2563eb.svg">
   <img alt="52 MCP tools" src="https://img.shields.io/badge/MCP%20tools-52-ff2d95.svg">
