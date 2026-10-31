@@ -2,7 +2,7 @@
   "name": "chrome-control-mcp",
   "displayName": "Chrome Control MCP",
   "description": "Let AI agents use your real Chrome: each in its own tabs and coloured group, beside you, and cleaned up when done. A local Model Context Protocol server for any MCP client.",
-  "version": "1.8.1",
+  "version": "1.8.2",
   "publisher": "RandyNorthrup",
   "license": "MIT",
   "author": "Randy Northrup",

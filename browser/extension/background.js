@@ -634,6 +634,11 @@ function makeTabState(tabId, origin) {
     // session's groups the tab sits in, and so its colour.
     agent: "",
 
+    // The held tab whose page opened this one (a popup, a target=_blank link), or null. Releasing a
+    // tab releases what it opened too: an agent that says it is done with its tab is done with the
+    // pages its clicks spawned, and those were left open behind it.
+    openedFrom: null,
+
     // True while this session's debugger is attached to the tab, and the attach in progress if
     // one is, so a command and a background attach never race each other into two attaches.
     attached: false,
@@ -2646,7 +2651,14 @@ function claimPopup(session, openerState, tab) {
   if (session.tabs.has(tab.id)) {
     return;
   }
-  holdTab(session, tab, "opened", openerState ? openerState.agent : undefined);
+  const state = holdTab(
+    session,
+    tab,
+    "opened",
+    openerState ? openerState.agent : undefined,
+  );
+  state.openedFrom = openerState ? openerState.id : null;
+  persistLeases();
   if (tab.active) {
     setCurrentTab(session, tab);
   }
@@ -2947,9 +2959,15 @@ async function releaseTabs(session, states, { closeOpened }) {
   }
   await ungroupFromSession(session, leaving);
   if (toClose.length > 0) {
-    await chrome.tabs.remove(toClose).catch((e) => {
-      console.warn("[ChromeControlMCP] could not close a released tab:", e);
-    });
+    const stuck = await closeTabs(toClose);
+    if (stuck.length > 0) {
+      // Still open after every attempt: handed back like a borrowed tab -- out of the AI group, with
+      // nothing marking it -- and reported as open, never as closed.
+      await ungroupFromSession(session, stuck);
+      result.closed = result.closed.filter((id) => !stuck.includes(id));
+      result.kept_open.push(...stuck);
+      result.not_closed = stuck;
+    }
   }
   if (session.tabs.size === 0) {
     session.groups.clear();
@@ -2972,7 +2990,67 @@ async function standDown(session, { closeOpened }) {
   return result;
 }
 
-// browser_release: the agent saying it is done -- with one tab, or with everything.
+// What an agent lets go of when it releases @p state: that tab, every tab opened from it (and from
+// those), and -- when the agent named itself -- every other tab under that name. Releasing only the
+// one tab left the agent's popups and its other tabs open behind it, held all day by a server that
+// was still running; an agent that says it is done is done with all of them. An agent with no name
+// is not told apart from other unnamed agents on the same server, so for it the tab and what it
+// opened is the whole of what is certainly its own.
+function releaseScope(session, state) {
+  const ids = new Set([state.id]);
+  if (state.agent) {
+    for (const other of session.tabs.values()) {
+      if (other.agent === state.agent) {
+        ids.add(other.id);
+      }
+    }
+  }
+  for (let grew = true; grew;) {
+    grew = false;
+    for (const other of session.tabs.values()) {
+      if (
+        !ids.has(other.id) &&
+        other.openedFrom !== null &&
+        ids.has(other.openedFrom)
+      ) {
+        ids.add(other.id);
+        grew = true;
+      }
+    }
+  }
+  return [...ids].map((id) => session.tabs.get(id));
+}
+
+// Close @p tabIds, and report the ones still open afterwards. Chrome refuses a removal while the
+// user is dragging a tab ("Tabs cannot be edited right now"), and that refusal used to be logged
+// and forgotten: the reply said "closed", and the tab stayed open in an AI group nobody held.
+// Each attempt is checked against what is actually still open, and retried a few times.
+const CLOSE_RETRY_DELAYS_MS = [250, 750, 1500];
+
+async function closeTabs(tabIds) {
+  let remaining = tabIds;
+  for (let attempt = 0; ; attempt += 1) {
+    await chrome.tabs.remove(remaining).catch((e) => {
+      console.warn("[ChromeControlMCP] could not close a released tab:", e);
+    });
+    const open = [];
+    for (const id of remaining) {
+      if (await chrome.tabs.get(id).catch(() => null)) {
+        open.push(id);
+      }
+    }
+    remaining = open;
+    if (remaining.length === 0 || attempt >= CLOSE_RETRY_DELAYS_MS.length) {
+      return remaining;
+    }
+    await new Promise((resolve) => {
+      setTimeout(resolve, CLOSE_RETRY_DELAYS_MS[attempt]);
+    });
+  }
+}
+
+// browser_release: the agent saying it is done -- with its tabs (see releaseScope), or with
+// everything.
 async function handleRelease(session, args) {
   const closeOpened = !(args && args.keep_open === true);
   const named = args ? args.tab_id : undefined;
@@ -2988,7 +3066,9 @@ async function handleRelease(session, args) {
           " is not one of this session's tabs; nothing was released.",
       );
     }
-    const result = await releaseTabs(session, [state], { closeOpened });
+    const result = await releaseTabs(session, releaseScope(session, state), {
+      closeOpened,
+    });
     return Object.assign({ ok: true }, result, {
       tabs_still_held: session.tabs.size,
     });
@@ -3163,6 +3243,7 @@ function leaseRecord(session) {
       state.id,
       state.origin,
       state.agent,
+      state.openedFrom,
     ]),
     groups: [...session.groups],
     colors: [...session.colors],
@@ -3231,7 +3312,7 @@ async function loadLeases() {
     const session = makeSession();
     session.serverId = serverId;
     for (const pair of entry.tabs) {
-      const [id, origin, agent] = Array.isArray(pair) ? pair : [];
+      const [id, origin, agent, openedFrom] = Array.isArray(pair) ? pair : [];
       if (
         Number.isInteger(id) &&
         (origin === "opened" || origin === "adopted") &&
@@ -3239,6 +3320,7 @@ async function loadLeases() {
       ) {
         const state = makeTabState(id, origin);
         state.agent = typeof agent === "string" ? agent : "";
+        state.openedFrom = Number.isInteger(openedFrom) ? openedFrom : null;
         session.tabs.set(id, state);
       }
     }

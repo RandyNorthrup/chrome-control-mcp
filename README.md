@@ -70,7 +70,7 @@ How it keeps agents apart, in the order they meet it:
    a colour no other live group has. A tab its own click opens joins the same group.
 3. **Nobody else's tab.** A tab another session holds is refused by name, and `browser_tabs` marks
    it `controlled_by_other_session` rather than hiding it.
-4. **Letting go.** `browser_release` (with `tab_id` to release one tab) closes what the agent
+4. **Letting go.** `browser_release` (with `tab_id` to release only that agent's tabs, popups included) closes what the agent
    opened and hands back what it borrowed; `keep_open: true` leaves a page open for you. The tab
    you are looking at and the browser's last tab are never closed.
 
@@ -259,15 +259,15 @@ permissions, and why each is needed, are in [docs/SECURITY.md](docs/SECURITY.md)
 
 ## Verification
 
-Measured for 1.8.1 on 2026-10-31, except the two rows marked 1.8.0, whose code 1.8.1 leaves alone:
+Measured for 1.8.2 on 2026-10-31, except the two rows marked 1.8.0, whose code later releases leave alone:
 
 | Check                                                                                                                | Result                          |
 | -------------------------------------------------------------------------------------------------------------------- | ------------------------------- |
 | ctest suites -- MSVC, GCC and Clang, warnings as errors                                                              | Windows 22/22, Linux 21/21      |
 | `clang-tidy`, exhaustive `cppcheck`, Semgrep, ASan + UBSan, TSan                                                     | clean                           |
-| Extension and tooling unit tests                                                                                     | 190/190                         |
+| Extension and tooling unit tests                                                                                     | 192/192                         |
 | Full live browser suite (isolated Chrome for Testing 153)                                                            | 48 tools, 177 cases, all pass   |
-| Multi-agent live suite: two servers, two agents behind one of them                                                   | 24/24                           |
+| Multi-agent live suite: two servers, two agents behind one of them                                                   | 25/25                           |
 | Live suites in CI on Windows, Linux and macOS                                                                        | pass                            |
 | (1.8.0) Real-world run in an everyday Chrome profile: real sites, real uploads, popups, Trusted Types pages, cleanup | 23/23                           |
 | (1.8.0) Reconnect attempts with no server running (process-spawn regression check)                                   | 6 in 75 s, unchanged from 1.7.0 |

@@ -31,6 +31,7 @@ const EXPORTED = [
   "noteOfferedServers",
   "probeForServers",
   "agentArg",
+  "claimPopup",
   "agentColor",
   "presenceLook",
   "pendingLeases",
@@ -40,8 +41,10 @@ const LIVE =
   "sessions, probeOpenedAt: () => probeOpenedAt, refused: () => refusedServers";
 
 // The browser as the worker sees it through chrome.*: windows of tabs, tab groups, the debugger,
-// and the listeners the worker registers, which the test fires as Chrome would.
-function fakeBrowser() {
+// and the listeners the worker registers, which the test fires as Chrome would. @p refuseRemovals
+// is how many tabs.remove calls Chrome refuses first, as it does while the user drags a tab.
+function fakeBrowser({ refuseRemovals = 0 } = {}) {
+  let removalsRefused = 0;
   const tabs = new Map();
   const groups = new Map();
   const listeners = new Map();
@@ -122,6 +125,14 @@ function fakeBrowser() {
       return Promise.resolve(copy(tab));
     },
     "tabs.remove": (ids) => {
+      if (removalsRefused < refuseRemovals) {
+        removalsRefused += 1;
+        return Promise.reject(
+          new Error(
+            "Tabs cannot be edited right now (user may be dragging a tab).",
+          ),
+        );
+      }
       for (const id of [].concat(ids)) {
         calls.removed.push(id);
         tabs.delete(id);
@@ -226,8 +237,8 @@ function fakeBrowser() {
 }
 
 // A browser with the worker attached to one server, ready for commands.
-async function attachedBrowser(server = "100") {
-  const browser = fakeBrowser();
+async function attachedBrowser(server = "100", options = {}) {
+  const browser = fakeBrowser(options);
   const port = browser.ports[0];
   port.emit({ type: "bridge_offers", protocol: PROTOCOL, servers: [server] });
   port.emit({ type: "bridge_ready", protocol: PROTOCOL });
@@ -649,6 +660,89 @@ test("release never closes the tab the user is looking at, nor the browser's las
   assert.ok(b.tabs.has(watched.id), "the tab in front of the user stays open");
   assert.deepEqual(Array.from(result.kept_open), [watched.id]);
   assert.ok(b.tabs.size >= 1, "the browser still has a tab");
+});
+
+test("releasing an agent's tab releases what it opened and that agent's other tabs, nobody else's", async () => {
+  // Reported from daily use: an agent released its tab_id and left two of its tabs open -- the
+  // popups its clicks had opened, held all day by a server that was still running.
+  const b = await attachedBrowser();
+  b.addTab({}); // the user's own
+  const tab = (agent) => {
+    const t = b.addTab({});
+    b.worker.holdTab(b.session, b.copy(t), "opened", agent);
+    return t;
+  };
+  const alpha = tab("alpha");
+  const alphaSecond = tab("alpha");
+  const beta = tab("beta");
+  const unnamed = tab("");
+  const unnamedOther = tab("");
+  const popupOf = (opener) => {
+    const p = b.addTab({ openerTabId: opener.id });
+    b.worker.claimPopup(b.session, b.session.tabs.get(opener.id), b.copy(p));
+    return p;
+  };
+  const alphaPopup = popupOf(alpha);
+  const popupOfPopup = popupOf(alphaPopup);
+  const unnamedPopup = popupOf(unnamed);
+  await settle();
+
+  const released = await b.worker.handleRelease(b.session, {
+    tab_id: alpha.id,
+  });
+  await settle();
+  assert.deepEqual(
+    new Set(released.closed),
+    new Set([alpha.id, alphaSecond.id, alphaPopup.id, popupOfPopup.id]),
+    "the tab, the agent's other tab, and every page opened from them",
+  );
+  for (const t of [alpha, alphaSecond, alphaPopup, popupOfPopup]) {
+    assert.ok(!b.tabs.has(t.id), "tab " + t.id + " is closed");
+  }
+  assert.ok(b.session.tabs.has(beta.id), "another agent's tab is untouched");
+  assert.ok(b.tabs.has(beta.id));
+
+  // An unnamed agent cannot be told apart from another on the same server: its tab and what that
+  // tab opened go, and the other unnamed tab stays.
+  const second = await b.worker.handleRelease(b.session, {
+    tab_id: unnamed.id,
+  });
+  assert.deepEqual(
+    new Set(second.closed),
+    new Set([unnamed.id, unnamedPopup.id]),
+  );
+  assert.ok(b.session.tabs.has(unnamedOther.id));
+});
+
+test("a close Chrome refuses is retried; one that never succeeds is handed back, not called closed", async () => {
+  const once = await attachedBrowser("100", { refuseRemovals: 1 });
+  once.addTab({});
+  const retried = once.addTab({});
+  once.worker.holdTab(once.session, once.copy(retried), "opened");
+  await settle();
+  const first = await once.worker.handleRelease(once.session, {});
+  assert.deepEqual(Array.from(first.closed), [retried.id]);
+  assert.equal(first.not_closed, undefined);
+  assert.ok(!once.tabs.has(retried.id), "closed on the second attempt");
+
+  const never = await attachedBrowser("100", { refuseRemovals: Infinity });
+  never.addTab({});
+  const stuck = never.addTab({});
+  never.worker.holdTab(never.session, never.copy(stuck), "opened");
+  await settle();
+  assert.ok(never.tabs.get(stuck.id).groupId >= 0, "it starts in the AI group");
+  const result = await never.worker.handleRelease(never.session, {});
+  await settle();
+  assert.deepEqual(Array.from(result.closed), [], "never reported as closed");
+  assert.deepEqual(Array.from(result.not_closed), [stuck.id]);
+  assert.deepEqual(Array.from(result.kept_open), [stuck.id]);
+  assert.ok(never.tabs.has(stuck.id), "still open, as Chrome left it");
+  assert.equal(
+    never.tabs.get(stuck.id).groupId,
+    -1,
+    "and out of the AI group, not left there with nobody holding it",
+  );
+  assert.equal(never.session.tabs.size, 0);
 });
 
 test("keep_open hands opened tabs to the user instead of closing them", async () => {

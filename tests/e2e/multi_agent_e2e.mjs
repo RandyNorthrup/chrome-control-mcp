@@ -305,6 +305,23 @@ async function main() {
       "and the user's tab stays in front",
       JSON.stringify([frontBefore, frontAfter]),
     );
+    // Releasing the tab releases the popup its click opened. Releasing by tab_id used to let go of
+    // that one tab only, and the popup stayed open, held, for as long as the server ran.
+    const popupTab = afterPopup?.your_tabs.find((t) =>
+      /from=popup/.test(t.url),
+    );
+    const releasedSource = await two.client.json("browser_release", {
+      tab_id: popupSource.tab_id,
+    });
+    const afterSourceRelease = await two.client.json("browser_tabs");
+    check(
+      Boolean(popupTab) &&
+        releasedSource.closed.includes(popupSource.tab_id) &&
+        releasedSource.closed.includes(popupTab.tab_id) &&
+        !afterSourceRelease.your_tabs.some((t) => t.tab_id === popupTab.tab_id),
+      "releasing a tab closes the popup its click opened too",
+      JSON.stringify(releasedSource),
+    );
 
     // -- Letting go ------------------------------------------------------------------------
     const released = await one.client.json("browser_release", {
@@ -353,7 +370,7 @@ async function main() {
 
   const failed = checks.filter((entry) => entry.status !== "passed");
   const report = {
-    ok: failure === null && failed.length === 0 && checks.length === 24,
+    ok: failure === null && failed.length === 0 && checks.length === 25,
     checks,
     error: failure ? String(failure.stack || failure) : null,
   };

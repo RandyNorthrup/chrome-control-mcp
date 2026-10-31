@@ -114,11 +114,23 @@ draw them without an error in the page's console.
 | Event                                       | Tabs the session opened                   | Tabs it was given         | Group and marking                                                             |
 | ------------------------------------------- | ----------------------------------------- | ------------------------- | ----------------------------------------------------------------------------- |
 | `browser_release`                           | closed; with `keep_open: true`, left open | handed back, never closed | removed                                                                       |
-| `browser_release` with `tab_id`             | that tab only, as above                   | that tab only             | removed from that tab                                                         |
+| `browser_release` with `tab_id`             | the agent's, as above (see below)         | the agent's, as above     | removed from those tabs                                                       |
 | its server exits                            | closed                                    | handed back               | removed                                                                       |
 | its relay drops while the server runs       | kept, still held                          | kept, still held          | frame off, group kept; all of it resumes when a relay reattaches              |
 | ten minutes without a command               | kept, still held                          | kept, still held          | debugger and frame off, group grey, title ends `(idle)`; next command resumes |
 | the user pauses the bridge from the toolbar | left open                                 | handed back               | removed                                                                       |
+
+With a `tab_id`, "the agent's" means that tab, every tab opened from it (a popup records the tab
+whose page opened it, transitively), and, when the agent gave itself a name, every tab under that
+name. Other agents' tabs are untouched. An unnamed agent cannot be told apart from another unnamed
+agent on the same server, so for it the tab and what it opened is the whole of what is certainly its
+own. Until 1.8.2 this released the one tab only, and the agent's popups and other tabs stayed open,
+held, for as long as its server ran.
+
+A tab Chrome refuses to close -- it does while the user is dragging a tab -- is retried three times
+over about 2.5 s. One still open after that is handed back like a borrowed tab and listed in the
+reply's `not_closed`; it is never reported as closed, and never left in an AI group with nothing
+holding it.
 
 Two tabs are never closed, whatever the session opened: the one the user is looking at (the active
 tab of the focused window) and the browser's last tab, since Chrome would quit with it. Detaching

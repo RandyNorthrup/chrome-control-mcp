@@ -2,6 +2,22 @@
 
 All notable changes are documented here. Project follows [Semantic Versioning](https://semver.org/).
 
+## [1.8.2] - 2026-10-31
+
+### Fixed
+
+- `browser_release` left an agent's tabs open behind it. Reported from daily use: two tabs an
+  agent had opened were still open after it released. Release by `tab_id` -- which every agent
+  sharing a server is told to use -- let go of that one tab only, so the popups its clicks had
+  opened, and its other tabs, stayed open and held for as long as its server ran (greyed after ten
+  idle minutes, never closed). It now releases the agent's tabs: that tab, every tab opened from it
+  (a popup records the tab that opened it, across a worker restart too), and, for an agent that
+  gave itself a name, every tab under that name. Other agents' tabs are untouched.
+- A tab Chrome refused to close -- it refuses while the user is dragging a tab -- was reported as
+  closed and left open in an AI group with nothing holding it. The close is now checked and
+  retried; a tab still open after that is handed back, listed in `not_closed`, and never reported
+  as closed.
+
 ## [1.8.1] - 2026-10-31
 
 ### Fixed

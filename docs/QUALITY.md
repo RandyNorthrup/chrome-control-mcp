@@ -37,10 +37,10 @@ project's ([RELEASES.md](RELEASES.md)).
 | clang-tidy, exhaustive cppcheck    | Pass   | CI on `fce2acb`                                                                               |
 | Semgrep                            | Pass   | CI on `fce2acb`: 221 rules, 53 files, 0 findings under Python 3.12; crashed under 3.15 before |
 | ctest                              | Pass   | 22/22 Windows, 21/21 Linux and macOS, locally and in CI on `fce2acb`                          |
-| JavaScript suites                  | Pass   | 190/190 under `npm run test:js`; every one of them also runs in ctest                         |
+| JavaScript suites                  | Pass   | 192/192 under `npm run test:js`; every one of them also runs in ctest                         |
 | Sanitizers                         | Pass   | ASan + UBSan and TSan, 21/21 each, in CI on `fce2acb`                                         |
 | Live browser suites                | Pass   | CI on three platforms on `fce2acb`; Chrome for Testing 153 on Linux locally                   |
-| CHANGELOG updated                  | Pass   | `CHANGELOG.md` `[1.8.1]`                                                                      |
+| CHANGELOG updated                  | Pass   | `CHANGELOG.md` `[1.8.2]`                                                                      |
 
 Not covered by this table: Chrome for Testing intermittently stalls in one Windows display-matrix
 configuration, met once in CI and once in six local runs; see

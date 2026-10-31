@@ -50,10 +50,14 @@ tab_, which every agent on the server shares, so an agent that leans on it is on
   is told apart from a tab the user opened.
 - **`browser_release` when the task is done.** Tabs the session opened are closed; tabs it borrowed
   from the user are handed back, never closed; the tab group and highlight are removed. The tab the
-  user is looking at and the browser's last tab are never closed. `tab_id` releases only that tab,
-  which is what an agent sharing the server should do. `keep_open: true` hands the tabs it opened to
-  the user instead of closing them. The reply lists what was `closed`, `handed_back`, and
-  `kept_open`.
+  user is looking at and the browser's last tab are never closed. `tab_id` releases the agent's own
+  tabs and no one else's -- that tab, every tab opened from it (popups, links that open a new tab),
+  and, for an agent that gave itself a name, every tab under that name -- which is what an agent
+  sharing the server should do. (Before 1.8.2 it released that one tab only, and an agent's popups
+  stayed open behind it.) `keep_open: true` hands the tabs it opened to the user instead of closing
+  them. The reply lists what was `closed`, `handed_back`, and `kept_open`; a tab Chrome would not
+  close (it refuses while the user drags a tab) is retried, and one still open after that is handed
+  back and listed in `not_closed`, never reported as closed.
 
 An agent that never calls `browser_release` is still cleaned up: when its server exits its tabs are
 released the same way, and after ten minutes without a command its tabs are stood down -- left open

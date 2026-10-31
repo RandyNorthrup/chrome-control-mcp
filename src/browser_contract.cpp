@@ -1708,14 +1708,18 @@ void appendTabTools(QJsonArray &tools) {
           "closed; tabs it borrowed from the user are handed back, never "
           "closed; the AI tab group and the highlight are removed. When other "
           "agents share this server, pass your tab_id to release only your own "
-          "tab. Pass keep_open:true to hand the tabs you opened to the user "
-          "instead of closing them."),
+          "tabs: that tab, every tab opened from it (popups, links that open a "
+          "new tab), and, if you gave browser_new_tab an agent name, every tab "
+          "under that name. The reply lists what was closed, handed back, and "
+          "kept open. Pass keep_open:true to hand the tabs you opened to the "
+          "user instead of closing them."),
       toolSchema(
           QJsonObject{
               {QStringLiteral("tab_id"),
                tabIdProperty(QStringLiteral(
-                   "Release only this tab (optional; omit to release every "
-                   "tab this session holds)."))},
+                   "Release your tabs: this one, the tabs opened from it, and "
+                   "every tab of the same agent name (optional; omit to "
+                   "release every tab this session holds)."))},
               {QStringLiteral("keep_open"),
                typedProperty(
                    QStringLiteral("boolean"),

@@ -5,7 +5,34 @@ after [Earlier evidence](#earlier-evidence) is a dated record of the build it na
 suite counts and versions were true of that build and are not current. A result is recorded here
 only when a command actually produced it.
 
-## Current: 1.8.1 (2026-10-31)
+## Current: 1.8.2 (2026-10-31)
+
+1.8.2 changes one thing: what `browser_release` lets go of, and how it closes tabs (extension, and
+the tool's description). Everything else is 1.8.1, whose evidence follows and still stands.
+
+### 1.8.2: release
+
+| Where                                       | Result                                              |
+| ------------------------------------------- | --------------------------------------------------- |
+| Windows, local: ctest                       | 22/22                                               |
+| Local: `npm run test:js`                    | 192/192                                             |
+| Linux, local: ctest                         | 21/21                                               |
+| Linux, Chrome for Testing 153: multi-agent  | 25/25                                               |
+| Linux, Chrome for Testing 153: interference | 10/10                                               |
+| Linux, Chrome for Testing 153: full suite   | ok: 48 tools, 177 live cases, Chrome state restored |
+
+Each new check was red-drilled (the fix reverted, the check seen to fail for that reason, then
+restored and green again):
+
+- _Release scope, unit:_ with release by `tab_id` put back to the one tab, the test of an agent's
+  popups, its popup's popup and its other named tab fails.
+- _Release scope, live:_ with the same reversion staged into the extension the browser loads, the
+  multi-agent suite's new check fails exactly as reported from daily use -- the release reply closed
+  one tab and said `tabs_still_held: 2`, the popup left open behind it.
+- _A refused close:_ with the close put back to one unchecked attempt, the test of a tab Chrome
+  never lets close fails: it is reported closed and left in the AI group.
+
+### 1.8.1
 
 1.8.1 changes the extension (upload replies, agent names in any script, colour order), the MCP
 `instructions` text, the CI analysis job and which suites ctest runs. The bridge protocol and every
