@@ -7,25 +7,31 @@ only when a command actually produced it.
 
 ## Current: 1.9.0 (2026-10-31)
 
-1.9.0 adds per-agent clipboards (extension, `browser_clipboard`, the MCP `instructions`), checks a
+1.9.0 adds per-agent clipboards (extension, `browser_clipboard`, the MCP `instructions`), has the
+server, the relay and the extension exchange versions so the agent is told when Chrome is running
+an older or newer extension and the extension reloads itself for a newer install, checks a
 file-carrying call's arguments before sending its files, and names why a broken exchange ended.
-Everything else is 1.8.2 and 1.8.1, whose evidence follows and still stands. The plan, acceptance
-criteria and evidence ledger for the clipboard work are in
-[plans/per-agent-clipboard.md](plans/per-agent-clipboard.md); the raw outputs are in
-[plans/evidence/clipboard/](plans/evidence/clipboard/).
+Everything else is 1.8.2 and 1.8.1, whose evidence follows and still stands. Each feature has its
+plan, acceptance criteria and evidence ledger --
+[plans/per-agent-clipboard.md](plans/per-agent-clipboard.md) and
+[plans/extension-version.md](plans/extension-version.md) -- with the raw outputs in
+[plans/evidence/clipboard/](plans/evidence/clipboard/) and
+[plans/evidence/extension-version/](plans/evidence/extension-version/). Both were re-verified
+together after the version work, which changed files the clipboard evidence was bound to.
 
 ### 1.9.0: suites
 
 | Where                                       | Result                                                                      |
 | ------------------------------------------- | --------------------------------------------------------------------------- |
-| Windows, local: ctest                       | 23/23                                                                       |
-| Linux, local: ctest                         | 22/22                                                                       |
-| Local: `npm run test:js`                    | 204/204 across 10 files                                                     |
+| Windows, local: ctest                       | 24/24                                                                       |
+| Linux, local: ctest                         | 23/23                                                                       |
+| Local: `npm run test:js`                    | 210/210 across 11 files                                                     |
 | Local: pre-commit, all files                | 15 hooks pass                                                               |
 | Linux, local: clang-tidy on the changed C++ | clean                                                                       |
-| Linux, local: Semgrep 1.174.0, Python 3.12  | 221 rules, 51 files, 0 findings                                             |
+| Linux, local: Semgrep 1.174.0, Python 3.12  | 221 rules, 52 files, 0 findings                                             |
 | Built server, both profiles                 | 53 tools full, 14 read-only                                                 |
-| Linux, Chrome for Testing 153: clipboard    | 24/24, then 33 consecutive passes                                           |
+| Linux, Chrome for Testing 153: clipboard    | 24/24 (33 consecutive passes before the version work)                       |
+| Linux, Chrome for Testing 153: versions     | same version 6/6; older, reloading itself 12/12; released 1.8.2 8/8         |
 | Linux, Chrome for Testing 153: multi-agent  | 25/25                                                                       |
 | Linux, Chrome for Testing 153: interference | 10/10                                                                       |
 | Linux, Chrome for Testing 153: full suite   | ok: 48 tools, 177 live cases (`browser_clipboard` is the clipboard suite's) |
@@ -96,6 +102,68 @@ the start of the paragraph -- for a person as for an agent -- so there was nothi
 The suite had only ever run on Linux before CI. It now selects with Command+A on macOS, as the full
 suite already did; the product is unchanged. The other 20 checks, the sentinel ones included,
 passed on macOS.
+
+### 1.9.0: versions exchanged
+
+`extension_version_e2e.mjs` runs one suite three ways, chosen by how the browser loads the
+extension, and works out which from `browser_extension_status` -- a native tool, so watching the
+extension go quiet never disturbs that quiet:
+
+- **Same version:** no notice in `browser_extension_status` or on the first reply, and no reload in
+  15 s.
+- **This build under an older manifest version** (`--extension-version=1.0.0`): the first reply on
+  the connection carries the notice as a block of its own after its JSON, the second does not; left
+  idle, the extension reloaded itself no sooner than its 10 s quiet period, came back still saying
+  1.0.0 with the version it reloaded for remembered, and the new connection was told again; watched
+  for 40 s more, it did not reload again; tabs open and release after it.
+- **The released 1.8.2 extension**, downloaded from its GitHub release: works beside this server,
+  is named older than 1.9.0 with `browser_clipboard` among what is missing, `browser_clipboard`
+  fails saying why and how to reload, the rest -- new tab, snapshot, release -- works as it did, and
+  it does not reload itself.
+
+Two things the live runs found that no unit test could:
+
+- **The harness hid every self-reload.** Chrome disabled the extension on its own
+  `chrome.runtime.reload()` -- chrome://extensions reported `unsupportedDeveloperExtension` --
+  because the test profile never had Developer mode on, which `Load unpacked` requires and so
+  every real install has, and `--load-extension` skips only at launch. The harness profile now has
+  it on. The protocol self-reload had the same blind spot.
+- **A call in the half second after a reload meets the old relay**, before it (250 ms poll of its
+  input) or the server (250 ms idle check) has noticed Chrome closed it, and fails "the browser's
+  relay closed the connection 1 ms into listTabs (connection reset)". It cannot have run: the port
+  it would reach was closed. Accepted, since a reload follows at least 10 s with no command and no
+  held tab, and a retry reaches the new connection; `browser_extension_status` now counts
+  `connections`, so a caller can see the new one arrive.
+
+Red drills, each failing its check and restored to green (logs in
+[plans/evidence/extension-version/](plans/evidence/extension-version/)):
+
+- **Live** (`live-red-drills.txt`, `live-red-drills-2.txt`), each against the case that meets it:
+  the reload remembering nothing (it reloaded again: "no loop" failed), `bridge_ready`'s version
+  ignored (no reload), the server telling nothing (both notice checks failed),
+  `browser_extension_status` without the notice, an unknown command passed on bare (the released
+  extension's `browser_clipboard` check failed), and a hello that says no extension version refused
+  (the released 1.8.2 extension never attached) -- which is what an older extension would meet if
+  the new fields were required.
+- **Unit** (`unit-red-drills.txt`, `server-red-drills.txt`): seven in the extension -- no version
+  in `attach_session`, held tabs ignored, no quiet period, no once-per-version memory, no re-check
+  after storage answers, an equal version counted as newer, and a version taken unchecked -- and
+  five in the server -- the relay dropping the extension's version, versions taken unchecked, the
+  notice told on every call, an unknown command passed on bare, and `browser_extension_status`
+  without the notice.
+
+The drills found one fault of their own: a drill that leaves a helper unused fails to build under
+warnings-as-errors, and the suite then ran the previous binary and passed. The harness reported it
+as not seen rather than as a pass; the mutation now keeps the helper in use. And restoring a file
+with `rsync -a` gives it back its old timestamp, older than the objects the mutated copy was built
+into, so the build kept the mutation; drilled files are now made newer after every restore.
+
+### 1.9.0: CI on `010b234`
+
+[Quality run 41255263314](https://github.com/RandyNorthrup/chrome-control-mcp/actions/runs/41255263314):
+the macOS live suites passed with the clipboard suite's Command+A fix. The Linux live job never
+reached a suite: it spent its whole 45-minute budget inside the Qt install step and was cancelled
+there. Every other job passed.
 
 ### 1.9.0: one unexplained failure
 

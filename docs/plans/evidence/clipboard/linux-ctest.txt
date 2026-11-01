@@ -1,1 +1,2 @@
-100% tests passed out of 22
+== build + ctest
+100% tests passed out of 23

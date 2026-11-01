@@ -7,7 +7,8 @@
 //
 // Usage: node tests/e2e/isolated_run.mjs --chrome=<Chrome for Testing binary>
 //          [--executable=<chrome_control_mcp>] [--scale=1] [--window=1280x800] [--zoom=100]
-//          [--chrome-arg=<flag>]... <suite.mjs>
+//          [--chrome-arg=<flag>]... [--extension=<folder>] [--extension-version=<x.y.z>]
+//          <suite.mjs>
 // The suite's own report is passed through on stdout, and its exit code is this runner's.
 
 import assert from "node:assert/strict";
@@ -47,6 +48,8 @@ const browser = await prepareIsolatedChrome({
   extraArgs: process.argv
     .filter((arg) => arg.startsWith("--chrome-arg="))
     .map((arg) => arg.slice("--chrome-arg=".length)),
+  extension: option("extension") || null,
+  extensionVersion: option("extension-version") || null,
 });
 let exitCode;
 try {

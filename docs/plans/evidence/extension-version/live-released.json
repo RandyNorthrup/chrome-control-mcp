@@ -1,0 +1,39 @@
+{
+  "ok": true,
+  "case": "released",
+  "checks": [
+    {
+      "check": "the relay reports the installed version, this build's",
+      "status": "passed"
+    },
+    {
+      "check": "browser_extension_status says the extension is older than 1.9.0 and how to fix it",
+      "status": "passed"
+    },
+    {
+      "check": "the first reply tells the agent, and names what is missing until it is reloaded",
+      "status": "passed"
+    },
+    {
+      "check": "browser_clipboard against it says why it fails and what to do",
+      "status": "passed"
+    },
+    {
+      "check": "everything it already did still works, and is told only once",
+      "status": "passed"
+    },
+    {
+      "check": "an extension from before 1.9.0 does not reload itself",
+      "status": "passed"
+    },
+    {
+      "check": "releasing works",
+      "status": "passed"
+    },
+    {
+      "check": "and its tab is gone",
+      "status": "passed"
+    }
+  ],
+  "error": null
+}

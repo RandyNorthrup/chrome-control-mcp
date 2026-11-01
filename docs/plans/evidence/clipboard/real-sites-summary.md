@@ -27,6 +27,13 @@ again not tried, for the same reason. Lexical, Slate and CKEditor 5 now answered
 page's own `copy` handler rather than from the selection; both are paths a copy takes, and the
 marker came back either way.
 
+## After the version-exchange work
+
+Run again on 2026-10-31, all nine sites in one run, `real-sites-4.json`, after the 1.9.0 version
+exchange changed the extension and the server: the same eight passed with the same paths as the
+pass before it (Draft.js and the plain field copied from the selection, the rest from the page's own
+`copy` handler), and TinyMCE was again not tried.
+
 Notes on the earlier runs, kept rather than tidied:
 
 - The first run's Quill row drove the playground page's code editor, not Quill; the rerun used

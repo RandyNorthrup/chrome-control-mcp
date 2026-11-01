@@ -1,0 +1,77 @@
+== the extension says its own version when it attaches
+mutation: "version: extensionVersion()," -> ""
+{
+ "mutated_exit": 1,
+ "expected_failure_seen": true,
+ "failed": [
+  "✖ the extension says its own version when it attaches"
+ ],
+ "restored": true,
+ "restored_exit": 0
+}
+== nobody's work is cut off
+mutation: "return [...sessions, ...pendingLeases.values()].some(\n    (session) => session.tabs.size > 0,\n  );" -> "return false;"
+{
+ "mutated_exit": 1,
+ "expected_failure_seen": true,
+ "failed": [
+  "✖ nobody's work is cut off: not while a tab is held, a command runs, or one just ended"
+ ],
+ "restored": true,
+ "restored_exit": 0
+}
+== nobody's work is cut off
+mutation: "if (Date.now() - versionReload.lastCommandEndedAt < RELOAD_QUIET_MS) {\n    return true;\n  }" -> ""
+{
+ "mutated_exit": 1,
+ "expected_failure_seen": true,
+ "failed": [
+  "✖ nobody's work is cut off: not while a tab is held, a command runs, or one just ended"
+ ],
+ "restored": true,
+ "restored_exit": 0
+}
+== once per version
+mutation: "if (before === version) {" -> "if (false) {"
+{
+ "mutated_exit": 1,
+ "expected_failure_seen": true,
+ "failed": [
+  "✖ once per version: still older after reloading for it, it does not loop; a newer one reloads again"
+ ],
+ "restored": true,
+ "restored_exit": 0
+}
+== a command that starts while storage answers
+mutation: "if (extensionInUse()) {\n      await chrome.storage.local.set({\n        [RELOADED_FOR_VERSION_KEY]: before ?? null," -> "if (false) {\n      await chrome.storage.local.set({\n        [RELOADED_FOR_VERSION_KEY]: before ?? null,"
+{
+ "mutated_exit": 1,
+ "expected_failure_seen": true,
+ "failed": [
+  "✖ a command that starts while storage answers stops the reload, and a later look still reloads"
+ ],
+ "restored": true,
+ "restored_exit": 0
+}
+== an install the same age or older
+mutation: "if (running === \"\" || compareVersions(version, running) <= 0) {" -> "if (running === \"\" || compareVersions(version, running) < 0) {"
+{
+ "mutated_exit": 1,
+ "expected_failure_seen": true,
+ "failed": [
+  "✖ an install the same age or older, or one that does not say, never reloads"
+ ],
+ "restored": true,
+ "restored_exit": 0
+}
+== an install the same age or older
+mutation: "if (typeof version !== \"string\" || !VERSION_PATTERN.test(version)) {" -> "if (typeof version !== \"string\") {"
+{
+ "mutated_exit": 1,
+ "expected_failure_seen": true,
+ "failed": [
+  "✖ an install the same age or older, or one that does not say, never reloads"
+ ],
+ "restored": true,
+ "restored_exit": 0
+}

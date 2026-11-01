@@ -11,6 +11,7 @@
 #include <QJsonArray>
 #include <QJsonValue>
 #include <QStringList>
+#include <QVersionNumber>
 
 #include <thread>
 
@@ -34,7 +35,92 @@ QString protocolMismatchGuidance() {
       "restart Chrome) so Chrome loads the copy installed with this server.");
 }
 
+// What an extension answers a command its own table does not have -- a command
+// newer than it is, from a newer server.
+constexpr QLatin1StringView kUnknownCommandMarker{"Unknown command: "};
+
+QString serverVersionText() {
+  return QString::fromLatin1(kBrowserExtensionVersion);
+}
+
+// "1.8.2", or a description for an extension older than 1.9.0, which does not
+// say.
+QString extensionVersionText(const BridgePeerVersions &peer) {
+  return peer.extension.isEmpty() ? QStringLiteral("older than 1.9.0")
+                                  : peer.extension;
+}
+
+// Whether the running extension is behind this server: older, or too old to
+// say.
+bool extensionBehind(const BridgePeerVersions &peer) {
+  return peer.extension.isEmpty() ||
+         QVersionNumber::fromString(peer.extension) <
+             QVersionNumber::fromString(serverVersionText());
+}
+
 } // namespace
+
+QString bridgeVersionNotice(const QString &server,
+                            const BridgePeerVersions &peer) {
+  const QVersionNumber running = QVersionNumber::fromString(server);
+  const QVersionNumber extension = QVersionNumber::fromString(peer.extension);
+  const QVersionNumber installed = QVersionNumber::fromString(peer.installed);
+  // A relay that says nothing is older than 1.9.0, and it is the program
+  // Chrome starts from the installed copy: what is installed is older than
+  // this server, and its relay did not pass the extension's version on either.
+  if (peer.installed.isEmpty()) {
+    return QStringLiteral(
+               "Note: Chrome starts a copy of Chrome Control MCP older than "
+               "1.9.0 for this browser, behind this %1 server, so the "
+               "extension may be older too. Install this version where Chrome "
+               "starts it (run this server's executable with --install, or "
+               "browser_update_apply), then reload the extension at "
+               "chrome://extensions.")
+        .arg(server);
+  }
+  QStringList said;
+  const bool server_behind = installed > running;
+  if (server_behind) {
+    said << QStringLiteral(
+                "Note: Chrome Control MCP %1 is installed, but this server is "
+                "still %2. Restart the server in your MCP client (in Claude "
+                "Code: /mcp, then reconnect) so it runs %1.")
+                .arg(peer.installed, server);
+  }
+  if (peer.extension.isEmpty()) {
+    said << QStringLiteral(
+                "Note: Chrome is running a Chrome Control MCP extension older "
+                "than 1.9.0, beside this %1 server. Reload it at "
+                "chrome://extensions (or restart Chrome). Until then "
+                "browser_clipboard is unavailable, and copy and paste keys use "
+                "the system clipboard, which the user and every agent share.")
+                .arg(server);
+  } else if (extension < running && installed < running) {
+    said << QStringLiteral(
+                "Note: this server (%1) is newer than the installed copy (%2) "
+                "Chrome loads the extension from, and Chrome is running "
+                "extension %3. Install this version (run this server's "
+                "executable with --install), then reload the extension at "
+                "chrome://extensions.")
+                .arg(server, peer.installed, peer.extension);
+  } else if (extension < running) {
+    said << QStringLiteral(
+                "Note: Chrome is running Chrome Control MCP extension %1, "
+                "older than this server (%2), so what %2 changed in the "
+                "extension is missing. It reloads itself once no agent has "
+                "used it for a few seconds; to pick %2 up now, reload it at "
+                "chrome://extensions (or restart Chrome).")
+                .arg(peer.extension, server);
+  } else if (extension > running && !server_behind) {
+    said << QStringLiteral(
+                "Note: Chrome is running Chrome Control MCP extension %1, "
+                "newer than this server (%2). Restart the server in your MCP "
+                "client, or update it with browser_update_apply, so the two "
+                "match.")
+                .arg(peer.extension, server);
+  }
+  return said.join(QLatin1Char(' '));
+}
 
 bool BrowserControl::start(QString *error) {
   started_ = pipe_.start(error);
@@ -83,6 +169,8 @@ void BrowserControl::syncSessionToConnection() {
   if (connected && generation != observed_generation_) {
     session_.onHostConnected();
     observed_generation_ = generation;
+    peer_versions_ = pipe_.peerVersions();
+    version_notice_due_ = true;
   } else if (!connected && session_.connected()) {
     session_.onHostDisconnected();
   }
@@ -109,7 +197,47 @@ ToolResult BrowserControl::invoke(const QString &name,
   if (result.is_error && result.text.contains(kProtocolMismatchMarker)) {
     result.text += protocolMismatchGuidance();
   }
+  // The extension's own words say only that it does not know the command;
+  // that this server is newer than it, and what to do, is known only here.
+  if (result.is_error && result.text.startsWith(kUnknownCommandMarker) &&
+      session_.connected() && extensionBehind(peer_versions_)) {
+    result.text +=
+        QStringLiteral(". Chrome is running Chrome Control MCP extension %1, "
+                       "older than this server (%2), which added it: reload "
+                       "the extension at chrome://extensions (or restart "
+                       "Chrome).")
+            .arg(extensionVersionText(peer_versions_), serverVersionText());
+  }
   return result;
+}
+
+QString BrowserControl::takeVersionNotice() {
+  if (!version_notice_due_) {
+    return {};
+  }
+  version_notice_due_ = false;
+  return bridgeVersionNotice(serverVersionText(), peer_versions_);
+}
+
+QJsonObject BrowserControl::connectionVersions() const {
+  const bool connected = pipe_.clientConnected();
+  const BridgePeerVersions peer = pipe_.peerVersions();
+  const auto versionOrNull = [](const QString &version) {
+    return version.isEmpty() ? QJsonValue(QJsonValue::Null)
+                             : QJsonValue(version);
+  };
+  return QJsonObject{
+      {QStringLiteral("connected"), connected},
+      // How many times a browser has attached to this server: a count that
+      // keeps climbing is a bridge that keeps dropping, and one that moved is
+      // a new connection -- after an extension reload, say.
+      {QStringLiteral("connections"),
+       static_cast<double>(pipe_.connectionGeneration())},
+      {QStringLiteral("server_version"), serverVersionText()},
+      {QStringLiteral("extension_version"), versionOrNull(peer.extension)},
+      {QStringLiteral("installed_version"), versionOrNull(peer.installed)},
+      {QStringLiteral("notice"),
+       connected ? bridgeVersionNotice(serverVersionText(), peer) : QString()}};
 }
 
 ToolResult BrowserControl::dispatch(const QString &name,

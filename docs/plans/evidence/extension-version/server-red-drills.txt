@@ -1,0 +1,43 @@
+== the relay's hello leaves the extension's version out
+file: src/browser_bridge_relay_common.cpp
+mutated_exit=8
+FAIL!  : BrowserBridgeRelayTests::relayHandshake_carriesVersionsBothWays() Compared values are not the same
+FAIL!  : BrowserBridgeRelayTests::control_toldOncePerConnectionWhenVersionsDisagree() 'first_notice.contains(kOlder) && first_notice.contains(QStringLiteral("chrome://extensions"))' returned FALSE. (Note: Chrome is running a Chrome Control MCP extension older than 1.9.0, beside this 1.9.0 server. Reload it at chrome://extensions (or restart Chrome). Until then browser_clipboard is unavailable, and copy and paste keys use the system clipboard, which the user and every agent share.)
+FAIL!  : BrowserBridgeRelayTests::control_matchingVersionsAreNeverTold() 'notice.isEmpty()' returned FALSE. (Note: Chrome is running a Chrome Control MCP extension older than 1.9.0, beside this 1.9.0 server. Reload it at chrome://extensions (or restart Chrome). Until then browser_clipboard is unavailable, and copy and paste keys use the system clipboard, which the user and every agent share.)
+FAIL!  : BrowserBridgeRelayTests::control_unknownCommandFromAnOlderExtensionSaysWhy() Compared values are not the same
+expected_failure_seen: true
+restored: true
+restored_build_exit=0
+restored_exit=0
+== a version is taken as the peer said it
+file: src/browser_bridge_pipe_common.cpp
+mutated_exit=8
+FAIL!  : BrowserBridgeRelayTests::versions_onlyMajorMinorPatchIsAVersion() 'bridgeVersionOrEmpty(value).isEmpty()' returned FALSE. ([
+expected_failure_seen: true
+restored: true
+restored_build_exit=0
+restored_exit=0
+== the notice is told on every call
+file: src/browser_control.cpp
+mutated_exit=8
+FAIL!  : BrowserBridgeRelayTests::control_toldOncePerConnectionWhenVersionsDisagree() 'second_notice.isEmpty()' returned FALSE. (Note: Chrome is running Chrome Control MCP extension 1.0.0, older than this server (1.9.0), so what 1.9.0 changed in the extension is missing. It reloads itself once no agent has used it for a few seconds; to pick 1.9.0 up now, reload it at chrome://extensions (or restart Chrome).)
+expected_failure_seen: true
+restored: true
+restored_build_exit=0
+restored_exit=0
+== an unknown command from an older extension is passed on bare
+file: src/browser_control.cpp
+mutated_exit=8
+FAIL!  : BrowserBridgeRelayTests::control_unknownCommandFromAnOlderExtensionSaysWhy() 'old_result.text.startsWith(unknown) && old_result.text.contains(QStringLiteral("older than 1.9.0")) && old_result.text.contains(QStringLiteral("chrome://extensions"))' returned FALSE. (Unknown command: clipboard)
+expected_failure_seen: true
+restored: true
+restored_build_exit=0
+restored_exit=0
+== browser_extension_status never carries the notice
+file: src/browser_control.cpp
+mutated_exit=8
+FAIL!  : BrowserBridgeRelayTests::control_toldOncePerConnectionWhenVersionsDisagree() Compared values are not the same
+expected_failure_seen: true
+restored: true
+restored_build_exit=0
+restored_exit=0

@@ -51,6 +51,15 @@ inline constexpr std::chrono::milliseconds kRelayAttachWait{8'000};
 /// this is only the latency between it landing and the call noticing.
 inline constexpr std::chrono::milliseconds kRelayAttachPoll{100};
 
+/// What to tell an agent about a connection whose versions disagree with this
+/// server's @p server version, or empty when they agree: which versions are
+/// running and the one thing that fixes it. Chosen from all three together,
+/// because the fix depends on which is behind -- reloading the extension does
+/// nothing when the installed copy it would load is itself older than the
+/// server. See docs/plans/extension-version.md.
+[[nodiscard]] QString bridgeVersionNotice(const QString &server,
+                                          const BridgePeerVersions &peer);
+
 class BrowserControl {
 public:
   /// Production uses the default options (real per-user rendezvous path, Chrome
@@ -100,6 +109,19 @@ public:
   [[nodiscard]] ToolResult invoke(const QString &name,
                                   const QJsonObject &arguments);
 
+  /// The version notice for the current connection, the first time it is
+  /// asked for after that connection was made, and empty every other time --
+  /// so each connection tells its agent once, on whichever browser call comes
+  /// first, and a connection whose versions agree never does.
+  [[nodiscard]] QString takeVersionNotice();
+
+  /// The running versions as browser_extension_status reports them: whether
+  /// an extension is connected and how many connections there have been, this
+  /// server's version, the extension's and the installed one (null when not
+  /// said), and the notice (empty when they agree). Read from the connection
+  /// as it is now, at any time.
+  [[nodiscard]] QJsonObject connectionVersions() const;
+
 private:
   using Clock = std::chrono::steady_clock;
 
@@ -134,6 +156,10 @@ private:
   BrowserBridgePipeServer pipe_;
   browser::BrowserBridgeSession session_;
   quint64 observed_generation_{0};
+  /// What the current connection reported, taken when it was first seen, and
+  /// whether its notice is still to be told.
+  BridgePeerVersions peer_versions_;
+  bool version_notice_due_{false};
   /// Distinguishes one call's files from another's in the extension's buffer.
   quint64 upload_counter_{0};
   bool started_{false};

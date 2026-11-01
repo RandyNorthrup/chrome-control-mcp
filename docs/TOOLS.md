@@ -367,6 +367,12 @@ clicks rather than search for a way around it. `browser_extension_uninstall` rem
 registration; Chrome extension removal remains manual. No private key or packaged extension is
 used.
 
+`browser_extension_status` reports what is on disk -- the folder, the native-host registration, the
+pinned ID -- and, under `running`, what Chrome is actually running beside this server: `connected`,
+`connections` (how many times a browser has attached), `server_version`, `extension_version` and
+`installed_version` (null when not said: older than 1.9.0), and `notice`, the same advice the first
+reply on a connection carries, empty when everything agrees.
+
 `browser_extension_uninstall` reports whether it actually removed anything. Removing a registration
 that was never there succeeds at the system-call level on both platforms -- a missing key and a
 missing file are not errors -- so a reply of "Browser extension bridge unregistered" means a
@@ -400,10 +406,15 @@ already current leaves that version in place and says so, which is what keeps an
 installs its bundled build on every start from rolling an update back.
 
 A new build takes effect when the MCP client next starts the server, so restart it. Chrome does not
-reload an unpacked extension when its files change, so reload it at `chrome://extensions` (or
-restart Chrome) as well. The extension and the server must speak the same bridge protocol: when a
-server speaks a newer one than the loaded extension, the extension reloads itself once; otherwise
-every command is refused with a message saying which side to update.
+reload an unpacked extension when its files change. From 1.9.0 on the extension reloads itself for
+a newer installed copy, once no agent holds a tab and none has used it for 10 s; an extension older
+than 1.9.0 cannot, so for that one update reload it at `chrome://extensions` (or restart Chrome).
+Whenever the running extension, the installed copy and the server disagree, the first browser reply
+on that connection carries one more text block saying which is behind and what to do, in any MCP
+client, and a command an older extension does not know says the same. The extension and the server
+must also speak the same bridge protocol: when a server speaks a newer one than the loaded
+extension, the extension reloads itself once; otherwise every command is refused with a message
+saying which side to update.
 
 Install root, unless `CHROME_CONTROL_MCP_INSTALL_ROOT` names another:
 

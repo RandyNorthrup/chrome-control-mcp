@@ -102,9 +102,11 @@ After any update:
 
 1. **Restart the server in your MCP client** so it runs the new build -- in Claude Code, `/mcp` and
    reconnect; elsewhere, restart the client or its MCP server.
-2. **Reload the extension** at `chrome://extensions` (or restart Chrome): Chrome keeps running the
-   copy it loaded until then. When the new server speaks a newer bridge protocol than that copy, the
-   extension reloads itself once.
+2. **The extension** picks up the new copy by reloading itself, from 1.9.0 on: once no agent holds
+   a tab and none has used it for 10 s. An extension older than 1.9.0 cannot, so after updating
+   from one, reload it at `chrome://extensions` (or restart Chrome). Until either happens Chrome
+   keeps running the copy it loaded -- and the first browser reply your agent gets says so, with
+   what to do, as does `browser_extension_status`.
 
 A release that needs anything more says so under **Updating** in its notes.
 [TOOLS.md](TOOLS.md#updating-this-server) describes the layout and the install roots.

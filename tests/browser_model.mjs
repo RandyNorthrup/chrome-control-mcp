@@ -14,12 +14,14 @@ export const PROTOCOL = 2;
 // @p live are the worker names a suite reads (see loadWorker); @p refuseRemovals is how many
 // tabs.remove calls Chrome refuses first, as it does while the user drags a tab; @p cdp answers a
 // debugger command (tabId, method, params) when it returns anything but undefined. Every
-// debugger command is recorded in calls.cdp.
+// debugger command is recorded in calls.cdp. @p overrides adds or replaces chrome.* members by
+// dotted name, for a suite that needs one this model does not give (runtime.reload, storage).
 export function fakeBrowser({
   exported,
   live = "",
   refuseRemovals = 0,
   cdp = () => undefined,
+  overrides: extra = {},
 } = {}) {
   let removalsRefused = 0;
   const tabs = new Map();
@@ -206,6 +208,7 @@ export function fakeBrowser({
   ]) {
     overrides[name] = on(name);
   }
+  Object.assign(overrides, extra);
   const worker = loadWorker(exported, overrides, live);
   return {
     worker,

@@ -4,6 +4,7 @@
 #include "chrome_control_mcp/browser_bridge_pipe.h"
 
 #include "chrome_control_mcp/browser_bridge_security.h"
+#include "chrome_control_mcp/browser_extension_installer.h"
 #include "chrome_control_mcp/error_out.h"
 #include "chrome_control_mcp/native_messaging.h"
 #include "chrome_control_mcp/posix_process_identity.h"
@@ -597,6 +598,7 @@ void BrowserBridgePipeServer::run() {
       const std::lock_guard<std::mutex> lock(mutex_);
       connected_ = true;
       ++generation_;
+      peer_versions_ = handshake_versions_;
       has_request_ = false;
       has_response_ = false;
     }
@@ -641,11 +643,16 @@ bool BrowserBridgePipeServer::handshake() {
         deadline);
     return false;
   }
+  handshake_versions_ = peerVersionsFromHello(hello);
+  // `version` is this server's own; a relay older than 1.9.0 reads only the
+  // type and protocol of a welcome and ignores it.
   return writeFrame(
       connection_fd_,
       QJsonObject{{QStringLiteral("type"), QStringLiteral("welcome")},
                   {QStringLiteral("protocol"), options_.protocol},
-                  {QStringLiteral("pid"), static_cast<double>(getpid())}},
+                  {QStringLiteral("pid"), static_cast<double>(getpid())},
+                  {QStringLiteral("version"),
+                   QString::fromLatin1(kBrowserExtensionVersion)}},
       deadline);
 }
 

@@ -69,15 +69,25 @@ ToolResult uninstallExtension() {
                   {QStringLiteral("state"), installer.stateString()}});
 }
 
-ToolResult extensionStatus() {
+} // namespace
+
+ToolResult browserExtensionStatus(const QJsonObject &running) {
   const BrowserExtensionInstaller installer;
-  return jsonResult(QJsonObject{
+  QJsonObject status{
       {QStringLiteral("state"), installer.stateString()},
       {QStringLiteral("extension_present"), installer.extensionPresent()},
       {QStringLiteral("extension_path"), installer.config().extension_path},
       {QStringLiteral("extension_id"),
-       QString::fromLatin1(kBrowserExtensionId)}});
+       QString::fromLatin1(kBrowserExtensionId)}};
+  // What is on disk says nothing about what Chrome is running: Chrome keeps
+  // the copy it loaded until the extension is reloaded.
+  if (!running.isEmpty()) {
+    status.insert(QStringLiteral("running"), running);
+  }
+  return jsonResult(status);
 }
+
+namespace {
 
 QJsonArray toJsonArray(const QStringList &values) {
   QJsonArray array;
@@ -266,9 +276,12 @@ QJsonArray toolCatalog() {
                                "extension is loaded, remove it manually from "
                                "chrome://extensions.")),
       toolEntry(QStringLiteral("browser_extension_status"),
-                QStringLiteral("Report unpacked-extension availability, "
-                               "native-host preparation state, its load "
-                               "path, and pinned extension id.")),
+                QStringLiteral(
+                    "Report unpacked-extension availability, native-host "
+                    "preparation state, its load path, and pinned extension "
+                    "id; and, under `running`, the version of the extension "
+                    "Chrome is actually running beside this server's and the "
+                    "installed one, with what to do when they differ.")),
       toolEntry(
           QStringLiteral("browser_update_status"),
           QStringLiteral(
@@ -308,7 +321,7 @@ ToolResult invokeTool(const QString &name, const QJsonObject &arguments) {
     return uninstallExtension();
   }
   if (name == QLatin1String("browser_extension_status")) {
-    return extensionStatus();
+    return browserExtensionStatus({});
   }
   if (name == QLatin1String("browser_update_status")) {
     return updateStatus();

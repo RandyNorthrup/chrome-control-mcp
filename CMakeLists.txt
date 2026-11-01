@@ -435,6 +435,14 @@ if(BUILD_TESTING)
     )
     set_tests_properties(test_browser_extension_clipboard PROPERTIES TIMEOUT 120)
 
+    # The extension says its version on attach, and reloads itself for a newer installed copy only
+    # while nobody is using it, and only once per version.
+    add_test(NAME test_browser_extension_versions
+        COMMAND "${NODE_EXECUTABLE}" --test
+                "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_browser_extension_versions.mjs"
+    )
+    set_tests_properties(test_browser_extension_versions PROPERTIES TIMEOUT 120)
+
     # Every version string agrees, and the version being shipped has its changelog entry and
     # release note -- checked on each push, not first discovered by the release workflow.
     add_test(NAME test_release_versions

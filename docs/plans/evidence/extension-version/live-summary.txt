@@ -1,0 +1,3 @@
+{"suite":"extension_version_e2e","exit":0,"ok":true,"case":"current","checks":6,"passed":6}
+{"suite":"extension_version_e2e","exit":0,"ok":true,"case":"older","checks":12,"passed":12}
+{"suite":"extension_version_e2e","exit":0,"ok":true,"case":"released","checks":8,"passed":8}

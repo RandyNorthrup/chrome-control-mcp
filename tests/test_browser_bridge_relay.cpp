@@ -5,12 +5,14 @@
 #include "chrome_control_mcp/browser_bridge_relay.h"
 #include "chrome_control_mcp/browser_bridge_security.h"
 #include "chrome_control_mcp/browser_control.h"
+#include "chrome_control_mcp/browser_extension_installer.h"
 
 #include <QCoreApplication>
 #include <QDir>
 #include <QElapsedTimer>
 #include <QFile>
 #include <QJsonArray>
+#include <QJsonDocument>
 #include <QJsonObject>
 #include <QProcess>
 #include <QTemporaryDir>
@@ -19,19 +21,25 @@
 #include <atomic>
 #include <chrono>
 #include <cstring>
+#include <functional>
 #include <mutex>
 #include <thread>
 #include <vector>
 
 using chrome_control_mcp::bridgeImageMismatchText;
+using chrome_control_mcp::BridgePeerVersions;
 using chrome_control_mcp::BridgeServerWatcher;
+using chrome_control_mcp::bridgeVersionNotice;
+using chrome_control_mcp::bridgeVersionOrEmpty;
 using chrome_control_mcp::BrowserBridgePipeServer;
 using chrome_control_mcp::BrowserControl;
 using chrome_control_mcp::browserInputClosed;
 using chrome_control_mcp::closeNativeIpcHandle;
 using chrome_control_mcp::kBrowserBridgeProtocol;
+using chrome_control_mcp::kBrowserExtensionVersion;
 using chrome_control_mcp::kInvalidNativeIpcHandle;
 using chrome_control_mcp::NativeIpcHandle;
+using chrome_control_mcp::peerVersionsFromHello;
 using chrome_control_mcp::relayConnect;
 using chrome_control_mcp::relayHandshake;
 using chrome_control_mcp::relayPumpOnce;
@@ -104,6 +112,53 @@ struct FakeExtension {
     };
   }
 };
+
+// This server's own version, and one either side of it, so the tests hold
+// whatever the project's version is.
+QString thisVersion() { return QString::fromLatin1(kBrowserExtensionVersion); }
+const QString kOlder = QStringLiteral("1.0.0");
+const QString kNewer = QStringLiteral("99.0.0");
+
+// A BrowserControl with one relay attached that reported @p versions, its
+// extension played by @p extension. @p calls runs on this (the MCP) thread
+// while the relay pumps; everything is torn down after. False when the relay
+// never attached.
+bool withAttachedControl(const BridgePeerVersions &versions,
+                         FakeExtension &extension,
+                         const std::function<void(BrowserControl &)> &calls) {
+  QTemporaryDir dir;
+  const QString path = dir.filePath(QStringLiteral("r.json"));
+  BrowserControl control(serverOptions(path));
+  QString error;
+  if (!control.start(&error)) {
+    return false;
+  }
+  QString token;
+  int protocol = 0;
+  const NativeIpcHandle pipe = relayConnect(path, &token, &protocol, &error);
+  if (pipe == kInvalidNativeIpcHandle ||
+      !relayHandshake(pipe, token, protocol, &error, versions)) {
+    control.stop();
+    closeNativeIpcHandle(pipe);
+    return false;
+  }
+  std::atomic<bool> running{true};
+  std::thread relay([&] {
+    while (running.load() &&
+           relayPumpOnce(pipe, extension.reader(), extension.writer())) {
+    }
+  });
+  const bool attached =
+      waitUntil([&control] { return control.clientConnected(); }, 5000);
+  if (attached) {
+    calls(control);
+  }
+  running = false;
+  control.stop();
+  relay.join();
+  closeNativeIpcHandle(pipe);
+  return attached;
+}
 
 // A fake extension that behaves like a POLLING handler: it does not answer
 // until the test releases it. That is the only shape in which the
@@ -206,6 +261,13 @@ private slots:
   void control_snapshotRoundTripsThroughRelay();
   void control_waitsForARelayThatIsAttaching();
   void control_protocolMismatchSaysHowToFixIt();
+  void versions_onlyMajorMinorPatchIsAVersion();
+  void relayHandshake_carriesVersionsBothWays();
+  void relayHandshake_withoutVersionsIsTheHelloItAlwaysWas();
+  void versionNotice_namesWhatIsBehindAndTheFix();
+  void control_toldOncePerConnectionWhenVersionsDisagree();
+  void control_matchingVersionsAreNeverTold();
+  void control_unknownCommandFromAnOlderExtensionSaysWhy();
   void browserPresence_openInputIsNotClosed();
   void browserPresence_waitingBytesAreNotAHangup();
   void browserPresence_closedWriteEndIsAHangup();
@@ -640,6 +702,270 @@ void BrowserBridgeRelayTests::control_protocolMismatchSaysHowToFixIt() {
                "Bridge protocol mismatch: host 2, extension 1 Reload the "
                "Chrome Control MCP extension at chrome://extensions")),
            qPrintable(result.text));
+}
+
+void BrowserBridgeRelayTests::versions_onlyMajorMinorPatchIsAVersion() {
+  // Peers say these, and an agent ends up reading them: three short numbers
+  // and nothing else, or nothing at all.
+  QCOMPARE(bridgeVersionOrEmpty(QJsonValue(QStringLiteral("1.9.0"))),
+           QStringLiteral("1.9.0"));
+  QCOMPARE(bridgeVersionOrEmpty(QJsonValue(QStringLiteral("12.345.6789"))),
+           QStringLiteral("12.345.6789"));
+  const QList<QJsonValue> rejected{
+      QJsonValue(),
+      QJsonValue(QStringLiteral("")),
+      QJsonValue(QStringLiteral("1.9")),
+      QJsonValue(QStringLiteral("1.9.0.1")),
+      QJsonValue(QStringLiteral("v1.9.0")),
+      QJsonValue(QStringLiteral("1.9.0\n")),
+      QJsonValue(QStringLiteral(" 1.9.0")),
+      QJsonValue(QStringLiteral("1.9.0-beta")),
+      QJsonValue(QStringLiteral("<b>1.9.0</b>")),
+      QJsonValue(QStringLiteral("123456.0.0")),
+      QJsonValue(QString(300, QLatin1Char('9'))),
+      // Arabic-Indic digits are digits to a Unicode-aware \d.
+      QJsonValue(QString::fromUtf8("\xd9\xa1.\xd9\xa9.\xd9\xa0")),
+      QJsonValue(1.9),
+      QJsonValue(true),
+      QJsonValue(QJsonObject{{QStringLiteral("v"), QStringLiteral("1.9.0")}}),
+  };
+  for (const QJsonValue &value : rejected) {
+    QVERIFY2(bridgeVersionOrEmpty(value).isEmpty(),
+             qPrintable(QJsonDocument(QJsonArray{value}).toJson()));
+  }
+  const BridgePeerVersions junk = peerVersionsFromHello(
+      QJsonObject{{QStringLiteral("extension_version"), QStringLiteral("x")},
+                  {QStringLiteral("relay_version"), 2}});
+  QVERIFY(junk.extension.isEmpty());
+  QVERIFY(junk.installed.isEmpty());
+}
+
+void BrowserBridgeRelayTests::relayHandshake_carriesVersionsBothWays() {
+  QTemporaryDir dir;
+  BrowserBridgePipeServer server(
+      serverOptions(dir.filePath(QStringLiteral("r.json"))));
+  QString error;
+  QVERIFY2(server.start(&error), qPrintable(error));
+  QString token;
+  int protocol = 0;
+  const NativeIpcHandle pipe = relayConnect(
+      dir.filePath(QStringLiteral("r.json")), &token, &protocol, &error);
+  QVERIFY(pipe != kInvalidNativeIpcHandle);
+  QString server_version;
+  QVERIFY2(relayHandshake(pipe, token, protocol, &error,
+                          {.extension = kOlder, .installed = thisVersion()},
+                          &server_version),
+           qPrintable(error));
+  QVERIFY(waitUntil([&server] { return server.clientConnected(); }, 5000));
+
+  // The server heard both, and said its own.
+  const BridgePeerVersions heard = server.peerVersions();
+  QCOMPARE(heard.extension, kOlder);
+  QCOMPARE(heard.installed, thisVersion());
+  QCOMPARE(server_version, thisVersion());
+
+  closeNativeIpcHandle(pipe);
+  // Gone with the connection: nothing connected reports nothing.
+  QVERIFY(waitUntil([&server] { return !server.clientConnected(); }, 5000));
+  QVERIFY(server.peerVersions().extension.isEmpty());
+  server.stop();
+}
+
+void BrowserBridgeRelayTests::
+    relayHandshake_withoutVersionsIsTheHelloItAlwaysWas() {
+  // A relay older than 1.9.0 sends no versions. It is admitted exactly as
+  // before, commands flow, and the versions read as not said.
+  QTemporaryDir dir;
+  BrowserBridgePipeServer server(
+      serverOptions(dir.filePath(QStringLiteral("r.json"))));
+  QString error;
+  QVERIFY2(server.start(&error), qPrintable(error));
+  QString token;
+  int protocol = 0;
+  const NativeIpcHandle pipe = relayConnect(
+      dir.filePath(QStringLiteral("r.json")), &token, &protocol, &error);
+  QVERIFY(pipe != kInvalidNativeIpcHandle);
+  QVERIFY2(relayHandshake(pipe, token, protocol, &error), qPrintable(error));
+  QVERIFY(waitUntil([&server] { return server.clientConnected(); }, 5000));
+  QVERIFY(server.peerVersions().extension.isEmpty());
+  QVERIFY(server.peerVersions().installed.isEmpty());
+
+  FakeExtension extension;
+  extension.reply_payload = QJsonObject{{QStringLiteral("echoed"), true}};
+  std::thread relay([&] {
+    (void)relayPumpOnce(pipe, extension.reader(), extension.writer());
+  });
+  const auto exchange = server.sendCommandAwaitReply(
+      QJsonObject{{QStringLiteral("type"), QStringLiteral("command")},
+                  {QStringLiteral("id"), QStringLiteral("v-1")},
+                  {QStringLiteral("cmd"), QStringLiteral("snapshot")}});
+  relay.join();
+  QVERIFY2(exchange.ok, qPrintable(exchange.error));
+  closeNativeIpcHandle(pipe);
+  server.stop();
+}
+
+void BrowserBridgeRelayTests::versionNotice_namesWhatIsBehindAndTheFix() {
+  const QString server = thisVersion();
+  const auto notice = [&server](const QString &extension,
+                                const QString &installed) {
+    return bridgeVersionNotice(
+        server, {.extension = extension, .installed = installed});
+  };
+  // All the same: nothing to say.
+  QVERIFY(notice(server, server).isEmpty());
+
+  // An extension that says nothing is older than 1.9.0, and what that costs is
+  // named.
+  const QString silent = notice(QString(), server);
+  QVERIFY2(silent.contains(QStringLiteral("older than 1.9.0")) &&
+               silent.contains(QStringLiteral("chrome://extensions")) &&
+               silent.contains(QStringLiteral("browser_clipboard")) &&
+               silent.contains(QStringLiteral("system clipboard")),
+           qPrintable(silent));
+
+  // Older, with newer files installed: reload, and it would reload itself.
+  const QString older = notice(kOlder, server);
+  QVERIFY2(older.contains(kOlder) && older.contains(server) &&
+               older.contains(QStringLiteral("chrome://extensions")) &&
+               older.contains(QStringLiteral("reloads itself")),
+           qPrintable(older));
+
+  // A newer copy installed than this server: restart the server.
+  const QString behind = notice(kNewer, kNewer);
+  QVERIFY2(behind.contains(QStringLiteral("is installed, but this server")) &&
+               behind.contains(kNewer) &&
+               behind.contains(QStringLiteral("Restart the server")) &&
+               !behind.contains(QStringLiteral("chrome://extensions")),
+           qPrintable(behind));
+
+  // An extension newer than the server, with nothing newer installed.
+  const QString ahead = notice(kNewer, server);
+  QVERIFY2(ahead.contains(QStringLiteral("newer than this server")) &&
+               ahead.contains(QStringLiteral("browser_update_apply")),
+           qPrintable(ahead));
+
+  // The installed copy is older than this server (a build-tree server):
+  // reloading would load the older copy again, so the fix is to install.
+  const QString build = notice(kOlder, kOlder);
+  QVERIFY2(build.contains(QStringLiteral("--install")) &&
+               !build.contains(QStringLiteral("reloads itself")),
+           qPrintable(build));
+
+  // A relay that says nothing: what Chrome starts is older than 1.9.0.
+  const QString old_relay = notice(QString(), QString());
+  QVERIFY2(old_relay.contains(QStringLiteral("older than 1.9.0")) &&
+               old_relay.contains(QStringLiteral("--install")),
+           qPrintable(old_relay));
+}
+
+void BrowserBridgeRelayTests::
+    control_toldOncePerConnectionWhenVersionsDisagree() {
+  FakeExtension extension;
+  extension.reply_payload = QJsonObject{{QStringLiteral("tabs"), QJsonArray{}}};
+  ToolResult first;
+  QString first_notice;
+  QString second_notice;
+  QJsonObject running;
+  const bool attached = withAttachedControl(
+      {.extension = kOlder, .installed = thisVersion()}, extension,
+      [&](BrowserControl &control) {
+        first = control.invoke(QStringLiteral("browser_tabs"), {});
+        first_notice = control.takeVersionNotice();
+        (void)control.invoke(QStringLiteral("browser_tabs"), {});
+        second_notice = control.takeVersionNotice();
+        running = control.connectionVersions();
+      });
+  QVERIFY(attached);
+  QVERIFY2(!first.is_error, qPrintable(first.text));
+  // The reply itself is untouched: the notice travels beside it.
+  QVERIFY(!first.text.contains(QStringLiteral("Note:")));
+  QVERIFY2(first_notice.contains(kOlder) &&
+               first_notice.contains(QStringLiteral("chrome://extensions")),
+           qPrintable(first_notice));
+  QVERIFY2(second_notice.isEmpty(), qPrintable(second_notice));
+  // browser_extension_status can ask at any time, and gets the same answer.
+  QCOMPARE(running.value(QStringLiteral("connected")).toBool(), true);
+  QCOMPARE(running.value(QStringLiteral("connections")).toInt(), 1);
+  QCOMPARE(running.value(QStringLiteral("extension_version")).toString(),
+           kOlder);
+  QCOMPARE(running.value(QStringLiteral("installed_version")).toString(),
+           thisVersion());
+  QCOMPARE(running.value(QStringLiteral("server_version")).toString(),
+           thisVersion());
+  QCOMPARE(running.value(QStringLiteral("notice")).toString(), first_notice);
+
+  // A new connection is told again: it may be another extension entirely.
+  FakeExtension again;
+  again.reply_payload = QJsonObject{{QStringLiteral("tabs"), QJsonArray{}}};
+  QString reconnected_notice;
+  QVERIFY(withAttachedControl(
+      {.extension = kOlder, .installed = thisVersion()}, again,
+      [&](BrowserControl &control) {
+        (void)control.invoke(QStringLiteral("browser_tabs"), {});
+        reconnected_notice = control.takeVersionNotice();
+      }));
+  QVERIFY(!reconnected_notice.isEmpty());
+}
+
+void BrowserBridgeRelayTests::control_matchingVersionsAreNeverTold() {
+  FakeExtension extension;
+  extension.reply_payload = QJsonObject{{QStringLiteral("tabs"), QJsonArray{}}};
+  QString notice = QStringLiteral("unset");
+  QJsonObject running;
+  QVERIFY(withAttachedControl(
+      {.extension = thisVersion(), .installed = thisVersion()}, extension,
+      [&](BrowserControl &control) {
+        (void)control.invoke(QStringLiteral("browser_tabs"), {});
+        notice = control.takeVersionNotice();
+        running = control.connectionVersions();
+      }));
+  QVERIFY2(notice.isEmpty(), qPrintable(notice));
+  QVERIFY(running.value(QStringLiteral("notice")).toString().isEmpty());
+
+  // And nothing is told before anything has connected.
+  QTemporaryDir dir;
+  BrowserControl idle(serverOptions(dir.filePath(QStringLiteral("r.json"))));
+  QVERIFY(idle.takeVersionNotice().isEmpty());
+  const QJsonObject nothing = idle.connectionVersions();
+  QCOMPARE(nothing.value(QStringLiteral("connected")).toBool(), false);
+  QVERIFY(nothing.value(QStringLiteral("extension_version")).isNull());
+}
+
+void BrowserBridgeRelayTests::
+    control_unknownCommandFromAnOlderExtensionSaysWhy() {
+  // What a 1.8.x extension answers browser_clipboard with.
+  const QString unknown = QStringLiteral("Unknown command: clipboard");
+  FakeExtension old_extension;
+  old_extension.reply_error = unknown;
+  ToolResult old_result;
+  QVERIFY(withAttachedControl(
+      {.extension = QString(), .installed = thisVersion()}, old_extension,
+      [&](BrowserControl &control) {
+        old_result = control.invoke(
+            QStringLiteral("browser_clipboard"),
+            QJsonObject{{QStringLiteral("action"), QStringLiteral("read")}});
+      }));
+  QVERIFY(old_result.is_error);
+  QVERIFY2(old_result.text.startsWith(unknown) &&
+               old_result.text.contains(QStringLiteral("older than 1.9.0")) &&
+               old_result.text.contains(QStringLiteral("chrome://extensions")),
+           qPrintable(old_result.text));
+
+  // The same words from an extension of this server's own version are its
+  // own business, passed on unchanged.
+  FakeExtension current;
+  current.reply_error = unknown;
+  ToolResult current_result;
+  QVERIFY(withAttachedControl(
+      {.extension = thisVersion(), .installed = thisVersion()}, current,
+      [&](BrowserControl &control) {
+        current_result = control.invoke(
+            QStringLiteral("browser_clipboard"),
+            QJsonObject{{QStringLiteral("action"), QStringLiteral("read")}});
+      }));
+  QVERIFY(current_result.is_error);
+  QCOMPARE(current_result.text, unknown);
 }
 
 // Which record a relay connects to is now the extension's choice, so the rule

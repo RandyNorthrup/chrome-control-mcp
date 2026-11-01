@@ -1,0 +1,23 @@
+== drill: browser_extension_status carries no notice (case: older)
+mutated: src/browser_control.cpp
+exit=1
+FAIL browser_extension_status names the running version and the fix
+expected_failure_seen: true
+== drill: an unknown command from an older extension is passed on bare (case: released)
+mutated: src/browser_control.cpp
+exit=1
+FAIL browser_clipboard against it says why it fails and what to do -- Unknown command: clipboard
+expected_failure_seen: true
+== drill: a hello that says no extension version is refused (case: released)
+mutated: src/browser_bridge_pipe_posix.cpp
+exit=1
+error: AssertionError [ERR_ASSERTION]: the extension did not attach within 180 s
+expected_failure_seen: true
+== restored
+mirror matches source
+-- older
+exit=0
+passed: 12
+-- released
+exit=0
+passed: 8

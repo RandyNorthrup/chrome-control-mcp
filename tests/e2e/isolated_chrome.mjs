@@ -18,6 +18,7 @@
 import { execFileSync, spawn } from "node:child_process";
 import fs from "node:fs";
 import {
+  cp,
   mkdir,
   mkdtemp,
   readdir,
@@ -120,7 +121,11 @@ function assertWindowsHostRegistration(executable) {
 // Prepare the dedicated browser: its profile, its bridge directory, and the native-messaging
 // registration. `scaleFactor` is the display scale (Windows 125%, a Retina panel's 2x),
 // `windowSize` the browser window in DIPs, `zoomPercent` the browser zoom a user sets in Chrome's
-// settings. Returns the environment the MCP server must run with to pair with it, and launch():
+// settings. `extension` loads another extension folder than the one staged beside the executable
+// (a released one, to meet an older extension); `extensionVersion` loads that extension as if its
+// manifest said another version (to meet one older or newer than the installed copy without
+// building one). A copy keeps the manifest's key, so it keeps the ID the native host allows.
+// Returns the environment the MCP server must run with to pair with it, and launch():
 // start the server with that environment first, then launch -- which waits for the server's
 // rendezvous record, so the extension's first connection at startup finds it rather than waiting
 // out the reconnect alarm.
@@ -131,6 +136,8 @@ export async function prepareIsolatedChrome({
   windowSize = [1280, 800],
   zoomPercent = 100,
   extraArgs = [],
+  extension: extensionDir = null,
+  extensionVersion = null,
 }) {
   // Windows registers native-messaging hosts in the registry, one key for the user, so this
   // browser cannot be given a registration of its own -- and does not need one. The user's key
@@ -184,19 +191,34 @@ export async function prepareIsolatedChrome({
     });
     throw error;
   }
+  // Developer mode on, as in every Chrome this extension runs in: Load unpacked needs it.
+  // --load-extension skips that check at launch but not on a reload, so without it the
+  // extension's own chrome.runtime.reload() left it disabled as an "unsupported developer
+  // extension" -- measured on Chrome for Testing 153 -- and a reload could never be tested here.
+  const preferences = { extensions: { ui: { developer_mode: true } } };
   if (zoomPercent !== 100) {
     // The default zoom a user picks in Settings > Appearance > Page zoom. "x" is the key Chrome
     // gives the profile's default storage partition (ChromeZoomLevelPrefs).
-    await writeFile(
-      path.join(profile, "Default", "Preferences"),
-      JSON.stringify({
-        partition: {
-          default_zoom_level: { x: zoomLevelForPercent(zoomPercent) },
-        },
-      }),
-    );
+    preferences.partition = {
+      default_zoom_level: { x: zoomLevelForPercent(zoomPercent) },
+    };
   }
-  const extension = path.join(path.dirname(executable), "extension");
+  await writeFile(
+    path.join(profile, "Default", "Preferences"),
+    JSON.stringify(preferences),
+  );
+  let extension = extensionDir
+    ? path.resolve(extensionDir)
+    : path.join(path.dirname(executable), "extension");
+  if (extensionVersion) {
+    const staged = path.join(root, "extension");
+    await cp(extension, staged, { recursive: true });
+    const manifestPath = path.join(staged, "manifest.json");
+    const manifest = JSON.parse(await readFile(manifestPath, "utf8"));
+    manifest.version = extensionVersion;
+    await writeFile(manifestPath, JSON.stringify(manifest, null, 2));
+    extension = staged;
+  }
   let browser = null;
   let stderr = "";
   let exited = false;

@@ -112,7 +112,9 @@ QString serverInstructions() {
       "browser_release (with your tab_id when other agents share the "
       "server): tabs you opened are closed, tabs you borrowed are handed "
       "back, not closed; pass keep_open:true to leave a page open for the "
-      "user.");
+      "user. A reply may end with a note that the Chrome extension or this "
+      "server is out of date; tell the user what it says, since only they can "
+      "reload the extension or restart the server.");
 }
 
 QJsonObject initializeResult() {
@@ -325,9 +327,11 @@ std::optional<QJsonObject> handleToolsCall(const QJsonValue &id,
   }
   const QJsonObject arguments = arguments_value.toObject();
   if (browser != nullptr && browser->handles(name)) {
+    // invoke first: it is what notices a new connection and its versions.
+    const ToolResult result = browser->invoke(name, arguments);
     return resultResponse(
         id, redactToolCallResult(
-                toolCallResult(browser->invoke(name, arguments)), policy));
+                toolCallResult(result, browser->takeVersionNotice()), policy));
   }
   // Independent server-side enforcement of the advertised inputSchema for
   // NATIVE tools (never trust the client): reject a call whose arguments
@@ -341,6 +345,14 @@ std::optional<QJsonObject> handleToolsCall(const QJsonValue &id,
     if (!invalid.isEmpty()) {
       return errorResponse(id, kInvalidParams, invalid);
     }
+  }
+  // The one native tool that has to ask the live connection: which extension
+  // Chrome is running is known only to the bridge, never from the disk.
+  if (browser != nullptr && name == QLatin1String("browser_extension_status")) {
+    return resultResponse(
+        id, redactToolCallResult(toolCallResult(browserExtensionStatus(
+                                     browser->connectionVersions())),
+                                 policy));
   }
   return resultResponse(
       id, redactToolCallResult(toolCallResult(invokeTool(name, arguments)),
@@ -442,7 +454,7 @@ QString redactMcpSensitiveText(const QString &text) {
   return redacted;
 }
 
-QJsonObject toolCallResult(const ToolResult &result) {
+QJsonObject toolCallResult(const ToolResult &result, const QString &notice) {
   QJsonArray content;
   if (!result.image_base64.isEmpty()) {
     const QString mime = result.image_mime.isEmpty()
@@ -459,6 +471,10 @@ QJsonObject toolCallResult(const ToolResult &result) {
   if (!result.text.isEmpty() || content.isEmpty()) {
     content.append(QJsonObject{{QStringLiteral("type"), QStringLiteral("text")},
                                {QStringLiteral("text"), result.text}});
+  }
+  if (!notice.isEmpty()) {
+    content.append(QJsonObject{{QStringLiteral("type"), QStringLiteral("text")},
+                               {QStringLiteral("text"), notice}});
   }
   return QJsonObject{{QStringLiteral("content"), content},
                      {QStringLiteral("isError"), result.is_error}};

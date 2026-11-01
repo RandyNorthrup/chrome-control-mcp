@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include "chrome_control_mcp/browser_bridge_pipe.h"
 #include "chrome_control_mcp/native_ipc.h"
 
 #include <QJsonObject>
@@ -237,8 +238,16 @@ readBrowserReplyPastProgress(const BrowserReadFn &browser_read,
 /// require a `welcome` reply carrying the matching protocol. Returns false
 /// (with @p error set) if the server rejects the token/protocol or drops the
 /// connection.
+///
+/// The hello also carries @p versions -- the extension's as it reported it,
+/// and the relay's own -- as `extension_version` and `relay_version`, each only
+/// when known, so a relay that knows neither sends the hello it always did.
+/// The server's own version from the welcome lands in @p server_version when
+/// given (empty from a server older than 1.9.0).
 [[nodiscard]] bool relayHandshake(NativeIpcHandle pipe, const QString &token,
-                                  int protocol, QString *error);
+                                  int protocol, QString *error,
+                                  const BridgePeerVersions &versions = {},
+                                  QString *server_version = nullptr);
 
 /// Pump exactly one command/reply exchange: block for a command frame from @p
 /// pipe (sent by the server), forward it to the browser via @p browser_write,

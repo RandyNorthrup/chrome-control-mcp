@@ -37,6 +37,12 @@ struct ToolResult {
 [[nodiscard]] ToolResult invokeTool(const QString &name,
                                     const QJsonObject &arguments);
 
+/// browser_extension_status, with what the live connection says about the
+/// running versions (BrowserControl::connectionVersions) under `running`.
+/// invokeTool's own browser_extension_status, which has no connection to ask,
+/// is this with an empty @p running, which leaves the field out.
+[[nodiscard]] ToolResult browserExtensionStatus(const QJsonObject &running);
+
 /// Server identity for `initialize.serverInfo`.
 [[nodiscard]] QString serverName();
 [[nodiscard]] QString serverVersion();

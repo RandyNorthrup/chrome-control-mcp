@@ -1,1 +1,2 @@
-clang-tidy exit=0
+== clang-tidy (changed C++)
+exit=0

@@ -36,11 +36,11 @@
 
 ## What's new
 
-| Version                                                                          | Released   | What changed                                                                                                                                                                                                     |
-| -------------------------------------------------------------------------------- | ---------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| [1.9.0](https://github.com/RandyNorthrup/chrome-control-mcp/releases/tag/v1.9.0) | 2026-10-31 | **A clipboard for every agent.** Copy, cut and paste -- by key, with `browser_clipboard`, or through a page's own copy buttons -- use the agent's own clipboard. Never yours, never another agent's.             |
-| [1.8.2](https://github.com/RandyNorthrup/chrome-control-mcp/releases/tag/v1.8.2) | 2026-10-31 | **browser_release closes everything an agent opened.** Popups its clicks opened go with the tab, and a tab Chrome refuses to close is handed back and listed in `not_closed`, never reported closed.             |
-| [1.8.1](https://github.com/RandyNorthrup/chrome-control-mcp/releases/tag/v1.8.1) | 2026-10-31 | **Fixes from a day of multi-agent use.** Agent names in any script, upload replies that list what was delivered when the page clears its input, and two quality gates that had quietly stopped running restored. |
+| Version                                                                          | Released   | What changed                                                                                                                                                                                                                                                                                                                           |
+| -------------------------------------------------------------------------------- | ---------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [1.9.0](https://github.com/RandyNorthrup/chrome-control-mcp/releases/tag/v1.9.0) | 2026-10-31 | **A clipboard for every agent.** Copy, cut and paste -- by key, with `browser_clipboard`, or through a page's own copy buttons -- use the agent's own clipboard. Never yours, never another agent's. And when Chrome is still running an older extension, your agent is told what to do, and from now on the extension updates itself. |
+| [1.8.2](https://github.com/RandyNorthrup/chrome-control-mcp/releases/tag/v1.8.2) | 2026-10-31 | **browser_release closes everything an agent opened.** Popups its clicks opened go with the tab, and a tab Chrome refuses to close is handed back and listed in `not_closed`, never reported closed.                                                                                                                                   |
+| [1.8.1](https://github.com/RandyNorthrup/chrome-control-mcp/releases/tag/v1.8.1) | 2026-10-31 | **Fixes from a day of multi-agent use.** Agent names in any script, upload replies that list what was delivered when the page clears its input, and two quality gates that had quietly stopped running restored.                                                                                                                       |
 
 Every release, with the day it shipped and what it changed, is in [CHANGELOG.md](CHANGELOG.md); each
 release page has its downloads. To hear about new ones, use **Watch → Custom → Releases** on this
@@ -146,8 +146,9 @@ extension folder to load** in VS Code, which copies it for you.
 
 This one step is manual by Chrome's design, not by omission: branded Chrome ignores
 `--load-extension`, and policy installs need a Web Store listing this project deliberately does not
-have. Updates reuse the same folder, so it is a one-time step; after an update, press reload on the
-extension (or restart Chrome).
+have. Updates reuse the same folder, so it is a one-time step, and from 1.9.0 on the extension
+reloads itself after an update once no agent is using it. Coming from an older version, press reload
+on it once (or restart Chrome).
 
 ## Connect any MCP client
 
@@ -220,9 +221,15 @@ overwritten. The client's command path, Chrome's extension folder and the native
 registration all point through `current` and never change. Downloads are checked against the
 SHA-256 published with the release.
 
-Two things pick up a new build only when restarted, because neither Chrome nor your editor reloads
-code under a running process: the MCP server in your client, and the extension at
-`chrome://extensions`.
+Neither Chrome nor your editor reloads code under a running process. The MCP server in your client
+picks up a new build when the client restarts it. The extension, from 1.9.0 on, reloads itself for
+a newer installed copy as soon as no agent holds a tab and none has used it for 10 s, so it never
+interrupts an agent's work.
+
+Until both have, you are told. Whenever the server, the installed copy and the extension Chrome is
+running disagree, your agent's next browser reply carries a note saying which is behind and the one
+thing that fixes it -- reload the extension, restart the server, or install -- in any MCP client,
+and `browser_extension_status` shows all three versions.
 
 | Platform | Install root                                         |
 | -------- | ---------------------------------------------------- |
@@ -287,12 +294,13 @@ Measured for 1.9.0 on 2026-10-31, except the two rows marked 1.8.0, whose code l
 
 | Check                                                                                                                | Result                          |
 | -------------------------------------------------------------------------------------------------------------------- | ------------------------------- |
-| ctest suites -- MSVC, GCC and Clang, warnings as errors                                                              | Windows 23/23, Linux 22/22      |
+| ctest suites -- MSVC, GCC and Clang, warnings as errors                                                              | Windows 24/24, Linux 23/23      |
 | `clang-tidy`, exhaustive `cppcheck`, Semgrep, ASan + UBSan, TSan                                                     | clean                           |
-| Extension and tooling unit tests                                                                                     | 204/204                         |
+| Extension and tooling unit tests                                                                                     | 210/210                         |
 | Full live browser suite (isolated Chrome for Testing 153)                                                            | 48 tools, 177 cases, all pass   |
 | Multi-agent live suite: two servers, two agents behind one of them                                                   | 25/25                           |
 | Per-agent clipboard live suite: a sentinel on the user's clipboard survives every agent copy, cut and paste          | 24/24                           |
+| Extension version live suite: same version; an older one (told, reloads itself once, no loop); released 1.8.2        | 6/6, 12/12, 8/8                 |
 | Live suites in CI on Windows, Linux and macOS                                                                        | pass                            |
 | (1.8.0) Real-world run in an everyday Chrome profile: real sites, real uploads, popups, Trusted Types pages, cleanup | 23/23                           |
 | (1.8.0) Reconnect attempts with no server running (process-spawn regression check)                                   | 6 in 75 s, unchanged from 1.7.0 |

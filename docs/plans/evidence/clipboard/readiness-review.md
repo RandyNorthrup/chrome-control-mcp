@@ -72,3 +72,15 @@ suite selecting with Control+A, which on macOS moves the caret instead of select
 defect in the check, not in a requirement or criterion, and AC-CLIP-KEYS reads the same.
 
 Verdict unchanged: the requirements are clear, covered, and consistent.
+
+## Addendum, after the version-exchange work
+
+The third readiness receipt went stale because the rules file changed: `docs/QUALITY.md`'s status
+table now counts 24/23 ctest suites and 210 JavaScript tests, and lists the extension-version live
+suite among the live gates. No gate, threshold or rule changed. The version work
+([extension-version.md](../../extension-version.md)) also changed files this plan's evidence is
+bound to -- `background.js`, `browser_control.cpp`, `mcp_dispatch.cpp`, the browser model, the
+live harness, the README and the changelog -- without changing anything a clipboard requirement or
+criterion says; every behaviour receipt is re-run against the result rather than carried over.
+
+Verdict unchanged: the requirements are clear, covered, and consistent.

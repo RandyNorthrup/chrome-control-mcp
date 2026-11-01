@@ -14,6 +14,7 @@
 
 #include "chrome_control_mcp/browser_bridge_pipe.h"
 #include "chrome_control_mcp/browser_bridge_security.h"
+#include "chrome_control_mcp/browser_extension_installer.h"
 #include "chrome_control_mcp/error_out.h"
 #include "chrome_control_mcp/native_messaging.h"
 
@@ -113,7 +114,10 @@ bool writeStdoutFrame(const QJsonObject &message) {
 // write into has been destroyed. That is only safe because the sole caller
 // exits the process immediately afterwards -- the fields the thread writes are
 // never read on this path.
-bool awaitAttachSession(int timeout_ms, QString *wanted) {
+// The extension's answer to the offer: which server it wants, and -- from 1.9.0
+// on -- its own manifest version, which travels on to that server.
+bool awaitAttachSession(int timeout_ms, QString *wanted,
+                        QString *extension_version) {
   struct Pending {
     std::atomic<bool> done{false};
     bool ok{false};
@@ -143,6 +147,8 @@ bool awaitAttachSession(int timeout_ms, QString *wanted) {
     return false;
   }
   *wanted = pending->frame.value(QStringLiteral("session")).toString();
+  *extension_version =
+      bridgeVersionOrEmpty(pending->frame.value(QStringLiteral("version")));
   return true;
 }
 
@@ -260,10 +266,17 @@ bool readFrameBody(const ReadExactFn &read_exact, quint32 length,
 }
 
 bool relayHandshake(NativeIpcHandle pipe, const QString &token, int protocol,
-                    QString *error) {
-  const QJsonObject hello{{QStringLiteral("type"), QStringLiteral("hello")},
-                          {QStringLiteral("token"), token},
-                          {QStringLiteral("protocol"), protocol}};
+                    QString *error, const BridgePeerVersions &versions,
+                    QString *server_version) {
+  QJsonObject hello{{QStringLiteral("type"), QStringLiteral("hello")},
+                    {QStringLiteral("token"), token},
+                    {QStringLiteral("protocol"), protocol}};
+  if (!versions.extension.isEmpty()) {
+    hello.insert(QStringLiteral("extension_version"), versions.extension);
+  }
+  if (!versions.installed.isEmpty()) {
+    hello.insert(QStringLiteral("relay_version"), versions.installed);
+  }
   if (!relayWritePipeFrame(pipe, hello)) {
     setError(error, QStringLiteral("Failed to send the bridge hello."));
     return false;
@@ -293,6 +306,10 @@ bool relayHandshake(NativeIpcHandle pipe, const QString &token, int protocol,
             .arg(protocol)
             .arg(welcome.value(QStringLiteral("protocol")).toInt(-1)));
     return false;
+  }
+  if (server_version != nullptr) {
+    *server_version =
+        bridgeVersionOrEmpty(welcome.value(QStringLiteral("version")));
   }
   return true;
 }
@@ -426,7 +443,8 @@ int runBrowserRelay() {
       {QStringLiteral("servers"), QJsonArray::fromStringList(offered)}});
 
   QString wanted;
-  if (!awaitAttachSession(kRelayAttachTimeoutMs, &wanted)) {
+  QString extension_version;
+  if (!awaitAttachSession(kRelayAttachTimeoutMs, &wanted, &extension_version)) {
     // An extension older than this relay treats the offer as an unknown frame
     // type and never answers. The protocol version is never exchanged on this
     // path, so the message has to carry the diagnosis itself.
@@ -454,8 +472,14 @@ int runBrowserRelay() {
                       "for (%1) is no longer published.")
                       .arg(wanted);
   }
+  // This relay is the program Chrome starts from the installed copy, so its
+  // version is the installed version: the server compares it with its own and
+  // with the extension's, and the extension with its manifest.
+  const QString installed = QString::fromLatin1(kBrowserExtensionVersion);
   if (!nativeIpcHandleIsValid(pipe) ||
-      !relayHandshake(pipe, token, protocol, &error)) {
+      !relayHandshake(
+          pipe, token, protocol, &error,
+          {.extension = extension_version, .installed = installed})) {
     // Tell the extension the bridge is down so it can surface it, then exit
     // cleanly; Chrome relaunches the host on the next port connection.
     (void)writeStdoutFrame(QJsonObject{
@@ -466,7 +490,8 @@ int runBrowserRelay() {
   }
   (void)writeStdoutFrame(
       QJsonObject{{QStringLiteral("type"), QStringLiteral("bridge_ready")},
-                  {QStringLiteral("protocol"), protocol}});
+                  {QStringLiteral("protocol"), protocol},
+                  {QStringLiteral("version"), installed}});
   const BrowserReadFn reader = [](QJsonObject *out) {
     return readStdinFrame(out);
   };

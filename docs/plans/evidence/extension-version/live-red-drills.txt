@@ -1,0 +1,23 @@
+== drill: the reload remembers nothing: it reloads again for the same version
+mutated: browser/extension/background.js
+exit=1
+FAIL it does not reload again for that version: no loop -- 11 s watched
+expected_failure_seen: true
+== drill: bridge_ready's installed version is ignored
+mutated: browser/extension/background.js
+exit=1
+FAIL left idle, the extension reloads itself for the newer installed copy, never sooner than its quiet period -- {"reloaded":false,"waited_ms":60219}
+FAIL and remembers the version it reloaded for -- null
+FAIL the new connection is told again -- [{"text":"{\"capped\":false,\"count\":1,\"tabs\":[{\"active\":true,\"id\":810852351,\"index\":0,\"tab_id\":810852351,\"title\":\"about:blank\",\"url\":\"about:
+FAIL it does not reload again for that version: no loop -- 0 s watched
+expected_failure_seen: true
+== drill: the server tells the agent nothing
+mutated: src/browser_control.cpp
+exit=1
+FAIL the first browser reply on the connection carries the notice, after its own content -- [{"text":"{\"capped\":false,\"count\":1,\"tabs\":[{\"active\":true,\"id\":1744960528,\"index\":0,\"tab_id\":
+FAIL the new connection is told again -- [{"text":"{\"capped\":false,\"count\":1,\"tabs\":[{\"active\":true,\"id\":1744960528,\"index\":0,\"tab_id\":1744960528,\"title\":\"about:blank\",\"url\":\"abou
+expected_failure_seen: true
+== restored
+mirror matches source
+exit=0
+passed: 12

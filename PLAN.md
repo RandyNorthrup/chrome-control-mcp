@@ -66,11 +66,10 @@ Windows, Linux, and macOS. Current release: 1.9.0 (2026-10-31).
       connected to every profile's extension at once, `profile` on `browser_new_tab`, and each
       tab's profile in `browser_tabs`. Today a server binds to whichever profile's extension reaches
       it first, and an agent cannot choose. Decided 2026-10-31; next after 1.9.0.
-- [ ] Notice a Chrome extension older than its server. Server and extension compare only the
-      bridge protocol, so after an update that leaves it unchanged Chrome keeps running the old
-      extension until someone presses reload, and nothing tells them: a 1.9.0 server beside a 1.8.x
-      extension has no clipboard to offer. Exchange versions on connect, reload an idle extension
-      once per version, and say so in the reply to any client while it is still old.
+- [x] Notice a Chrome extension older than its server: versions exchanged on connect, the agent told
+      once per connection in any client, and the extension reloading itself once per newer install
+      while nobody uses it (1.9.0;
+      [docs/plans/extension-version.md](docs/plans/extension-version.md))
 - [ ] Give an iframe element a ref in the snapshot. An editor inside a frame (TinyMCE's) shows up as
       an `iframe` line with no ref, so an agent can reach it only by screenshot coordinates.
 - [ ] Support folder uploads; a page that asks for a folder is refused today.

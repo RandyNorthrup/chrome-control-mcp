@@ -64,6 +64,8 @@ private slots:
   void nonObjectArgumentsAreRejected();
   void installerStatusReturnsMcpContent();
   void imageResultUsesMcpImageBlock();
+  void noticeIsABlockOfItsOwnAfterTheReply();
+  void extensionStatusSaysWhatChromeIsRunning();
 };
 
 void BrowserMcpServerTests::initializeReportsStandaloneIdentity() {
@@ -100,6 +102,8 @@ void BrowserMcpServerTests::initializeCarriesClientAgnosticInstructions() {
            QStringLiteral("browser_upload"),
            QStringLiteral("browser_clipboard"),
            QStringLiteral("never the system clipboard"),
+           // A version notice is for the user, who alone can act on it.
+           QStringLiteral("tell the user what it says"),
            QStringLiteral("browser_release"),
            QStringLiteral("handed back"),
            QStringLiteral("keep_open:true"),
@@ -321,6 +325,70 @@ void BrowserMcpServerTests::imageResultUsesMcpImageBlock() {
            QStringLiteral("image"));
   QCOMPARE(content.last().toObject().value(QStringLiteral("text")).toString(),
            QStringLiteral("captured"));
+}
+
+void BrowserMcpServerTests::noticeIsABlockOfItsOwnAfterTheReply() {
+  const ToolResult reply{.text = QStringLiteral("{\"ok\":true}"),
+                         .is_error = false,
+                         .image_base64 = {},
+                         .image_mime = {}};
+  // No notice: exactly the one block it always was.
+  const QJsonArray plain =
+      toolCallResult(reply).value(QStringLiteral("content")).toArray();
+  QCOMPARE(plain.size(), 1);
+
+  // A notice comes last and on its own, so the reply's JSON still parses.
+  const QJsonObject told =
+      toolCallResult(reply, QStringLiteral("Note: reload the extension."));
+  const QJsonArray content = told.value(QStringLiteral("content")).toArray();
+  QCOMPARE(content.size(), 2);
+  QVERIFY(QJsonDocument::fromJson(content.first()
+                                      .toObject()
+                                      .value(QStringLiteral("text"))
+                                      .toString()
+                                      .toUtf8())
+              .isObject());
+  QCOMPARE(content.last().toObject().value(QStringLiteral("type")).toString(),
+           QStringLiteral("text"));
+  QCOMPARE(content.last().toObject().value(QStringLiteral("text")).toString(),
+           QStringLiteral("Note: reload the extension."));
+  QCOMPARE(told.value(QStringLiteral("isError")).toBool(true), false);
+}
+
+void BrowserMcpServerTests::extensionStatusSaysWhatChromeIsRunning() {
+  // With a browser facade, the status asks the connection -- here, none yet.
+  BrowserControl browser;
+  const auto response = handleRequest(
+      toolCall(QStringLiteral("browser_extension_status")), &browser);
+  QVERIFY(response.has_value());
+  const QJsonObject payload =
+      QJsonDocument::fromJson(response->value(QStringLiteral("result"))
+                                  .toObject()
+                                  .value(QStringLiteral("content"))
+                                  .toArray()
+                                  .first()
+                                  .toObject()
+                                  .value(QStringLiteral("text"))
+                                  .toString()
+                                  .toUtf8())
+          .object();
+  QVERIFY(payload.contains(QStringLiteral("state")));
+  const QJsonObject running =
+      payload.value(QStringLiteral("running")).toObject();
+  QCOMPARE(running.value(QStringLiteral("connected")).toBool(true), false);
+  QCOMPARE(running.value(QStringLiteral("connections")).toInt(-1), 0);
+  QCOMPARE(running.value(QStringLiteral("server_version")).toString(),
+           QString::fromLatin1(kBrowserExtensionVersion));
+  QVERIFY(running.value(QStringLiteral("extension_version")).isNull());
+  QVERIFY(running.value(QStringLiteral("installed_version")).isNull());
+
+  // Under the read-only profile too: it is one of the tools that only looks.
+  McpServerPolicy policy;
+  policy.read_only_profile = true;
+  const auto read_only = handleRequest(
+      toolCall(QStringLiteral("browser_extension_status")), &browser, policy);
+  QVERIFY(read_only.has_value());
+  QVERIFY(read_only->contains(QStringLiteral("result")));
 }
 
 QTEST_MAIN(BrowserMcpServerTests)

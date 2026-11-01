@@ -68,7 +68,13 @@ mcpValidateArgsAgainstSchema(const QJsonObject &input_schema,
 /// summary; a text result stays a single `text` block. Exposed so the content
 /// shaping -- including the image branch -- is unit-testable without a live
 /// browser.
-[[nodiscard]] QJsonObject toolCallResult(const ToolResult &result);
+///
+/// A non-empty @p notice -- the server telling the agent something about the
+/// bridge itself, such as an extension older than this server -- is one more
+/// `text` block after everything else, so a reply that is JSON stays JSON and
+/// every MCP client still shows it.
+[[nodiscard]] QJsonObject toolCallResult(const ToolResult &result,
+                                         const QString &notice = {});
 
 /// Handle one parsed JSON-RPC request. Returns the response object to write
 /// back, or std::nullopt for notifications (no `id`, e.g.

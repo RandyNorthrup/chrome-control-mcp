@@ -55,6 +55,20 @@ Every agent gets a clipboard of its own.
   clear, copy, cut, and paste (into the focused element or a ref; `plain` for text only). 53 tools.
 - The MCP `instructions` tell every client about it, and steer agents away from shell clipboard
   commands, which every agent and the user share.
+- **The server says when Chrome is running an older or newer extension.** Server and extension
+  compared only the bridge protocol, so after an update that kept it -- most do -- Chrome went on
+  running the old extension until someone pressed reload, and nothing said so: the 1.8.2
+  `browser_release` fix, which lives in the extension, stayed unfixed for users who updated, and a
+  1.9.0 server beside a 1.8.x extension has no clipboard to offer. The extension now reports its
+  version when it attaches, and the relay passes it to the server with the installed version. The
+  first browser reply on a connection whose versions disagree carries one more text block naming
+  them and the one fix -- reload the extension, restart the server, or install this build -- in any
+  MCP client, and `browser_extension_status` reports them under `running`. A command an older
+  extension does not know says why it failed.
+- **The extension reloads itself for a newer installed copy**, once per version, and only when no
+  agent holds a tab, no command is running and none has run for 10 s, so it never cuts an agent
+  off. A copy loaded from a folder that was not updated reloads once, comes back as it was, and
+  stays.
 
 ### Fixed
 
@@ -89,6 +103,12 @@ Every agent gets a clipboard of its own.
   four in step, and the release workflow refuses a changelog date that is not the tagged commit's.
 - Two changelog dates were the day the entry was written, not the day the release shipped: 1.5.5
   shipped on 2026-09-23 and 1.7.0 on 2026-09-27.
+- The live suites' dedicated browser runs with Developer mode on, as every Chrome that can load this
+  extension does. Without it Chrome disabled the extension on its own reload, as an "unsupported
+  developer extension", so no self-reload -- the protocol one included -- had ever been testable
+  there. A new live suite, `extension_version_e2e`, runs in three cases on all three platforms: the
+  same version (nothing said), an older one (told once per connection; reloads itself once, after
+  its quiet period, and never loops), and the released 1.8.2 extension against this server.
 
 ## [1.8.2] - 2026-10-31
 

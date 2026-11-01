@@ -68,8 +68,8 @@ The frames on the relay's stdio, in the order they can appear:
 | Frame                                    | Direction         | When                                                       |
 | ---------------------------------------- | ----------------- | ---------------------------------------------------------- |
 | `bridge_offers {protocol, servers}`      | relay → extension | first, before anything else                                |
-| `attach_session {session}`               | extension → relay | only in answer to `bridge_offers`                          |
-| `bridge_ready {protocol}`                | relay → extension | the chosen server welcomed the relay; pumping starts       |
+| `attach_session {session, version}`      | extension → relay | only in answer to `bridge_offers`                          |
+| `bridge_ready {protocol, version}`       | relay → extension | the chosen server welcomed the relay; pumping starts       |
 | `bridge_unavailable {error}`             | relay → extension | instead of `bridge_ready`, after which the relay exits     |
 | `bridge_servers {servers}`               | relay → extension | while pumping, whenever the set of running servers changes |
 | `command`, `cancel`                      | relay → extension | forwarded from the server                                  |
@@ -82,6 +82,20 @@ the wrong page, silently -- which is why this is a version and not an optional f
 refuses every command and says which side to update. When the server's protocol is the newer one,
 the extension reloads itself once for that protocol, since Chrome does not reload an unpacked
 extension when its files change.
+
+Versions travel with the handshake too (1.9.0 and later). `attach_session` carries the running
+extension's manifest version; the relay passes it to the server in its hello as
+`extension_version`, with its own as `relay_version` -- the relay is started from the installed
+copy, so that is the installed version -- and the server's welcome and the relay's `bridge_ready`
+each carry their sender's `version`. Every field is optional on every hop and must be
+`major.minor.patch`, so an older peer ignores them and a missing one means "older than 1.9.0".
+From these the server tells the agent, once per connection and in a reply block of its own, when the
+extension, the installed copy and the server disagree and what fixes it, and
+`browser_extension_status` reports them under `running`. The extension reloads itself once per
+newer installed version, but only when no session holds a tab, no command is running and none has
+run for 10 s, so an update that keeps the protocol no longer leaves Chrome running the old extension
+until someone reloads it by hand. The design is in
+[plans/extension-version.md](plans/extension-version.md).
 
 `bridge_servers` is how a server started later is found. A relay offers its list once, so before it
 existed a second editor opening was noticed only when the extension's 30 s alarm next opened a port.

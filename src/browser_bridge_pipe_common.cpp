@@ -18,6 +18,7 @@
 
 #include <QFile>
 #include <QFileInfo>
+#include <QRegularExpression>
 #include <QStringList>
 
 #include <utility>
@@ -126,6 +127,28 @@ bool BrowserBridgePipeServer::clientConnected() const {
 quint64 BrowserBridgePipeServer::connectionGeneration() const {
   const std::lock_guard<std::mutex> lock(mutex_);
   return generation_;
+}
+
+BridgePeerVersions BrowserBridgePipeServer::peerVersions() const {
+  const std::lock_guard<std::mutex> lock(mutex_);
+  return connected_ ? peer_versions_ : BridgePeerVersions{};
+}
+
+QString bridgeVersionOrEmpty(const QJsonValue &value) {
+  // Three short numbers and nothing else: what every release has been called,
+  // and nothing a peer could smuggle text into an agent's reply through.
+  // Anchored as a whole: `$` alone would also accept a trailing newline.
+  static const QRegularExpression kVersion(QRegularExpression::anchoredPattern(
+      QStringLiteral("[0-9]{1,5}\\.[0-9]{1,5}\\.[0-9]{1,5}")));
+  const QString text = value.toString();
+  return kVersion.match(text).hasMatch() ? text : QString();
+}
+
+BridgePeerVersions peerVersionsFromHello(const QJsonObject &hello) {
+  return {.extension = bridgeVersionOrEmpty(
+              hello.value(QStringLiteral("extension_version"))),
+          .installed = bridgeVersionOrEmpty(
+              hello.value(QStringLiteral("relay_version")))};
 }
 
 } // namespace chrome_control_mcp

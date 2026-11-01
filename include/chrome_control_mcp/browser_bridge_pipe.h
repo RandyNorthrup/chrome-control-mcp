@@ -8,6 +8,7 @@
 
 #include <QHash>
 #include <QJsonObject>
+#include <QJsonValue>
 #include <QString>
 
 #include <condition_variable>
@@ -106,6 +107,29 @@ ancestorChainContainsImage(quint64 pid, const QHash<quint64, quint64> &parent,
                            const QHash<quint64, QString> &image,
                            const QString &target_basename_lower, int max_depth);
 
+/// What a bridge connection says about its far ends, as the relay passes it on
+/// in its hello: the running extension's manifest version, and the relay's own
+/// version, which is the INSTALLED version -- Chrome starts the relay from the
+/// native-host registration, and `--install` points that at the installed
+/// copy. Before these were exchanged, server and extension compared only the
+/// bridge protocol, so after an update that kept it Chrome went on running the
+/// old extension and nothing anywhere said so. Empty means not said: a peer
+/// older than 1.9.0, or a value that is not a version.
+struct BridgePeerVersions {
+  QString extension;
+  QString installed;
+};
+
+/// @p value as a `major.minor.patch` version, or empty when it is anything
+/// else. Versions come from peers and end up in text an agent reads, so they
+/// are checked here, once, before anything uses them.
+[[nodiscard]] QString bridgeVersionOrEmpty(const QJsonValue &value);
+
+/// The versions a relay's hello reports (`extension_version`,
+/// `relay_version`), each checked by bridgeVersionOrEmpty.
+[[nodiscard]] BridgePeerVersions
+peerVersionsFromHello(const QJsonObject &hello);
+
 class BrowserBridgePipeServer {
 public:
   struct Options {
@@ -165,6 +189,12 @@ public:
   /// compares it against the last value it saw to detect a fresh browser
   /// session.
   [[nodiscard]] quint64 connectionGeneration() const;
+
+  /// What the connected relay reported about the extension and the installed
+  /// copy (see BridgePeerVersions). Set in the same step that makes a
+  /// connection current, so a caller that sees a new generation sees its
+  /// versions; empty while nothing is connected.
+  [[nodiscard]] BridgePeerVersions peerVersions() const;
 
   /// Send one command frame and block for the correlated reply. Call from a
   /// single thread only (the MCP thread); the server serves one op at a time.
@@ -228,6 +258,10 @@ private:
   bool running_{false};
   bool connected_{false};
   quint64 generation_{0};
+  BridgePeerVersions peer_versions_;
+  // What the hello being handshaken said; I/O thread only, made current as
+  // peer_versions_ with the connection itself.
+  BridgePeerVersions handshake_versions_;
 
   // Single in-flight command slot handed from the MCP thread to the I/O thread.
   bool has_request_{false};

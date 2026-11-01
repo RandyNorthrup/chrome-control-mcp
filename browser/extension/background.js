@@ -1174,6 +1174,131 @@ async function reloadForNewerHost(hostProtocol) {
   }
 }
 
+// Three short numbers and nothing else, as every release has been called.
+const VERSION_PATTERN = /^\d{1,5}\.\d{1,5}\.\d{1,5}$/;
+
+// The version Chrome is running: the manifest it loaded, which stays what it was until the
+// extension is reloaded, whatever the files on disk now say.
+function extensionVersion() {
+  try {
+    const version = chrome.runtime.getManifest().version;
+    return typeof version === "string" && VERSION_PATTERN.test(version)
+      ? version
+      : "";
+  } catch (_e) {
+    return "";
+  }
+}
+
+// Negative, zero or positive as a is older than, the same as, or newer than b.
+function compareVersions(a, b) {
+  const left = a.split(".").map(Number);
+  const right = b.split(".").map(Number);
+  for (let i = 0; i < 3; i += 1) {
+    if (left[i] !== right[i]) {
+      return left[i] - right[i];
+    }
+  }
+  return 0;
+}
+
+// An installed copy newer than the one Chrome is running means the files on disk were updated and
+// Chrome is still running the old ones. The protocol reload above catches that only when the update
+// changed the protocol, which most do not: so after most updates the extension stayed old until the
+// user happened to press reload, and nothing said so. The relay -- started from the installed copy
+// -- reports the installed version in bridge_ready, and this reloads to pick it up.
+//
+// Only while nobody is using the extension: no session holds a tab, no command is running, and none
+// has run for RELOAD_QUIET_MS. A reload takes every debugger, highlight and group off the tabs, so
+// an agent mid-task must never meet one, and the quiet period is what keeps an agent that lets go of
+// its last tab and at once opens another from landing in the second the reload takes. Checked when
+// the report arrives, after each command, and on the reconnect alarm -- each a quiet period later.
+//
+// Once per installed version, remembered across the reload like the protocol one, so a copy loaded
+// from a folder that was NOT updated comes back still old and does not reload again for it.
+const RELOADED_FOR_VERSION_KEY = "chrome_control_mcp.reloadedForVersion";
+const RELOAD_QUIET_MS = 10000;
+const versionReload = {
+  // The newest installed version a relay has reported that is newer than this extension, or null.
+  newer: null,
+  commandsRunning: 0,
+  lastCommandEndedAt: 0,
+  timer: null,
+};
+
+function noteInstalledVersion(version) {
+  if (typeof version !== "string" || !VERSION_PATTERN.test(version)) {
+    return;
+  }
+  const running = extensionVersion();
+  if (running === "" || compareVersions(version, running) <= 0) {
+    return;
+  }
+  if (
+    versionReload.newer === null ||
+    compareVersions(version, versionReload.newer) > 0
+  ) {
+    versionReload.newer = version;
+  }
+  scheduleVersionReload();
+}
+
+// Whether anything could be cut off by a reload now.
+function extensionInUse() {
+  if (versionReload.commandsRunning > 0) {
+    return true;
+  }
+  if (Date.now() - versionReload.lastCommandEndedAt < RELOAD_QUIET_MS) {
+    return true;
+  }
+  return [...sessions, ...pendingLeases.values()].some(
+    (session) => session.tabs.size > 0,
+  );
+}
+
+// Look again a quiet period from now, replacing any look already due: after a command the period
+// runs from that command's end.
+function scheduleVersionReload() {
+  if (versionReload.newer === null) {
+    return;
+  }
+  if (versionReload.timer !== null) {
+    clearTimeout(versionReload.timer);
+  }
+  versionReload.timer = setTimeout(() => {
+    versionReload.timer = null;
+    void reloadForNewerInstall();
+  }, RELOAD_QUIET_MS);
+}
+
+async function reloadForNewerInstall() {
+  const version = versionReload.newer;
+  if (version === null || extensionInUse()) {
+    return;
+  }
+  try {
+    const stored = await chrome.storage.local.get(RELOADED_FOR_VERSION_KEY);
+    const before = stored ? stored[RELOADED_FOR_VERSION_KEY] : undefined;
+    if (before === version) {
+      // Reloaded for it already and still older: the folder Chrome loads was not updated.
+      versionReload.newer = null;
+      return;
+    }
+    await chrome.storage.local.set({ [RELOADED_FOR_VERSION_KEY]: version });
+    // Asked again with nothing awaited between the answer and the reload: a command that started
+    // while storage answered is never cut off. Put back, so a later look can still reload for it.
+    if (extensionInUse()) {
+      await chrome.storage.local.set({
+        [RELOADED_FOR_VERSION_KEY]: before ?? null,
+      });
+      return;
+    }
+    chrome.runtime.reload();
+  } catch (_e) {
+    // Not reloaded: the server's notice tells the agent, and through it the user, to do it by hand.
+  }
+}
+
 function scheduleReconnect(session) {
   if (session.reconnectTimer) {
     return;
@@ -1549,7 +1674,14 @@ function onHostMessage(session, msg) {
     // than being left waiting.
     const available = unheldServers(offered);
     session.serverId = available.length > 0 ? available[0] : "";
-    send(session, { type: "attach_session", session: session.serverId });
+    // With this extension's version, which the relay passes on to the server: an update that keeps
+    // the protocol leaves Chrome running the old extension, and the server is what can tell the
+    // agent. An older relay reads only the session.
+    send(session, {
+      type: "attach_session",
+      session: session.serverId,
+      version: extensionVersion(),
+    });
     if (session.serverId === "") {
       // Every offered server is already held, so this port has nothing to do.
       // Mark it so losing it does not start the reconnect cycle: retrying would
@@ -1599,6 +1731,8 @@ function onHostMessage(session, msg) {
       // A server whose relay dropped and came back finds its tabs where it left them.
       resumeParkedSession(session);
     }
+    // The relay's own version is the installed one: newer than this means the files were updated.
+    noteInstalledVersion(msg.version);
     console.info("[ChromeControlMCP] bridge ready, protocol", msg.protocol);
     return;
   }
@@ -1715,6 +1849,8 @@ async function handleCommand(session, msg) {
   // and re-reads it each iteration, so a loop whose command is no longer the live one stops
   // instead of running on against a page (and a relay) that has moved on without it.
   session.commandGeneration++;
+  // Counted before anything awaits, so a reload that looks now sees this command.
+  versionReload.commandsRunning += 1;
   beginCommand(session, msg);
   // A recording is a video of commands running, so the commands are recorded
   // too -- before the work, so the offset is when it started rather than when
@@ -1743,9 +1879,12 @@ async function handleCommand(session, msg) {
   } finally {
     stopProgressBeat(beat);
     endCommand(session, cmd);
+    versionReload.commandsRunning -= 1;
+    versionReload.lastCommandEndedAt = Date.now();
   }
   stampReply(session, reply);
   send(session, reply);
+  scheduleVersionReload();
 }
 
 // What a command needs settled before it runs: who is asking, that the session is awake, and a
@@ -11392,6 +11531,8 @@ if (chrome.alarms) {
     }
     // Sessions that went quiet are stood down, and parked ones nobody came back for released.
     sweepIdleSessions();
+    // A newer install waiting for nobody to be using this: a tab let go of, or a server gone.
+    void reloadForNewerInstall();
     // With nothing attached this is the reconnect it always was.
     if (!anyPortOpen()) {
       connect();

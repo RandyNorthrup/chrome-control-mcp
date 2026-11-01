@@ -1,0 +1,9 @@
+case: released (extension null, installed 1.9.0, server 1.9.0)
+PASS the relay reports the installed version, this build's
+PASS browser_extension_status says the extension is older than 1.9.0 and how to fix it
+PASS the first reply tells the agent, and names what is missing until it is reloaded
+PASS browser_clipboard against it says why it fails and what to do
+PASS everything it already did still works, and is told only once
+PASS an extension from before 1.9.0 does not reload itself
+PASS releasing works
+PASS and its tab is gone

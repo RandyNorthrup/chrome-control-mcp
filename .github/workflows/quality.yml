@@ -329,6 +329,43 @@ jobs:
           ${{ matrix.chrome-args }} tests/e2e/clipboard_e2e.mjs
           | tee clipboard-e2e.json
 
+      # An extension older than its server, three ways: none (nothing is said and nothing
+      # reloads), this build's extension under an older manifest version (the agent is told once
+      # per connection; the extension reloads itself once, a quiet period after it was last used,
+      # and does not loop when its folder was not updated), and the released 1.8.2 extension, from
+      # before versions were exchanged (told it is older than 1.9.0; browser_clipboard explains;
+      # everything else works as it did).
+      - name: Extension version E2E (same version)
+        shell: bash
+        run: >-
+          node tests/e2e/isolated_run.mjs --chrome="${{ steps.chrome.outputs.path }}"
+          --executable="${{ matrix.executable }}"
+          ${{ matrix.chrome-args }} tests/e2e/extension_version_e2e.mjs
+          | tee extension-version-current.json
+
+      - name: Extension version E2E (older extension reloads itself)
+        shell: bash
+        run: >-
+          node tests/e2e/isolated_run.mjs --chrome="${{ steps.chrome.outputs.path }}"
+          --executable="${{ matrix.executable }}" --extension-version=1.0.0
+          ${{ matrix.chrome-args }} tests/e2e/extension_version_e2e.mjs
+          | tee extension-version-older.json
+
+      - name: Extension version E2E (released 1.8.2 extension)
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # The extension is the same JavaScript on every platform; any archive carries it.
+          gh release download v1.8.2 --repo "$GITHUB_REPOSITORY" \
+            -p 'chrome-control-mcp-v1.8.2-linux-x64.tar.gz' -D released-1.8.2
+          tar -xzf released-1.8.2/chrome-control-mcp-v1.8.2-linux-x64.tar.gz -C released-1.8.2
+          node tests/e2e/isolated_run.mjs --chrome="${{ steps.chrome.outputs.path }}" \
+            --executable="${{ matrix.executable }}" \
+            --extension=released-1.8.2/chrome-control-mcp-v1.8.2-linux-x64/extension \
+            ${{ matrix.chrome-args }} tests/e2e/extension_version_e2e.mjs \
+            | tee extension-version-released.json
+
       # What each suite measured, kept whether it passed or failed: the reports carry the
       # per-configuration numbers a failure has to be read against.
       - name: Keep the suites' reports
