@@ -1,0 +1,57 @@
+Test project C:/Users/Randy/Coding/chrome-control-mcp/build
+      Start  1: test_browser_contract
+ 1/26 Test  #1: test_browser_contract .................   Passed    0.10 sec
+      Start  2: test_windows_process_identity
+ 2/26 Test  #2: test_windows_process_identity .........   Passed    0.11 sec
+      Start  3: test_native_messaging
+ 3/26 Test  #3: test_native_messaging .................   Passed    0.27 sec
+      Start  4: test_browser_bridge
+ 4/26 Test  #4: test_browser_bridge ...................   Passed    0.23 sec
+      Start  5: test_install_layout
+ 5/26 Test  #5: test_install_layout ...................   Passed    0.10 sec
+      Start  6: test_updater
+ 6/26 Test  #6: test_updater ..........................   Passed    0.09 sec
+      Start  7: test_browser_extension_installer
+ 7/26 Test  #7: test_browser_extension_installer ......   Passed    0.10 sec
+      Start  8: test_browser_uploads
+ 8/26 Test  #8: test_browser_uploads ..................   Passed    0.13 sec
+      Start  9: test_browser_bridge_security
+ 9/26 Test  #9: test_browser_bridge_security ..........   Passed    0.04 sec
+      Start 10: test_browser_bridge_pipe
+10/26 Test #10: test_browser_bridge_pipe ..............   Passed    6.26 sec
+      Start 11: test_browser_bridge_relay
+11/26 Test #11: test_browser_bridge_relay .............   Passed    6.95 sec
+      Start 12: test_browser_mcp_server
+12/26 Test #12: test_browser_mcp_server ...............   Passed    0.06 sec
+      Start 13: test_browser_extension_pure
+13/26 Test #13: test_browser_extension_pure ...........   Passed    1.74 sec
+      Start 14: test_browser_extension_recording
+14/26 Test #14: test_browser_extension_recording ......   Passed    0.57 sec
+      Start 15: test_browser_extension_offscreen
+15/26 Test #15: test_browser_extension_offscreen ......   Passed    0.19 sec
+      Start 16: test_browser_extension_multisession
+16/26 Test #16: test_browser_extension_multisession ...   Passed    4.51 sec
+      Start 17: test_browser_extension_session
+17/26 Test #17: test_browser_extension_session ........   Passed    0.49 sec
+      Start 18: test_browser_extension_transport
+18/26 Test #18: test_browser_extension_transport ......   Passed    4.50 sec
+      Start 19: test_browser_extension_tabs
+19/26 Test #19: test_browser_extension_tabs ...........   Passed   25.66 sec
+      Start 20: test_browser_extension_clipboard
+20/26 Test #20: test_browser_extension_clipboard ......   Passed   11.71 sec
+      Start 21: test_browser_extension_versions
+21/26 Test #21: test_browser_extension_versions .......   Passed    8.02 sec
+      Start 22: test_browser_extension_profiles
+22/26 Test #22: test_browser_extension_profiles .......   Passed    4.48 sec
+      Start 23: test_browser_extension_uploads
+23/26 Test #23: test_browser_extension_uploads ........   Passed    9.57 sec
+      Start 24: test_release_versions
+24/26 Test #24: test_release_versions .................   Passed    0.17 sec
+      Start 25: test_vscode_payload
+25/26 Test #25: test_vscode_payload ...................   Passed    0.19 sec
+      Start 26: test_extension_install_cycle
+26/26 Test #26: test_extension_install_cycle ..........   Passed    0.56 sec
+
+100% tests passed out of 26
+
+Total Test time (real) =  86.84 sec

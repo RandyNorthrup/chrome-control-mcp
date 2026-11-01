@@ -389,10 +389,11 @@ bool relayPumpOnce(NativeIpcHandle pipe, const BrowserReadFn &browser_read,
 void watchForBrowserExit() {
   std::thread([] {
     const NativeIpcHandle input = browserStdInHandle();
+    BrowserExitConfirmation confirmation;
     for (;;) {
       std::this_thread::sleep_for(
           std::chrono::milliseconds(kBrowserPresencePollMs));
-      if (browserInputClosed(input)) {
+      if (confirmation.observe(browserInputClosed(input))) {
         // Flush what is already buffered, then leave without unwinding: the
         // pump thread may be mid-write on the pipe, and running static
         // destructors underneath it is the one way this could turn a clean

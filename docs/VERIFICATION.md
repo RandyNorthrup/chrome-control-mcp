@@ -5,7 +5,71 @@ after [Earlier evidence](#earlier-evidence) is a dated record of the build it na
 suite counts and versions were true of that build and are not current. A result is recorded here
 only when a command actually produced it.
 
-## Current: 1.10.0 (2026-11-01)
+## Current: 1.11.0 (2026-11-01)
+
+1.11.0 lets `browser_upload` carry files up to 2 GiB (or what `CHROME_CONTROL_MCP_UPLOAD_MAX_MB` sets),
+read a piece at a time and staged in the page that uses them; fixes the relay ending itself under
+steady traffic on Linux and macOS; and runs CI in tiers. Everything else is 1.10.0 and earlier,
+whose evidence follows and still stands. The plan, criteria and ledger are
+[plans/large-uploads.md](plans/large-uploads.md), with the raw outputs in
+[plans/evidence/uploads/](plans/evidence/uploads/). Every suite that existed before this work ran
+again against the 1.11.0 build (AC-UPL-COMPAT).
+
+### 1.11.0: suites
+
+| Where                                                | Result                                                 |
+| ---------------------------------------------------- | ------------------------------------------------------ |
+| Windows, local: ctest                                | 26/26 (uploads 12/12, relay 38/38, pipe 31/31)         |
+| Linux (WSL2), local: ctest                           | 25/25                                                  |
+| Local: `npm run test:js`                             | 227/227 across 13 files                                |
+| Linux, local: GCC 16, clang 22                       | no warnings                                            |
+| Linux, local: run-clang-tidy, exhaustive cppcheck    | clean                                                  |
+| Linux, local: Semgrep 1.174.0, Python 3.12           | 221 rules, 54 files, 0 findings                        |
+| Built server, both security profiles                 | 53 tools full, 14 read-only                            |
+| Linux, Chrome for Testing 153: large uploads         | 7/7                                                    |
+| Linux, Chrome for Testing 153: display matrix        | 35 configurations, 3335 checks                         |
+| Linux, Chrome for Testing 153: full suite            | ok: 177 live cases                                     |
+| Linux, Chrome for Testing 153: earlier suites        | interference 10/10, multi-agent 25/25, clipboard 24/24 |
+| Linux, Chrome for Testing 153: versions and profiles | 6/6, 12/12, 8/8; two profiles 14/14, the update 4/4    |
+
+`large_upload_e2e.mjs` hashes, in the page, every 8 MiB slice of what each way in received and the
+digest of those digests, against the same of the file on disk: a 300 MiB file of random bytes by
+ref to a file input; 40 MiB files through an input picker the page opened, onto a drop zone by ref
+(on a page with no file input in scope), and as a `showOpenFilePicker` answer; a page reloaded 1.5 s
+into a 300 MiB delivery, which was given nothing and said so, then took the next upload; a second
+server with `CHROME_CONTROL_MCP_UPLOAD_MAX_MB=64` refusing the 300 MiB file before any of it was
+sent; and the worker holding no upload at the end.
+
+**Rate.** 300 MiB took 30 s in the final pass (9.9 MiB/s); the runs here measured from 2.3 to
+9.9 MiB/s. The documents quote 2 to 6 MB/s, the slower runs. The limit is `chrome.debugger`, timed
+from inside the worker: 2.7 ms for an empty call, 53 ms for 512 KiB, 310 ms for 2 MiB, 600 ms for
+4 MiB -- about 7 MB/s of base64 whatever the size of the call. The same 512 KiB over a raw DevTools
+socket takes about 15 ms.
+
+### 1.11.0: red drills
+
+Eleven mutations, each seen to fail its own test for that reason, then restored byte for byte and
+green: the server reading the rest of a file in one piece; a malformed cap falling back to 2 GiB;
+pieces not addressed to the ref's element; an extension older than 1.11.0 sent `uploadStage`; the
+relay ending on one closed look; the page dropping what it gathered when it folds (live: the
+300 MiB hash no longer matched); the worker keeping each piece; a piece out of order taken; a staged
+file outliving its tab's attachment; a picker's file not staged in its window; an upload's pieces
+cancelling an armed dialog answer (`unit-red-drills.txt`, `live-red-drills.txt`,
+`extension-red-drills.txt`).
+
+### 1.11.0: the relay ending itself
+
+The first live upload lost its file at piece 388 of 800 to "the browser's relay closed the
+connection". On Linux and macOS the relay's watcher asks whether Chrome's end of stdin is readable
+and then how many bytes wait; its pump thread can read them all in between, and "readable with
+nothing waiting" is how a closed pipe looks. A probe running that check on a busy pipe called it
+closed 3494 times in 7,150,967 looks, and never when three looks in a row were required at the
+watcher's cadence (`browser_bridge_relay.h`, `BrowserExitConfirmation`). This was the cause of the
+open "relay closed between two commands" failures recorded for
+[1.9.0](#190-one-unexplained-failure) and for [the 1.10.0 tag](#1100-the-v1100-tag-and-release),
+both on Linux; the Windows check uses `PeekNamedPipe` and had no such race.
+
+### 1.10.0 (2026-11-01)
 
 1.10.0 lets one server serve every Chrome profile the extension is loaded in, with agents choosing a
 profile per call, naming profiles (account email, a name given on the new options page, or a
@@ -484,7 +548,7 @@ These are why file pickers are caught rather than shown
   native. Pinned by `test_browser_mcp_server`, by `test_browser_contract` (47 browser tools), and by
   `scripts/mcp_smoke.mjs`, which CI runs against every server it builds.
 - Bridge protocol: 2 (`kBrowserBridgeProtocol`, `BRIDGE_PROTOCOL`).
-- Extension version 1.10.0, ID `iojehhmnaigcejfcpmilpclmeljhlkaa`, native host
+- Extension version 1.11.0, ID `iojehhmnaigcejfcpmilpclmeljhlkaa`, native host
   `com.chromecontrolmcp.browser`, minimum Chrome 116. Delivered as an unpacked directory; no private
   key, packaged browser artifact, store account, or enterprise policy.
 
@@ -496,7 +560,7 @@ These are why file pickers are caught rather than shown
 | `test_native_messaging`               | ctest          | native frame codec and host handshake                                                                                                                                                                                                      |
 | `test_browser_bridge`                 | ctest          | reply correlation, per-tab snapshots and staleness, refs dropped for released tabs, client name                                                                                                                                            |
 | `test_browser_extension_installer`    | ctest          | public identity and isolated native-host lifecycle                                                                                                                                                                                         |
-| `test_browser_uploads`                | ctest          | upload path rules, roots confinement, and byte-exact chunking                                                                                                                                                                              |
+| `test_browser_uploads`                | ctest          | upload path rules, roots confinement, the cap and its variable, pieces read one at a time, a file changing under them                                                                                                                      |
 | `test_browser_bridge_security`        | ctest          | ACL/permissions, nonce, per-pid rendezvous records, runtime-directory override                                                                                                                                                             |
 | `test_browser_bridge_pipe`            | ctest          | IPC handshake, peer verification, deadlines and beats, idle-peer departure, why an exchange ended, reconnect, sweep, several relays at once, the ninth refused, another Chrome refused, an older relay served alone, profile names cleaned |
 | `test_browser_bridge_relay`           | ctest          | relay/bridge/session end to end, offers of running servers only, `bridge_servers`, progress, versions, routing across profiles                                                                                                             |
@@ -515,6 +579,7 @@ These are why file pickers are caught rather than shown
 | `test_browser_extension_tabs`         | both           | whose tab it is, popups, per-agent groups and names, release, parking, idle, file choosers                                                                                                                                                 |
 | `test_browser_extension_clipboard`    | both           | chords never sent as keys, one agent never reaching another's, the page command window, clearing                                                                                                                                           |
 | `test_browser_extension_versions`     | both           | the versions the extension reports, and reloading itself once into a newer install                                                                                                                                                         |
+| `test_browser_extension_uploads`      | both           | a file staged in the page piece by piece, assigned by handle, bounds, the page changing, detach, the dialog arm                                                                                                                            |
 | `test_browser_extension_profiles`     | both           | a profile's name, email and generated name, renames, focus, `profileState`, `findTab`, the options page                                                                                                                                    |
 | `test_release_versions`               | both           | one version everywhere, with its changelog entry and release note                                                                                                                                                                          |
 
@@ -556,14 +621,15 @@ node tools/backoff_probe.mjs <chrome> <unpacked extension dir> [seconds]
 
 ### Claim boundary
 
-Verified for 1.10.0: source build and automated suites on Windows and Linux locally; strict native
-analysis and a clean Semgrep scan; the live suites, two profiles included, in Chrome for Testing on
-Linux locally; and, for everything 1.10.0 leaves unchanged, the 1.9.0 and earlier evidence that
-follows, including a real-world run in a real Chrome profile on Windows. Not verified: a signed-in
+Verified for 1.11.0: source build and automated suites on Windows and Linux locally; strict native
+analysis and a clean Semgrep scan; the live suites, large uploads and two profiles included, in
+Chrome for Testing on Linux locally; and, for everything 1.11.0 leaves unchanged, the 1.10.0 and
+earlier evidence that follows, including a real-world run in a real Chrome profile on Windows. Not verified: a signed-in
 profile named by its account email in a live Chrome (the test Chrome is signed out; the email path is
 unit-tested against a stand-in for Chrome's identity API); two profiles at once on Windows or macOS
-(the two-profile case needs a headed Chrome and runs on Linux under Xvfb); a real Chrome profile on
-macOS or Linux; why Chrome stalls in the one display configuration above. No Linux machine has ever
+(the two-profile case needs a headed Chrome and runs on Linux under Xvfb); a file larger than
+300 MiB, or a large upload on Windows or macOS, outside the release's own live run; a real Chrome
+profile on macOS or Linux; why Chrome stalls in the one display configuration above. No Linux machine has ever
 installed a release through `browser_update_apply`. This is strong software evidence, not a claim
 about every website, Chrome release, desktop environment, or machine configuration.
 

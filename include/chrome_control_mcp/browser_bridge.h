@@ -122,6 +122,13 @@ public:
   [[nodiscard]] QString argumentsError(const QString &tool,
                                        const QJsonObject &arguments) const;
 
+  /// The command beginCommand would send for these arguments, without
+  /// sending it or taking the one slot in flight: how an upload addresses its
+  /// pieces to the tab and element its final command will name, before that
+  /// command can be begun. Empty when the arguments would be refused.
+  [[nodiscard]] QJsonObject previewCommand(const QString &tool,
+                                           const QJsonObject &arguments) const;
+
   /// Build a command frame for an internal command the model never calls:
   /// today, the upload chunks that carry a file's bytes to the extension
   /// before the upload itself names the element to assign them to. It takes

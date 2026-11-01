@@ -1,0 +1,31 @@
+{
+  "ok": true,
+  "case": "current",
+  "checks": [
+    {
+      "check": "the relay reports the installed version, this build's",
+      "status": "passed"
+    },
+    {
+      "check": "an extension of the server's own version is not mentioned",
+      "status": "passed"
+    },
+    {
+      "check": "the first reply is the reply alone, with no notice",
+      "status": "passed"
+    },
+    {
+      "check": "and the bridge works",
+      "status": "passed"
+    },
+    {
+      "check": "the extension does not reload itself for its own version",
+      "status": "passed"
+    },
+    {
+      "check": "releasing works",
+      "status": "passed"
+    }
+  ],
+  "error": null
+}

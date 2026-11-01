@@ -1,0 +1,44 @@
+== EV-UPL-RED-PIECES: the server reads the rest of the file in one piece
+file: src/browser_uploads.cpp
+mutated sha256: 04928da1c3d43b2a5a4b5f990e39fdc675deb057d6389c654c947a1aa89f0bf5
+ctest exit=8
+7: FAIL!  : BrowserUploadsTests::pieces_areReadOneAtATimeAndRejoinToTheFile() 'piece.size() <= kUploadChunkBase64Chars' returned FALSE. ()
+7: Totals: 11 passed, 1 failed, 0 skipped, 0 blacklisted, 36ms
+expected_failure_seen: true
+== EV-UPL-RED-CAP: a malformed cap falls back to the 2 GiB default instead of 16 MiB
+file: src/browser_uploads.cpp
+mutated sha256: 70074199cd39f663dd63b82f273f756e457fdc6a31863d05f13d2dcb3eb10477
+ctest exit=8
+7: FAIL!  : BrowserUploadsTests::cap_isTheOperatorsAndFailsClosed() Compared values are not the same
+7: Totals: 11 passed, 1 failed, 0 skipped, 0 blacklisted, 34ms
+expected_failure_seen: true
+== EV-UPL-RED-ADDRESS: pieces are not addressed to the element the ref names
+file: src/browser_control.cpp
+mutated sha256: 6e0633fe9c2c9e8005eb2f33a1ed0794c9f64a5721edf6551b7cca70266c152a
+ctest exit=8
+10: FAIL!  : BrowserBridgeRelayTests::upload_goesInPiecesToThePageAndAnOlderExtensionKeepsItsBound() Compared values are not the same
+10: Totals: 37 passed, 1 failed, 0 skipped, 0 blacklisted, 5720ms
+expected_failure_seen: true
+== EV-UPL-RED-COMPAT: an extension older than 1.11.0 is sent uploadStage
+file: src/browser_control.cpp
+mutated sha256: d1f08650a4ddafadec03d46d9037b17b2181920b3585e00a6ee83f67714597bc
+ctest exit=8
+10: FAIL!  : BrowserBridgeRelayTests::upload_goesInPiecesToThePageAndAnOlderExtensionKeepsItsBound() 'commandNames(older).contains(QStringLiteral("uploadChunk"))' returned FALSE. ()
+10: Totals: 37 passed, 1 failed, 0 skipped, 0 blacklisted, 7143ms
+expected_failure_seen: true
+== EV-UPL-RED-RELAY-EXIT: the relay ends on one closed look
+file: include/chrome_control_mcp/browser_bridge_relay.h
+mutated sha256: bab0818afc8922cf922d4d7fa3bd05bf16c58369561179d10bcd5531656d7b66
+ctest exit=8
+10: FAIL!  : BrowserBridgeRelayTests::browserPresence_oneClosedLookEndsNothing() '!confirmation.observe(true)' returned FALSE. ()
+10: Totals: 37 passed, 1 failed, 0 skipped, 0 blacklisted, 5936ms
+expected_failure_seen: true
+== restored
+src/browser_uploads.cpp 5316e585b326432736ff7d1dbf0369af756fc25d1189dd70df165fe57d4dc1d5
+src/browser_control.cpp 541e8c4e9ff8103b610c1b002966eabdd1b297a804829dc9cdf20efa91832f9a
+include/chrome_control_mcp/browser_bridge_relay.h dd32d3d9abdd825c63809d22966940599d8c81a934d61e73635fa3ce77a8ce8a
+browser/extension/background.js 04ebe967c7a886e4a453f3cb379b3ab1256ad0647e736d1611f52cd2660a80a8
+mirror matches source: true
+rebuild exit=0
+green test_browser_uploads exit=0 7: Totals: 12 passed, 0 failed, 0 skipped, 0 blacklisted, 36ms
+green test_browser_bridge_relay exit=0 10: Totals: 38 passed, 0 failed, 0 skipped, 0 blacklisted, 6066ms

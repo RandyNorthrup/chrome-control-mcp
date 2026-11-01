@@ -109,6 +109,10 @@ come from -- prefer `tab_id`.
 obscure model-facing captures. Set `include_control_overlay: true` for user-facing documentation
 that should show the exact control presence visible in Chrome.
 
+`browser_navigate` and `browser_new_tab` open `http` and `https` URLs only; a bare host such as
+`example.com` is read as `https://example.com`. `javascript:`, `data:` and `file:` URLs are refused,
+so an agent cannot make a page out of its own text or open the user's files in a tab.
+
 ## Input and page interaction
 
 - `browser_click`
@@ -193,6 +197,17 @@ The reply lists the `files` delivered (name, size and type) and how: `delivered_
 `drop` or `picker`. `page_cleared_input: true` means the page's own handler took the files and
 emptied its input, as many upload widgets do; the files were delivered, and an empty input afterwards
 is not a failed upload.
+
+A file can be up to 2 GiB, or what `CHROME_CONTROL_MCP_UPLOAD_MAX_MB` sets (whole MiB, 1 to 8192); a
+larger one is refused before any of it is sent, saying so. Since 1.11.0 a file goes to the page a
+piece at a time, straight from the disk into the page that will use it, so neither this server nor
+the extension holds it whole. Delivery runs at the pace of Chrome's extension debugger channel --
+measured at 2 to 6 MB/s -- so a 390 MB video takes one to three minutes, and the call holds this
+server meanwhile, as every call does; a client that times calls out sooner than that needs a longer
+timeout for large files. If the page navigates
+or the tab is let go while a file is arriving, nothing is assigned and the reply says why. An
+extension older than 1.11.0 carries at most 16 MiB a file, and a larger file is refused with a note
+to reload it; files put on a clipboard (`browser_clipboard`) are held whole and stay at 16 MiB.
 
 More than one file needs an input or picker that takes several. Folder pickers are not supported
 yet: a page asking for a folder is told so and nothing is assigned. Outside the command window above

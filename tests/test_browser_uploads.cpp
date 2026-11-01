@@ -19,13 +19,22 @@
 #include <QTemporaryDir>
 #include <QtTest>
 
+using chrome_control_mcp::browser::kDefaultUploadCapBytes;
+using chrome_control_mcp::browser::kMaxUploadCapMiB;
+using chrome_control_mcp::browser::kMaxUploadFileBytes;
 using chrome_control_mcp::browser::kMaxUploadFiles;
 using chrome_control_mcp::browser::kUploadChunkBase64Chars;
+using chrome_control_mcp::browser::kUploadPieceBytes;
+using chrome_control_mcp::browser::planUploadFiles;
 using chrome_control_mcp::browser::readUploadFiles;
 using chrome_control_mcp::browser::UploadBatch;
+using chrome_control_mcp::browser::UploadCap;
+using chrome_control_mcp::browser::uploadCapFromValue;
 using chrome_control_mcp::browser::UploadFile;
 using chrome_control_mcp::browser::uploadMimeForName;
 using chrome_control_mcp::browser::uploadPathAllowed;
+using chrome_control_mcp::browser::UploadPieceReader;
+using chrome_control_mcp::browser::UploadPlan;
 
 namespace {
 
@@ -61,6 +70,10 @@ private slots:
   void read_refusesMoreFilesThanTheLimit();
   void roots_confineUploadsAndCannotBeEscaped();
   void mime_namesCommonTypesAndAdmitsWhenItCannot();
+  void cap_isTheOperatorsAndFailsClosed();
+  void plan_refusesAFileOverTheCapWithoutReadingIt();
+  void pieces_areReadOneAtATimeAndRejoinToTheFile();
+  void pieces_stopWhenTheFileChangesUnderThem();
 };
 
 void BrowserUploadsTests::read_returnsTheFileWhole() {
@@ -189,6 +202,134 @@ void BrowserUploadsTests::mime_namesCommonTypesAndAdmitsWhenItCannot() {
   // An unknown suffix reports nothing rather than guessing: the page is better
   // served by an empty type than by a confident wrong one.
   QVERIFY(uploadMimeForName(QStringLiteral("a.qqqzz")).isEmpty());
+}
+
+void BrowserUploadsTests::cap_isTheOperatorsAndFailsClosed() {
+  // Unset: the default, far past every video a channel uploads.
+  QCOMPARE(uploadCapFromValue(QString()).bytes, kDefaultUploadCapBytes);
+  QVERIFY(uploadCapFromValue(QStringLiteral("  ")).problem.isEmpty());
+  // Whole MiB in range: exactly that.
+  QCOMPARE(uploadCapFromValue(QStringLiteral("512")).bytes,
+           qint64{512} * 1024 * 1024);
+  QCOMPARE(uploadCapFromValue(QString::number(kMaxUploadCapMiB)).bytes,
+           qint64{kMaxUploadCapMiB} * 1024 * 1024);
+  // Anything else fails closed to the old bound -- never a larger cap or none
+  // -- and says which variable was not understood.
+  for (const QString &bad :
+       {QStringLiteral("0"), QStringLiteral("9000"), QStringLiteral("abc"),
+        QStringLiteral("1.5"), QStringLiteral("-4"), QStringLiteral("2GB")}) {
+    const UploadCap cap = uploadCapFromValue(bad);
+    QCOMPARE(cap.bytes, kMaxUploadFileBytes);
+    QVERIFY2(cap.problem.contains(
+                 QStringLiteral("CHROME_CONTROL_MCP_UPLOAD_MAX_MB")),
+             qPrintable(cap.problem));
+  }
+}
+
+void BrowserUploadsTests::plan_refusesAFileOverTheCapWithoutReadingIt() {
+  QTemporaryDir dir;
+  QVERIFY(dir.isValid());
+  const QByteArray contents(4096, 'x');
+  const QString path =
+      writeFile(QDir(dir.path()), QStringLiteral("clip.mp4"), contents);
+  // Under the cap: checked, named and typed, and not read -- the plan holds
+  // no bytes at all.
+  const UploadPlan fits =
+      planUploadFiles({path}, QString(), 4096, QString(), "browser_upload");
+  QVERIFY2(fits.ok, qPrintable(fits.error));
+  QCOMPARE(fits.files.at(0).size, qint64{4096});
+  QCOMPARE(fits.files.at(0).name, QStringLiteral("clip.mp4"));
+  QCOMPARE(fits.files.at(0).mime, QStringLiteral("video/mp4"));
+  // Over it: refused, naming the size, the cap, and what to do about it.
+  const UploadPlan over =
+      planUploadFiles({path}, QString(), 4095,
+                      QStringLiteral("Set CHROME_CONTROL_MCP_UPLOAD_MAX_MB."),
+                      "browser_upload");
+  QVERIFY(!over.ok);
+  QVERIFY2(over.error.contains(QStringLiteral("4096 bytes")) &&
+               over.error.contains(QStringLiteral("at most 4095")) &&
+               over.error.contains(
+                   QStringLiteral("CHROME_CONTROL_MCP_UPLOAD_MAX_MB")),
+           qPrintable(over.error));
+}
+
+void BrowserUploadsTests::pieces_areReadOneAtATimeAndRejoinToTheFile() {
+  QTemporaryDir dir;
+  QVERIFY(dir.isValid());
+  // Two and a half pieces, so the last is short and the order matters.
+  QByteArray contents;
+  contents.resize(kUploadPieceBytes * 2 + kUploadPieceBytes / 2);
+  for (qsizetype i = 0; i < contents.size(); ++i) {
+    contents[i] = static_cast<char>((i * 7) % 253);
+  }
+  const QString path =
+      writeFile(QDir(dir.path()), QStringLiteral("long.bin"), contents);
+  const UploadPlan plan = planUploadFiles({path}, QString(), contents.size(),
+                                          QString(), "browser_upload");
+  QVERIFY2(plan.ok, qPrintable(plan.error));
+  UploadPieceReader reader(plan.files.at(0));
+  QCOMPARE(reader.total(), 3);
+  QByteArray rejoined;
+  for (int i = 0; i < reader.total(); ++i) {
+    QString piece;
+    QString error;
+    QVERIFY2(reader.next(&piece, &error), qPrintable(error));
+    // One bridge message each, and never more than one piece's bytes.
+    QVERIFY(piece.size() <= kUploadChunkBase64Chars);
+    const QByteArray bytes = QByteArray::fromBase64(piece.toLatin1());
+    QVERIFY(bytes.size() <= kUploadPieceBytes);
+    rejoined.append(bytes);
+  }
+  QCOMPARE(rejoined, contents);
+  // No piece past the last.
+  QString extra;
+  QString error;
+  QVERIFY(!reader.next(&extra, &error));
+
+  // An empty file is one empty piece, which the extension can count.
+  const QString empty =
+      writeFile(QDir(dir.path()), QStringLiteral("empty.txt"), QByteArray());
+  const UploadPlan none =
+      planUploadFiles({empty}, QString(), 1, QString(), "browser_upload");
+  UploadPieceReader nothing(none.files.at(0));
+  QCOMPARE(nothing.total(), 1);
+  QString piece;
+  QVERIFY(nothing.next(&piece, &error));
+  QVERIFY(piece.isEmpty());
+}
+
+void BrowserUploadsTests::pieces_stopWhenTheFileChangesUnderThem() {
+  QTemporaryDir dir;
+  QVERIFY(dir.isValid());
+  const QByteArray contents(kUploadPieceBytes + 10, 'a');
+  const QString path =
+      writeFile(QDir(dir.path()), QStringLiteral("growing.log"), contents);
+  const UploadPlan plan = planUploadFiles({path}, QString(), contents.size(),
+                                          QString(), "browser_upload");
+  QVERIFY(plan.ok);
+  // Grown after it was checked: the file being sent is no longer that one.
+  {
+    QFile file(path);
+    QVERIFY(file.open(QIODevice::Append));
+    file.write("more");
+  }
+  UploadPieceReader grown(plan.files.at(0));
+  QString piece;
+  QString error;
+  QVERIFY(grown.next(&piece, &error));
+  QVERIFY(!grown.next(&piece, &error));
+  QVERIFY2(error.contains(QStringLiteral("changed while it was being sent")),
+           qPrintable(error));
+  // Shrunk after it was checked: the same.
+  {
+    QFile file(path);
+    QVERIFY(file.open(QIODevice::WriteOnly | QIODevice::Truncate));
+    file.write("a");
+  }
+  UploadPieceReader shrunk(plan.files.at(0));
+  QVERIFY(!shrunk.next(&piece, &error));
+  QVERIFY2(error.contains(QStringLiteral("changed while it was being sent")),
+           qPrintable(error));
 }
 
 QTEST_MAIN(BrowserUploadsTests)

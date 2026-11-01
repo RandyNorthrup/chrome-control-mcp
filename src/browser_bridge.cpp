@@ -390,6 +390,17 @@ BrowserBridgeSession::argumentsError(const QString &tool,
   return command.ok ? QString() : command.error;
 }
 
+QJsonObject
+BrowserBridgeSession::previewCommand(const QString &tool,
+                                     const QJsonObject &arguments) const {
+  if (!staleRefError(arguments).isEmpty()) {
+    return {};
+  }
+  const ExtensionCommand command =
+      buildExtensionCommand(tool, arguments, ref_index_);
+  return command.ok ? command.command : QJsonObject{};
+}
+
 BrowserBridgeSession::Outgoing
 BrowserBridgeSession::beginCommand(const QString &tool,
                                    const QJsonObject &arguments) {

@@ -207,6 +207,21 @@ private:
   [[nodiscard]] ToolResult invokeWithFiles(quint64 id, const QString &name,
                                            const QJsonObject &arguments);
 
+  /// browser_upload to an extension that stages files in the page (1.11.0):
+  /// each file checked against CHROME_CONTROL_MCP_UPLOAD_MAX_MB's cap without
+  /// being read, then read and sent one piece at a time as uploadStage
+  /// commands addressed to the tab and element the upload will name, so no
+  /// side holds a whole file.
+  [[nodiscard]] ToolResult uploadInPieces(quint64 id, const QString &name,
+                                          const QJsonObject &arguments,
+                                          const QStringList &paths,
+                                          const QString &roots);
+
+  /// The extension version connection @p id reported (empty: older than
+  /// 1.9.0), and whether it stages uploads in the page.
+  [[nodiscard]] QString connectionExtensionVersion(quint64 id) const;
+  [[nodiscard]] bool extensionStagesUploads(quint64 id) const;
+
   BrowserBridgePipeServer pipe_;
   browser::BrowserBridgeSession session_;
   /// Every connection this side has accounted for, by id, and which of them

@@ -6,17 +6,44 @@ on:
 permissions:
   contents: read
 
-env:
-  # The browser the live suites measure against, pinned like every other tool in this workflow.
-  CHROME_VERSION: 153.0.8010.52
-
 concurrency:
   group: quality-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
+  # Whether anything but documents changed. A push of Markdown and docs/ alone -- release notes,
+  # evidence, a verification record -- has nothing to build: it gets the formatting, lint and secret
+  # scan below and the checks that read those documents, and every other job is skipped. A new
+  # branch or a tag, which has nothing to compare with, counts as code.
+  changes:
+    name: What changed
+    runs-on: ubuntu-latest
+    outputs:
+      code: ${{ steps.diff.outputs.code }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - id: diff
+        shell: bash
+        env:
+          BEFORE: ${{ github.event.before }}
+        run: |
+          code=true
+          if [ "$GITHUB_REF_TYPE" != "tag" ] && [ -n "$BEFORE" ] &&
+            [ "$BEFORE" != "0000000000000000000000000000000000000000" ] &&
+            git cat-file -e "$BEFORE^{commit}" 2>/dev/null; then
+            if ! git diff --name-only "$BEFORE" "$GITHUB_SHA" | grep -vE '\.md$|^docs/' | grep -q .; then
+              code=false
+            fi
+          fi
+          echo "code=$code" >> "$GITHUB_OUTPUT"
+          echo "Anything but documents changed: $code"
+
   quality:
     name: Format, lint, and secret scan
+    needs: changes
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -58,8 +85,17 @@ jobs:
           SKIP: psscriptanalyzer
         run: pre-commit run --all-files --show-diff-on-failure
 
+      # On a docs-only push the builds are skipped, and with them ctest's copy of these: that every
+      # version agrees with its changelog entry and release page, and that the README's links
+      # survive into the VS Code package.
+      - name: Check the release documents
+        if: needs.changes.outputs.code == 'false'
+        run: node --test tests/test_release_versions.mjs tests/test_vscode_payload.mjs
+
   powershell-analysis:
     name: PowerShell static analysis
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
@@ -76,6 +112,8 @@ jobs:
 
   static-analysis:
     name: Native and semantic static analysis
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -128,6 +166,8 @@ jobs:
 
   native-build:
     name: ${{ matrix.name }} build and tests
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -185,234 +225,10 @@ jobs:
           node scripts/mcp_smoke.mjs "${{ matrix.executable }}"
           node scripts/mcp_smoke.mjs --read-only "${{ matrix.executable }}"
 
-  live-browser:
-    name: ${{ matrix.name }} live browser suites
-    runs-on: ${{ matrix.os }}
-    # Everything here waits on a browser; without this a hung one would hold a runner for hours.
-    timeout-minutes: 45
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - name: Linux
-            os: ubuntu-latest
-            qt-arch: linux_gcc_64
-            executable: build/chrome_control_mcp
-            cmake-args: -G Ninja -DCMAKE_BUILD_TYPE=Release
-            # This image's kernel forbids unprivileged user namespaces, which leaves Chrome with
-            # no usable sandbox and it refuses to start, and it has no GPU to rasterize with.
-            # Only the dedicated test browser is affected; nothing here changes how the product
-            # runs.
-            chrome-args: --chrome-arg=--no-sandbox --chrome-arg=--disable-gpu
-              --chrome-arg=--use-angle=swiftshader
-              --chrome-arg=--enable-unsafe-swiftshader
-          - name: macOS
-            os: macos-latest
-            qt-arch: clang_64
-            chrome-args: ""
-            executable: build/chrome_control_mcp
-            cmake-args: -G Ninja -DCMAKE_BUILD_TYPE=Release
-          # Windows carries the whole versioned-install layout: `current` is a directory
-          # junction onto versions/<version>, and the bridge refuses any peer not running its own
-          # binary. That combination shipped broken in 1.4.0 AND 1.5.0 -- the relay asked about
-          # itself and about its peer through two different calls, and through a junction those
-          # answer with two names for one file, so no session could attach at all. The unit tests
-          # were green through both releases, because nothing drove a live browser here.
-          - name: Windows
-            os: windows-latest
-            qt-arch: win64_msvc2022_64
-            chrome-args: ""
-            # -A x64 selects the Visual Studio generator, which brings MSVC with it. Ninja here
-            # would find MinGW on the runner's PATH instead, and the build fails on warnings MSVC
-            # does not raise. It is multi-config, so the binary lands under Release/.
-            executable: build/Release/chrome_control_mcp.exe
-            cmake-args: -A x64
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-
-      - uses: jurplel/install-qt-action@v4
-        with:
-          version: "6.10.0"
-          arch: ${{ matrix.qt-arch }}
-          cache: true
-
-      - name: Configure
-        run: cmake -S . -B build ${{ matrix.cmake-args }} -DBUILD_TESTING=ON
-
-      # --config is what a multi-config generator needs and what a single-config one ignores;
-      # without it the Visual Studio generator would quietly build Debug.
-      - name: Build
-        run: cmake --build build --config Release --parallel
-
-      # A dedicated browser for the suites: its own profile, its own bridge, headless. Chrome for
-      # Testing is required -- branded Chrome ignores --load-extension. Pinned like every other
-      # tool here: these suites measure tolerances of a device pixel or two against Chrome's own
-      # compositor, and a browser that changed under them would read as a regression.
-      - name: Install Chrome for Testing
-        id: chrome
-        # A bash script, and the default shell on windows-latest is pwsh, where none of it
-        # parses.
-        shell: bash
-        run: |
-          installed=$(npx -y @puppeteer/browsers@latest install chrome@${{ env.CHROME_VERSION }} --path "$PWD/.chrome-for-testing")
-          {
-            echo "path<<CHROME_PATH_EOF"
-            echo "${installed#* }"
-            echo "CHROME_PATH_EOF"
-          } >> "$GITHUB_OUTPUT"
-
-      # Windows registers native-messaging hosts in the registry, one key per user, so the
-      # dedicated browser cannot be given a registration of its own: it reaches whatever that key
-      # names. Pointing it at the build under test is what lets the live suites run here at all.
-      # The runner is a throwaway user; nothing outside it is touched.
-      - name: Register the native messaging host
-        if: runner.os == 'Windows'
-        shell: bash
-        run: npm run extension -- install "${{ matrix.executable }}"
-
-      # shell: bash on the piped steps below is load-bearing. The default non-Windows
-      # shell is `bash -e {0}`, which does not set pipefail, so a pipeline reports tee's
-      # status and the suite could never fail this job -- which is how browser_navigate
-      # shipped broken in 1.5.0 through a green live-browser run. `shell: bash` gets
-      # GitHub's `bash --noprofile --norc -eo pipefail`.
-      # Each suite after this one runs whatever the ones before it did, as long as the browser was
-      # installed: they test different things, and the job used to skip every suite after a failure
-      # -- an intermittent Windows display-matrix stall hid the clipboard and extension-version
-      # results that way. The job still fails if any suite does.
-      - name: Display scale, zoom, and pinch matrix
-        shell: bash
-        run: >-
-          node tests/e2e/display_matrix_e2e.mjs
-          --chrome="${{ steps.chrome.outputs.path }}" --parallel=2
-          --executable="${{ matrix.executable }}"
-          ${{ matrix.chrome-args }} | tee display-matrix.json
-
-      # Not on Linux: this runner's Chrome never answers a screenshot taken under an emulated
-      # fractional device-scale override (measured four times, across --no-sandbox, --disable-gpu,
-      # and SwiftShader, while the same capture at 1x in the same run succeeds). The same capture
-      # returns in 72 ms on a real Linux Chrome and passes on the macOS runner, so the suite runs
-      # there and this job covers Linux with the matrix and the interference suite.
-      - name: Full browser E2E
-        if: ${{ !cancelled() && steps.chrome.outcome == 'success' && runner.os != 'Linux' }}
-        shell: bash
-        run: >-
-          node tests/e2e/isolated_run.mjs --chrome="${{ steps.chrome.outputs.path }}"
-          --executable="${{ matrix.executable }}"
-          ${{ matrix.chrome-args }} tests/e2e/full_browser_e2e.mjs | tee full-browser-e2e.json
-
-      - name: User interference E2E
-        if: ${{ !cancelled() && steps.chrome.outcome == 'success' }}
-        shell: bash
-        run: >-
-          node tests/e2e/isolated_run.mjs --chrome="${{ steps.chrome.outputs.path }}"
-          --executable="${{ matrix.executable }}"
-          ${{ matrix.chrome-args }} tests/e2e/user_interference_e2e.mjs
-          | tee user-interference-e2e.json
-
-      # Two servers and two agents in one browser: separate tabs, refs and groups, no reaching
-      # into another's tab, file pickers answered without a dialog, and cleanup on release and exit.
-      - name: Multi-agent E2E
-        if: ${{ !cancelled() && steps.chrome.outcome == 'success' }}
-        shell: bash
-        run: >-
-          node tests/e2e/isolated_run.mjs --chrome="${{ steps.chrome.outputs.path }}"
-          --executable="${{ matrix.executable }}"
-          ${{ matrix.chrome-args }} tests/e2e/multi_agent_e2e.mjs
-          | tee multi-agent-e2e.json
-
-      # Each agent's own clipboard: copy, cut and paste by key, by tool and through a page's own
-      # buttons, into editors that take a paste three different ways -- while a sentinel the "user"
-      # put on the browser's clipboard stays there and never reaches an agent's page.
-      - name: Per-agent clipboard E2E
-        if: ${{ !cancelled() && steps.chrome.outcome == 'success' }}
-        shell: bash
-        run: >-
-          node tests/e2e/isolated_run.mjs --chrome="${{ steps.chrome.outputs.path }}"
-          --executable="${{ matrix.executable }}"
-          ${{ matrix.chrome-args }} tests/e2e/clipboard_e2e.mjs
-          | tee clipboard-e2e.json
-
-      # An extension older than its server, three ways: none (nothing is said and nothing
-      # reloads), this build's extension under an older manifest version (the agent is told once
-      # per connection; the extension reloads itself once, a quiet period after it was last used,
-      # and does not loop when its folder was not updated), and the released 1.8.2 extension, from
-      # before versions were exchanged (told it is older than 1.9.0; browser_clipboard explains;
-      # everything else works as it did).
-      - name: Extension version E2E (same version)
-        if: ${{ !cancelled() && steps.chrome.outcome == 'success' }}
-        shell: bash
-        run: >-
-          node tests/e2e/isolated_run.mjs --chrome="${{ steps.chrome.outputs.path }}"
-          --executable="${{ matrix.executable }}"
-          ${{ matrix.chrome-args }} tests/e2e/extension_version_e2e.mjs
-          | tee extension-version-current.json
-
-      - name: Extension version E2E (older extension reloads itself)
-        if: ${{ !cancelled() && steps.chrome.outcome == 'success' }}
-        shell: bash
-        run: >-
-          node tests/e2e/isolated_run.mjs --chrome="${{ steps.chrome.outputs.path }}"
-          --executable="${{ matrix.executable }}" --extension-version=1.0.0
-          ${{ matrix.chrome-args }} tests/e2e/extension_version_e2e.mjs
-          | tee extension-version-older.json
-
-      - name: Extension version E2E (released 1.8.2 extension)
-        if: ${{ !cancelled() && steps.chrome.outcome == 'success' }}
-        shell: bash
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          # The extension is the same JavaScript on every platform; any archive carries it.
-          gh release download v1.8.2 --repo "$GITHUB_REPOSITORY" \
-            -p 'chrome-control-mcp-v1.8.2-linux-x64.tar.gz' -D released-1.8.2
-          tar -xzf released-1.8.2/chrome-control-mcp-v1.8.2-linux-x64.tar.gz -C released-1.8.2
-          node tests/e2e/isolated_run.mjs --chrome="${{ steps.chrome.outputs.path }}" \
-            --executable="${{ matrix.executable }}" \
-            --extension=released-1.8.2/chrome-control-mcp-v1.8.2-linux-x64/extension \
-            ${{ matrix.chrome-args }} tests/e2e/extension_version_e2e.mjs \
-            | tee extension-version-released.json
-
-      # Chrome profiles, chosen per call: two profiles of one headed Chrome served by one server --
-      # names, the options page, routing, merged listings, release, and one profile leaving (Linux
-      # only, under Xvfb: headless Chrome opens no second profile) -- and, on every platform, the
-      # update that brings them: an extension without the identity permissions reloads itself into
-      # files that ask for them and must come back enabled.
-      - name: Chrome profiles E2E (two profiles)
-        if: ${{ !cancelled() && steps.chrome.outcome == 'success' && runner.os == 'Linux' }}
-        shell: bash
-        run: >-
-          xvfb-run -a node tests/e2e/isolated_run.mjs --chrome="${{ steps.chrome.outputs.path }}"
-          --executable="${{ matrix.executable }}" --headed --second-profile="Profile 2"
-          ${{ matrix.chrome-args }} tests/e2e/profiles_e2e.mjs
-          | tee profiles-two.json
-
-      - name: Chrome profiles E2E (update into the identity permissions)
-        if: ${{ !cancelled() && steps.chrome.outcome == 'success' }}
-        shell: bash
-        run: >-
-          node tests/e2e/isolated_run.mjs --chrome="${{ steps.chrome.outputs.path }}"
-          --executable="${{ matrix.executable }}" --extension-version=1.0.0
-          --extension-strip-permissions=identity,identity.email
-          ${{ matrix.chrome-args }} tests/e2e/profiles_e2e.mjs
-          | tee profiles-upgrade.json
-
-      # What each suite measured, kept whether it passed or failed: the reports carry the
-      # per-configuration numbers a failure has to be read against.
-      - name: Keep the suites' reports
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: live-browser-reports-${{ matrix.name }}
-          path: "*.json"
-          if-no-files-found: warn
-          retention-days: 14
-
   sanitizers:
     name: ${{ matrix.name }}
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false

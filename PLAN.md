@@ -3,7 +3,7 @@
 ## Release target
 
 Ship standalone, MIT-licensed Chrome Control MCP from `main` with the same browser tool surface on
-Windows, Linux, and macOS. Current release: 1.10.0 (2026-11-01).
+Windows, Linux, and macOS. Current release: 1.11.0 (2026-11-01).
 
 ## Completed
 
@@ -62,6 +62,9 @@ Windows, Linux, and macOS. Current release: 1.10.0 (2026-11-01).
       under the 3.15 the Qt install step switched it to (1.8.1)
 - [x] Run `test_browser_extension_tabs.mjs` and `test_release_versions.mjs` in ctest, and so in CI
       (1.8.1)
+- [x] Upload files of any size an agent needs, not just documents: up to 2 GiB by default and
+      `CHROME_CONTROL_MCP_UPLOAD_MAX_MB`, each file read a piece at a time and staged in the page
+      that uses it (1.11.0; [docs/plans/large-uploads.md](docs/plans/large-uploads.md))
 - [x] Support Chrome profiles (work, personal, other people), chosen per call: one server
       connected to every profile's extension at once, `profile` on `browser_new_tab`, and each
       tab's profile in `browser_tabs` (1.10.0;

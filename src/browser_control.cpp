@@ -795,9 +795,27 @@ ToolResult BrowserControl::invokeWithFiles(quint64 id, const QString &name,
   for (const auto &value : requested) {
     paths.append(value.toString());
   }
+  const QString roots =
+      QString::fromLocal8Bit(qgetenv("CHROME_CONTROL_MCP_UPLOAD_ROOTS"));
+  if (name == QLatin1String("browser_upload") && extensionStagesUploads(id)) {
+    return uploadInPieces(id, name, arguments, paths, roots);
+  }
+  // Held whole until assigned: a clipboard's files, which the worker keeps
+  // until a paste, and every file for an extension older than 1.11.0, which
+  // keeps each piece in its worker. Both stay at the bound that has always
+  // applied, and a refusal says which applies and what would lift it.
+  const QString versions = connectionExtensionVersion(id);
+  const QString held_whole =
+      name == QLatin1String("browser_upload")
+          ? QStringLiteral(
+                "The Chrome extension running is %1, which holds a file "
+                "whole and carries at most 16 MiB; reload Chrome Control MCP "
+                "at chrome://extensions to send larger files.")
+                .arg(versions.isEmpty() ? QStringLiteral("older than 1.9.0")
+                                        : versions)
+          : QStringLiteral("A clipboard holds a file whole, at most 16 MiB.");
   const browser::UploadBatch batch = browser::readUploadFiles(
-      paths, QString::fromLocal8Bit(qgetenv("CHROME_CONTROL_MCP_UPLOAD_ROOTS")),
-      name);
+      paths, roots, name, browser::kMaxUploadFileBytes, held_whole);
   if (!batch.ok) {
     return {.text = batch.error,
             .is_error = true,
@@ -844,6 +862,107 @@ ToolResult BrowserControl::invokeWithFiles(quint64 id, const QString &name,
   // The element is resolved the way every other by-ref tool resolves it, and
   // the manifest is added to that translated command: the paths themselves stop
   // here, so nothing downstream ever learns where on the disk a file came from.
+  browser::BrowserBridgeSession::Outgoing apply =
+      session_.beginCommand(name, arguments);
+  if (apply.ok) {
+    apply.frame.insert(QStringLiteral("files"), manifest);
+  }
+  return exchange(id, apply);
+}
+
+QString BrowserControl::connectionExtensionVersion(quint64 id) const {
+  const auto known = known_.find(id);
+  if (known != known_.end()) {
+    return known->second.info.versions.extension;
+  }
+  // Not routed through the connection map (one connection, before it was
+  // synced): the newest connection's, which is the one being used.
+  return pipe_.peerVersions().extension;
+}
+
+bool BrowserControl::extensionStagesUploads(quint64 id) const {
+  // uploadStage arrived with 1.11.0; an older extension answers it with
+  // "Unknown command", and one older than 1.9.0 says no version at all.
+  static const QVersionNumber kStagesUploads(1, 11, 0);
+  return QVersionNumber::fromString(connectionExtensionVersion(id)) >=
+         kStagesUploads;
+}
+
+ToolResult BrowserControl::uploadInPieces(quint64 id, const QString &name,
+                                          const QJsonObject &arguments,
+                                          const QStringList &paths,
+                                          const QString &roots) {
+  const browser::UploadCap cap = browser::uploadCapFromValue(
+      QString::fromLocal8Bit(qgetenv("CHROME_CONTROL_MCP_UPLOAD_MAX_MB")));
+  const QString over_cap =
+      cap.problem.isEmpty()
+          ? QStringLiteral("Set CHROME_CONTROL_MCP_UPLOAD_MAX_MB (MiB, at most "
+                           "%1) to send larger files.")
+                .arg(browser::kMaxUploadCapMiB)
+          : cap.problem + QLatin1Char('.');
+  const browser::UploadPlan plan =
+      browser::planUploadFiles(paths, roots, cap.bytes, over_cap, name);
+  if (!plan.ok) {
+    return {.text = plan.error,
+            .is_error = true,
+            .image_base64 = {},
+            .image_mime = {}};
+  }
+  // Each piece goes where the file will be used, so the page can hold it
+  // until the last arrives: the tab the upload names (or the session's own),
+  // and the element its ref names, translated exactly as the upload itself
+  // will be. Without a ref the extension uses the picker the page opened.
+  const QJsonObject target = session_.previewCommand(name, arguments);
+  QJsonObject address;
+  for (const QString &key :
+       {QStringLiteral("tab_id"), QStringLiteral("backendNodeId")}) {
+    if (target.contains(key)) {
+      address.insert(key, target.value(key));
+    }
+  }
+  QJsonArray manifest;
+  int index = 0;
+  for (const browser::UploadSource &file : plan.files) {
+    const QString upload_id =
+        QStringLiteral("u-%1-%2").arg(++upload_counter_).arg(index++);
+    browser::UploadPieceReader reader(file);
+    const int total = reader.total();
+    for (int seq = 0; seq < total; ++seq) {
+      QString data;
+      QString error;
+      if (!reader.next(&data, &error)) {
+        return {.text = error,
+                .is_error = true,
+                .image_base64 = {},
+                .image_mime = {}};
+      }
+      QJsonObject piece = address;
+      piece.insert(QStringLiteral("upload_id"), upload_id);
+      piece.insert(QStringLiteral("seq"), seq);
+      piece.insert(QStringLiteral("total"), total);
+      piece.insert(QStringLiteral("size"), static_cast<double>(file.size));
+      piece.insert(QStringLiteral("data"), data);
+      const ToolResult sent = exchange(
+          id,
+          session_.beginInternalCommand(QStringLiteral("uploadStage"), piece));
+      if (sent.is_error) {
+        return {.text =
+                    QStringLiteral("Sending %1 failed at piece %2 of %3: %4")
+                        .arg(file.name)
+                        .arg(seq + 1)
+                        .arg(total)
+                        .arg(sent.text),
+                .is_error = true,
+                .image_base64 = {},
+                .image_mime = {}};
+      }
+    }
+    manifest.append(
+        QJsonObject{{QStringLiteral("upload_id"), upload_id},
+                    {QStringLiteral("name"), file.name},
+                    {QStringLiteral("mime"), file.mime},
+                    {QStringLiteral("size"), static_cast<double>(file.size)}});
+  }
   browser::BrowserBridgeSession::Outgoing apply =
       session_.beginCommand(name, arguments);
   if (apply.ok) {

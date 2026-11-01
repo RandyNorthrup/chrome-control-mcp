@@ -103,10 +103,24 @@ CHROME_CONTROL_MCP_UPLOAD_ROOTS=C:\Users\you\Uploads;C:\Work\attachments
 
 Paths are made canonical before the test, so a symlink or a `..` cannot point inside a root and
 read outside it, and a sibling directory whose name merely starts with a root's name is not inside
-it. A path must be absolute and name a real file; a file is read once, bounded at 16 MiB, and sent
-as bridge-sized pieces that the extension holds only until the file is assigned and drops whenever
-the session ends. No path reaches the extension or the page: the page receives the file's name,
-type, and bytes, exactly as the user's own file chooser would have given them.
+it. A path must be absolute and name a real file. A file is bounded at 2 GiB, or at what the
+operator sets:
+
+```text
+CHROME_CONTROL_MCP_UPLOAD_MAX_MB=512
+```
+
+A whole number of MiB from 1 to 8192; any other value fails closed to 16 MiB, and a refusal under
+it says the variable was not understood. A file over the bound is refused before any of it is sent.
+The file is read a piece at a time as it is sent, and each piece goes straight into the page it is
+for, into an object made in the realm of the input, drop zone or picker it will be given to and
+reachable only through the extension's DevTools handle -- so neither the server nor the extension
+holds it whole, and the extension refuses more than 8 GiB for one file whatever it is sent. When the
+upload ends -- assigned, refused, or cut short by the page navigating, the tab being let go or the
+session ending -- that object is released. Files for a clipboard, and every file for an extension
+older than 1.11.0, are held whole by the extension until used, as before, and stay at 16 MiB. No
+path reaches the extension or the page: the page receives the file's name, type, and bytes, exactly
+as the user's own file chooser would have given them.
 
 Unset, the variable means no restriction, and an assistant with this tool can attach any file the
 user can read. That is the same reach the user has in their own browser, which is the model this

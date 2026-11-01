@@ -1,0 +1,27 @@
+== EV-UPL-RED-FOLD-LIVE: the page drops what it gathered when it folds
+file: browser/extension/background.js
+mutated sha256: 5bdf7c5647b10671a9fd5a680d7569a40c2967d745d5024fe4cd3bdeebf89dbb
+exit=1
+FAIL a 300 MiB file reaches a file input by ref, byte for byte -- {"reply":"{\"delivered_by\":\"input\",\"files\":[{\"name\":\"long-video.mp4\",\"size\":3145728,\"type\":\"video/mp4\"}],\"ok\":true,\"tab_id\":1512457964}","video":"video: lo
+FAIL a 40 MiB file fills the input picker the page opened -- {"attach":"{\"button\":\"left\",\"click_count\":1,\"file_chooser\":{\"folder\":false,\"kind\":\"input\",\"multiple\":false,\"note\":\"The page asked for a file and no dialog was s
+FAIL a 40 MiB file drops onto a drop zone by ref -- {"reply":"{\"delivered_by\":\"drop\",\"files\":[{\"name\":\"short-video.mp4\",\"size\":7340032,\"type\":\"video/mp4\"}],\"ok\":true,\"tab_id\":1512457964}","drop":"dropped: short-video.mp4
+FAIL a showOpenFilePicker answer gives the same 40 MiB -- {"pick":"{\"button\":\"left\",\"click_count\":1,\"file_chooser\":{\"folder\":false,\"kind\":\"picker\",\"multiple\":false,\"note\":\"The page asked for a file and no dialog was shown
+FAIL a page that reloads mid-delivery is given nothing and says why; the next upload works -- {"cut":"Sending long-video.mp4 failed at piece 27 of 800: The page changed while the file was being delivered ({\"code\":-32000,\"message\":\"Cann
+PASS a file over the operator's cap is refused before any of it is sent
+PASS the worker is left holding no upload
+expected_failure_seen: true
+== restored
+src/browser_uploads.cpp 5316e585b326432736ff7d1dbf0369af756fc25d1189dd70df165fe57d4dc1d5
+src/browser_control.cpp 541e8c4e9ff8103b610c1b002966eabdd1b297a804829dc9cdf20efa91832f9a
+include/chrome_control_mcp/browser_bridge_relay.h dd32d3d9abdd825c63809d22966940599d8c81a934d61e73635fa3ce77a8ce8a
+browser/extension/background.js 04ebe967c7a886e4a453f3cb379b3ab1256ad0647e736d1611f52cd2660a80a8
+mirror matches source: true
+rebuild exit=0
+green large exit=0
+PASS a 300 MiB file reaches a file input by ref, byte for byte
+PASS a 40 MiB file fills the input picker the page opened
+PASS a 40 MiB file drops onto a drop zone by ref
+PASS a showOpenFilePicker answer gives the same 40 MiB
+PASS a page that reloads mid-delivery is given nothing and says why; the next upload works
+PASS a file over the operator's cap is refused before any of it is sent
+PASS the worker is left holding no upload

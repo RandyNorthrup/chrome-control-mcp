@@ -148,7 +148,8 @@ version, runs ctest, stages the archive, and runs the MCP smoke test against the
 On Linux it fails the build if the staged executable needs a library the archive does not carry,
 checked with `ldd` and without the runner's Qt on the library path; on macOS it records the
 linkage with `otool -L`. It refuses a VS Code package whose version differs from the archive's.
-Only then does it publish the GitHub release, titled and written from `docs/releases/<tag>.md` and
+Beside the archives it runs the live browser suites on Windows, Linux and macOS against the tagged
+commit (`.github/workflows/live.yml`). Only when both have passed does it publish the GitHub release, titled and written from `docs/releases/<tag>.md` and
 CHANGELOG.md as described above, and -- when the Marketplace token is configured -- the VS Code
 packages to the Marketplace.
 

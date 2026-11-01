@@ -1367,7 +1367,9 @@ QJsonObject toolEntry(const QString &name, const QString &description,
 void appendNavTools(QJsonArray &tools) {
   tools.append(toolEntry(
       QStringLiteral("browser_navigate"),
-      QStringLiteral("Navigate the active tab to a URL."),
+      QStringLiteral("Navigate the active tab to an http(s) URL (a bare host "
+                     "is read as https; javascript:, data: and file: URLs are "
+                     "refused)."),
       toolSchema(
           QJsonObject{{QStringLiteral("url"), stringProperty(QStringLiteral(
                                                   "Absolute URL to open."))}},
@@ -1661,8 +1663,9 @@ void appendFormControlTools(QJsonArray &tools) {
           "button, label, or menu item a person would click -- and a hidden "
           "input is also listed in the snapshot as filechooser (hidden). Pass "
           "absolute paths; more than one needs an input marked multiple. "
-          "Files are read by this server and sent over the bridge; no path "
-          "reaches the page."),
+          "Files are read by this server and sent over the bridge, up to 2 GiB "
+          "each unless CHROME_CONTROL_MCP_UPLOAD_MAX_MB sets another bound; "
+          "no path reaches the page."),
       toolSchema(
           QJsonObject{
               {QStringLiteral("ref"),

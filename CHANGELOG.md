@@ -8,6 +8,7 @@ entry's heading opens its GitHub release page and downloads. To hear about new r
 
 | Version                      | Released   | What it is                                                              |
 | ---------------------------- | ---------- | ----------------------------------------------------------------------- |
+| [1.11.0](#1110---2026-11-01) | 2026-11-01 | Large uploads                                                           |
 | [1.10.0](#1100---2026-11-01) | 2026-11-01 | Chrome profiles, chosen per call                                        |
 | [1.9.0](#190---2026-10-31)   | 2026-10-31 | A clipboard for every agent                                             |
 | [1.8.2](#182---2026-10-31)   | 2026-10-31 | browser_release closes everything an agent opened                       |
@@ -33,6 +34,47 @@ entry's heading opens its GitHub release page and downloads. To hear about new r
 | [1.1.0](#110---2026-09-21)   | 2026-09-21 | The agent works in a tab of its own                                     |
 | [1.0.1](#101---2026-09-16)   | 2026-09-16 | The bridge recovers when another server takes or removes its record     |
 | [1.0.0](#100---2026-08-20)   | 2026-08-20 | First public release                                                    |
+
+## [1.11.0] - 2026-11-01
+
+Uploads of any size an agent needs: a channel's videos, not just documents.
+
+### Changed
+
+- **`browser_upload` carries files up to 2 GiB.** It was bounded at 16 MiB, because the server read
+  a whole file, the extension's service worker held every piece of it, and the page was handed it
+  in one DevTools call. Now the server reads a file a piece at a time as it sends it, and each
+  piece goes straight into the page it is for, gathering into a `Blob` there until the file is
+  assigned exactly as before -- by ref to an input or drop zone, to an input picker the page
+  opened, or as a `showOpenFilePicker` answer. Neither side holds a whole file. Measured: a 300 MiB
+  file reaches the page byte for byte.
+- **`CHROME_CONTROL_MCP_UPLOAD_MAX_MB`** sets the bound, in whole MiB from 1 to 8192. Any other
+  value fails closed to 16 MiB and the refusal says so; a file over the bound is refused before
+  any of it is sent.
+- A page that navigates, or a tab let go, while a file is arriving gets nothing, and the reply says
+  why; the next upload works. A file that changes on disk while it is being sent is refused rather
+  than sent half old and half new.
+- An extension older than 1.11.0 keeps the old way and its 16 MiB bound, and a larger file is
+  refused with a note to reload it. Files put on a clipboard stay at 16 MiB: a clipboard holds them
+  whole until a paste.
+- `browser_navigate` says which URLs it refuses: `javascript:`, `data:` and `file:`, as before.
+- A new live suite, `large_upload_e2e`, uploads a 300 MiB file and three 40 MiB ones every way a
+  page takes them, reloads a page mid-delivery and checks the operator's bound, on all three
+  platforms.
+- **CI runs in tiers.** Every push runs formatting, lint, the secret scan and dependency audit,
+  static analysis, builds and unit tests on Windows, Linux and macOS, and both sanitizers -- about
+  five minutes; a push of documents alone builds nothing. The live browser suites, ten to twenty
+  minutes a platform, run with each release, which now publishes only once they pass: 1.10.0
+  published while one of them was failing.
+
+### Fixed
+
+- **A relay could end itself in the middle of a session, on Linux and macOS.** Its check for Chrome
+  having closed the port asks whether stdin is readable and then how many bytes wait, and the pump
+  thread can read them all in between -- which looks exactly like a closed pipe. Measured on a busy
+  pipe: one look in 2,000 called it closed, and the relay looked four times a second. That was the
+  "relay closed the connection" failure seen once in 1.9.0's runs and once in 1.10.0's, and it cut
+  long uploads short. The relay now ends only after three closed looks in a row.
 
 ## [1.10.0] - 2026-11-01
 
@@ -1126,6 +1168,7 @@ tried were broken.
 - Unused JSON-RPC client payload helpers and obsolete test-only native-host loop.
 - Redundant quality branch; development and delivery now happen directly on `main`.
 
+[1.11.0]: https://github.com/RandyNorthrup/chrome-control-mcp/releases/tag/v1.11.0
 [1.10.0]: https://github.com/RandyNorthrup/chrome-control-mcp/releases/tag/v1.10.0
 [1.9.0]: https://github.com/RandyNorthrup/chrome-control-mcp/releases/tag/v1.9.0
 [1.8.2]: https://github.com/RandyNorthrup/chrome-control-mcp/releases/tag/v1.8.2

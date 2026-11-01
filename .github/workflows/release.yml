@@ -226,10 +226,17 @@ jobs:
           path: release-assets/*
           if-no-files-found: error
 
+  # The live browser suites on all three platforms, against this commit. A release used to publish
+  # while the tag's own live run was still going -- and 1.10.0 did while one of its jobs failed --
+  # so a broken build could ship. Now nothing publishes until they pass.
+  live:
+    name: Live browser suites
+    uses: ./.github/workflows/live.yml
+
   publish:
     name: Publish GitHub release
     if: github.ref_type == 'tag'
-    needs: build
+    needs: [build, live]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

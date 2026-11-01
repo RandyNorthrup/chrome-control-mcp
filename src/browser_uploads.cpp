@@ -72,18 +72,43 @@ QString uploadMimeForName(const QString &name) {
   return type.name();
 }
 
-UploadBatch readUploadFiles(const QStringList &paths, const QString &roots,
-                            const QString &tool) {
-  UploadBatch batch;
+UploadCap uploadCapFromValue(const QString &value) {
+  UploadCap cap;
+  const QString trimmed = value.trimmed();
+  if (trimmed.isEmpty()) {
+    return cap; // unset: the default
+  }
+  bool whole = false;
+  const int mib = trimmed.toInt(&whole);
+  if (whole && mib >= 1 && mib <= kMaxUploadCapMiB) {
+    cap.bytes = static_cast<qint64>(mib) * 1024 * 1024;
+    return cap;
+  }
+  // Not understood: the bound from before the cap existed, never a larger one
+  // or none, and the refusal says why.
+  cap.bytes = kMaxUploadFileBytes;
+  cap.problem =
+      QStringLiteral("CHROME_CONTROL_MCP_UPLOAD_MAX_MB is \"%1\", which is not "
+                     "a whole number of MiB from 1 to %2, so the 16 MiB bound "
+                     "applies")
+          .arg(trimmed.left(32))
+          .arg(kMaxUploadCapMiB);
+  return cap;
+}
+
+UploadPlan planUploadFiles(const QStringList &paths, const QString &roots,
+                           qint64 max_bytes, const QString &over_cap,
+                           const QString &tool) {
+  UploadPlan plan;
   if (paths.isEmpty()) {
-    batch.error = QStringLiteral("%1 needs at least one path.").arg(tool);
-    return batch;
+    plan.error = QStringLiteral("%1 needs at least one path.").arg(tool);
+    return plan;
   }
   if (paths.size() > kMaxUploadFiles) {
-    batch.error = QStringLiteral("%1 takes at most %2 files.")
-                      .arg(tool)
-                      .arg(kMaxUploadFiles);
-    return batch;
+    plan.error = QStringLiteral("%1 takes at most %2 files.")
+                     .arg(tool)
+                     .arg(kMaxUploadFiles);
+    return plan;
   }
   for (const QString &raw : paths) {
     const QString path = raw.trimmed();
@@ -92,47 +117,109 @@ UploadBatch readUploadFiles(const QStringList &paths, const QString &roots,
     // this server happens to run in, which the caller cannot see and did not
     // choose.
     if (!info.isAbsolute()) {
-      batch.error =
+      plan.error =
           QStringLiteral("%1 needs an absolute path: %2").arg(tool, path);
-      return batch;
+      return plan;
     }
     const QString canonical = info.canonicalFilePath();
     if (canonical.isEmpty() || !info.exists() || !info.isFile()) {
-      batch.error = QStringLiteral("No such file: %1").arg(path);
-      return batch;
+      plan.error = QStringLiteral("No such file: %1").arg(path);
+      return plan;
     }
     if (!uploadPathAllowed(canonical, roots)) {
-      batch.error =
+      plan.error =
           QStringLiteral(
               "That file is outside CHROME_CONTROL_MCP_UPLOAD_ROOTS: %1")
               .arg(canonical);
-      return batch;
+      return plan;
     }
     QFile file(canonical);
     if (!file.open(QIODevice::ReadOnly)) {
-      batch.error = QStringLiteral("Cannot read %1: %2")
-                        .arg(canonical, file.errorString());
-      return batch;
+      plan.error = QStringLiteral("Cannot read %1: %2")
+                       .arg(canonical, file.errorString());
+      return plan;
     }
     const qint64 size = file.size();
-    if (size > kMaxUploadFileBytes) {
-      batch.error = QStringLiteral("%1 is %2 bytes; %3 carries at most %4.")
-                        .arg(canonical)
-                        .arg(size)
-                        .arg(tool)
-                        .arg(kMaxUploadFileBytes);
+    if (size > max_bytes) {
+      plan.error =
+          QStringLiteral("%1 is %2 bytes; %3 carries at most %4.%5")
+              .arg(canonical)
+              .arg(size)
+              .arg(tool)
+              .arg(max_bytes)
+              .arg(over_cap.isEmpty() ? QString()
+                                      : QStringLiteral(" ") + over_cap);
+      return plan;
+    }
+    plan.files.append({.path = canonical,
+                       .name = info.fileName(),
+                       .mime = uploadMimeForName(info.fileName()),
+                       .size = size});
+  }
+  plan.ok = true;
+  return plan;
+}
+
+UploadPieceReader::UploadPieceReader(const UploadSource &source)
+    : file_(source.path), name_(source.name), size_(source.size),
+      total_(static_cast<int>(std::max<qint64>(
+          1, (source.size + kUploadPieceBytes - 1) / kUploadPieceBytes))) {}
+
+bool UploadPieceReader::next(QString *base64, QString *error) {
+  if (sent_ >= total_) {
+    *error = QStringLiteral("%1 has no more pieces.").arg(name_);
+    return false;
+  }
+  if (!file_.isOpen() && !file_.open(QIODevice::ReadOnly)) {
+    *error =
+        QStringLiteral("Cannot read %1: %2").arg(name_, file_.errorString());
+    return false;
+  }
+  const qint64 want = std::min(kUploadPieceBytes, size_ - read_);
+  const QByteArray piece = file_.read(want);
+  // The last piece must end the file exactly: a short read, or bytes past the
+  // size that was checked, mean this is no longer the file that was checked.
+  const bool last = sent_ + 1 == total_;
+  if (piece.size() != want || (last && !file_.atEnd())) {
+    *error = QStringLiteral("%1 changed while it was being sent; nothing was "
+                            "assigned.")
+                 .arg(name_);
+    return false;
+  }
+  read_ += piece.size();
+  ++sent_;
+  *base64 = QString::fromLatin1(piece.toBase64());
+  return true;
+}
+
+UploadBatch readUploadFiles(const QStringList &paths, const QString &roots,
+                            const QString &tool, qint64 max_bytes,
+                            const QString &over_cap) {
+  UploadBatch batch;
+  const UploadPlan plan =
+      planUploadFiles(paths, roots, max_bytes, over_cap, tool);
+  if (!plan.ok) {
+    batch.error = plan.error;
+    return batch;
+  }
+  for (const UploadSource &source : plan.files) {
+    QFile file(source.path);
+    if (!file.open(QIODevice::ReadOnly)) {
+      batch.error = QStringLiteral("Cannot read %1: %2")
+                        .arg(source.path, file.errorString());
       return batch;
     }
     const QByteArray contents = file.readAll();
-    if (contents.size() != size) {
-      batch.error = QStringLiteral("Could not read all of %1.").arg(canonical);
+    if (contents.size() != source.size) {
+      batch.error =
+          QStringLiteral("Could not read all of %1.").arg(source.path);
       return batch;
     }
     const QByteArray encoded = contents.toBase64();
     UploadFile upload;
-    upload.name = info.fileName();
-    upload.mime = uploadMimeForName(info.fileName());
-    upload.size = size;
+    upload.name = source.name;
+    upload.mime = source.mime;
+    upload.size = source.size;
     // An empty file still needs one (empty) piece: the extension counts the
     // pieces it was promised, and zero of them would never assemble.
     for (qsizetype offset = 0; offset < encoded.size();

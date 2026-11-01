@@ -291,8 +291,32 @@ inline constexpr int kBrowserPresencePollMs = 250;
 /// which is worse than the leak this exists to stop.
 [[nodiscard]] bool browserInputClosed(NativeIpcHandle input);
 
+/// How many looks in a row must find the browser gone before the relay ends.
+inline constexpr int kBrowserExitConfirmPolls = 3;
+
+/// Whether the browser end has really gone, from one browserInputClosed() look
+/// per poll. One look can be wrong on Linux and macOS: between poll() calling
+/// stdin readable and asking how many bytes wait, the pump thread can read
+/// them all, and "readable with nothing waiting" is exactly how a closed pipe
+/// looks on macOS. That race ended live relays in the middle of a session --
+/// most often during a long upload, a reply every few dozen milliseconds. A
+/// closed pipe stays closed and a busy one does not, so only
+/// kBrowserExitConfirmPolls closed looks in a row count.
+class BrowserExitConfirmation {
+public:
+  /// Record one look; true once the browser has been seen gone enough times
+  /// in a row to be sure.
+  bool observe(bool closed) {
+    streak_ = closed ? streak_ + 1 : 0;
+    return streak_ >= kBrowserExitConfirmPolls;
+  }
+
+private:
+  int streak_{0};
+};
+
 /// Poll browserInputClosed() on a detached thread and end this process once it
-/// answers true.
+/// has answered true kBrowserExitConfirmPolls times in a row.
 ///
 /// The relay spends nearly all its life blocked reading the pipe, waiting for
 /// the server to send a command. Chrome closing the port -- which an extension

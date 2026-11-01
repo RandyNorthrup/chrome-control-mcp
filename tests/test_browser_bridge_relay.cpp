@@ -6,11 +6,13 @@
 #include "chrome_control_mcp/browser_bridge_security.h"
 #include "chrome_control_mcp/browser_control.h"
 #include "chrome_control_mcp/browser_extension_installer.h"
+#include "chrome_control_mcp/browser_uploads.h"
 
 #include <QCoreApplication>
 #include <QDir>
 #include <QElapsedTimer>
 #include <QFile>
+#include <QFileInfo>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -87,6 +89,7 @@ BrowserBridgePipeServer::Options serverOptions(const QString &rendezvous) {
 // with an error frame carrying that text.
 struct FakeExtension {
   QJsonObject last_command;
+  QList<QJsonObject> commands; ///< Every command, in order.
   QJsonObject reply_payload;
   int tab_id{1};
   QString reply_error;
@@ -94,6 +97,7 @@ struct FakeExtension {
   chrome_control_mcp::BrowserWriteFn writer() {
     return [this](const QJsonObject &command) {
       last_command = command;
+      commands.append(command);
       return true;
     };
   }
@@ -495,11 +499,13 @@ private slots:
   void profiles_oneLeavingKeepsTheOthersRefs();
   void profiles_statusAndNoticesNameEachProfile();
   void profiles_oldestWinsATieAndAnOlderExtensionIsUnnamed();
+  void upload_goesInPiecesToThePageAndAnOlderExtensionKeepsItsBound();
   void browserPresence_openInputIsNotClosed();
   void browserPresence_waitingBytesAreNotAHangup();
   void browserPresence_closedWriteEndIsAHangup();
   void browserPresence_peekDoesNotConsume();
   void browserPresence_invalidInputIsClosed();
+  void browserPresence_oneClosedLookEndsNothing();
 };
 
 void BrowserBridgeRelayTests::relayConnect_rejectsForeignServerPid() {
@@ -1428,6 +1434,167 @@ void BrowserBridgeRelayTests::profiles_statusAndNoticesNameEachProfile() {
                      QStringLiteral("personal||%1").arg(thisVersion())}));
 }
 
+// A file of @p size bytes, each byte its index modulo a prime, in @p dir.
+QString uploadFile(const QTemporaryDir &dir, const QString &name, qint64 size) {
+  const QString path = dir.filePath(name);
+  QFile file(path);
+  if (!file.open(QIODevice::WriteOnly)) {
+    return {};
+  }
+  QByteArray bytes(static_cast<qsizetype>(size), Qt::Uninitialized);
+  for (qsizetype i = 0; i < bytes.size(); ++i) {
+    bytes[i] = static_cast<char>(i % 251);
+  }
+  file.write(bytes);
+  return QFileInfo(path).canonicalFilePath();
+}
+
+QStringList commandNames(const FakeExtension &extension) {
+  QStringList names;
+  for (const QJsonObject &command : extension.commands) {
+    names << command.value(QStringLiteral("cmd")).toString();
+  }
+  return names;
+}
+
+void BrowserBridgeRelayTests::
+    upload_goesInPiecesToThePageAndAnOlderExtensionKeepsItsBound() {
+  QTemporaryDir dir;
+  // Two and a half pieces.
+  const qint64 size = chrome_control_mcp::browser::kUploadPieceBytes * 2 + 1000;
+  const QString path = uploadFile(dir, QStringLiteral("clip.mp4"), size);
+  const QString big =
+      uploadFile(dir, QStringLiteral("long.mp4"),
+                 chrome_control_mcp::browser::kMaxUploadFileBytes + 1);
+  QVERIFY(!path.isEmpty() && !big.isEmpty());
+  const auto paths = [](const QString &file) { return QJsonArray{file}; };
+
+  // An extension that stages: pieces as uploadStage, addressed to the tab and
+  // the element the ref names, then the upload naming the file.
+  FakeExtension current;
+  current.reply_payload = QJsonObject{
+      {QStringLiteral("url"), QStringLiteral("https://example.test/")},
+      {QStringLiteral("title"), QStringLiteral("Upload")},
+      {QStringLiteral("nodes"),
+       QJsonArray{
+           QJsonObject{{QStringLiteral("backendNodeId"), 7},
+                       {QStringLiteral("role"), QStringLiteral("button")},
+                       {QStringLiteral("name"), QStringLiteral("Upload")},
+                       {QStringLiteral("interactable"), true}}}}};
+  ToolResult staged;
+  ToolResult over_cap;
+  ToolResult not_understood;
+  int before_cap = 0;
+  int after_cap = 0;
+  QVERIFY(withAttachedControl(
+      {.extension = thisVersion(), .installed = thisVersion()}, current,
+      [&](BrowserControl &control) {
+        (void)control.invoke(QStringLiteral("browser_snapshot"),
+                             {{QStringLiteral("tab_id"), 1}});
+        staged = control.invoke(QStringLiteral("browser_upload"),
+                                {{QStringLiteral("ref"), QStringLiteral("e1")},
+                                 {QStringLiteral("paths"), paths(path)}});
+        // The operator's cap: a file over it goes nowhere, and a value that
+        // is not understood falls back to 16 MiB and says so.
+        qputenv("CHROME_CONTROL_MCP_UPLOAD_MAX_MB", "1");
+        before_cap = static_cast<int>(current.commands.size());
+        over_cap = control.invoke(QStringLiteral("browser_upload"),
+                                  {{QStringLiteral("tab_id"), 1},
+                                   {QStringLiteral("paths"), paths(big)}});
+        qputenv("CHROME_CONTROL_MCP_UPLOAD_MAX_MB", "lots");
+        not_understood =
+            control.invoke(QStringLiteral("browser_upload"),
+                           {{QStringLiteral("tab_id"), 1},
+                            {QStringLiteral("paths"), paths(big)}});
+        after_cap = static_cast<int>(current.commands.size());
+        qunsetenv("CHROME_CONTROL_MCP_UPLOAD_MAX_MB");
+      }));
+  QVERIFY2(!staged.is_error, qPrintable(staged.text));
+  const QStringList names = commandNames(current);
+  QCOMPARE(
+      names.mid(names.indexOf(QStringLiteral("uploadStage")), 4),
+      (QStringList{QStringLiteral("uploadStage"), QStringLiteral("uploadStage"),
+                   QStringLiteral("uploadStage"), QStringLiteral("upload")}));
+  QByteArray rejoined;
+  int seq = 0;
+  for (const QJsonObject &command : current.commands) {
+    // No path ever leaves this side.
+    QVERIFY(!QJsonDocument(command).toJson().contains(path.toUtf8()));
+    if (command.value(QStringLiteral("cmd")).toString() !=
+        QLatin1String("uploadStage")) {
+      continue;
+    }
+    QCOMPARE(command.value(QStringLiteral("seq")).toInt(), seq++);
+    QCOMPARE(command.value(QStringLiteral("total")).toInt(), 3);
+    QCOMPARE(command.value(QStringLiteral("size")).toInteger(), size);
+    QCOMPARE(command.value(QStringLiteral("tab_id")).toInt(), 1);
+    QCOMPARE(command.value(QStringLiteral("backendNodeId")).toInt(), 7);
+    rejoined.append(QByteArray::fromBase64(
+        command.value(QStringLiteral("data")).toString().toLatin1()));
+  }
+  QCOMPARE(rejoined.size(), size);
+  QFile original(path);
+  QVERIFY(original.open(QIODevice::ReadOnly));
+  QCOMPARE(rejoined, original.readAll());
+  QVERIFY(over_cap.is_error);
+  QVERIFY2(over_cap.text.contains(QStringLiteral("at most 1048576")) &&
+               over_cap.text.contains(
+                   QStringLiteral("CHROME_CONTROL_MCP_UPLOAD_MAX_MB")),
+           qPrintable(over_cap.text));
+  QVERIFY(not_understood.is_error);
+  QVERIFY2(not_understood.text.contains(QStringLiteral("\"lots\"")) &&
+               not_understood.text.contains(QStringLiteral("16 MiB")),
+           qPrintable(not_understood.text));
+  // Refused before any piece went.
+  QCOMPARE(after_cap, before_cap);
+
+  // An extension older than 1.11.0: pieces the old way, which it holds whole,
+  // and above 16 MiB a refusal that says to reload it. The clipboard keeps the
+  // old way whatever the extension.
+  FakeExtension older;
+  ToolResult small;
+  ToolResult large;
+  ToolResult clipboard;
+  int before_large = 0;
+  int after_large = 0;
+  QVERIFY(withAttachedControl(
+      {.extension = kOlder, .installed = thisVersion()}, older,
+      [&](BrowserControl &control) {
+        small = control.invoke(QStringLiteral("browser_upload"),
+                               {{QStringLiteral("tab_id"), 1},
+                                {QStringLiteral("paths"), paths(path)}});
+        before_large = static_cast<int>(older.commands.size());
+        large = control.invoke(QStringLiteral("browser_upload"),
+                               {{QStringLiteral("tab_id"), 1},
+                                {QStringLiteral("paths"), paths(big)}});
+        after_large = static_cast<int>(older.commands.size());
+      }));
+  QVERIFY2(!small.is_error, qPrintable(small.text));
+  QVERIFY(commandNames(older).contains(QStringLiteral("uploadChunk")));
+  QVERIFY(!commandNames(older).contains(QStringLiteral("uploadStage")));
+  QVERIFY(large.is_error);
+  QVERIFY2(large.text.contains(kOlder) &&
+               large.text.contains(QStringLiteral("reload Chrome Control MCP")),
+           qPrintable(large.text));
+  QCOMPARE(after_large, before_large);
+
+  FakeExtension clipboard_extension;
+  QVERIFY(withAttachedControl(
+      {.extension = thisVersion(), .installed = thisVersion()},
+      clipboard_extension, [&](BrowserControl &control) {
+        clipboard =
+            control.invoke(QStringLiteral("browser_clipboard"),
+                           {{QStringLiteral("tab_id"), 1},
+                            {QStringLiteral("action"), QStringLiteral("write")},
+                            {QStringLiteral("paths"), paths(path)}});
+      }));
+  QVERIFY2(!clipboard.is_error, qPrintable(clipboard.text));
+  QVERIFY(commandNames(clipboard_extension)
+              .contains(QStringLiteral("uploadChunk")));
+  QVERIFY(!commandNames(clipboard_extension)
+               .contains(QStringLiteral("uploadStage")));
+}
+
 void BrowserBridgeRelayTests::
     profiles_oldestWinsATieAndAnOlderExtensionIsUnnamed() {
   // No window of either has ever had focus: the oldest connection, the first
@@ -1636,6 +1803,29 @@ void BrowserBridgeRelayTests::browserPresence_peekDoesNotConsume() {
 
 void BrowserBridgeRelayTests::browserPresence_invalidInputIsClosed() {
   QVERIFY(browserInputClosed(kInvalidNativeIpcHandle));
+}
+
+// A single look can call a busy pipe closed: the pump drains it between the
+// look finding it readable and asking how many bytes wait. Ending the relay on
+// that killed live sessions mid-upload, so a look has to repeat.
+void BrowserBridgeRelayTests::browserPresence_oneClosedLookEndsNothing() {
+  chrome_control_mcp::BrowserExitConfirmation confirmation;
+  // A misread between ordinary looks ends nothing, and is forgotten.
+  QVERIFY(!confirmation.observe(false));
+  QVERIFY(!confirmation.observe(true));
+  QVERIFY(!confirmation.observe(false));
+  for (int look = 1; look < chrome_control_mcp::kBrowserExitConfirmPolls;
+       ++look) {
+    QVERIFY(!confirmation.observe(true));
+  }
+  QVERIFY(!confirmation.observe(false));
+  // A pipe that stays closed is believed, after the looks it takes.
+  for (int look = 1; look < chrome_control_mcp::kBrowserExitConfirmPolls;
+       ++look) {
+    QVERIFY(!confirmation.observe(true));
+  }
+  QVERIFY(confirmation.observe(true));
+  QVERIFY(chrome_control_mcp::kBrowserExitConfirmPolls >= 2);
 }
 
 // -- Which servers the extension is told about -------------------------------

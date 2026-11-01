@@ -38,9 +38,9 @@
 
 | Version                                                                            | Released   | What changed                                                                                                                                                                                                                                                                                                                           |
 | ---------------------------------------------------------------------------------- | ---------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [1.11.0](https://github.com/RandyNorthrup/chrome-control-mcp/releases/tag/v1.11.0) | 2026-11-01 | **Large uploads.** `browser_upload` carries files up to 2 GiB -- a channel's long videos, not just documents -- straight from disk into the page a piece at a time. Set `CHROME_CONTROL_MCP_UPLOAD_MAX_MB` to change the bound.                                                                                                        |
 | [1.10.0](https://github.com/RandyNorthrup/chrome-control-mcp/releases/tag/v1.10.0) | 2026-11-01 | **Chrome profiles, chosen per call.** One server serves every profile you load the extension in -- work, personal, each person's. An agent opens its tab in the one it names, or the one you used last, and every call follows its tab; listings say which profile each tab is in.                                                     |
 | [1.9.0](https://github.com/RandyNorthrup/chrome-control-mcp/releases/tag/v1.9.0)   | 2026-10-31 | **A clipboard for every agent.** Copy, cut and paste -- by key, with `browser_clipboard`, or through a page's own copy buttons -- use the agent's own clipboard. Never yours, never another agent's. And when Chrome is still running an older extension, your agent is told what to do, and from now on the extension updates itself. |
-| [1.8.2](https://github.com/RandyNorthrup/chrome-control-mcp/releases/tag/v1.8.2)   | 2026-10-31 | **browser_release closes everything an agent opened.** Popups its clicks opened go with the tab, and a tab Chrome refuses to close is handed back and listed in `not_closed`, never reported closed.                                                                                                                                   |
 
 Every release, with the day it shipped and what it changed, is in [CHANGELOG.md](CHANGELOG.md); each
 release page has its downloads. To hear about new ones, use **Watch → Custom → Releases** on this
@@ -283,7 +283,8 @@ Full browser control is powerful, so the boundaries are explicit:
   credentials.
 - Stale element refs and screenshot coordinates are refused rather than retargeted, and payloads
   are bounded throughout.
-- File uploads are read by the server, never by the page, and can be confined with
+- File uploads are read by the server, never by the page, up to 2 GiB a file unless
+  `CHROME_CONTROL_MCP_UPLOAD_MAX_MB` says otherwise, and can be confined with
   `CHROME_CONTROL_MCP_UPLOAD_ROOTS`.
 
 For inspection-only use:

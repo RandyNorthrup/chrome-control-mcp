@@ -6,25 +6,41 @@ means the command ran and succeeded; a gate that did not run, or runs only in pa
 
 ## Gates
 
-| Gate                  | Tool and configuration                                                                                                                                                                                                        | Runs in                                         |
-| --------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------- |
-| Formatting            | clang-format 19.1.7 (`--dry-run --Werror`); Prettier 3.9.6 over JavaScript, JSON, Markdown and YAML; pre-commit hygiene hooks                                                                                                 | pre-commit, CI quality job                      |
-| JavaScript lint       | ESLint 10.8.1, `--max-warnings=0`                                                                                                                                                                                             | pre-commit, CI quality job                      |
-| VS Code extension     | TypeScript under strict compiler settings, type-checked (`npm run lint --prefix vscode`)                                                                                                                                      | CI quality job                                  |
-| PowerShell            | PSScriptAnalyzer 1.24.0, `PSScriptAnalyzerSettings.psd1`, one worker process per tracked script                                                                                                                               | CI on Windows; `npm run lint:powershell`        |
-| Native compile        | C++20; MSVC `/W4 /WX /permissive-`; GCC and Clang `-Wall -Wextra -Wpedantic -Wconversion -Wsign-conversion -Werror`                                                                                                           | every build                                     |
-| Native analysis       | clang-tidy (analyzer, bugprone, CERT, concurrency, core-guidelines, misc, performance, portability; warnings as errors); cppcheck `--enable=all --inconclusive --check-level=exhaustive`                                      | CI static-analysis job                          |
-| Semantic analysis     | Semgrep 1.174.0, `--config auto --error`                                                                                                                                                                                      | CI static-analysis job                          |
-| Secret scan           | Gitleaks 8.30.1 over the full history                                                                                                                                                                                         | pre-commit, CI quality job                      |
-| Dependency audit      | `npm audit --audit-level=low`, root and `vscode/`                                                                                                                                                                             | CI quality job                                  |
-| Unit and integration  | ctest: 25 suites on Windows, 24 elsewhere, every JavaScript suite among them; `npm run test:js`: the 12 JavaScript files that need no built server                                                                            | ctest in CI on three platforms; `test:js` local |
-| Sanitizers            | ASan + UBSan and TSan, separate Linux GCC Debug builds, no suppressions                                                                                                                                                       | CI                                              |
-| Packaged-server smoke | `scripts/mcp_smoke.mjs`, full and read-only profiles, tool counts pinned                                                                                                                                                      | CI after every native build; release workflow   |
-| Live browser          | display matrix, full browser E2E, user interference, multi-agent, per-agent clipboard, extension version (three cases), Chrome profiles (two profiles on Linux, the update on all three), in Chrome for Testing 153.0.8010.52 | CI on three platforms                           |
+| Gate                  | Tool and configuration                                                                                                                                                                                                                       | Runs in                                                                     |
+| --------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------- |
+| Formatting            | clang-format 19.1.7 (`--dry-run --Werror`); Prettier 3.9.6 over JavaScript, JSON, Markdown and YAML; pre-commit hygiene hooks                                                                                                                | pre-commit, CI quality job                                                  |
+| JavaScript lint       | ESLint 10.8.1, `--max-warnings=0`                                                                                                                                                                                                            | pre-commit, CI quality job                                                  |
+| VS Code extension     | TypeScript under strict compiler settings, type-checked (`npm run lint --prefix vscode`)                                                                                                                                                     | CI quality job                                                              |
+| PowerShell            | PSScriptAnalyzer 1.24.0, `PSScriptAnalyzerSettings.psd1`, one worker process per tracked script                                                                                                                                              | CI on Windows; `npm run lint:powershell`                                    |
+| Native compile        | C++20; MSVC `/W4 /WX /permissive-`; GCC and Clang `-Wall -Wextra -Wpedantic -Wconversion -Wsign-conversion -Werror`                                                                                                                          | every build                                                                 |
+| Native analysis       | clang-tidy (analyzer, bugprone, CERT, concurrency, core-guidelines, misc, performance, portability; warnings as errors); cppcheck `--enable=all --inconclusive --check-level=exhaustive`                                                     | CI static-analysis job                                                      |
+| Semantic analysis     | Semgrep 1.174.0, `--config auto --error`                                                                                                                                                                                                     | CI static-analysis job                                                      |
+| Secret scan           | Gitleaks 8.30.1 over the full history                                                                                                                                                                                                        | pre-commit, CI quality job                                                  |
+| Dependency audit      | `npm audit --audit-level=low`, root and `vscode/`                                                                                                                                                                                            | CI quality job                                                              |
+| Unit and integration  | ctest: 26 suites on Windows, 25 elsewhere, every JavaScript suite among them; `npm run test:js`: the 13 JavaScript files that need no built server                                                                                           | ctest in CI on three platforms; `test:js` local                             |
+| Sanitizers            | ASan + UBSan and TSan, separate Linux GCC Debug builds, no suppressions                                                                                                                                                                      | CI                                                                          |
+| Packaged-server smoke | `scripts/mcp_smoke.mjs`, full and read-only profiles, tool counts pinned                                                                                                                                                                     | CI after every native build; release workflow                               |
+| Live browser          | display matrix, full browser E2E, user interference, multi-agent, per-agent clipboard, extension version (three cases), Chrome profiles (two profiles on Linux, the update on all three), large uploads, in Chrome for Testing 153.0.8010.52 | release workflow on three platforms, before publishing; locally per feature |
 
-The Quality workflow runs on every push. The release workflow, on a version tag, builds the four
-archives, runs ctest and the smoke test on each, and refuses a tag whose version does not match the
-project's ([RELEASES.md](RELEASES.md)).
+The gates run in three tiers (2026-11-01):
+
+- **Every push** (the Quality workflow, about five minutes): formatting, lint and secret scan, the
+  dependency audit, PowerShell and native and semantic analysis, builds with ctest and the smoke
+  test on Windows, Linux and macOS, and both sanitizers. A push that changes only Markdown and
+  `docs/` runs the formatting, lint and secret scan and the checks that read those documents
+  (`test_release_versions`, `test_vscode_payload`); nothing is built. A newer push to the same
+  branch cancels the run it replaces.
+- **Every release** (the release workflow, on a version tag): the four archives, each built and
+  tested and smoke-tested, and the live browser suites on all three platforms (`live.yml`). Nothing
+  is published until all of them pass. The live suites can also be started by hand from the Actions
+  tab.
+- **Every feature, locally**: the live suites, red drills and the evidence ledger in
+  [plans/](plans/), on Windows and in the WSL mirror of the Linux jobs, before the work is committed.
+  macOS is covered only by CI, per push for builds and tests and per release for the live suites.
+
+The live suites drive a real Chrome and take ten to twenty minutes a platform, most of it the
+display matrix; they prove what a release ships, which is where they gate. The release workflow
+also refuses a tag whose version does not match the project's ([RELEASES.md](RELEASES.md)).
 
 ## Status, 2026-11-01
 
@@ -36,11 +52,11 @@ project's ([RELEASES.md](RELEASES.md)).
 | Native compile, warnings as errors | Pass   | MSVC, GCC and Clang, locally and in CI                                                        |
 | clang-tidy, exhaustive cppcheck    | Pass   | CI on `fce2acb`                                                                               |
 | Semgrep                            | Pass   | CI on `fce2acb`: 221 rules, 53 files, 0 findings under Python 3.12; crashed under 3.15 before |
-| ctest                              | Pass   | 25/25 Windows, 24/24 Linux, locally                                                           |
-| JavaScript suites                  | Pass   | 217/217 under `npm run test:js`; every one of them also runs in ctest                         |
+| ctest                              | Pass   | 26/26 Windows, 25/25 Linux, locally                                                           |
+| JavaScript suites                  | Pass   | 227/227 under `npm run test:js`; every one of them also runs in ctest                         |
 | Sanitizers                         | Pass   | ASan + UBSan and TSan, 21/21 each, in CI on `fce2acb`                                         |
 | Live browser suites                | Pass   | CI on three platforms on `fce2acb`; Chrome for Testing 153 on Linux locally                   |
-| CHANGELOG updated                  | Pass   | `CHANGELOG.md` `[1.10.0]`                                                                     |
+| CHANGELOG updated                  | Pass   | `CHANGELOG.md` `[1.11.0]`                                                                     |
 
 Not covered by this table: Chrome for Testing intermittently stalls in one Windows display-matrix
 configuration, met once in CI and once in six local runs; see

@@ -1,0 +1,7 @@
+case: current (extension 1.11.0, installed 1.11.0, server 1.11.0)
+PASS the relay reports the installed version, this build's
+PASS an extension of the server's own version is not mentioned
+PASS the first reply is the reply alone, with no notice
+PASS and the bridge works
+PASS the extension does not reload itself for its own version
+PASS releasing works

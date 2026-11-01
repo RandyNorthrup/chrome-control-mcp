@@ -2258,6 +2258,9 @@ const COMMAND_TABLE = new Map([
       args: true,
     },
   ],
+  // A piece of a file the page will hold: given the tab, which it must hold, because the bytes go
+  // into that page (1.11.0).
+  ["uploadStage", { fn: handleUploadStage, tab: true, args: true }],
   ["upload", { fn: handleUpload, tab: true, args: true }],
   ["clipboard", { fn: handleClipboard, tab: true, args: true }],
   ["release", { fn: handleRelease, tab: false, args: true }],
@@ -2292,7 +2295,11 @@ async function dispatchCommand(session, cmd, args) {
   // later dialog. The arming command itself ("dialog") is excluded so it can set the policy.
   // Capture the exact policy object and clear only if it is STILL that object -- so a fresh arm
   // placed by a later command is never clobbered, only the one scoped here.
-  const scopedPolicy = tab && cmd !== "dialog" ? tab.pendingDialogPolicy : null;
+  // An upload's pieces are not that command either: they arrive between the arming and the click.
+  const scopedPolicy =
+    tab && cmd !== "dialog" && cmd !== "uploadStage"
+      ? tab.pendingDialogPolicy
+      : null;
   // Expose the arm to the dialog handler only for the duration of this dispatch, so a dialog the
   // page fires on its own schedule (between tool calls) cannot consume it.
   if (scopedPolicy !== null) {
@@ -5080,6 +5087,12 @@ function releaseTabState(session, state) {
   // makes the server retire this tab's refs rather than hold refs that now name nodes in another
   // renderer.
   state.domEpoch++;
+  // A file staged in this page went with it; what the worker holds for other uploads stays.
+  for (const [id, entry] of session.uploadChunks) {
+    if (entry && entry.staged && entry.tabId === state.id) {
+      session.uploadChunks.delete(id);
+    }
+  }
   state.lastSnapshotEpoch = null; // and its DOM generation no longer names a live document
   state.lastShot = null; // and any screenshot coordinates are against a dead render
   state.pendingDialogPolicy = null; // an armed dialog response does not carry across attachments
@@ -8746,12 +8759,45 @@ async function handleReveal(session, tabId, args) {
 const MAX_UPLOAD_BASE64 = 24 * 1024 * 1024;
 const MAX_UPLOAD_CHUNKS = 64;
 const MAX_UPLOADS_IN_FLIGHT = 8;
+// A browser_upload's pieces go straight into the page as they arrive (1.11.0, uploadStage), so the
+// worker holds only a count. These bound what one upload may claim, whatever the app says: the
+// file's size, and one piece -- what one bridge message carries.
+const MAX_STAGED_UPLOAD_BYTES = 8 * 1024 * 1024 * 1024;
+const MAX_STAGE_PIECE_BASE64 = 512 * 1024;
+// How much the page gathers before folding it into a Blob, which Chrome keeps outside the page's
+// heap and spills to disk when large: a large file never sits in the page as arrays of bytes.
+const STAGE_FOLD_BYTES = 8 * 1024 * 1024;
+// Names each staged upload's own DevTools object group: the handles a command resolves are
+// released when it ends (runCommand), and a staged file has to outlive the piece that began it.
+let stagedUploadCount = 0;
 
 // Drop every buffered chunk. Called when the session ends, the bridge drops, or CDP detaches: a
 // half-delivered file belongs to a session that no longer exists, and keeping it would carry the
 // user's bytes into the next one.
 function clearUploads(session) {
+  for (const entry of session.uploadChunks.values()) {
+    releaseStagedUpload(entry);
+  }
   session.uploadChunks.clear();
+}
+
+// Let the page drop a staged file's bytes. Fire-and-forget: it runs on teardown paths, and a page
+// that has navigated or detached dropped them already.
+function releaseStagedUpload(entry) {
+  if (!entry || !entry.staged) {
+    return;
+  }
+  void sendCdp(entry.tabId, "Runtime.releaseObjectGroup", {
+    objectGroup: entry.group,
+  }).catch(() => {});
+}
+
+// Drop the uploads a call named, wherever their bytes are: the call is over either way.
+function forgetUploads(session, files) {
+  for (const file of files) {
+    releaseStagedUpload(session.uploadChunks.get(file.upload_id));
+    session.uploadChunks.delete(file.upload_id);
+  }
 }
 
 // One piece of a file. Pieces may arrive in any order; sequence numbers put them back together,
@@ -8791,6 +8837,190 @@ async function handleUploadChunk(session, args) {
   entry.pieces.set(seq, data);
   entry.bytes = nextBytes;
   return { ok: true, received: entry.pieces.size, total: entry.total };
+}
+
+// How many bytes a piece of base64 carries, or -1 when it is not base64 a page could decode.
+function base64ByteLength(data) {
+  if (data.length % 4 !== 0 || !/^[A-Za-z0-9+/]*={0,2}$/.test(data)) {
+    return -1;
+  }
+  const padding = data.endsWith("==") ? 2 : data.endsWith("=") ? 1 : 0;
+  return (data.length / 4) * 3 - padding;
+}
+
+// Runs in the page, on the staged object: decode one piece, and fold what has gathered into the
+// Blob once there is enough of it. Closes over nothing.
+function stageAppendFn(piece, foldBytes) {
+  const binary = atob(piece);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i += 1) {
+    bytes[i] = binary.charCodeAt(i);
+  }
+  this.pending.push(bytes);
+  this.pendingBytes += bytes.length;
+  this.bytes += bytes.length;
+  if (this.pendingBytes >= foldBytes) {
+    this.blob = new Blob([this.blob, ...this.pending]);
+    this.pending = [];
+    this.pendingBytes = 0;
+  }
+  return this.bytes;
+}
+
+// Make the object a file's pieces gather in, in the realm of what the file is for -- the element a
+// ref names, the input of the picker the page opened, or the window that called
+// showOpenFilePicker -- because the final assignment runs on that very object and DevTools passes
+// objects only within one realm. It is reachable only through this extension's DevTools handle:
+// no page script holds a reference to it.
+async function beginStagedUpload(session, tabId, args, total, size) {
+  await ensureAttached(session, tabId);
+  const tab = tabStateOf(session, tabId);
+  stagedUploadCount += 1;
+  const group = "ccmcp-upload-" + stagedUploadCount;
+  const chooser = tab.fileChooser;
+  let anchor;
+  if (Number.isInteger(args.backendNodeId)) {
+    const resolved = await sendCdp(tabId, "DOM.resolveNode", {
+      backendNodeId: args.backendNodeId,
+      objectGroup: group,
+    });
+    anchor = resolved && resolved.object && resolved.object.objectId;
+  } else if (chooser && chooser.kind === "picker") {
+    const windowObject = await sendCdp(tabId, "Runtime.evaluate", {
+      expression: "window",
+      objectGroup: group,
+    });
+    anchor =
+      windowObject && windowObject.result && windowObject.result.objectId;
+  } else if (chooser && Number.isInteger(chooser.backendNodeId)) {
+    const resolved = await sendCdp(tabId, "DOM.resolveNode", {
+      backendNodeId: chooser.backendNodeId,
+      objectGroup: group,
+    });
+    anchor = resolved && resolved.object && resolved.object.objectId;
+  } else {
+    throw new Error(
+      "browser_upload needs a ref, or a file picker the page has opened -- and none is open on " +
+        "tab " +
+        tabId +
+        ". Click the page's upload control first (no dialog will appear), or pass the ref of the " +
+        "file input or drop zone.",
+    );
+  }
+  if (!anchor) {
+    throw new Error("Could not resolve the element; take a fresh snapshot.");
+  }
+  const created = await sendCdp(tabId, "Runtime.callFunctionOn", {
+    objectId: anchor,
+    functionDeclaration:
+      "function () { return { blob: new Blob([]), pending: [], pendingBytes: 0, bytes: 0 }; }",
+    returnByValue: false,
+    objectGroup: group,
+  });
+  const objectId = created && created.result && created.result.objectId;
+  const entry = {
+    staged: true,
+    tabId,
+    group,
+    objectId,
+    total,
+    size,
+    next: 0,
+    bytes: 0,
+  };
+  if (!objectId) {
+    releaseStagedUpload(entry);
+    throw new Error("The page could not take the file; nothing was assigned.");
+  }
+  return entry;
+}
+
+// One piece of a file the page will hold (browser_upload, 1.11.0). Pieces come in order, each is
+// handed to the page at once, and the worker keeps a count -- so a file is never whole here, and
+// its size is bounded by the page and the disk rather than by this worker. A piece that breaks the
+// order or the bounds ends the upload: what the page gathered is released, and nothing is assigned.
+async function handleUploadStage(session, tabId, args) {
+  const id = typeof args.upload_id === "string" ? args.upload_id : "";
+  const seq = Number(args.seq);
+  const total = Number(args.total);
+  const size = Number(args.size);
+  const data = typeof args.data === "string" ? args.data : "";
+  if (
+    !id ||
+    !Number.isInteger(seq) ||
+    !Number.isInteger(total) ||
+    total < 1 ||
+    !Number.isSafeInteger(size) ||
+    size < 0
+  ) {
+    throw new Error("An upload piece needs upload_id, seq, total, and size.");
+  }
+  if (size > MAX_STAGED_UPLOAD_BYTES) {
+    throw new Error(
+      "The file is larger than this extension delivers (" +
+        MAX_STAGED_UPLOAD_BYTES / (1024 * 1024 * 1024) +
+        " GiB).",
+    );
+  }
+  if (data.length > MAX_STAGE_PIECE_BASE64) {
+    throw new Error("An upload piece is larger than one bridge message.");
+  }
+  if (seq < 0 || seq >= total) {
+    throw new Error("The upload piece is out of range.");
+  }
+  const bytes = base64ByteLength(data);
+  if (bytes < 0) {
+    throw new Error("The upload piece is not base64.");
+  }
+  let entry = session.uploadChunks.get(id);
+  if (!entry && seq === 0) {
+    if (session.uploadChunks.size >= MAX_UPLOADS_IN_FLIGHT) {
+      throw new Error("Too many uploads are in flight.");
+    }
+    entry = await beginStagedUpload(session, tabId, args, total, size);
+    session.uploadChunks.set(id, entry);
+  }
+  const outOfOrder = new Error(
+    "The upload's pieces arrived out of order; nothing was assigned. Send it again.",
+  );
+  if (!entry || !entry.staged) {
+    throw outOfOrder;
+  }
+  if (entry.tabId !== tabId || entry.total !== total || entry.size !== size) {
+    forgetUploads(session, [{ upload_id: id }]);
+    throw new Error(
+      "The upload's pieces disagree about their tab or file; nothing was assigned.",
+    );
+  }
+  if (seq !== entry.next) {
+    forgetUploads(session, [{ upload_id: id }]);
+    throw outOfOrder;
+  }
+  if (entry.bytes + bytes > entry.size) {
+    forgetUploads(session, [{ upload_id: id }]);
+    throw new Error(
+      "The upload's pieces carry more than the file's size; nothing was assigned.",
+    );
+  }
+  try {
+    await sendCdp(tabId, "Runtime.callFunctionOn", {
+      objectId: entry.objectId,
+      functionDeclaration: String(stageAppendFn),
+      arguments: [{ value: data }, { value: STAGE_FOLD_BYTES }],
+      returnByValue: true,
+    });
+  } catch (error) {
+    forgetUploads(session, [{ upload_id: id }]);
+    throw new Error(
+      "The page changed while the file was being delivered (" +
+        (error && error.message ? error.message : String(error)) +
+        "); nothing was assigned. Send the upload again.",
+      { cause: error },
+    );
+  }
+  entry.next += 1;
+  entry.bytes += bytes;
+  return { ok: true, received: entry.next, total: entry.total };
 }
 
 // Put an upload back together, or say it cannot be. Returns null when a piece never arrived,
@@ -8916,38 +9146,49 @@ async function handleUpload(session, tabId, args) {
   if (!files.length) {
     throw new Error("browser_upload needs at least one file.");
   }
+  // Each file is either staged in the page (uploadStage), passed by its handle, or held here in
+  // pieces (uploadChunk, from an app older than 1.11.0), passed as base64.
   const payload = [];
+  const stages = [];
   for (const file of files) {
+    const name = typeof file.name === "string" ? file.name : "file";
+    const mime = typeof file.mime === "string" ? file.mime : "";
+    const entry = session.uploadChunks.get(file.upload_id);
+    if (entry && entry.staged) {
+      if (
+        entry.tabId !== tabId ||
+        entry.next !== entry.total ||
+        entry.bytes !== entry.size
+      ) {
+        forgetUploads(session, files);
+        throw new Error(
+          "The file did not arrive whole; nothing was assigned. Send the upload again.",
+        );
+      }
+      payload.push({ stage: stages.length, name, mime, size: entry.size });
+      stages.push(entry.objectId);
+      continue;
+    }
     const data = assembleUpload(session, file.upload_id);
     if (data === null) {
-      for (const entry of files) {
-        session.uploadChunks.delete(entry.upload_id);
-      }
+      forgetUploads(session, files);
       throw new Error(
         "The file did not arrive whole; nothing was assigned. Send the upload again.",
       );
     }
-    payload.push({
-      data,
-      name: typeof file.name === "string" ? file.name : "file",
-      mime: typeof file.mime === "string" ? file.mime : "",
-    });
+    payload.push({ data, name, mime });
   }
   const backendNodeId = chooser ? chooser.backendNodeId : args.backendNodeId;
   if (chooser && chooser.kind === "picker") {
     try {
-      return await answerFilePicker(tabId, payload);
+      return await answerFilePicker(tabId, payload, stages);
     } finally {
       tab.fileChooser = null;
-      for (const file of files) {
-        session.uploadChunks.delete(file.upload_id);
-      }
+      forgetUploads(session, files);
     }
   }
   if (chooser && files.length > 1 && !chooser.multiple) {
-    for (const file of files) {
-      session.uploadChunks.delete(file.upload_id);
-    }
+    forgetUploads(session, files);
     throw new Error(
       "The page's file picker takes one file; it was given " +
         files.length +
@@ -8964,17 +9205,23 @@ async function handleUpload(session, tabId, args) {
   // Runs in the page: the File and the DataTransfer are the page's own, which is why this works
   // where the protocol's own file API does not. The resolver's source is inlined into the
   // declaration rather than duplicated, so the page runs the very function the tests exercise.
-  const assignFn = function (delivered) {
+  const assignFn = function (delivered, ...staged) {
     const transfer = new DataTransfer();
     for (const item of delivered) {
-      const binary = atob(item.data);
-      const bytes = new Uint8Array(binary.length);
-      for (let i = 0; i < binary.length; i += 1) {
-        bytes[i] = binary.charCodeAt(i);
+      let content;
+      if (typeof item.stage === "number") {
+        const stage = staged[item.stage];
+        content = new Blob([stage.blob, ...stage.pending]);
+      } else {
+        const binary = atob(item.data);
+        content = new Uint8Array(binary.length);
+        for (let i = 0; i < binary.length; i += 1) {
+          content[i] = binary.charCodeAt(i);
+        }
       }
       transfer.items.add(
         new File(
-          [bytes],
+          [content],
           item.name,
           item.mime ? { type: item.mime } : undefined,
         ),
@@ -9052,16 +9299,17 @@ async function handleUpload(session, tabId, args) {
     result = await sendCdp(tabId, "Runtime.callFunctionOn", {
       objectId,
       functionDeclaration: declaration,
-      arguments: [{ value: payload }],
+      arguments: [
+        { value: payload },
+        ...stages.map((handle) => ({ objectId: handle })),
+      ],
       returnByValue: true,
       objectGroup: CDP_OBJECT_GROUP,
     });
   } finally {
     // The bytes have served their purpose either way, and holding them past the call keeps the
-    // user's file in a worker for no reason.
-    for (const file of files) {
-      session.uploadChunks.delete(file.upload_id);
-    }
+    // user's file in a worker -- or a page -- for no reason.
+    forgetUploads(session, files);
   }
   const value = result && result.result && result.result.value;
   if (!value || !value.ok) {
@@ -9087,7 +9335,7 @@ async function handleUpload(session, tabId, args) {
 
 // Answer a File System Access picker the page is waiting on (see filePickerShimScript) with the
 // agent's files, as handles the page reads them through. Runs in the page; closes over nothing.
-async function answerFilePicker(tabId, payload) {
+async function answerFilePicker(tabId, payload, stages = []) {
   const windowObject = await sendCdp(tabId, "Runtime.evaluate", {
     expression: "window",
     objectGroup: CDP_OBJECT_GROUP,
@@ -9097,7 +9345,7 @@ async function answerFilePicker(tabId, payload) {
   if (!objectId) {
     throw new Error("The page could not be reached to answer its file picker.");
   }
-  const answerFn = function (delivered, stateKey) {
+  const answerFn = function (delivered, stateKey, ...staged) {
     const state = this[stateKey];
     if (!state || !state.pending) {
       return {
@@ -9111,13 +9359,19 @@ async function answerFilePicker(tabId, payload) {
       return { ok: false, error: "the page's file picker takes one file" };
     }
     const handles = delivered.map((item) => {
-      const binary = atob(item.data);
-      const bytes = new Uint8Array(binary.length);
-      for (let i = 0; i < binary.length; i += 1) {
-        bytes[i] = binary.charCodeAt(i);
+      let content;
+      if (typeof item.stage === "number") {
+        const stage = staged[item.stage];
+        content = new Blob([stage.blob, ...stage.pending]);
+      } else {
+        const binary = atob(item.data);
+        content = new Uint8Array(binary.length);
+        for (let i = 0; i < binary.length; i += 1) {
+          content[i] = binary.charCodeAt(i);
+        }
       }
       const file = new File(
-        [bytes],
+        [content],
         item.name,
         item.mime ? { type: item.mime } : undefined,
       );
@@ -9143,7 +9397,11 @@ async function answerFilePicker(tabId, payload) {
       ok: true,
       files: delivered.map((item, i) => ({
         name: item.name,
-        size: handles[i] ? atob(item.data).length : 0,
+        size: !handles[i]
+          ? 0
+          : typeof item.stage === "number"
+            ? item.size
+            : atob(item.data).length,
         type: item.mime || "",
       })),
     };
@@ -9151,7 +9409,11 @@ async function answerFilePicker(tabId, payload) {
   const result = await sendCdp(tabId, "Runtime.callFunctionOn", {
     objectId,
     functionDeclaration: String(answerFn),
-    arguments: [{ value: payload }, { value: PICKER_STATE_KEY }],
+    arguments: [
+      { value: payload },
+      { value: PICKER_STATE_KEY },
+      ...stages.map((handle) => ({ objectId: handle })),
+    ],
     returnByValue: true,
     objectGroup: CDP_OBJECT_GROUP,
   });
@@ -10105,7 +10367,9 @@ function waitForComplete(tabId, priorUrl) {
 async function handleNavigate(_session, tabId, args) {
   const url = normalizeUrl(args && args.url);
   if (!url) {
-    throw new Error("navigate requires an http(s) URL.");
+    throw new Error(
+      "navigate takes an http(s) URL; javascript:, data: and file: URLs are refused.",
+    );
   }
   // Read the outgoing document before asking for the new one, so the wait can tell "the new page
   // is already up" from "the old page is still up because the navigation has not started".

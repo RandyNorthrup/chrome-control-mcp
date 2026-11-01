@@ -1,0 +1,31 @@
+green before: exit 0, ℹ pass 10
+== EV-UPL-RED-WORKER-HOLDS: the worker keeps each piece it passes on
+file: browser/extension/background.js
+mutated sha256: c36688fe5f9f8aad89beeae28640934543a0b263d651272defb3a9795682cd3c
+mutated exit 1; failing: a file's pieces go straight into the page, and the worker keeps only a count; a file's pieces go straight into the page, and the worker keeps only a count
+expected_failure_seen: true
+restored exit 0; bytes identical (04ebe967c7a886e4a453f3cb379b3ab1256ad0647e736d1611f52cd2660a80a8)
+== EV-UPL-RED-ORDER: a piece out of order is taken
+file: browser/extension/background.js
+mutated sha256: e90bc5cac744527f47a87a850c7751ca5f12ab7a73522ec2f425ba8b3d6d66ed
+mutated exit 1; failing: pieces out of order, oversized, not base64, or past the file's size are refused; pieces out of order, oversized, not base64, or past the file's size are refused
+expected_failure_seen: true
+restored exit 0; bytes identical (04ebe967c7a886e4a453f3cb379b3ab1256ad0647e736d1611f52cd2660a80a8)
+== EV-UPL-RED-DETACH: a staged file outlives its tab's attachment
+file: browser/extension/background.js
+mutated sha256: 10cf592213ff530f077052f57eb4ea456f4e0604585145d95e10bc148c82381f
+mutated exit 1; failing: a staged file goes with its tab's attachment, and a worker-held one stays; a staged file goes with its tab's attachment, and a worker-held one stays
+expected_failure_seen: true
+restored exit 0; bytes identical (04ebe967c7a886e4a453f3cb379b3ab1256ad0647e736d1611f52cd2660a80a8)
+== EV-UPL-RED-PICKER: a showOpenFilePicker's file is not staged in its window
+file: browser/extension/background.js
+mutated sha256: 2e317ea19f635b04e25be0165e66fb2b77329d8679c6597f03da520c5be2f49c
+mutated exit 1; failing: a picker the page opened takes staged files through its window; a picker the page opened takes staged files through its window
+expected_failure_seen: true
+restored exit 0; bytes identical (04ebe967c7a886e4a453f3cb379b3ab1256ad0647e736d1611f52cd2660a80a8)
+== EV-UPL-RED-DIALOG: an upload's pieces cancel an armed dialog answer
+file: browser/extension/background.js
+mutated sha256: 450a1292cd2aca736f098e57b32273390c1b4270bb59740b3631d785de079a2d
+mutated exit 1; failing: an armed dialog answer survives an upload's pieces; an armed dialog answer survives an upload's pieces
+expected_failure_seen: true
+restored exit 0; bytes identical (04ebe967c7a886e4a453f3cb379b3ab1256ad0647e736d1611f52cd2660a80a8)
