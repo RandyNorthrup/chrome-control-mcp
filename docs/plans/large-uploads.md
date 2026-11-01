@@ -514,8 +514,11 @@ the fast gates, and a push of documents alone builds nothing.
           "action": "modify"
         }
       ],
-      "status": "implemented",
-      "evidence": [],
+      "status": "verified",
+      "evidence": [
+        "EV-CI-PUSH",
+        "EV-CI-RELEASE"
+      ],
       "blocker": null,
       "superseded_by": null
     }
@@ -3003,6 +3006,59 @@ the fast gates, and a push of documents alone builds nothing.
       "artifact": {
         "path": "docs/plans/evidence/uploads/ci-release.json",
         "sha256": "8187ccc9a69bc955da9fc1c1e18e1307adf263cb6be90c3910d57242cf787431"
+      },
+      "red": null,
+      "reason": null,
+      "scope_sha256": "d5c483e4c45658be5312a57086e2278be120c20162f4c4bcd20e502ef1752cb6",
+      "environment": {
+        "platform": "windows",
+        "tools": {
+          "chrome-for-testing": "153.0.8010.52",
+          "cmake": "4.4.5",
+          "node": "v24.20.0",
+          "python": "3.14.10",
+          "wsl2-arch-cmake": "4.4.3",
+          "wsl2-arch-node": "v26.9.0",
+          "wsl2-arch-python": "3.12.16",
+          "wsl2-arch-semgrep": "1.174.0"
+        }
+      },
+      "inputs": [
+        {
+          "path": ".github/workflows/live.yml",
+          "sha256": "fb752bc95fb1205076e685eeec9fbfd32ad6dd4627bb6ae3cbe05e51854b7f84"
+        },
+        {
+          "path": ".github/workflows/quality.yml",
+          "sha256": "d48fb5ff2efb3687a325265543558d27af25ec2056e87f6c7e95ee2515c12346"
+        },
+        {
+          "path": ".github/workflows/release.yml",
+          "sha256": "eddc667c69cdf5ae29537693065ecf1d40e9c2f100b5cb7d78bc91e0f4d5c1b3"
+        },
+        {
+          "path": "docs/QUALITY.md",
+          "sha256": "fdf4f79a8ccc117d785627d668a8cd1fb0e00f354b5bd9ee63bd8b95f547d4fb"
+        },
+        {
+          "path": "docs/RELEASES.md",
+          "sha256": "a3e2cd2c84d1c3fe765ba3355250f3aa2d9167d98a05a9cc1ac3f50d3d246d32"
+        }
+      ]
+    },
+    {
+      "id": "EV-CI-PUSH",
+      "acceptance": [
+        "AC-CI-PUSH"
+      ],
+      "kind": "manual",
+      "status": "pass",
+      "command": [],
+      "method": "Observed two Quality runs with gh run view. The code push cc01a68 (run 41331871943, ci-push-code.json) ran what changed, formatting, lint and secret scan, PowerShell and native and semantic analysis, builds with ctest on Windows, Linux and macOS, and both sanitizers -- nine jobs, all passing, no live browser job -- in 6 minutes 20 seconds. The documents-only push b0ad302 (run 41334798536, ci-push-docs.json) ran what changed and the lint job, whose release-document check passed, and skipped the build, PowerShell, analysis and sanitizer jobs, in 70 seconds",
+      "exit_code": null,
+      "artifact": {
+        "path": "docs/plans/evidence/uploads/ci-push-docs.json",
+        "sha256": "5a9a343fe9d88c5053269cc7c77d393f557b16a6a81da60239ff806549e9141e"
       },
       "red": null,
       "reason": null,

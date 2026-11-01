@@ -1,0 +1,79 @@
+{
+  "conclusion": "success",
+  "createdAt": "2026-11-01T18:05:41Z",
+  "event": "push",
+  "headBranch": "main",
+  "headSha": "b0ad3029748d21d465459b38397cc33b98ae7b21",
+  "jobs": [
+    {
+      "completedAt": "2026-11-01T18:05:48Z",
+      "conclusion": "success",
+      "name": "What changed",
+      "startedAt": "2026-11-01T18:05:44Z",
+      "steps": [
+        { "conclusion": "success", "name": "Set up job" },
+        { "conclusion": "success", "name": "Run actions/checkout@v4" },
+        { "conclusion": "success", "name": "Run code=true" },
+        { "conclusion": "success", "name": "Post Run actions/checkout@v4" },
+        { "conclusion": "success", "name": "Complete job" }
+      ]
+    },
+    {
+      "completedAt": "2026-11-01T18:06:50Z",
+      "conclusion": "success",
+      "name": "Format, lint, and secret scan",
+      "startedAt": "2026-11-01T18:05:51Z",
+      "steps": [
+        { "conclusion": "success", "name": "Set up job" },
+        { "conclusion": "success", "name": "Run actions/checkout@v4" },
+        { "conclusion": "success", "name": "Run actions/setup-node@v4" },
+        { "conclusion": "success", "name": "Run actions/setup-python@v5" },
+        { "conclusion": "success", "name": "Install JavaScript tools" },
+        { "conclusion": "success", "name": "Install pre-commit" },
+        { "conclusion": "success", "name": "Audit JavaScript dependencies" },
+        { "conclusion": "success", "name": "Install VS Code extension tools" },
+        {
+          "conclusion": "success",
+          "name": "Audit VS Code extension dependencies"
+        },
+        { "conclusion": "success", "name": "Type-check VS Code extension" },
+        { "conclusion": "success", "name": "Run quality gates" },
+        { "conclusion": "success", "name": "Check the release documents" },
+        { "conclusion": "success", "name": "Post Run actions/setup-python@v5" },
+        { "conclusion": "success", "name": "Post Run actions/setup-node@v4" },
+        { "conclusion": "success", "name": "Post Run actions/checkout@v4" },
+        { "conclusion": "success", "name": "Complete job" }
+      ]
+    },
+    {
+      "completedAt": "2026-11-01T18:05:48Z",
+      "conclusion": "skipped",
+      "name": "${{ matrix.name }} build and tests",
+      "startedAt": "2026-11-01T18:05:48Z",
+      "steps": []
+    },
+    {
+      "completedAt": "2026-11-01T18:05:48Z",
+      "conclusion": "skipped",
+      "name": "PowerShell static analysis",
+      "startedAt": "2026-11-01T18:05:48Z",
+      "steps": []
+    },
+    {
+      "completedAt": "2026-11-01T18:05:48Z",
+      "conclusion": "skipped",
+      "name": "Native and semantic static analysis",
+      "startedAt": "2026-11-01T18:05:48Z",
+      "steps": []
+    },
+    {
+      "completedAt": "2026-11-01T18:05:48Z",
+      "conclusion": "skipped",
+      "name": "matrix.name",
+      "startedAt": "2026-11-01T18:05:48Z",
+      "steps": []
+    }
+  ],
+  "run": 41334798536,
+  "updatedAt": "2026-11-01T18:06:51Z"
+}
