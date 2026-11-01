@@ -1,4 +1,25 @@
-{"suite":"clipboard_e2e","exit":1,"ok":false,"checks":15,"passed":15}
-{"suite":"multi_agent_e2e","exit":0,"ok":true,"checks":25,"passed":25}
-{"suite":"user_interference_e2e","exit":0,"ok":true,"checks":10,"passed":10}
-{"suite":"full_browser_e2e","exit":0,"ok":true,"tools":48,"cases":177}
+== clipboard_e2e exit=0
+PASS the user's clipboard holds the sentinel before any agent runs
+PASS browser_clipboard writes text, HTML and an image to the agent's clipboard
+PASS an editor that reads the paste event gets text, HTML and the image file
+PASS an editor that reads beforeinput insertFromPaste gets the data transfer
+PASS a bare editable region gets the text typed in, line by line
+PASS an editor inside a same-origin frame gets the paste, files included
+PASS a field inside a frame from another site gets the text typed in
+PASS Control+C copies the field's selection to the agent's clipboard
+PASS Control+X takes the selection out of the field
+PASS Control+V pastes it back
+PASS a copy button using execCommand copies to the agent's clipboard
+PASS a copy button using navigator.clipboard copies to the agent's clipboard
+PASS a paste button reading navigator.clipboard gets the agent's clipboard
+PASS a page reading the clipboard on its own, outside any agent command, is refused
+PASS a second agent's clipboard starts empty
+PASS and its paste finds nothing of the first agent's
+PASS each agent pastes its own, and neither changes the other's
+PASS in a page loaded after the agent took the tab, a copy button copies to that agent's clipboard
+PASS an agent on another server sees nothing of the first server's clipboards
+PASS after all of it, the user's clipboard still holds the sentinel
+PASS and no agent's page ever received it
+PASS a tab handed back runs the browser's own clipboard functions again
+PASS an agent that let go of its last tab let go of its clipboard; the other kept its own
+PASS releasing everything leaves no AI tab or group behind

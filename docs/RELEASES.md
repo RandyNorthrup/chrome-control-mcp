@@ -10,8 +10,27 @@ platforms, and `SHA256SUMS.txt` covering all of them:
 | `macos-arm64`  | Apple silicon macOS | `darwin-arm64`  |
 | `macos-x64`    | Intel macOS         | `darwin-x64`    |
 
-The VS Code packages are what the Marketplace serves; they carry the same server build and install
-it on first activation.
+The archives are the MCP server for any client. The VS Code packages are what the Marketplace
+serves; they carry the same server build and install it on first activation.
+
+## What a release page says
+
+Every release page has the same shape, so a list of releases can be read at a glance and any one
+of them answers the same questions in the same place:
+
+- **The title says what the release does**: `v1.9.0: A clipboard for every agent`, or
+  `v1.2.1: 1.2.0 rebuilt to pass clang-tidy; no change in behaviour` for one nobody needs to rush to.
+- **The first line says when it shipped**, and links to every release and to the code changes since
+  the one before.
+- **The notes** say what changed and why, and, under **Updating**, any step an update needs from
+  you.
+- **Downloads** says which file is yours: the server archive for your platform, the VS Code
+  package holding the same server, and `SHA256SUMS.txt`.
+
+[CHANGELOG.md](../CHANGELOG.md) opens with the same titles and dates for every release, and the
+README's What's new section has the latest three. To hear about new releases, use **Watch → Custom
+→ Releases** on the GitHub repository, or subscribe to its
+[releases feed](https://github.com/RandyNorthrup/chrome-control-mcp/releases.atom).
 
 Each archive contains:
 
@@ -78,11 +97,36 @@ an MCP client, `browser_extension_install` registers the host and reports the fo
 ## Updating
 
 Once installed, `browser_update_check` and `browser_update_apply` find and install newer releases,
-verified against the same `SHA256SUMS.txt`. Restart the MCP client's server afterwards so it runs
-the new build, and reload the extension at `chrome://extensions` (or restart Chrome): Chrome keeps
-running the copy it loaded until then. When the new server speaks a newer bridge protocol than that
-copy, the extension reloads itself once.
+verified against the same `SHA256SUMS.txt`; running `--install` from a newer archive does the same.
+After any update:
+
+1. **Restart the server in your MCP client** so it runs the new build -- in Claude Code, `/mcp` and
+   reconnect; elsewhere, restart the client or its MCP server.
+2. **Reload the extension** at `chrome://extensions` (or restart Chrome): Chrome keeps running the
+   copy it loaded until then. When the new server speaks a newer bridge protocol than that copy, the
+   extension reloads itself once.
+
+A release that needs anything more says so under **Updating** in its notes.
 [TOOLS.md](TOOLS.md#updating-this-server) describes the layout and the install roots.
+
+## Making a release
+
+1. Bump the version everywhere `tests/test_release_versions.mjs` checks.
+2. Add `## [x.y.z] - YYYY-MM-DD` to CHANGELOG.md, dated the day you tag it, and its row at the top
+   of the release index.
+3. Write `docs/releases/vx.y.z.md`. Its first line is `# <headline>`: plain text, saying what the
+   release does, which becomes the release title. Say under **Updating** anything an update needs
+   from the user.
+4. Move the README's What's new table down by one and put the new release first.
+5. Push, let the Quality workflow pass, then push the tag `vx.y.z`.
+
+`test_release_versions` holds the index, the headlines, the dates and What's new to each other on
+every push. On the tag, the release workflow refuses a changelog date that is not the tagged
+commit's date, then builds the page with `scripts/release_notes.mjs`, which can also preview one:
+
+```shell
+node scripts/release_notes.mjs v1.9.0 --date 2026-10-31 --check
+```
 
 ## Unsigned by design
 
@@ -102,8 +146,9 @@ version, runs ctest, stages the archive, and runs the MCP smoke test against the
 On Linux it fails the build if the staged executable needs a library the archive does not carry,
 checked with `ldd` and without the runner's Qt on the library path; on macOS it records the
 linkage with `otool -L`. It refuses a VS Code package whose version differs from the archive's.
-Only then does it publish the GitHub release, with the notes from `docs/releases/<tag>.md`, and --
-when the Marketplace token is configured -- the VS Code packages to the Marketplace.
+Only then does it publish the GitHub release, titled and written from `docs/releases/<tag>.md` and
+CHANGELOG.md as described above, and -- when the Marketplace token is configured -- the VS Code
+packages to the Marketplace.
 
 `SHA256SUMS.txt` lists every published asset, VS Code packages included. Builds are not
 bit-for-bit reproducible across runner image updates.

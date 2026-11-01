@@ -57,6 +57,14 @@ jobs:
         with:
           node-version: 22
 
+      # Before twenty minutes of building: a release whose notes have no headline, or whose
+      # changelog names a day other than the one it is tagged on, would publish a page that says the
+      # wrong thing about itself.
+      - name: Check the release page
+        if: github.ref_type == 'tag'
+        shell: bash
+        run: node scripts/release_notes.mjs "$GITHUB_REF_NAME" --date "$(git log -1 --format=%cs)" --check
+
       - uses: jurplel/install-qt-action@v4
         with:
           version: "6.10.0"
@@ -226,6 +234,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
       - uses: actions/download-artifact@v4
         with:
           pattern: release-*
@@ -243,13 +255,18 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          notes="docs/releases/${GITHUB_REF_NAME}.md"
-          test -f "$notes"
+          # Title, date line, notes and a Downloads table naming every file below; see
+          # docs/RELEASES.md, "What a release page says".
+          node scripts/release_notes.mjs "$GITHUB_REF_NAME" \
+            --date "$(git log -1 --format=%cs)" \
+            --assets release-assets \
+            --title-out "$RUNNER_TEMP/title.txt" \
+            --notes-out "$RUNNER_TEMP/notes.md"
           gh release create "$GITHUB_REF_NAME" release-assets/* \
             --repo "$GITHUB_REPOSITORY" \
             --verify-tag \
-            --title "Chrome Control MCP ${GITHUB_REF_NAME}" \
-            --notes-file "$notes"
+            --title "$(cat "$RUNNER_TEMP/title.txt")" \
+            --notes-file "$RUNNER_TEMP/notes.md"
 
   marketplace:
     name: Publish to VS Code Marketplace

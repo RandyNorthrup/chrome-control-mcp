@@ -19,7 +19,15 @@ clipboard back.
 | httpbin.org/forms/post              | plain `<input>`      | typed in (field)  | selection      | pass, value checked                                       | `real-sites-rerun.json`  |
 | tiny.cloud basic example            | TinyMCE (in a frame) | --                | --             | not tried: the editor's iframe has no ref in the snapshot | `real-sites-rerun2.json` |
 
-Notes on the runs, kept rather than tidied:
+## Rerun in one pass
+
+Run again on 2026-10-31 (17:05 Pacific; `ran_at` in UTC) after the rules file's status table
+changed, all nine sites in a single run, `real-sites-3.json`: the same eight passed and TinyMCE was
+again not tried, for the same reason. Lexical, Slate and CKEditor 5 now answered the copy from the
+page's own `copy` handler rather than from the selection; both are paths a copy takes, and the
+marker came back either way.
+
+Notes on the earlier runs, kept rather than tidied:
 
 - The first run's Quill row drove the playground page's code editor, not Quill; the rerun used
   quilljs.com's own editor, which passed.

@@ -20,6 +20,7 @@
 </p>
 
 <p align="center">
+  <a href="#whats-new">What's new</a> ·
   <a href="#install">Install</a> ·
   <a href="#connect-any-mcp-client">Connect a client</a> ·
   <a href="#tools-at-a-glance">Tools</a> ·
@@ -32,6 +33,20 @@
 ![Three agents from two MCP clients working in one Chrome window: the user's own tab stays ungrouped, while "AI · research" (pink), "AI · writer" (cyan) and "AI · codex" (orange) each have their own coloured tab group, and the page in front carries the writer's matching cyan frame, badge and cursor](docs/assets/agents-window.png)
 
 <p align="center"><sub>One Chrome window, two MCP clients, three agents. Your own tab (left) stays yours; every agent's tabs sit in a group of their own colour, and the page carries the same colour, name and cursor. Captured from a live run of 1.8.1.</sub></p>
+
+## What's new
+
+| Version                                                                          | Released   | What changed                                                                                                                                                                                                     |
+| -------------------------------------------------------------------------------- | ---------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [1.9.0](https://github.com/RandyNorthrup/chrome-control-mcp/releases/tag/v1.9.0) | 2026-10-31 | **A clipboard for every agent.** Copy, cut and paste -- by key, with `browser_clipboard`, or through a page's own copy buttons -- use the agent's own clipboard. Never yours, never another agent's.             |
+| [1.8.2](https://github.com/RandyNorthrup/chrome-control-mcp/releases/tag/v1.8.2) | 2026-10-31 | **browser_release closes everything an agent opened.** Popups its clicks opened go with the tab, and a tab Chrome refuses to close is handed back and listed in `not_closed`, never reported closed.             |
+| [1.8.1](https://github.com/RandyNorthrup/chrome-control-mcp/releases/tag/v1.8.1) | 2026-10-31 | **Fixes from a day of multi-agent use.** Agent names in any script, upload replies that list what was delivered when the page clears its input, and two quality gates that had quietly stopped running restored. |
+
+Every release, with the day it shipped and what it changed, is in [CHANGELOG.md](CHANGELOG.md); each
+release page has its downloads. To hear about new ones, use **Watch → Custom → Releases** on this
+repository, or subscribe to the
+[releases feed](https://github.com/RandyNorthrup/chrome-control-mcp/releases.atom). An agent can
+check for you with `browser_update_check`, and install one with `browser_update_apply`.
 
 ## Highlights
 
@@ -91,22 +106,13 @@ clicks on an upload button still open the normal dialog. Folder pickers are not 
 
 ## Install
 
-### From the VS Code Marketplace
+Two parts: the MCP server, which your client runs, and the Chrome extension the server drives.
 
-```shell
-code --install-extension RandyNorthrup.chrome-control-mcp
-```
-
-The Marketplace serves the build for your platform. On first activation the extension installs the
-server and registers it with VS Code through the MCP server definition provider API -- no
-`mcp.json` to edit, no path to know. Marketplace updates and the server's own updater land in the
-same install, and from 1.8.0 on an older copy never rolls a newer one back.
-
-### From a release archive
+### The server, for any MCP client
 
 [Download the latest release](https://github.com/RandyNorthrup/chrome-control-mcp/releases/latest)
-for Windows x64, Linux x64, Apple silicon macOS or Intel macOS, verify its SHA-256 against
-`SHA256SUMS.txt`, unpack it, and run:
+for Windows x64, Linux x64, Apple silicon macOS or Intel macOS -- the release page's Downloads
+table says which file is yours -- verify its SHA-256 against `SHA256SUMS.txt`, unpack it, and run:
 
 ```shell
 # Windows
@@ -119,7 +125,18 @@ for Windows x64, Linux x64, Apple silicon macOS or Intel macOS, verify its SHA-2
 That installs the server where it can update itself and prints the command path to give your
 client, plus the folder to load into Chrome. Both stay the same through every later update. The
 archives are deliberately unsigned; the [release guide](docs/RELEASES.md) covers verification and
-platform warnings.
+platform warnings. Then [connect your client](#connect-any-mcp-client).
+
+### Or, in VS Code, from the Marketplace
+
+```shell
+code --install-extension RandyNorthrup.chrome-control-mcp
+```
+
+The same server, packaged for VS Code: on first activation the extension installs it as above and
+registers it with VS Code's own MCP support, so there is no `mcp.json` to edit. Marketplace updates
+and the server's own updater land in the same install, and from 1.8.0 on an older copy never rolls a
+newer one back.
 
 ### Load the extension into Chrome (once)
 
@@ -143,9 +160,6 @@ command path that `--install` prints:
 | Linux    | `~/.local/share/ChromeControlMCP/app/current/chrome_control_mcp`                |
 | macOS    | `~/Library/Application Support/ChromeControlMCP/app/current/chrome_control_mcp` |
 
-**VS Code** (GitHub Copilot and other chat extensions): the Marketplace extension registers the
-server for you.
-
 **Claude Code**
 
 ```shell
@@ -168,6 +182,9 @@ codex mcp add chrome-control -- "<command path>"
 }
 ```
 
+**VS Code** (GitHub Copilot and other chat extensions): the Marketplace extension registers the
+server for you; or add the command path to `mcp.json` like any other client.
+
 After an update, restart the server in your client (in Claude Code: `/mcp`, then reconnect) so it
 runs the new build.
 
@@ -186,6 +203,10 @@ All **53 tools** have strict JSON Schemas; the [tool reference](docs/TOOLS.md) d
 | Setup and updates      | `browser_extension_install` `browser_extension_status` `browser_extension_uninstall` `browser_update_status` `browser_update_check` `browser_update_apply`                                                                                                                           |
 
 ## Staying up to date
+
+Every release page is titled with what the release does, says the day it shipped, and ends with a
+Downloads table saying which file is yours; [What's new](#whats-new) has the latest three and
+[CHANGELOG.md](CHANGELOG.md) the rest. From any client:
 
 ```text
 browser_update_status   where this build is installed, and which versions are present
@@ -268,7 +289,7 @@ Measured for 1.9.0 on 2026-10-31, except the two rows marked 1.8.0, whose code l
 | -------------------------------------------------------------------------------------------------------------------- | ------------------------------- |
 | ctest suites -- MSVC, GCC and Clang, warnings as errors                                                              | Windows 23/23, Linux 22/22      |
 | `clang-tidy`, exhaustive `cppcheck`, Semgrep, ASan + UBSan, TSan                                                     | clean                           |
-| Extension and tooling unit tests                                                                                     | 199/199                         |
+| Extension and tooling unit tests                                                                                     | 204/204                         |
 | Full live browser suite (isolated Chrome for Testing 153)                                                            | 48 tools, 177 cases, all pass   |
 | Multi-agent live suite: two servers, two agents behind one of them                                                   | 25/25                           |
 | Per-agent clipboard live suite: a sentinel on the user's clipboard survives every agent copy, cut and paste          | 24/24                           |

@@ -36,6 +36,9 @@ Windows, Linux, and macOS. Current release: 1.9.0 (2026-10-31).
 - [x] A clipboard per agent, never the system's: keys, `browser_clipboard`, and the page's own
       clipboard API in held tabs (1.9.0;
       [docs/plans/per-agent-clipboard.md](docs/plans/per-agent-clipboard.md))
+- [x] Release pages say what each release does, the day it shipped, and which download is yours,
+      for every release back to 1.0.0; the changelog and README list them, and a test keeps all
+      four in step (1.9.0)
 - [x] Live Chrome E2E on a physical Linux desktop (Arch, Hyprland/Wayland, 150% scale, 2026-09-18)
 - [x] Live Chrome E2E on a physical macOS desktop (macOS 15.7.4 Intel, the user's own Chrome,
       2026-09-19), where the update path is also verified: install, managed layout, and an HTTPS
@@ -63,6 +66,11 @@ Windows, Linux, and macOS. Current release: 1.9.0 (2026-10-31).
       connected to every profile's extension at once, `profile` on `browser_new_tab`, and each
       tab's profile in `browser_tabs`. Today a server binds to whichever profile's extension reaches
       it first, and an agent cannot choose. Decided 2026-10-31; next after 1.9.0.
+- [ ] Notice a Chrome extension older than its server. Server and extension compare only the
+      bridge protocol, so after an update that leaves it unchanged Chrome keeps running the old
+      extension until someone presses reload, and nothing tells them: a 1.9.0 server beside a 1.8.x
+      extension has no clipboard to offer. Exchange versions on connect, reload an idle extension
+      once per version, and say so in the reply to any client while it is still old.
 - [ ] Give an iframe element a ref in the snapshot. An editor inside a frame (TinyMCE's) shows up as
       an `iframe` line with no ref, so an agent can reach it only by screenshot coordinates.
 - [ ] Support folder uploads; a page that asks for a folder is refused today.

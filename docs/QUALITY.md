@@ -37,7 +37,7 @@ project's ([RELEASES.md](RELEASES.md)).
 | clang-tidy, exhaustive cppcheck    | Pass   | CI on `fce2acb`                                                                               |
 | Semgrep                            | Pass   | CI on `fce2acb`: 221 rules, 53 files, 0 findings under Python 3.12; crashed under 3.15 before |
 | ctest                              | Pass   | 23/23 Windows, 22/22 Linux, locally                                                           |
-| JavaScript suites                  | Pass   | 199/199 under `npm run test:js`; every one of them also runs in ctest                         |
+| JavaScript suites                  | Pass   | 204/204 under `npm run test:js`; every one of them also runs in ctest                         |
 | Sanitizers                         | Pass   | ASan + UBSan and TSan, 21/21 each, in CI on `fce2acb`                                         |
 | Live browser suites                | Pass   | CI on three platforms on `fce2acb`; Chrome for Testing 153 on Linux locally                   |
 | CHANGELOG updated                  | Pass   | `CHANGELOG.md` `[1.9.0]`                                                                      |

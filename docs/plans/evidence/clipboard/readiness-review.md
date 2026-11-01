@@ -62,3 +62,13 @@ The first readiness receipt went stale for two reasons, both reviewed here.
   1.8.2 updates touched evidence rows only, not the gates themselves.
 
 Verdict unchanged: the requirements are clear, covered, and consistent.
+
+## Addendum, after the 1.9.0 CI run
+
+The second readiness receipt went stale because the rules file changed again. `docs/QUALITY.md`'s
+status table now counts 204 JavaScript tests where it counted 199: `test_release_versions` gained
+five tests for the release pages. No gate, threshold or rule changed. The same run found the live
+suite selecting with Control+A, which on macOS moves the caret instead of selecting; that is a
+defect in the check, not in a requirement or criterion, and AC-CLIP-KEYS reads the same.
+
+Verdict unchanged: the requirements are clear, covered, and consistent.

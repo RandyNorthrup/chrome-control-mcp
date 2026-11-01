@@ -26,6 +26,10 @@ import { McpClient, refFor } from "./mcp_client.mjs";
 const sleep = (milliseconds) =>
   new Promise((resolve) => setTimeout(resolve, milliseconds));
 
+// Select All is Command+A on macOS; Control+A there moves to the start of the paragraph, exactly
+// as it does for a person typing. The clipboard chords themselves are Control or Meta everywhere.
+const SELECT_ALL = process.platform === "darwin" ? "Meta+A" : "Control+A";
+
 async function until(probe, deadlineMs, stepMs = 250) {
   const started = Date.now();
   for (;;) {
@@ -339,7 +343,7 @@ async function main() {
 
     // -- Copy, cut and paste by key in a text field ----------------------------------------
     await one.json("browser_click", { ref: refFor(s, "Plain field") });
-    await key(one, alpha, "Control+A");
+    await key(one, alpha, SELECT_ALL);
     const copied = await key(one, alpha, "Control+C");
     const afterCopy = await one.json("browser_clipboard", {
       action: "read",
@@ -351,7 +355,7 @@ async function main() {
       "Control+C copies the field's selection to the agent's clipboard",
       JSON.stringify([copied.clipboard, afterCopy.text]),
     );
-    await key(one, alpha, "Control+A");
+    await key(one, alpha, SELECT_ALL);
     const cut = await key(one, alpha, "Control+X");
     const emptied = await until(async () => {
       const line = statusOf(await read(one, alpha), "field");
@@ -446,7 +450,7 @@ async function main() {
     check(betaEmpty.empty === true, "a second agent's clipboard starts empty");
     const betaSnap = await snap(beta);
     await one.json("browser_click", { ref: refFor(betaSnap, "Plain field") });
-    await key(one, beta, "Control+A");
+    await key(one, beta, SELECT_ALL);
     const betaPaste = await key(one, beta, "Control+V");
     check(
       betaPaste.clipboard.pasted === false &&

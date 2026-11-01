@@ -20,7 +20,7 @@ criteria and evidence ledger for the clipboard work are in
 | ------------------------------------------- | --------------------------------------------------------------------------- |
 | Windows, local: ctest                       | 23/23                                                                       |
 | Linux, local: ctest                         | 22/22                                                                       |
-| Local: `npm run test:js`                    | 199/199 across 10 files                                                     |
+| Local: `npm run test:js`                    | 204/204 across 10 files                                                     |
 | Local: pre-commit, all files                | 15 hooks pass                                                               |
 | Linux, local: clang-tidy on the changed C++ | clean                                                                       |
 | Linux, local: Semgrep 1.174.0, Python 3.12  | 221 rules, 51 files, 0 findings                                             |
@@ -85,6 +85,17 @@ submitted (`real-sites*.json`). It passed on:
 TinyMCE could not be tried: its editor frame appears in the snapshot with no ref, so it is reachable
 only by screenshot coordinates. The same-origin frame path it would exercise is covered by the
 fixture instead. A snapshot ref for iframe elements is on [PLAN.md](../PLAN.md).
+
+### 1.9.0: CI on `d736c8c`
+
+[Quality run 41252800794](https://github.com/RandyNorthrup/chrome-control-mcp/actions/runs/41252800794):
+every job passed except the macOS live browser suites, where the clipboard suite failed 4 of its 24
+checks: Control+C, Control+X and Control+V in a text field, and "each agent pastes its own". All
+four began with the suite pressing Control+A to select the field, which on macOS moves the caret to
+the start of the paragraph -- for a person as for an agent -- so there was nothing selected to copy.
+The suite had only ever run on Linux before CI. It now selects with Command+A on macOS, as the full
+suite already did; the product is unchanged. The other 20 checks, the sentinel ones included,
+passed on macOS.
 
 ### 1.9.0: one unexplained failure
 

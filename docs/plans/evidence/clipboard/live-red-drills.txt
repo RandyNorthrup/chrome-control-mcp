@@ -2,20 +2,20 @@
 exit=1
 FAIL in a page loaded after the agent took the tab, a copy button copies to that agent's clipboard
 FAIL after all of it, the user's clipboard still holds the sentinel -- exec-copied-text
-FAIL an agent that let go of its last tab let go of its clipboard; the other kept its own -- [{"action":"read","empty":true,"ok":true,"tab_id":2022474
+FAIL an agent that let go of its last tab let go of its clipboard; the other kept its own -- [{"action":"read","empty":true,"ok":true,"tab_id":1816607
 == drill: no page stand-in at all
 exit=1
-FAIL a copy button using execCommand copies to the agent's clipboard -- {"button":"left","click_count":1,"ok":true,"tab_id":1936692315,"x":633,"y":329
+FAIL a copy button using execCommand copies to the agent's clipboard -- {"button":"left","click_count":1,"ok":true,"tab_id":19326428,"x":633,"y":329}
 FAIL a copy button using navigator.clipboard copies to the agent's clipboard -- ["async: ok","copy me from the field"]
 FAIL a page reading the clipboard on its own, outside any agent command, is refused -- timer: async-copied-text
 FAIL each agent pastes its own, and neither changes the other's -- ["field: beta text","copy me from the field"]
 FAIL in a page loaded after the agent took the tab, a copy button copies to that agent's clipboard
 FAIL after all of it, the user's clipboard still holds the sentinel -- exec-copied-text
 FAIL a tab handed back runs the browser's own clipboard functions again -- [false,true]
-FAIL an agent that let go of its last tab let go of its clipboard; the other kept its own -- [{"action":"read","empty":true,"ok":true,"tab_id":1936692
+FAIL an agent that let go of its last tab let go of its clipboard; the other kept its own -- [{"action":"read","empty":true,"ok":true,"tab_id":1932643
 == drill: no chord interception
 exit=1
-FAIL an editor that reads the paste event gets text, HTML and the image file -- rich: text=USER-CLIPBOARD-SENTINEL-1793488942293|html=|files=
+FAIL an editor that reads the paste event gets text, HTML and the image file -- rich: text=USER-CLIPBOARD-SENTINEL-1793491052140|html=|files=
 FAIL an editor that reads beforeinput insertFromPaste gets the data transfer
 FAIL a bare editable region gets the text typed in, line by line
 FAIL an editor inside a same-origin frame gets the paste, files included

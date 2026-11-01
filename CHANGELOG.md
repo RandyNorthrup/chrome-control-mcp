@@ -2,6 +2,37 @@
 
 All notable changes are documented here. Project follows [Semantic Versioning](https://semver.org/).
 
+Every release, newest first, with the day it shipped. A version jumps to its entry below; an
+entry's heading opens its GitHub release page and downloads. To hear about new releases, use
+**Watch → Custom → Releases** on GitHub, or the [releases feed](https://github.com/RandyNorthrup/chrome-control-mcp/releases.atom).
+
+| Version                    | Released   | What it is                                                              |
+| -------------------------- | ---------- | ----------------------------------------------------------------------- |
+| [1.9.0](#190---2026-10-31) | 2026-10-31 | A clipboard for every agent                                             |
+| [1.8.2](#182---2026-10-31) | 2026-10-31 | browser_release closes everything an agent opened                       |
+| [1.8.1](#181---2026-10-31) | 2026-10-31 | Fixes from a day of multi-agent use                                     |
+| [1.8.0](#180---2026-10-31) | 2026-10-31 | Agents share one browser without touching each other's tabs             |
+| [1.7.0](#170---2026-09-27) | 2026-09-27 | Scroll and ref fixes; the extension stops starting processes while idle |
+| [1.6.1](#161---2026-09-25) | 2026-09-25 | Fixes from a clean-install test of every tool                           |
+| [1.6.0](#160---2026-09-24) | 2026-09-24 | Agents can read the console and network; live tests on Windows          |
+| [1.5.5](#155---2026-09-23) | 2026-09-23 | A failed drag no longer stops the session answering                     |
+| [1.5.4](#154---2026-09-23) | 2026-09-23 | A ref acts on the element named, never the one beside it                |
+| [1.5.3](#153---2026-09-23) | 2026-09-23 | Recording and README text corrected; no change in behaviour             |
+| [1.5.2](#152---2026-09-23) | 2026-09-23 | Fixes navigation, recording, and two editors sharing one browser        |
+| [1.5.1](#151---2026-09-23) | 2026-09-23 | Windows: the bridge attaches again                                      |
+| [1.5.0](#150---2026-09-23) | 2026-09-23 | Several agents at once, and tab recording                               |
+| [1.4.0](#140---2026-09-22) | 2026-09-22 | The server updates itself, and installs from the VS Code Marketplace    |
+| [1.3.1](#131---2026-09-22) | 2026-09-22 | A clear message when the browser cannot be reached                      |
+| [1.3.0](#130---2026-09-22) | 2026-09-22 | Uploads work on sites that hide the file input                          |
+| [1.2.2](#122---2026-09-22) | 2026-09-22 | 1.2.0's file uploads on a build that passes every check                 |
+| [1.2.1](#121---2026-09-22) | 2026-09-22 | 1.2.0 rebuilt to pass clang-tidy; no change in behaviour                |
+| [1.2.0](#120---2026-09-22) | 2026-09-22 | File uploads                                                            |
+| [1.1.2](#112---2026-09-22) | 2026-09-22 | 1.1.1 rebuilt to pass the format check; no change in behaviour          |
+| [1.1.1](#111---2026-09-22) | 2026-09-22 | A screenshot of a background tab no longer ends the session             |
+| [1.1.0](#110---2026-09-21) | 2026-09-21 | The agent works in a tab of its own                                     |
+| [1.0.1](#101---2026-09-16) | 2026-09-16 | The bridge recovers when another server takes or removes its record     |
+| [1.0.0](#100---2026-08-20) | 2026-08-20 | First public release                                                    |
+
 ## [1.9.0] - 2026-10-31
 
 Every agent gets a clipboard of its own.
@@ -48,6 +79,16 @@ Every agent gets a clipboard of its own.
 - When a display-matrix screenshot fails, the suite asks Chrome over its own DevTools whether it
   still answers, so the intermittent Windows 4K-capture stall can be placed: in Chrome, or in the
   path through the extension.
+- **Release pages say what each release is.** Every release was titled "Chrome Control MCP v1.x.y"
+  and nothing more, so a list of two dozen told nobody which did what, and a rebuild that changed
+  one comment looked like the release that added uploads. Every release page, the 23 before this one
+  included, is now titled with what the release does, opens with the day it shipped, and ends with a
+  Downloads table saying which file is the server for which platform and which is the VS Code
+  package. This changelog opens with the same titles and dates for every release, its headings link
+  to the release pages, and the README has a What's new section. `test_release_versions` keeps all
+  four in step, and the release workflow refuses a changelog date that is not the tagged commit's.
+- Two changelog dates were the day the entry was written, not the day the release shipped: 1.5.5
+  shipped on 2026-09-23 and 1.7.0 on 2026-09-27.
 
 ## [1.8.2] - 2026-10-31
 
@@ -189,7 +230,7 @@ Every item below was reported from daily use; the design record is in
 - One server still carries one command at a time: two agents sharing a server are isolated, not
   concurrent. Separate servers run in parallel.
 
-## [1.7.0] - 2026-09-25
+## [1.7.0] - 2026-09-27
 
 The three things 1.6.1 shipped without fixing, and the reason each one had survived: none of them
 had a test that could fail.
@@ -370,7 +411,7 @@ against live sites, each checked by its effect rather than its reply.
   `javascript:` URLs, and could delete the control overlay. There is no read-only
   `Runtime.evaluate`, so a "read-only eval" would be a promise the code could not keep.
 
-## [1.5.5] - 2026-09-24
+## [1.5.5] - 2026-09-23
 
 ### Fixed
 
@@ -1009,3 +1050,28 @@ tried were broken.
 
 - Unused JSON-RPC client payload helpers and obsolete test-only native-host loop.
 - Redundant quality branch; development and delivery now happen directly on `main`.
+
+[1.9.0]: https://github.com/RandyNorthrup/chrome-control-mcp/releases/tag/v1.9.0
+[1.8.2]: https://github.com/RandyNorthrup/chrome-control-mcp/releases/tag/v1.8.2
+[1.8.1]: https://github.com/RandyNorthrup/chrome-control-mcp/releases/tag/v1.8.1
+[1.8.0]: https://github.com/RandyNorthrup/chrome-control-mcp/releases/tag/v1.8.0
+[1.7.0]: https://github.com/RandyNorthrup/chrome-control-mcp/releases/tag/v1.7.0
+[1.6.1]: https://github.com/RandyNorthrup/chrome-control-mcp/releases/tag/v1.6.1
+[1.6.0]: https://github.com/RandyNorthrup/chrome-control-mcp/releases/tag/v1.6.0
+[1.5.5]: https://github.com/RandyNorthrup/chrome-control-mcp/releases/tag/v1.5.5
+[1.5.4]: https://github.com/RandyNorthrup/chrome-control-mcp/releases/tag/v1.5.4
+[1.5.3]: https://github.com/RandyNorthrup/chrome-control-mcp/releases/tag/v1.5.3
+[1.5.2]: https://github.com/RandyNorthrup/chrome-control-mcp/releases/tag/v1.5.2
+[1.5.1]: https://github.com/RandyNorthrup/chrome-control-mcp/releases/tag/v1.5.1
+[1.5.0]: https://github.com/RandyNorthrup/chrome-control-mcp/releases/tag/v1.5.0
+[1.4.0]: https://github.com/RandyNorthrup/chrome-control-mcp/releases/tag/v1.4.0
+[1.3.1]: https://github.com/RandyNorthrup/chrome-control-mcp/releases/tag/v1.3.1
+[1.3.0]: https://github.com/RandyNorthrup/chrome-control-mcp/releases/tag/v1.3.0
+[1.2.2]: https://github.com/RandyNorthrup/chrome-control-mcp/releases/tag/v1.2.2
+[1.2.1]: https://github.com/RandyNorthrup/chrome-control-mcp/releases/tag/v1.2.1
+[1.2.0]: https://github.com/RandyNorthrup/chrome-control-mcp/releases/tag/v1.2.0
+[1.1.2]: https://github.com/RandyNorthrup/chrome-control-mcp/releases/tag/v1.1.2
+[1.1.1]: https://github.com/RandyNorthrup/chrome-control-mcp/releases/tag/v1.1.1
+[1.1.0]: https://github.com/RandyNorthrup/chrome-control-mcp/releases/tag/v1.1.0
+[1.0.1]: https://github.com/RandyNorthrup/chrome-control-mcp/releases/tag/v1.0.1
+[1.0.0]: https://github.com/RandyNorthrup/chrome-control-mcp/releases/tag/v1.0.0
