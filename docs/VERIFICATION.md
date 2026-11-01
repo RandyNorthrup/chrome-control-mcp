@@ -182,6 +182,22 @@ Linux live suites passed, the three extension-version cases included. Two failur
   suites. Each live suite in CI now runs whatever the ones before it did, as long as the browser was
   installed; the job still fails if any of them does.
 
+### 1.9.0: CI on `8650610`, the release commit
+
+- [Quality run 41266324042](https://github.com/RandyNorthrup/chrome-control-mcp/actions/runs/41266324042):
+  every job passed on Linux and macOS, the three extension-version cases included, and on Windows
+  every suite but the display matrix passed, now that one cannot hide the others: clipboard, all
+  three version cases, full, multi-agent and interference. The matrix met the Chrome stall once more
+  (`1.75x-2194x1234-zoom100-classic`, 3840x2160 device pixels, Chrome's DevTools gone). Re-run to
+  tell an intermittent Chrome fault from one this release made constant, the Windows job passed
+  whole, the matrix included.
+- [Quality run 41268653697](https://github.com/RandyNorthrup/chrome-control-mcp/actions/runs/41268653697)
+  on the `v1.9.0` tag: every job passed on all three platforms.
+- [Release run 41268653629](https://github.com/RandyNorthrup/chrome-control-mcp/actions/runs/41268653629):
+  the release page check passed before the build, four archives and four VS Code packages built and
+  published with checksums, the page built by `scripts/release_notes.mjs`, and the Marketplace
+  serving 1.9.0 for win32-x64, linux-x64, darwin-arm64 and darwin-x64.
+
 ### 1.9.0: one unexplained failure
 
 In the final pass, one run of the clipboard suite stopped on a `browser_click` that answered
