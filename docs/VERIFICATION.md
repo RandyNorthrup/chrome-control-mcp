@@ -101,6 +101,34 @@ to the commit), and the CI image's cppcheck flagged a raw search loop in
 `std::find_if`, and every suite, live suite and drill above was run again on that source before the
 receipts were recorded.
 
+### 1.10.0: CI on `1faf0fa`, the release commit
+
+[Quality run 41295647728](https://github.com/RandyNorthrup/chrome-control-mcp/actions/runs/41295647728):
+all 11 jobs passed -- lint and secret scan, PowerShell and native analysis (clang-tidy, cppcheck,
+Semgrep), builds and tests on three platforms, both sanitizers, and the live suites on three
+platforms, the two profiles cases among them.
+
+### 1.10.0: the v1.10.0 tag and release
+
+The [release run](https://github.com/RandyNorthrup/chrome-control-mcp/actions/runs/41297205683)
+built the four archives, ran ctest and the smoke test on each, published the
+[release page](https://github.com/RandyNorthrup/chrome-control-mcp/releases/tag/v1.10.0) with its
+eight downloads and `SHA256SUMS.txt`, and published 1.10.0 to the VS Code Marketplace for all four
+platforms (confirmed with `vsce show`).
+
+The tag's own [Quality run](https://github.com/RandyNorthrup/chrome-control-mcp/actions/runs/41297205679)
+passed every job but the Linux live suites, where one display configuration
+(2x-1440x900-zoom100-overlay) stopped about a second into its Chrome on
+`the browser's relay closed the connection 3 ms into read, before replying (connection reset)`.
+The same source had passed every job twice. The relay ended on Chrome's side of the bridge, between
+two commands, and the server sent the next one before its 250 ms idle check would have noticed. This
+is the class of [1.9.0's one unexplained failure](#190-one-unexplained-failure), now named by the
+server. What was checked: no early reconnect in ten launches watched for four seconds each; every
+connection's socket closed once, by its own thread, the only one doing I/O on it; refs dropped and
+the wait for a reattaching relay exactly as 1.9.0 has them. The failed job's re-run (attempt 2)
+passed. Open: why a relay closes in mid-suite; the next occurrence needs the extension's own record
+of why its port closed.
+
 ### 1.9.0 (2026-10-31)
 
 1.9.0 adds per-agent clipboards (extension, `browser_clipboard`, the MCP `instructions`), has the
