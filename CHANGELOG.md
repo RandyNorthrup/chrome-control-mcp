@@ -109,6 +109,10 @@ Every agent gets a clipboard of its own.
   there. A new live suite, `extension_version_e2e`, runs in three cases on all three platforms: the
   same version (nothing said), an older one (told once per connection; reloads itself once, after
   its quiet period, and never loops), and the released 1.8.2 extension against this server.
+- Each live suite in CI runs whatever the ones before it did, as long as the browser was installed.
+  A failure used to skip every suite after it, and an intermittent Windows display-matrix stall --
+  now shown to be Chrome itself stopping, not the bridge -- hid the clipboard and extension-version
+  results that way. The job still fails if any suite does.
 
 ## [1.8.2] - 2026-10-31
 

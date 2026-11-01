@@ -279,6 +279,10 @@ jobs:
       # status and the suite could never fail this job -- which is how browser_navigate
       # shipped broken in 1.5.0 through a green live-browser run. `shell: bash` gets
       # GitHub's `bash --noprofile --norc -eo pipefail`.
+      # Each suite after this one runs whatever the ones before it did, as long as the browser was
+      # installed: they test different things, and the job used to skip every suite after a failure
+      # -- an intermittent Windows display-matrix stall hid the clipboard and extension-version
+      # results that way. The job still fails if any suite does.
       - name: Display scale, zoom, and pinch matrix
         shell: bash
         run: >-
@@ -293,7 +297,7 @@ jobs:
       # returns in 72 ms on a real Linux Chrome and passes on the macOS runner, so the suite runs
       # there and this job covers Linux with the matrix and the interference suite.
       - name: Full browser E2E
-        if: runner.os != 'Linux'
+        if: ${{ !cancelled() && steps.chrome.outcome == 'success' && runner.os != 'Linux' }}
         shell: bash
         run: >-
           node tests/e2e/isolated_run.mjs --chrome="${{ steps.chrome.outputs.path }}"
@@ -301,6 +305,7 @@ jobs:
           ${{ matrix.chrome-args }} tests/e2e/full_browser_e2e.mjs | tee full-browser-e2e.json
 
       - name: User interference E2E
+        if: ${{ !cancelled() && steps.chrome.outcome == 'success' }}
         shell: bash
         run: >-
           node tests/e2e/isolated_run.mjs --chrome="${{ steps.chrome.outputs.path }}"
@@ -311,6 +316,7 @@ jobs:
       # Two servers and two agents in one browser: separate tabs, refs and groups, no reaching
       # into another's tab, file pickers answered without a dialog, and cleanup on release and exit.
       - name: Multi-agent E2E
+        if: ${{ !cancelled() && steps.chrome.outcome == 'success' }}
         shell: bash
         run: >-
           node tests/e2e/isolated_run.mjs --chrome="${{ steps.chrome.outputs.path }}"
@@ -322,6 +328,7 @@ jobs:
       # buttons, into editors that take a paste three different ways -- while a sentinel the "user"
       # put on the browser's clipboard stays there and never reaches an agent's page.
       - name: Per-agent clipboard E2E
+        if: ${{ !cancelled() && steps.chrome.outcome == 'success' }}
         shell: bash
         run: >-
           node tests/e2e/isolated_run.mjs --chrome="${{ steps.chrome.outputs.path }}"
@@ -336,6 +343,7 @@ jobs:
       # before versions were exchanged (told it is older than 1.9.0; browser_clipboard explains;
       # everything else works as it did).
       - name: Extension version E2E (same version)
+        if: ${{ !cancelled() && steps.chrome.outcome == 'success' }}
         shell: bash
         run: >-
           node tests/e2e/isolated_run.mjs --chrome="${{ steps.chrome.outputs.path }}"
@@ -344,6 +352,7 @@ jobs:
           | tee extension-version-current.json
 
       - name: Extension version E2E (older extension reloads itself)
+        if: ${{ !cancelled() && steps.chrome.outcome == 'success' }}
         shell: bash
         run: >-
           node tests/e2e/isolated_run.mjs --chrome="${{ steps.chrome.outputs.path }}"
@@ -352,6 +361,7 @@ jobs:
           | tee extension-version-older.json
 
       - name: Extension version E2E (released 1.8.2 extension)
+        if: ${{ !cancelled() && steps.chrome.outcome == 'success' }}
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}

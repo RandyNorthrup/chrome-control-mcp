@@ -191,22 +191,18 @@ export async function prepareIsolatedChrome({
     });
     throw error;
   }
-  // Developer mode on, as in every Chrome this extension runs in: Load unpacked needs it.
-  // --load-extension skips that check at launch but not on a reload, so without it the
-  // extension's own chrome.runtime.reload() left it disabled as an "unsupported developer
-  // extension" -- measured on Chrome for Testing 153 -- and a reload could never be tested here.
-  const preferences = { extensions: { ui: { developer_mode: true } } };
   if (zoomPercent !== 100) {
     // The default zoom a user picks in Settings > Appearance > Page zoom. "x" is the key Chrome
     // gives the profile's default storage partition (ChromeZoomLevelPrefs).
-    preferences.partition = {
-      default_zoom_level: { x: zoomLevelForPercent(zoomPercent) },
-    };
+    await writeFile(
+      path.join(profile, "Default", "Preferences"),
+      JSON.stringify({
+        partition: {
+          default_zoom_level: { x: zoomLevelForPercent(zoomPercent) },
+        },
+      }),
+    );
   }
-  await writeFile(
-    path.join(profile, "Default", "Preferences"),
-    JSON.stringify(preferences),
-  );
   let extension = extensionDir
     ? path.resolve(extensionDir)
     : path.join(path.dirname(executable), "extension");
@@ -317,7 +313,72 @@ export async function prepareIsolatedChrome({
     if (!devtools) {
       throw new Error(`The isolated browser did not start: ${stderr}`);
     }
+    await enableDeveloperMode(devtools);
     return devtools;
   };
   return { env, profile, launch, close, stderr: () => stderr };
+}
+
+// Developer mode on, as in every Chrome this extension runs in: Load unpacked needs it.
+// --load-extension skips that check at launch but not on a reload, so without it the extension's
+// own chrome.runtime.reload() left it disabled as an "unsupported developer extension" (measured on
+// Chrome for Testing 153) and no reload could be tested. Turned on the way the toggle at
+// chrome://extensions does it, through that page's own developerPrivate API: a value written into
+// the profile's Preferences works on Linux, but Windows and macOS protect that preference and
+// reset an edited one at startup.
+async function enableDeveloperMode(devtools) {
+  const base = `http://127.0.0.1:${devtools.port}`;
+  const page = await (
+    await fetch(`${base}/json/new?chrome://extensions`, { method: "PUT" })
+  ).json();
+  try {
+    const socket = new WebSocket(page.webSocketDebuggerUrl);
+    await new Promise((resolve, reject) => {
+      socket.onopen = resolve;
+      socket.onerror = () =>
+        reject(new Error("chrome://extensions' DevTools socket failed"));
+    });
+    const call = (id, expression) =>
+      new Promise((resolve, reject) => {
+        const timer = setTimeout(
+          () => reject(new Error("chrome://extensions did not answer")),
+          15000,
+        );
+        socket.onmessage = (event) => {
+          const message = JSON.parse(event.data);
+          if (message.id === id) {
+            clearTimeout(timer);
+            resolve(message.result?.result?.value);
+          }
+        };
+        socket.send(
+          JSON.stringify({
+            id,
+            method: "Runtime.evaluate",
+            params: { expression, awaitPromise: true, returnByValue: true },
+          }),
+        );
+      });
+    // The page's script loads after the target opens; the API is there once it has.
+    let on = false;
+    for (let attempt = 0; attempt < 40 && !on; attempt += 1) {
+      on = await call(
+        attempt * 2 + 1,
+        `new Promise((resolve) => {
+           if (!globalThis.chrome || !chrome.developerPrivate) { resolve(false); return; }
+           chrome.developerPrivate.updateProfileConfiguration({ inDeveloperMode: true }, () =>
+             chrome.developerPrivate.getProfileConfiguration((c) => resolve(Boolean(c && c.inDeveloperMode))));
+         })`,
+      );
+      if (!on) {
+        await sleep(250);
+      }
+    }
+    socket.close();
+    if (!on) {
+      throw new Error("Developer mode could not be turned on");
+    }
+  } finally {
+    await fetch(`${base}/json/close/${page.id}`).catch(() => {});
+  }
 }

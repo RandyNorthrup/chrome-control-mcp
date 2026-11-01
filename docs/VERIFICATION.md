@@ -165,6 +165,23 @@ the macOS live suites passed with the clipboard suite's Command+A fix. The Linux
 reached a suite: it spent its whole 45-minute budget inside the Qt install step and was cancelled
 there. Every other job passed.
 
+### 1.9.0: CI on `2c458fc`
+
+[Quality run 41263082585](https://github.com/RandyNorthrup/chrome-control-mcp/actions/runs/41263082585):
+Linux live suites passed, the three extension-version cases included. Two failures:
+
+- **macOS, the older-extension case:** the extension reloaded itself and never came back. The
+  harness had turned Developer mode on by writing it into the profile's Preferences, which works on
+  Linux; Windows and macOS protect that preference and reset an edited one at startup, so on the
+  macOS runner the reload disabled the extension exactly as before. The harness now turns it on the
+  way the toggle at chrome://extensions does, through that page's own `developerPrivate` API, on
+  every platform.
+- **Windows, the display matrix:** the known stall at 3840x2160 device pixels, now placed in Chrome
+  itself (see [Open: a Chrome stall](#open-a-chrome-stall-in-one-display-configuration)). Every
+  suite after it in the job was skipped, so Windows ran neither the clipboard nor the version
+  suites. Each live suite in CI now runs whatever the ones before it did, as long as the browser was
+  installed; the job still fails if any of them does.
+
 ### 1.9.0: one unexplained failure
 
 In the final pass, one run of the clipboard suite stopped on a `browser_click` that answered
@@ -298,6 +315,16 @@ live suites passed, and the `v1.8.2` tag run passed whole. The error text says o
 arrived for 30 s; from 1.9.0 a failed screenshot in the matrix also reports whether Chrome still
 answers its own DevTools (the browser process and the page), which says on the next occurrence
 whether Chrome stalled or only the path through the extension.
+
+The next occurrence answered it. On the main-branch run of `2c458fc`, Windows
+`2x-1920x1080-zoom100-classic` (pinch 3; 3840x2160 device pixels again) failed its screenshot with
+"the browser's relay closed the connection 329 ms into screenshot, before replying (connection
+reset); the browser did not answer DevTools (fetch failed); the page did not answer DevTools (fetch
+failed)". Chrome's own DevTools endpoint was gone, browser and page alike: Chrome itself stopped, and
+the relay -- a child of Chrome -- went with it. The extension and the bridge were the messengers,
+not the fault. It is also the first occurrence on a main-branch push rather than a tag. Why Chrome
+for Testing stops capturing 3840x2160 pixels on the GPU-less Windows runner is still not
+established.
 
 ### Chrome's file chooser, measured on Chrome 153
 

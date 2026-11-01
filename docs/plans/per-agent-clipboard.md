@@ -322,10 +322,10 @@ tool.
       ],
       "status": "verified",
       "evidence": [
-        "EV-CLIP-UNIT-JS-3",
-        "EV-CLIP-LIVE-3",
-        "EV-CLIP-RED-LIVE-3",
-        "EV-CLIP-RED-UNIT-3",
+        "EV-CLIP-UNIT-JS-4",
+        "EV-CLIP-LIVE-4",
+        "EV-CLIP-RED-LIVE-4",
+        "EV-CLIP-RED-UNIT-4",
         "EV-CLIP-SITES-3"
       ],
       "blocker": null,
@@ -375,10 +375,10 @@ tool.
       ],
       "status": "verified",
       "evidence": [
-        "EV-CLIP-CTEST-3",
-        "EV-CLIP-RED-CONTRACT-3",
-        "EV-CLIP-LIVE-3",
-        "EV-CLIP-RED-LIVE-3"
+        "EV-CLIP-CTEST-4",
+        "EV-CLIP-RED-CONTRACT-4",
+        "EV-CLIP-LIVE-4",
+        "EV-CLIP-RED-LIVE-4"
       ],
       "blocker": null,
       "superseded_by": null
@@ -433,10 +433,10 @@ tool.
       ],
       "status": "verified",
       "evidence": [
-        "EV-CLIP-UNIT-JS-3",
-        "EV-CLIP-CTEST-3",
-        "EV-CLIP-RED-UNIT-3",
-        "EV-CLIP-RED-CONTRACT-3"
+        "EV-CLIP-UNIT-JS-4",
+        "EV-CLIP-CTEST-4",
+        "EV-CLIP-RED-UNIT-4",
+        "EV-CLIP-RED-CONTRACT-4"
       ],
       "blocker": null,
       "superseded_by": null
@@ -478,9 +478,9 @@ tool.
       ],
       "status": "verified",
       "evidence": [
-        "EV-CLIP-LIVE-3",
-        "EV-CLIP-RED-LIVE-3",
-        "EV-CLIP-RED-UNIT-3"
+        "EV-CLIP-LIVE-4",
+        "EV-CLIP-RED-LIVE-4",
+        "EV-CLIP-RED-UNIT-4"
       ],
       "blocker": null,
       "superseded_by": null
@@ -527,8 +527,8 @@ tool.
       ],
       "status": "verified",
       "evidence": [
-        "EV-CLIP-CTEST-3",
-        "EV-CLIP-RED-CONTRACT-3"
+        "EV-CLIP-CTEST-4",
+        "EV-CLIP-RED-CONTRACT-4"
       ],
       "blocker": null,
       "superseded_by": null
@@ -2625,7 +2625,7 @@ tool.
         "AC-CLIP-LIFETIME"
       ],
       "kind": "behavior",
-      "status": "pass",
+      "status": "stale",
       "command": [
         "npm",
         "run",
@@ -2638,7 +2638,7 @@ tool.
         "sha256": "687b4fc4e5902a99fb309ccbd30cb4caba6bc91d3ac8ad453dfdf14729fafa4a"
       },
       "red": null,
-      "reason": null,
+      "reason": "inputs changed: the live harness turns Developer mode on through chrome://extensions (Preferences are reset on Windows and macOS), and each CI live suite now runs independently",
       "scope_sha256": "3293a2c4d0ee7e882ade65d770982db1a5321ff6b1ad08c8fb97836f786ed391",
       "environment": {
         "platform": "windows",
@@ -2750,7 +2750,7 @@ tool.
         "AC-CLIP-TOOL"
       ],
       "kind": "behavior",
-      "status": "pass",
+      "status": "stale",
       "command": [
         "ctest",
         "--test-dir",
@@ -2765,7 +2765,7 @@ tool.
         "sha256": "f701ed066c633671a966f47616c2aeefe26b92fab55d6b093794c3f457052d11"
       },
       "red": null,
-      "reason": null,
+      "reason": "inputs changed: the live harness turns Developer mode on through chrome://extensions (Preferences are reset on Windows and macOS), and each CI live suite now runs independently",
       "scope_sha256": "348b4c1ca3e44930f32e7c2d584dc60cce32e16480cf6135f7e3dfb707eda1d8",
       "environment": {
         "platform": "windows",
@@ -2912,7 +2912,7 @@ tool.
         "AC-CLIP-LIFETIME"
       ],
       "kind": "behavior",
-      "status": "pass",
+      "status": "stale",
       "command": [
         "node",
         "tests/e2e/isolated_run.mjs",
@@ -2927,7 +2927,7 @@ tool.
         "sha256": "297506522c3c892dd1f7d77f05d85338506c2fc1d37af79050fd539c8815a66d"
       },
       "red": null,
-      "reason": null,
+      "reason": "inputs changed: the live harness turns Developer mode on through chrome://extensions (Preferences are reset on Windows and macOS), and each CI live suite now runs independently",
       "scope_sha256": "3293a2c4d0ee7e882ade65d770982db1a5321ff6b1ad08c8fb97836f786ed391",
       "environment": {
         "platform": "windows",
@@ -3044,7 +3044,7 @@ tool.
         "AC-CLIP-RESTORE"
       ],
       "kind": "red",
-      "status": "pass",
+      "status": "stale",
       "command": [
         "bash",
         "wsl_clip_drills.sh"
@@ -3081,7 +3081,7 @@ tool.
           }
         ]
       },
-      "reason": null,
+      "reason": "inputs changed: the live harness turns Developer mode on through chrome://extensions (Preferences are reset on Windows and macOS), and each CI live suite now runs independently",
       "scope_sha256": "3293a2c4d0ee7e882ade65d770982db1a5321ff6b1ad08c8fb97836f786ed391",
       "environment": {
         "platform": "windows",
@@ -3197,7 +3197,7 @@ tool.
         "AC-CLIP-LIFETIME"
       ],
       "kind": "red",
-      "status": "pass",
+      "status": "stale",
       "command": [
         "node",
         "drill.mjs",
@@ -3236,7 +3236,7 @@ tool.
           }
         ]
       },
-      "reason": null,
+      "reason": "inputs changed: the live harness turns Developer mode on through chrome://extensions (Preferences are reset on Windows and macOS), and each CI live suite now runs independently",
       "scope_sha256": "3293a2c4d0ee7e882ade65d770982db1a5321ff6b1ad08c8fb97836f786ed391",
       "environment": {
         "platform": "windows",
@@ -3348,7 +3348,7 @@ tool.
         "AC-CLIP-TOOL"
       ],
       "kind": "red",
-      "status": "pass",
+      "status": "stale",
       "command": [
         "ctest",
         "--test-dir",
@@ -3390,7 +3390,7 @@ tool.
           }
         ]
       },
-      "reason": null,
+      "reason": "inputs changed: the live harness turns Developer mode on through chrome://extensions (Preferences are reset on Windows and macOS), and each CI live suite now runs independently",
       "scope_sha256": "348b4c1ca3e44930f32e7c2d584dc60cce32e16480cf6135f7e3dfb707eda1d8",
       "environment": {
         "platform": "windows",
@@ -3562,6 +3562,915 @@ tool.
         {
           "path": "docs/QUALITY.md",
           "sha256": "feffcf7c448a6523485632cf41bb167536a0b6b1cf5359efe4a59f5127bb74c1"
+        }
+      ]
+    },
+    {
+      "id": "EV-CLIP-CTEST-4",
+      "acceptance": [
+        "AC-CLIP-TOOL"
+      ],
+      "kind": "behavior",
+      "status": "pass",
+      "command": [
+        "ctest",
+        "--test-dir",
+        "build",
+        "-C",
+        "Release"
+      ],
+      "method": "MSVC Release build, all 24 ctest suites: test_browser_contract (per-action argument rules, paths kept on the server, the 512 KiB bound, 47 browser tools, tab_id on the tool) and test_browser_mcp_server (53 tools, instructions); the built server separately smoked at 53 full and 14 read-only tools (windows-smoke.txt); rerun after the version-exchange work; rerun after the harness turned Developer mode on through chrome://extensions and each CI live suite ran independently",
+      "exit_code": 0,
+      "artifact": {
+        "path": "docs/plans/evidence/clipboard/windows-ctest.txt",
+        "sha256": "98ccf26a08bef7f345b968017f51db28b898a9e9640c141d9bb5ab3a10194aa2"
+      },
+      "red": null,
+      "reason": null,
+      "scope_sha256": "348b4c1ca3e44930f32e7c2d584dc60cce32e16480cf6135f7e3dfb707eda1d8",
+      "environment": {
+        "platform": "windows",
+        "tools": {
+          "chrome-for-testing": "153.0.8010.52",
+          "cmake": "4.4.5",
+          "node": "v24.20.0",
+          "python": "3.14.10",
+          "wsl2-arch-cmake": "4.4.3",
+          "wsl2-arch-node": "v26.9.0",
+          "wsl2-arch-python": "3.12.16",
+          "wsl2-arch-semgrep": "1.174.0"
+        }
+      },
+      "inputs": [
+        {
+          "path": ".github/workflows/quality.yml",
+          "sha256": "d1b7a02789c467f0817fe8e4f58404896b31b0929f620318ed1d0bbae2b77ca0"
+        },
+        {
+          "path": "CHANGELOG.md",
+          "sha256": "7819106016c8c3ae103b198a607f9fe2f4a29527e206ab5995480fc1bb132aa1"
+        },
+        {
+          "path": "CMakeLists.txt",
+          "sha256": "ff2ab95b6e448268d16fa6f5bbc08f7e9dbc9ea0591deefe75d38db51a4c42dc"
+        },
+        {
+          "path": "PLAN.md",
+          "sha256": "4ac0e7d987cda9741a9d4fccf71a549b16e2f4f736c696da7437cb23355cc83c"
+        },
+        {
+          "path": "README.md",
+          "sha256": "03360e6d4eb2b088421d9210931e2ad3767450d6351dd5acf12bba3b56be2c7a"
+        },
+        {
+          "path": "browser/extension/background.js",
+          "sha256": "6ae6785bcd520a296e99b4447050fa98fb7e53d3c4caad26f948dabf01b59f80"
+        },
+        {
+          "path": "docs/MULTI_SESSION.md",
+          "sha256": "a1087e82b585d2d81d9b85de70168b2bb80b561368e05b8a45117a5f30fb541b"
+        },
+        {
+          "path": "docs/QUALITY.md",
+          "sha256": "feffcf7c448a6523485632cf41bb167536a0b6b1cf5359efe4a59f5127bb74c1"
+        },
+        {
+          "path": "docs/SECURITY.md",
+          "sha256": "a29333dbca6afb32cba5aa8a177cb71eab981b723e8d45213c1a268c4dc7ca1e"
+        },
+        {
+          "path": "docs/TOOLS.md",
+          "sha256": "9d13cee225f7b96332e74b09373f792aaa6f0b3dfb9ae9a64783703f8c06b045"
+        },
+        {
+          "path": "include/chrome_control_mcp/browser_bridge.h",
+          "sha256": "76a0cef02e26b5f995c65ad5e4cebfa86a3ede3cdf44acc6bc47d731b8636212"
+        },
+        {
+          "path": "include/chrome_control_mcp/browser_control.h",
+          "sha256": "19d24f3637c8cfc961dfa3900c734aabe25efcdf85df2e81fdc51db6b357dc85"
+        },
+        {
+          "path": "include/chrome_control_mcp/browser_uploads.h",
+          "sha256": "83cb3b7fc1b0c21e4d6eb5f936e468321333f4aefdf8f0db81c028a195f17036"
+        },
+        {
+          "path": "package.json",
+          "sha256": "f720537172bc41690fa4e0a620c788dc1c388fdc52bb11b31ee5a504e4e91c61"
+        },
+        {
+          "path": "scripts/mcp_smoke.mjs",
+          "sha256": "52909e87eebd669137686fe6aeff6d5bec8e8fa3ea3a583a52738e9ccfd16682"
+        },
+        {
+          "path": "src/browser_bridge.cpp",
+          "sha256": "84c0f30448bca4812069cd8556740685a029839285ce720cc9e674cbc612abb5"
+        },
+        {
+          "path": "src/browser_contract.cpp",
+          "sha256": "d91a9237faa7f064a68532ce88407a1296867d0a5b8513d1e330e62688cbe6a3"
+        },
+        {
+          "path": "src/browser_control.cpp",
+          "sha256": "da420500dbac842859745e2ba83b39fee7b0f21af5a5ff18f1e2e0b6ae3340af"
+        },
+        {
+          "path": "src/browser_uploads.cpp",
+          "sha256": "47b8fff79aa7e7273ca0e79489be3baa9f59c1022d5832067043390e4bf21e9e"
+        },
+        {
+          "path": "src/mcp_dispatch.cpp",
+          "sha256": "392d12714cfe4abf0b6e3b0aa10c18e98a27e0b3a9d25103902adf85a9e9b6fa"
+        },
+        {
+          "path": "tests/browser_model.mjs",
+          "sha256": "dee337baf259a465e743d40c38aa08edf9353f6ff856c7f8428488145ad92117"
+        },
+        {
+          "path": "tests/e2e/clipboard_e2e.mjs",
+          "sha256": "cd61f125eff580c41dd09db44bd1c576f402b120a7307353dbf61c7143023883"
+        },
+        {
+          "path": "tests/e2e/fixture_server.mjs",
+          "sha256": "9ae6070790f616b8b0d4b19cb9dcbe3111c372e8f6925b588e6d5344423c9173"
+        },
+        {
+          "path": "tests/e2e/full_browser_e2e.mjs",
+          "sha256": "405326d275b9bc650ab4a7f668d1f6c05af6fdc64b03da9960288496199380b0"
+        },
+        {
+          "path": "tests/test_browser_contract.cpp",
+          "sha256": "4499481b4a1e57816912fb35da4ff4ad6c5ce77949f72763749b29aad13ea33e"
+        },
+        {
+          "path": "tests/test_browser_extension_clipboard.mjs",
+          "sha256": "c1a8c3a815fc1bf2be46b17d4f590a2af688e40fdb8468923de9326f41914aa0"
+        },
+        {
+          "path": "tests/test_browser_extension_tabs.mjs",
+          "sha256": "98f456c97360274ae885912c5724ad3613b00ad5963d99d1ddf76621e74f0b0f"
+        },
+        {
+          "path": "tests/test_browser_mcp_server.cpp",
+          "sha256": "de6cbb056943ad5ef9ae9a6883104d8cb02f3839576e7622867c1f30b09bfc85"
+        },
+        {
+          "path": "vscode/README.md",
+          "sha256": "7896d9724aaeb3a6b4b47a3db8ae27eb2902d273c0604e3b57d74d7e7f1d2d8a"
+        }
+      ]
+    },
+    {
+      "id": "EV-CLIP-UNIT-JS-4",
+      "acceptance": [
+        "AC-CLIP-AGENTS",
+        "AC-CLIP-KEYS",
+        "AC-CLIP-PASTE",
+        "AC-CLIP-PAGEAPI",
+        "AC-CLIP-LIFETIME"
+      ],
+      "kind": "behavior",
+      "status": "pass",
+      "command": [
+        "npm",
+        "run",
+        "test:js"
+      ],
+      "method": "All eleven JavaScript suites, including test_browser_extension_clipboard.mjs (7 tests driving the worker through real command frames against the browser model): chords answered and never sent as keys, per-agent isolation, the page command window, typed fallback, clearing on release, bounds; 210/210; rerun after the version-exchange work; rerun after the harness turned Developer mode on through chrome://extensions and each CI live suite ran independently",
+      "exit_code": 0,
+      "artifact": {
+        "path": "docs/plans/evidence/clipboard/windows-test-js.txt",
+        "sha256": "a37d466d24ff3571480ed3c9f3c3987f18688af107359cf1a668deecad3a6cb1"
+      },
+      "red": null,
+      "reason": null,
+      "scope_sha256": "3293a2c4d0ee7e882ade65d770982db1a5321ff6b1ad08c8fb97836f786ed391",
+      "environment": {
+        "platform": "windows",
+        "tools": {
+          "chrome-for-testing": "153.0.8010.52",
+          "cmake": "4.4.5",
+          "node": "v24.20.0",
+          "python": "3.14.10",
+          "wsl2-arch-cmake": "4.4.3",
+          "wsl2-arch-node": "v26.9.0",
+          "wsl2-arch-python": "3.12.16",
+          "wsl2-arch-semgrep": "1.174.0"
+        }
+      },
+      "inputs": [
+        {
+          "path": ".github/workflows/quality.yml",
+          "sha256": "d1b7a02789c467f0817fe8e4f58404896b31b0929f620318ed1d0bbae2b77ca0"
+        },
+        {
+          "path": "CMakeLists.txt",
+          "sha256": "ff2ab95b6e448268d16fa6f5bbc08f7e9dbc9ea0591deefe75d38db51a4c42dc"
+        },
+        {
+          "path": "browser/extension/background.js",
+          "sha256": "6ae6785bcd520a296e99b4447050fa98fb7e53d3c4caad26f948dabf01b59f80"
+        },
+        {
+          "path": "docs/QUALITY.md",
+          "sha256": "feffcf7c448a6523485632cf41bb167536a0b6b1cf5359efe4a59f5127bb74c1"
+        },
+        {
+          "path": "include/chrome_control_mcp/browser_bridge.h",
+          "sha256": "76a0cef02e26b5f995c65ad5e4cebfa86a3ede3cdf44acc6bc47d731b8636212"
+        },
+        {
+          "path": "include/chrome_control_mcp/browser_control.h",
+          "sha256": "19d24f3637c8cfc961dfa3900c734aabe25efcdf85df2e81fdc51db6b357dc85"
+        },
+        {
+          "path": "include/chrome_control_mcp/browser_uploads.h",
+          "sha256": "83cb3b7fc1b0c21e4d6eb5f936e468321333f4aefdf8f0db81c028a195f17036"
+        },
+        {
+          "path": "package.json",
+          "sha256": "f720537172bc41690fa4e0a620c788dc1c388fdc52bb11b31ee5a504e4e91c61"
+        },
+        {
+          "path": "scripts/mcp_smoke.mjs",
+          "sha256": "52909e87eebd669137686fe6aeff6d5bec8e8fa3ea3a583a52738e9ccfd16682"
+        },
+        {
+          "path": "src/browser_bridge.cpp",
+          "sha256": "84c0f30448bca4812069cd8556740685a029839285ce720cc9e674cbc612abb5"
+        },
+        {
+          "path": "src/browser_contract.cpp",
+          "sha256": "d91a9237faa7f064a68532ce88407a1296867d0a5b8513d1e330e62688cbe6a3"
+        },
+        {
+          "path": "src/browser_control.cpp",
+          "sha256": "da420500dbac842859745e2ba83b39fee7b0f21af5a5ff18f1e2e0b6ae3340af"
+        },
+        {
+          "path": "src/browser_uploads.cpp",
+          "sha256": "47b8fff79aa7e7273ca0e79489be3baa9f59c1022d5832067043390e4bf21e9e"
+        },
+        {
+          "path": "src/mcp_dispatch.cpp",
+          "sha256": "392d12714cfe4abf0b6e3b0aa10c18e98a27e0b3a9d25103902adf85a9e9b6fa"
+        },
+        {
+          "path": "tests/browser_model.mjs",
+          "sha256": "dee337baf259a465e743d40c38aa08edf9353f6ff856c7f8428488145ad92117"
+        },
+        {
+          "path": "tests/e2e/clipboard_e2e.mjs",
+          "sha256": "cd61f125eff580c41dd09db44bd1c576f402b120a7307353dbf61c7143023883"
+        },
+        {
+          "path": "tests/e2e/fixture_server.mjs",
+          "sha256": "9ae6070790f616b8b0d4b19cb9dcbe3111c372e8f6925b588e6d5344423c9173"
+        },
+        {
+          "path": "tests/e2e/full_browser_e2e.mjs",
+          "sha256": "405326d275b9bc650ab4a7f668d1f6c05af6fdc64b03da9960288496199380b0"
+        },
+        {
+          "path": "tests/test_browser_contract.cpp",
+          "sha256": "4499481b4a1e57816912fb35da4ff4ad6c5ce77949f72763749b29aad13ea33e"
+        },
+        {
+          "path": "tests/test_browser_extension_clipboard.mjs",
+          "sha256": "c1a8c3a815fc1bf2be46b17d4f590a2af688e40fdb8468923de9326f41914aa0"
+        },
+        {
+          "path": "tests/test_browser_extension_tabs.mjs",
+          "sha256": "98f456c97360274ae885912c5724ad3613b00ad5963d99d1ddf76621e74f0b0f"
+        },
+        {
+          "path": "tests/test_browser_mcp_server.cpp",
+          "sha256": "de6cbb056943ad5ef9ae9a6883104d8cb02f3839576e7622867c1f30b09bfc85"
+        }
+      ]
+    },
+    {
+      "id": "EV-CLIP-LIVE-4",
+      "acceptance": [
+        "AC-CLIP-AGENTS",
+        "AC-CLIP-SERVERS",
+        "AC-CLIP-SYSTEM",
+        "AC-CLIP-KEYS",
+        "AC-CLIP-PASTE",
+        "AC-CLIP-PAGEAPI",
+        "AC-CLIP-RESTORE",
+        "AC-CLIP-LIFETIME"
+      ],
+      "kind": "behavior",
+      "status": "pass",
+      "command": [
+        "node",
+        "tests/e2e/isolated_run.mjs",
+        "--chrome=~/ccmcp/.chrome-for-testing/chrome/linux-153.0.8010.52/chrome-linux64/chrome",
+        "--executable=build/chrome_control_mcp",
+        "tests/e2e/clipboard_e2e.mjs"
+      ],
+      "method": "Live suite in headless Chrome for Testing 153 on Linux with two servers and three agents and a sentinel on the browser's own clipboard, the harness now with Developer mode on as every real install has it: 24/24; same run multi-agent 25/25, interference 10/10, full suite 48 tools / 177 cases; rerun after the version-exchange work; rerun after the harness turned Developer mode on through chrome://extensions and each CI live suite ran independently",
+      "exit_code": 0,
+      "artifact": {
+        "path": "docs/plans/evidence/clipboard/live-clipboard_e2e.json",
+        "sha256": "297506522c3c892dd1f7d77f05d85338506c2fc1d37af79050fd539c8815a66d"
+      },
+      "red": null,
+      "reason": null,
+      "scope_sha256": "3293a2c4d0ee7e882ade65d770982db1a5321ff6b1ad08c8fb97836f786ed391",
+      "environment": {
+        "platform": "windows",
+        "tools": {
+          "chrome-for-testing": "153.0.8010.52",
+          "cmake": "4.4.5",
+          "node": "v24.20.0",
+          "python": "3.14.10",
+          "wsl2-arch-cmake": "4.4.3",
+          "wsl2-arch-node": "v26.9.0",
+          "wsl2-arch-python": "3.12.16",
+          "wsl2-arch-semgrep": "1.174.0"
+        }
+      },
+      "inputs": [
+        {
+          "path": ".github/workflows/quality.yml",
+          "sha256": "d1b7a02789c467f0817fe8e4f58404896b31b0929f620318ed1d0bbae2b77ca0"
+        },
+        {
+          "path": "CMakeLists.txt",
+          "sha256": "ff2ab95b6e448268d16fa6f5bbc08f7e9dbc9ea0591deefe75d38db51a4c42dc"
+        },
+        {
+          "path": "browser/extension/background.js",
+          "sha256": "6ae6785bcd520a296e99b4447050fa98fb7e53d3c4caad26f948dabf01b59f80"
+        },
+        {
+          "path": "docs/QUALITY.md",
+          "sha256": "feffcf7c448a6523485632cf41bb167536a0b6b1cf5359efe4a59f5127bb74c1"
+        },
+        {
+          "path": "include/chrome_control_mcp/browser_bridge.h",
+          "sha256": "76a0cef02e26b5f995c65ad5e4cebfa86a3ede3cdf44acc6bc47d731b8636212"
+        },
+        {
+          "path": "include/chrome_control_mcp/browser_control.h",
+          "sha256": "19d24f3637c8cfc961dfa3900c734aabe25efcdf85df2e81fdc51db6b357dc85"
+        },
+        {
+          "path": "include/chrome_control_mcp/browser_uploads.h",
+          "sha256": "83cb3b7fc1b0c21e4d6eb5f936e468321333f4aefdf8f0db81c028a195f17036"
+        },
+        {
+          "path": "package.json",
+          "sha256": "f720537172bc41690fa4e0a620c788dc1c388fdc52bb11b31ee5a504e4e91c61"
+        },
+        {
+          "path": "scripts/mcp_smoke.mjs",
+          "sha256": "52909e87eebd669137686fe6aeff6d5bec8e8fa3ea3a583a52738e9ccfd16682"
+        },
+        {
+          "path": "src/browser_bridge.cpp",
+          "sha256": "84c0f30448bca4812069cd8556740685a029839285ce720cc9e674cbc612abb5"
+        },
+        {
+          "path": "src/browser_contract.cpp",
+          "sha256": "d91a9237faa7f064a68532ce88407a1296867d0a5b8513d1e330e62688cbe6a3"
+        },
+        {
+          "path": "src/browser_control.cpp",
+          "sha256": "da420500dbac842859745e2ba83b39fee7b0f21af5a5ff18f1e2e0b6ae3340af"
+        },
+        {
+          "path": "src/browser_uploads.cpp",
+          "sha256": "47b8fff79aa7e7273ca0e79489be3baa9f59c1022d5832067043390e4bf21e9e"
+        },
+        {
+          "path": "src/mcp_dispatch.cpp",
+          "sha256": "392d12714cfe4abf0b6e3b0aa10c18e98a27e0b3a9d25103902adf85a9e9b6fa"
+        },
+        {
+          "path": "tests/browser_model.mjs",
+          "sha256": "dee337baf259a465e743d40c38aa08edf9353f6ff856c7f8428488145ad92117"
+        },
+        {
+          "path": "tests/e2e/clipboard_e2e.mjs",
+          "sha256": "cd61f125eff580c41dd09db44bd1c576f402b120a7307353dbf61c7143023883"
+        },
+        {
+          "path": "tests/e2e/fixture_server.mjs",
+          "sha256": "9ae6070790f616b8b0d4b19cb9dcbe3111c372e8f6925b588e6d5344423c9173"
+        },
+        {
+          "path": "tests/e2e/full_browser_e2e.mjs",
+          "sha256": "405326d275b9bc650ab4a7f668d1f6c05af6fdc64b03da9960288496199380b0"
+        },
+        {
+          "path": "tests/test_browser_contract.cpp",
+          "sha256": "4499481b4a1e57816912fb35da4ff4ad6c5ce77949f72763749b29aad13ea33e"
+        },
+        {
+          "path": "tests/test_browser_extension_clipboard.mjs",
+          "sha256": "c1a8c3a815fc1bf2be46b17d4f590a2af688e40fdb8468923de9326f41914aa0"
+        },
+        {
+          "path": "tests/test_browser_extension_tabs.mjs",
+          "sha256": "98f456c97360274ae885912c5724ad3613b00ad5963d99d1ddf76621e74f0b0f"
+        },
+        {
+          "path": "tests/test_browser_mcp_server.cpp",
+          "sha256": "de6cbb056943ad5ef9ae9a6883104d8cb02f3839576e7622867c1f30b09bfc85"
+        }
+      ]
+    },
+    {
+      "id": "EV-CLIP-RED-LIVE-4",
+      "acceptance": [
+        "AC-CLIP-SERVERS",
+        "AC-CLIP-SYSTEM",
+        "AC-CLIP-KEYS",
+        "AC-CLIP-PASTE",
+        "AC-CLIP-PAGEAPI",
+        "AC-CLIP-RESTORE"
+      ],
+      "kind": "red",
+      "status": "pass",
+      "command": [
+        "bash",
+        "wsl_clip_drills.sh"
+      ],
+      "method": "Rerun on the current tree: six mutations, each staged into the extension the dedicated browser loads, the live clipboard suite run against it, then the mirror re-synced: no stand-in for new documents, no stand-in at all, chords sent as keys, no command window, one clipboard per name across servers, no restore on handback; each failed its checks; the restored tree passed. Fingerprints are of the no-stand-in-at-all mutation; rerun after the harness turned Developer mode on through chrome://extensions and each CI live suite ran independently",
+      "exit_code": 0,
+      "artifact": {
+        "path": "docs/plans/evidence/clipboard/live-red-drills.txt",
+        "sha256": "8482b2a05ee06554aa68faca671d6d41d074fd009f946aa7e6dcd99bda4f227b"
+      },
+      "red": {
+        "mutation": "clipboardStandInScript() returns \"void 0\": no page stand-in is installed",
+        "baseline_exit": 0,
+        "mutated_exit": 1,
+        "restored_exit": 0,
+        "expected_diagnostic": "the user's clipboard still holds the sentinel",
+        "observed_diagnostic": "FAIL after all of it, the user's clipboard still holds the sentinel -- exec-copied-text",
+        "before": [
+          {
+            "path": "browser/extension/background.js",
+            "sha256": "6ae6785bcd520a296e99b4447050fa98fb7e53d3c4caad26f948dabf01b59f80"
+          }
+        ],
+        "after": [
+          {
+            "path": "browser/extension/background.js",
+            "sha256": "6ae6785bcd520a296e99b4447050fa98fb7e53d3c4caad26f948dabf01b59f80"
+          }
+        ],
+        "mutated": [
+          {
+            "path": "browser/extension/background.js",
+            "sha256": "af9ddeca92e1f74cbac988c2bba6865346267be4a75383455365c7508de69fe3"
+          }
+        ]
+      },
+      "reason": null,
+      "scope_sha256": "3293a2c4d0ee7e882ade65d770982db1a5321ff6b1ad08c8fb97836f786ed391",
+      "environment": {
+        "platform": "windows",
+        "tools": {
+          "chrome-for-testing": "153.0.8010.52",
+          "cmake": "4.4.5",
+          "node": "v24.20.0",
+          "python": "3.14.10",
+          "wsl2-arch-cmake": "4.4.3",
+          "wsl2-arch-node": "v26.9.0",
+          "wsl2-arch-python": "3.12.16",
+          "wsl2-arch-semgrep": "1.174.0"
+        }
+      },
+      "inputs": [
+        {
+          "path": ".github/workflows/quality.yml",
+          "sha256": "d1b7a02789c467f0817fe8e4f58404896b31b0929f620318ed1d0bbae2b77ca0"
+        },
+        {
+          "path": "CMakeLists.txt",
+          "sha256": "ff2ab95b6e448268d16fa6f5bbc08f7e9dbc9ea0591deefe75d38db51a4c42dc"
+        },
+        {
+          "path": "browser/extension/background.js",
+          "sha256": "6ae6785bcd520a296e99b4447050fa98fb7e53d3c4caad26f948dabf01b59f80"
+        },
+        {
+          "path": "docs/QUALITY.md",
+          "sha256": "feffcf7c448a6523485632cf41bb167536a0b6b1cf5359efe4a59f5127bb74c1"
+        },
+        {
+          "path": "include/chrome_control_mcp/browser_bridge.h",
+          "sha256": "76a0cef02e26b5f995c65ad5e4cebfa86a3ede3cdf44acc6bc47d731b8636212"
+        },
+        {
+          "path": "include/chrome_control_mcp/browser_control.h",
+          "sha256": "19d24f3637c8cfc961dfa3900c734aabe25efcdf85df2e81fdc51db6b357dc85"
+        },
+        {
+          "path": "include/chrome_control_mcp/browser_uploads.h",
+          "sha256": "83cb3b7fc1b0c21e4d6eb5f936e468321333f4aefdf8f0db81c028a195f17036"
+        },
+        {
+          "path": "package.json",
+          "sha256": "f720537172bc41690fa4e0a620c788dc1c388fdc52bb11b31ee5a504e4e91c61"
+        },
+        {
+          "path": "scripts/mcp_smoke.mjs",
+          "sha256": "52909e87eebd669137686fe6aeff6d5bec8e8fa3ea3a583a52738e9ccfd16682"
+        },
+        {
+          "path": "src/browser_bridge.cpp",
+          "sha256": "84c0f30448bca4812069cd8556740685a029839285ce720cc9e674cbc612abb5"
+        },
+        {
+          "path": "src/browser_contract.cpp",
+          "sha256": "d91a9237faa7f064a68532ce88407a1296867d0a5b8513d1e330e62688cbe6a3"
+        },
+        {
+          "path": "src/browser_control.cpp",
+          "sha256": "da420500dbac842859745e2ba83b39fee7b0f21af5a5ff18f1e2e0b6ae3340af"
+        },
+        {
+          "path": "src/browser_uploads.cpp",
+          "sha256": "47b8fff79aa7e7273ca0e79489be3baa9f59c1022d5832067043390e4bf21e9e"
+        },
+        {
+          "path": "src/mcp_dispatch.cpp",
+          "sha256": "392d12714cfe4abf0b6e3b0aa10c18e98a27e0b3a9d25103902adf85a9e9b6fa"
+        },
+        {
+          "path": "tests/browser_model.mjs",
+          "sha256": "dee337baf259a465e743d40c38aa08edf9353f6ff856c7f8428488145ad92117"
+        },
+        {
+          "path": "tests/e2e/clipboard_e2e.mjs",
+          "sha256": "cd61f125eff580c41dd09db44bd1c576f402b120a7307353dbf61c7143023883"
+        },
+        {
+          "path": "tests/e2e/fixture_server.mjs",
+          "sha256": "9ae6070790f616b8b0d4b19cb9dcbe3111c372e8f6925b588e6d5344423c9173"
+        },
+        {
+          "path": "tests/e2e/full_browser_e2e.mjs",
+          "sha256": "405326d275b9bc650ab4a7f668d1f6c05af6fdc64b03da9960288496199380b0"
+        },
+        {
+          "path": "tests/test_browser_contract.cpp",
+          "sha256": "4499481b4a1e57816912fb35da4ff4ad6c5ce77949f72763749b29aad13ea33e"
+        },
+        {
+          "path": "tests/test_browser_extension_clipboard.mjs",
+          "sha256": "c1a8c3a815fc1bf2be46b17d4f590a2af688e40fdb8468923de9326f41914aa0"
+        },
+        {
+          "path": "tests/test_browser_extension_tabs.mjs",
+          "sha256": "98f456c97360274ae885912c5724ad3613b00ad5963d99d1ddf76621e74f0b0f"
+        },
+        {
+          "path": "tests/test_browser_mcp_server.cpp",
+          "sha256": "de6cbb056943ad5ef9ae9a6883104d8cb02f3839576e7622867c1f30b09bfc85"
+        }
+      ]
+    },
+    {
+      "id": "EV-CLIP-RED-UNIT-4",
+      "acceptance": [
+        "AC-CLIP-AGENTS",
+        "AC-CLIP-KEYS",
+        "AC-CLIP-PASTE",
+        "AC-CLIP-PAGEAPI",
+        "AC-CLIP-LIFETIME"
+      ],
+      "kind": "red",
+      "status": "pass",
+      "command": [
+        "node",
+        "drill.mjs",
+        "browser/extension/background.js",
+        "tests/test_browser_extension_clipboard.mjs"
+      ],
+      "method": "Five unit drills rerun on the current tree (chord interception, per-agent keying, the command window, clearing on release, Shift+Enter between typed lines), each failing its named test and restored byte for byte with a green rerun. Fingerprints are of the per-agent keying mutation; rerun after the harness turned Developer mode on through chrome://extensions and each CI live suite ran independently",
+      "exit_code": 0,
+      "artifact": {
+        "path": "docs/plans/evidence/clipboard/unit-red-drills.txt",
+        "sha256": "fe6abd02ae9e2c93059a25785ba24ec588f3f25e69d8e65b8c0d371abc2c7d5a"
+      },
+      "red": {
+        "mutation": "every agent's clipboard stored under the empty key",
+        "baseline_exit": 0,
+        "mutated_exit": 1,
+        "restored_exit": 0,
+        "expected_diagnostic": "each agent pastes its own clipboard, never another agent's",
+        "observed_diagnostic": "each agent pastes its own clipboard, never another agent's",
+        "before": [
+          {
+            "path": "browser/extension/background.js",
+            "sha256": "6ae6785bcd520a296e99b4447050fa98fb7e53d3c4caad26f948dabf01b59f80"
+          }
+        ],
+        "after": [
+          {
+            "path": "browser/extension/background.js",
+            "sha256": "6ae6785bcd520a296e99b4447050fa98fb7e53d3c4caad26f948dabf01b59f80"
+          }
+        ],
+        "mutated": [
+          {
+            "path": "browser/extension/background.js",
+            "sha256": "ce97ef57d3ad015d707cc7adb60d1cbdb452ee6657b055c69ac6ad9a81221470"
+          }
+        ]
+      },
+      "reason": null,
+      "scope_sha256": "3293a2c4d0ee7e882ade65d770982db1a5321ff6b1ad08c8fb97836f786ed391",
+      "environment": {
+        "platform": "windows",
+        "tools": {
+          "chrome-for-testing": "153.0.8010.52",
+          "cmake": "4.4.5",
+          "node": "v24.20.0",
+          "python": "3.14.10",
+          "wsl2-arch-cmake": "4.4.3",
+          "wsl2-arch-node": "v26.9.0",
+          "wsl2-arch-python": "3.12.16",
+          "wsl2-arch-semgrep": "1.174.0"
+        }
+      },
+      "inputs": [
+        {
+          "path": ".github/workflows/quality.yml",
+          "sha256": "d1b7a02789c467f0817fe8e4f58404896b31b0929f620318ed1d0bbae2b77ca0"
+        },
+        {
+          "path": "CMakeLists.txt",
+          "sha256": "ff2ab95b6e448268d16fa6f5bbc08f7e9dbc9ea0591deefe75d38db51a4c42dc"
+        },
+        {
+          "path": "browser/extension/background.js",
+          "sha256": "6ae6785bcd520a296e99b4447050fa98fb7e53d3c4caad26f948dabf01b59f80"
+        },
+        {
+          "path": "docs/QUALITY.md",
+          "sha256": "feffcf7c448a6523485632cf41bb167536a0b6b1cf5359efe4a59f5127bb74c1"
+        },
+        {
+          "path": "include/chrome_control_mcp/browser_bridge.h",
+          "sha256": "76a0cef02e26b5f995c65ad5e4cebfa86a3ede3cdf44acc6bc47d731b8636212"
+        },
+        {
+          "path": "include/chrome_control_mcp/browser_control.h",
+          "sha256": "19d24f3637c8cfc961dfa3900c734aabe25efcdf85df2e81fdc51db6b357dc85"
+        },
+        {
+          "path": "include/chrome_control_mcp/browser_uploads.h",
+          "sha256": "83cb3b7fc1b0c21e4d6eb5f936e468321333f4aefdf8f0db81c028a195f17036"
+        },
+        {
+          "path": "package.json",
+          "sha256": "f720537172bc41690fa4e0a620c788dc1c388fdc52bb11b31ee5a504e4e91c61"
+        },
+        {
+          "path": "scripts/mcp_smoke.mjs",
+          "sha256": "52909e87eebd669137686fe6aeff6d5bec8e8fa3ea3a583a52738e9ccfd16682"
+        },
+        {
+          "path": "src/browser_bridge.cpp",
+          "sha256": "84c0f30448bca4812069cd8556740685a029839285ce720cc9e674cbc612abb5"
+        },
+        {
+          "path": "src/browser_contract.cpp",
+          "sha256": "d91a9237faa7f064a68532ce88407a1296867d0a5b8513d1e330e62688cbe6a3"
+        },
+        {
+          "path": "src/browser_control.cpp",
+          "sha256": "da420500dbac842859745e2ba83b39fee7b0f21af5a5ff18f1e2e0b6ae3340af"
+        },
+        {
+          "path": "src/browser_uploads.cpp",
+          "sha256": "47b8fff79aa7e7273ca0e79489be3baa9f59c1022d5832067043390e4bf21e9e"
+        },
+        {
+          "path": "src/mcp_dispatch.cpp",
+          "sha256": "392d12714cfe4abf0b6e3b0aa10c18e98a27e0b3a9d25103902adf85a9e9b6fa"
+        },
+        {
+          "path": "tests/browser_model.mjs",
+          "sha256": "dee337baf259a465e743d40c38aa08edf9353f6ff856c7f8428488145ad92117"
+        },
+        {
+          "path": "tests/e2e/clipboard_e2e.mjs",
+          "sha256": "cd61f125eff580c41dd09db44bd1c576f402b120a7307353dbf61c7143023883"
+        },
+        {
+          "path": "tests/e2e/fixture_server.mjs",
+          "sha256": "9ae6070790f616b8b0d4b19cb9dcbe3111c372e8f6925b588e6d5344423c9173"
+        },
+        {
+          "path": "tests/e2e/full_browser_e2e.mjs",
+          "sha256": "405326d275b9bc650ab4a7f668d1f6c05af6fdc64b03da9960288496199380b0"
+        },
+        {
+          "path": "tests/test_browser_contract.cpp",
+          "sha256": "4499481b4a1e57816912fb35da4ff4ad6c5ce77949f72763749b29aad13ea33e"
+        },
+        {
+          "path": "tests/test_browser_extension_clipboard.mjs",
+          "sha256": "c1a8c3a815fc1bf2be46b17d4f590a2af688e40fdb8468923de9326f41914aa0"
+        },
+        {
+          "path": "tests/test_browser_extension_tabs.mjs",
+          "sha256": "98f456c97360274ae885912c5724ad3613b00ad5963d99d1ddf76621e74f0b0f"
+        },
+        {
+          "path": "tests/test_browser_mcp_server.cpp",
+          "sha256": "de6cbb056943ad5ef9ae9a6883104d8cb02f3839576e7622867c1f30b09bfc85"
+        }
+      ]
+    },
+    {
+      "id": "EV-CLIP-RED-CONTRACT-4",
+      "acceptance": [
+        "AC-CLIP-TOOL"
+      ],
+      "kind": "red",
+      "status": "pass",
+      "command": [
+        "ctest",
+        "--test-dir",
+        "build",
+        "-C",
+        "Release",
+        "-R",
+        "^test_browser_contract$"
+      ],
+      "method": "applyToolExtras' browser_clipboard branch removed, test_browser_contract rebuilt and run: both clipboard contract tests failed; the file was restored byte for byte and the suite passed; rerun after the version-exchange work; rerun after the harness turned Developer mode on through chrome://extensions and each CI live suite ran independently",
+      "exit_code": 0,
+      "artifact": {
+        "path": "docs/plans/evidence/clipboard/contract-red-drill.txt",
+        "sha256": "570206357b9824be1f1a07b069e7d2a45540a763462c6a5706d967a8523b2db4"
+      },
+      "red": {
+        "mutation": "browser_clipboard's per-action argument checks removed from applyToolExtras",
+        "baseline_exit": 0,
+        "mutated_exit": 8,
+        "restored_exit": 0,
+        "expected_diagnostic": "buildCommand_clipboardTakesOnlyWhatEachActionUses",
+        "observed_diagnostic": "FAIL!  : BrowserContractTests::buildCommand_clipboardTakesOnlyWhatEachActionUses() '!unknown.ok' returned FALSE.",
+        "before": [
+          {
+            "path": "src/browser_contract.cpp",
+            "sha256": "d91a9237faa7f064a68532ce88407a1296867d0a5b8513d1e330e62688cbe6a3"
+          }
+        ],
+        "after": [
+          {
+            "path": "src/browser_contract.cpp",
+            "sha256": "d91a9237faa7f064a68532ce88407a1296867d0a5b8513d1e330e62688cbe6a3"
+          }
+        ],
+        "mutated": [
+          {
+            "path": "src/browser_contract.cpp",
+            "sha256": "0acbb20d6bbd1979d3ff229300dae850aafb0310f1572d3ba49e288958fdaa94"
+          }
+        ]
+      },
+      "reason": null,
+      "scope_sha256": "348b4c1ca3e44930f32e7c2d584dc60cce32e16480cf6135f7e3dfb707eda1d8",
+      "environment": {
+        "platform": "windows",
+        "tools": {
+          "chrome-for-testing": "153.0.8010.52",
+          "cmake": "4.4.5",
+          "node": "v24.20.0",
+          "python": "3.14.10",
+          "wsl2-arch-cmake": "4.4.3",
+          "wsl2-arch-node": "v26.9.0",
+          "wsl2-arch-python": "3.12.16",
+          "wsl2-arch-semgrep": "1.174.0"
+        }
+      },
+      "inputs": [
+        {
+          "path": ".github/workflows/quality.yml",
+          "sha256": "d1b7a02789c467f0817fe8e4f58404896b31b0929f620318ed1d0bbae2b77ca0"
+        },
+        {
+          "path": "CHANGELOG.md",
+          "sha256": "7819106016c8c3ae103b198a607f9fe2f4a29527e206ab5995480fc1bb132aa1"
+        },
+        {
+          "path": "CMakeLists.txt",
+          "sha256": "ff2ab95b6e448268d16fa6f5bbc08f7e9dbc9ea0591deefe75d38db51a4c42dc"
+        },
+        {
+          "path": "PLAN.md",
+          "sha256": "4ac0e7d987cda9741a9d4fccf71a549b16e2f4f736c696da7437cb23355cc83c"
+        },
+        {
+          "path": "README.md",
+          "sha256": "03360e6d4eb2b088421d9210931e2ad3767450d6351dd5acf12bba3b56be2c7a"
+        },
+        {
+          "path": "browser/extension/background.js",
+          "sha256": "6ae6785bcd520a296e99b4447050fa98fb7e53d3c4caad26f948dabf01b59f80"
+        },
+        {
+          "path": "docs/MULTI_SESSION.md",
+          "sha256": "a1087e82b585d2d81d9b85de70168b2bb80b561368e05b8a45117a5f30fb541b"
+        },
+        {
+          "path": "docs/QUALITY.md",
+          "sha256": "feffcf7c448a6523485632cf41bb167536a0b6b1cf5359efe4a59f5127bb74c1"
+        },
+        {
+          "path": "docs/SECURITY.md",
+          "sha256": "a29333dbca6afb32cba5aa8a177cb71eab981b723e8d45213c1a268c4dc7ca1e"
+        },
+        {
+          "path": "docs/TOOLS.md",
+          "sha256": "9d13cee225f7b96332e74b09373f792aaa6f0b3dfb9ae9a64783703f8c06b045"
+        },
+        {
+          "path": "include/chrome_control_mcp/browser_bridge.h",
+          "sha256": "76a0cef02e26b5f995c65ad5e4cebfa86a3ede3cdf44acc6bc47d731b8636212"
+        },
+        {
+          "path": "include/chrome_control_mcp/browser_control.h",
+          "sha256": "19d24f3637c8cfc961dfa3900c734aabe25efcdf85df2e81fdc51db6b357dc85"
+        },
+        {
+          "path": "include/chrome_control_mcp/browser_uploads.h",
+          "sha256": "83cb3b7fc1b0c21e4d6eb5f936e468321333f4aefdf8f0db81c028a195f17036"
+        },
+        {
+          "path": "package.json",
+          "sha256": "f720537172bc41690fa4e0a620c788dc1c388fdc52bb11b31ee5a504e4e91c61"
+        },
+        {
+          "path": "scripts/mcp_smoke.mjs",
+          "sha256": "52909e87eebd669137686fe6aeff6d5bec8e8fa3ea3a583a52738e9ccfd16682"
+        },
+        {
+          "path": "src/browser_bridge.cpp",
+          "sha256": "84c0f30448bca4812069cd8556740685a029839285ce720cc9e674cbc612abb5"
+        },
+        {
+          "path": "src/browser_contract.cpp",
+          "sha256": "d91a9237faa7f064a68532ce88407a1296867d0a5b8513d1e330e62688cbe6a3"
+        },
+        {
+          "path": "src/browser_control.cpp",
+          "sha256": "da420500dbac842859745e2ba83b39fee7b0f21af5a5ff18f1e2e0b6ae3340af"
+        },
+        {
+          "path": "src/browser_uploads.cpp",
+          "sha256": "47b8fff79aa7e7273ca0e79489be3baa9f59c1022d5832067043390e4bf21e9e"
+        },
+        {
+          "path": "src/mcp_dispatch.cpp",
+          "sha256": "392d12714cfe4abf0b6e3b0aa10c18e98a27e0b3a9d25103902adf85a9e9b6fa"
+        },
+        {
+          "path": "tests/browser_model.mjs",
+          "sha256": "dee337baf259a465e743d40c38aa08edf9353f6ff856c7f8428488145ad92117"
+        },
+        {
+          "path": "tests/e2e/clipboard_e2e.mjs",
+          "sha256": "cd61f125eff580c41dd09db44bd1c576f402b120a7307353dbf61c7143023883"
+        },
+        {
+          "path": "tests/e2e/fixture_server.mjs",
+          "sha256": "9ae6070790f616b8b0d4b19cb9dcbe3111c372e8f6925b588e6d5344423c9173"
+        },
+        {
+          "path": "tests/e2e/full_browser_e2e.mjs",
+          "sha256": "405326d275b9bc650ab4a7f668d1f6c05af6fdc64b03da9960288496199380b0"
+        },
+        {
+          "path": "tests/test_browser_contract.cpp",
+          "sha256": "4499481b4a1e57816912fb35da4ff4ad6c5ce77949f72763749b29aad13ea33e"
+        },
+        {
+          "path": "tests/test_browser_extension_clipboard.mjs",
+          "sha256": "c1a8c3a815fc1bf2be46b17d4f590a2af688e40fdb8468923de9326f41914aa0"
+        },
+        {
+          "path": "tests/test_browser_extension_tabs.mjs",
+          "sha256": "98f456c97360274ae885912c5724ad3613b00ad5963d99d1ddf76621e74f0b0f"
+        },
+        {
+          "path": "tests/test_browser_mcp_server.cpp",
+          "sha256": "de6cbb056943ad5ef9ae9a6883104d8cb02f3839576e7622867c1f30b09bfc85"
+        },
+        {
+          "path": "vscode/README.md",
+          "sha256": "7896d9724aaeb3a6b4b47a3db8ae27eb2902d273c0604e3b57d74d7e7f1d2d8a"
         }
       ]
     }
