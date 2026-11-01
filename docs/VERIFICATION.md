@@ -69,6 +69,23 @@ open "relay closed between two commands" failures recorded for
 [1.9.0](#190-one-unexplained-failure) and for [the 1.10.0 tag](#1100-the-v1100-tag-and-release),
 both on Linux; the Windows check uses `PeekNamedPipe` and had no such race.
 
+### 1.11.0: CI and the release
+
+The first push under the tiers, `cc01a68`
+([Quality run 41331871943](https://github.com/RandyNorthrup/chrome-control-mcp/actions/runs/41331871943)):
+nine jobs -- what changed, formatting, lint and secret scan, PowerShell and native analysis, builds
+and tests on Windows, Linux and macOS, both sanitizers -- all passed, with no live browser job, in
+6 minutes 20 seconds from start to finish. The two pushes before the tiers took 19 and 20 minutes,
+and one of them (`2535b19`) changed nothing but this file.
+
+The v1.11.0 tag ([release run 41332519441](https://github.com/RandyNorthrup/chrome-control-mcp/actions/runs/41332519441)):
+the four archives built and tested, and the live browser suites ran on all three platforms through
+`live.yml` -- Linux in 13.8 minutes, macOS 14.8, Windows 21.5. The GitHub release published at
+18:00:16, three seconds after the last live job finished, and 1.11.0 reached the Marketplace for all
+four targets. The large-upload suite passed 7/7 on each platform: 300 MiB at 11.5 MiB/s on Linux,
+8.8 on macOS, 5.9 on Windows (`ci-large-upload-*.json`). The tag's own Quality run passed all nine
+jobs. Raw run records: `ci-push-code.json`, `ci-release.json`.
+
 ### 1.10.0 (2026-11-01)
 
 1.10.0 lets one server serve every Chrome profile the extension is loaded in, with agents choosing a

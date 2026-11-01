@@ -1,0 +1,65 @@
+{
+  "conclusion": "success",
+  "createdAt": "2026-11-01T17:31:08Z",
+  "event": "push",
+  "headBranch": "main",
+  "headSha": "cc01a687698786cce85c0e3866bc3008238b9765",
+  "jobs": [
+    {
+      "completedAt": "2026-11-01T17:31:15Z",
+      "conclusion": "success",
+      "name": "What changed",
+      "startedAt": "2026-11-01T17:31:11Z"
+    },
+    {
+      "completedAt": "2026-11-01T17:34:26Z",
+      "conclusion": "success",
+      "name": "macOS build and tests",
+      "startedAt": "2026-11-01T17:31:18Z"
+    },
+    {
+      "completedAt": "2026-11-01T17:34:48Z",
+      "conclusion": "success",
+      "name": "Native and semantic static analysis",
+      "startedAt": "2026-11-01T17:31:18Z"
+    },
+    {
+      "completedAt": "2026-11-01T17:34:34Z",
+      "conclusion": "success",
+      "name": "Linux build and tests",
+      "startedAt": "2026-11-01T17:31:18Z"
+    },
+    {
+      "completedAt": "2026-11-01T17:33:58Z",
+      "conclusion": "success",
+      "name": "ASan + UBSan",
+      "startedAt": "2026-11-01T17:31:18Z"
+    },
+    {
+      "completedAt": "2026-11-01T17:32:26Z",
+      "conclusion": "success",
+      "name": "PowerShell static analysis",
+      "startedAt": "2026-11-01T17:31:19Z"
+    },
+    {
+      "completedAt": "2026-11-01T17:32:28Z",
+      "conclusion": "success",
+      "name": "Format, lint, and secret scan",
+      "startedAt": "2026-11-01T17:31:18Z"
+    },
+    {
+      "completedAt": "2026-11-01T17:37:27Z",
+      "conclusion": "success",
+      "name": "Windows build and tests",
+      "startedAt": "2026-11-01T17:31:20Z"
+    },
+    {
+      "completedAt": "2026-11-01T17:33:34Z",
+      "conclusion": "success",
+      "name": "TSan",
+      "startedAt": "2026-11-01T17:31:18Z"
+    }
+  ],
+  "run": 41331871943,
+  "updatedAt": "2026-11-01T17:37:28Z"
+}

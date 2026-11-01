@@ -1,0 +1,39 @@
+{
+  "ok": true,
+  "checks": [
+    {
+      "check": "a 300 MiB file reaches a file input by ref, byte for byte",
+      "status": "passed"
+    },
+    {
+      "check": "a 40 MiB file fills the input picker the page opened",
+      "status": "passed"
+    },
+    {
+      "check": "a 40 MiB file drops onto a drop zone by ref",
+      "status": "passed"
+    },
+    {
+      "check": "a showOpenFilePicker answer gives the same 40 MiB",
+      "status": "passed"
+    },
+    {
+      "check": "a page that reloads mid-delivery is given nothing and says why; the next upload works",
+      "status": "passed"
+    },
+    {
+      "check": "a file over the operator's cap is refused before any of it is sent",
+      "status": "passed"
+    },
+    {
+      "check": "the worker is left holding no upload",
+      "status": "passed"
+    }
+  ],
+  "measured": {
+    "large_upload_seconds": 25.998,
+    "large_upload_mib_per_second": 11.5,
+    "cap_refusal_ms": 0
+  },
+  "error": null
+}
