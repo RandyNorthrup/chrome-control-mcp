@@ -1,55 +1,55 @@
 Test project C:/Users/Randy/Coding/chrome-control-mcp/build
       Start  1: test_browser_contract
- 1/25 Test  #1: test_browser_contract .................   Passed    0.31 sec
+ 1/25 Test  #1: test_browser_contract .................   Passed    0.12 sec
       Start  2: test_windows_process_identity
- 2/25 Test  #2: test_windows_process_identity .........   Passed    0.37 sec
+ 2/25 Test  #2: test_windows_process_identity .........   Passed    0.09 sec
       Start  3: test_native_messaging
- 3/25 Test  #3: test_native_messaging .................   Passed    0.76 sec
+ 3/25 Test  #3: test_native_messaging .................   Passed    0.26 sec
       Start  4: test_browser_bridge
- 4/25 Test  #4: test_browser_bridge ...................   Passed    0.53 sec
+ 4/25 Test  #4: test_browser_bridge ...................   Passed    0.20 sec
       Start  5: test_install_layout
- 5/25 Test  #5: test_install_layout ...................   Passed    0.29 sec
+ 5/25 Test  #5: test_install_layout ...................   Passed    0.08 sec
       Start  6: test_updater
- 6/25 Test  #6: test_updater ..........................   Passed    0.25 sec
+ 6/25 Test  #6: test_updater ..........................   Passed    0.08 sec
       Start  7: test_browser_extension_installer
- 7/25 Test  #7: test_browser_extension_installer ......   Passed    0.11 sec
+ 7/25 Test  #7: test_browser_extension_installer ......   Passed    0.06 sec
       Start  8: test_browser_uploads
- 8/25 Test  #8: test_browser_uploads ..................   Passed    0.18 sec
+ 8/25 Test  #8: test_browser_uploads ..................   Passed    0.10 sec
       Start  9: test_browser_bridge_security
- 9/25 Test  #9: test_browser_bridge_security ..........   Passed    0.08 sec
+ 9/25 Test  #9: test_browser_bridge_security ..........   Passed    0.03 sec
       Start 10: test_browser_bridge_pipe
-10/25 Test #10: test_browser_bridge_pipe ..............   Passed    6.73 sec
+10/25 Test #10: test_browser_bridge_pipe ..............   Passed    6.31 sec
       Start 11: test_browser_bridge_relay
-11/25 Test #11: test_browser_bridge_relay .............   Passed    8.01 sec
+11/25 Test #11: test_browser_bridge_relay .............   Passed    6.31 sec
       Start 12: test_browser_mcp_server
-12/25 Test #12: test_browser_mcp_server ...............   Passed    0.09 sec
+12/25 Test #12: test_browser_mcp_server ...............   Passed    0.03 sec
       Start 13: test_browser_extension_pure
-13/25 Test #13: test_browser_extension_pure ...........   Passed    2.06 sec
+13/25 Test #13: test_browser_extension_pure ...........   Passed    1.83 sec
       Start 14: test_browser_extension_recording
-14/25 Test #14: test_browser_extension_recording ......   Passed    0.67 sec
+14/25 Test #14: test_browser_extension_recording ......   Passed    0.74 sec
       Start 15: test_browser_extension_offscreen
-15/25 Test #15: test_browser_extension_offscreen ......   Passed    0.38 sec
+15/25 Test #15: test_browser_extension_offscreen ......   Passed    0.16 sec
       Start 16: test_browser_extension_multisession
-16/25 Test #16: test_browser_extension_multisession ...   Passed    5.33 sec
+16/25 Test #16: test_browser_extension_multisession ...   Passed    4.60 sec
       Start 17: test_browser_extension_session
-17/25 Test #17: test_browser_extension_session ........   Passed    0.58 sec
+17/25 Test #17: test_browser_extension_session ........   Passed    0.90 sec
       Start 18: test_browser_extension_transport
-18/25 Test #18: test_browser_extension_transport ......   Passed    5.29 sec
+18/25 Test #18: test_browser_extension_transport ......   Passed    4.98 sec
       Start 19: test_browser_extension_tabs
-19/25 Test #19: test_browser_extension_tabs ...........   Passed   28.21 sec
+19/25 Test #19: test_browser_extension_tabs ...........   Passed   26.22 sec
       Start 20: test_browser_extension_clipboard
-20/25 Test #20: test_browser_extension_clipboard ......   Passed   12.65 sec
+20/25 Test #20: test_browser_extension_clipboard ......   Passed   13.04 sec
       Start 21: test_browser_extension_versions
-21/25 Test #21: test_browser_extension_versions .......   Passed    9.92 sec
+21/25 Test #21: test_browser_extension_versions .......   Passed   21.47 sec
       Start 22: test_browser_extension_profiles
-22/25 Test #22: test_browser_extension_profiles .......   Passed   11.91 sec
+22/25 Test #22: test_browser_extension_profiles .......   Passed   10.20 sec
       Start 23: test_release_versions
-23/25 Test #23: test_release_versions .................   Passed    1.54 sec
+23/25 Test #23: test_release_versions .................   Passed    1.13 sec
       Start 24: test_vscode_payload
-24/25 Test #24: test_vscode_payload ...................   Passed    1.97 sec
+24/25 Test #24: test_vscode_payload ...................   Passed    0.91 sec
       Start 25: test_extension_install_cycle
-25/25 Test #25: test_extension_install_cycle ..........   Passed    8.86 sec
+25/25 Test #25: test_extension_install_cycle ..........   Passed    5.52 sec
 
 100% tests passed out of 25
 
-Total Test time (real) = 107.16 sec
+Total Test time (real) = 105.43 sec

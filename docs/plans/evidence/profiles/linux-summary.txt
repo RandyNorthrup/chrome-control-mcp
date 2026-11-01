@@ -19,4 +19,3 @@
 == live profiles-two exit=0 {"ok":true,"checks":14}
 == live profiles-upgrade exit=0 {"ok":true,"checks":4}
 == done
-== ctest rerun on the final CHANGELOG exit=0 100% tests passed out of 24

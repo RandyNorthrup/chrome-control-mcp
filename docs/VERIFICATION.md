@@ -89,6 +89,18 @@ without its fix:
   failure was made to say which tab was in front (`chrome://extensions/`). The harness, as it has
   been since 1.9.0, now waits for the tab to go.
 
+### 1.10.0: CI on `87dcdf7`
+
+[Quality run 41291633571](https://github.com/RandyNorthrup/chrome-control-mcp/actions/runs/41291633571):
+the builds and tests on Windows, Linux and macOS, both sanitizers, and the live browser suites on
+all three platforms passed -- the two-profile case on Linux and the update into the new permissions
+on every platform among them. Two jobs failed, neither on product behaviour. Two raw evidence files
+had trailing whitespace and no final newline (the repository's hooks had not been run on files new
+to the commit), and the CI image's cppcheck flagged a raw search loop in
+`browser_bridge_pipe_common.cpp` that the local cppcheck 2.22 passes. The loop became a
+`std::find_if`, and every suite, live suite and drill above was run again on that source before the
+receipts were recorded.
+
 ### 1.9.0 (2026-10-31)
 
 1.9.0 adds per-agent clipboards (extension, `browser_clipboard`, the MCP `instructions`), has the

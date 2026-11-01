@@ -234,12 +234,13 @@ BrowserBridgePipeServer::Exchange
 BrowserBridgePipeServer::sendCommandAwaitReply(quint64 connection_id,
                                                const QJsonObject &frame) {
   std::unique_lock<std::mutex> lock(mutex_);
-  ConnectionPtr connection;
-  for (const ConnectionPtr &candidate : connections_) {
-    if (candidate->id == connection_id && candidate->live) {
-      connection = candidate;
-    }
-  }
+  const auto found =
+      std::find_if(connections_.cbegin(), connections_.cend(),
+                   [connection_id](const ConnectionPtr &candidate) {
+                     return candidate->id == connection_id && candidate->live;
+                   });
+  const ConnectionPtr connection =
+      found != connections_.cend() ? *found : nullptr;
   if (!connection || !running_) {
     return {.ok = false,
             .reply = {},

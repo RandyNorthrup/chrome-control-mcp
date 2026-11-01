@@ -5,79 +5,79 @@
 [5/93] Automatic MOC for target test_browser_extension_installer
 [6/92] Automatic MOC for target test_updater
 [7/91] Automatic MOC for target test_browser_bridge_security
-[8/90] Automatic MOC for target test_browser_bridge_pipe
-[9/89] Automatic MOC for target test_browser_uploads
+[8/90] Automatic MOC for target test_browser_uploads
+[9/89] Automatic MOC for target test_browser_bridge_pipe
 [10/88] Automatic MOC for target test_browser_bridge_relay
-[11/87] Building CXX object CMakeFiles/chrome_control_mcp.dir/src/main.cpp.o
-[12/87] Building CXX object CMakeFiles/chrome_control_mcp_core.dir/src/posix_process_identity.cpp.o
-[13/87] Building CXX object CMakeFiles/chrome_control_mcp_core.dir/src/browser_bridge_security.cpp.o
-[14/87] Building CXX object CMakeFiles/chrome_control_mcp_core.dir/src/browser_uploads.cpp.o
-[15/87] Building CXX object CMakeFiles/chrome_control_mcp_core.dir/src/native_messaging.cpp.o
-[16/87] Building CXX object CMakeFiles/chrome_control_mcp_core.dir/src/browser_bridge_relay_posix.cpp.o
-[17/87] Building CXX object CMakeFiles/chrome_control_mcp_core.dir/src/install_layout.cpp.o
-[18/87] Building CXX object CMakeFiles/chrome_control_mcp_core.dir/src/browser_extension_installer.cpp.o
-[19/87] Building CXX object CMakeFiles/chrome_control_mcp.dir/src/mcp_dispatch.cpp.o
-[20/87] Building CXX object CMakeFiles/chrome_control_mcp_core.dir/src/browser_bridge.cpp.o
-[21/87] Building CXX object CMakeFiles/chrome_control_mcp_core.dir/src/browser_bridge_pipe_common.cpp.o
-[22/87] Building CXX object CMakeFiles/chrome_control_mcp.dir/src/mcp_entry.cpp.o
-[23/87] Building CXX object CMakeFiles/chrome_control_mcp_core.dir/src/browser_bridge_pipe_posix.cpp.o
-[24/87] Building CXX object CMakeFiles/chrome_control_mcp.dir/src/browser_mcp_tools.cpp.o
-[25/87] Building CXX object CMakeFiles/chrome_control_mcp_core.dir/src/browser_bridge_relay_common.cpp.o
-[26/87] Building CXX object CMakeFiles/chrome_control_mcp_core.dir/src/updater.cpp.o
-[27/87] Building CXX object CMakeFiles/test_native_messaging.dir/src/native_messaging.cpp.o
-[28/87] Building CXX object CMakeFiles/test_browser_bridge.dir/src/browser_bridge.cpp.o
-[29/87] Building CXX object CMakeFiles/chrome_control_mcp_core.dir/src/browser_control.cpp.o
-[30/87] Building CXX object CMakeFiles/test_native_messaging.dir/tests/test_native_messaging.cpp.o
-[31/87] Building CXX object CMakeFiles/test_install_layout.dir/src/install_layout.cpp.o
-[32/87] Building CXX object CMakeFiles/test_updater.dir/src/install_layout.cpp.o
-[33/87] Building CXX object CMakeFiles/test_updater.dir/src/browser_extension_installer.cpp.o
-[34/87] Building CXX object CMakeFiles/test_updater.dir/src/updater.cpp.o
-[35/87] Building CXX object CMakeFiles/test_browser_extension_installer.dir/src/browser_extension_installer.cpp.o
-[36/87] Building CXX object CMakeFiles/test_browser_bridge_security.dir/src/browser_bridge_security.cpp.o
-[37/87] Building CXX object CMakeFiles/test_browser_extension_installer.dir/src/install_layout.cpp.o
-[38/87] Building CXX object CMakeFiles/test_browser_uploads.dir/src/browser_uploads.cpp.o
-[39/87] Building CXX object CMakeFiles/test_browser_bridge_pipe.dir/src/posix_process_identity.cpp.o
-[40/87] Building CXX object CMakeFiles/test_install_layout.dir/tests/test_install_layout.cpp.o
-[41/87] Building CXX object CMakeFiles/test_browser_bridge_pipe.dir/src/native_messaging.cpp.o
-[42/87] Building CXX object CMakeFiles/chrome_control_mcp_core.dir/src/browser_contract.cpp.o
+[11/87] Building CXX object CMakeFiles/chrome_control_mcp_core.dir/src/native_messaging.cpp.o
+[12/87] Building CXX object CMakeFiles/chrome_control_mcp.dir/src/main.cpp.o
+[13/87] Building CXX object CMakeFiles/chrome_control_mcp_core.dir/src/browser_bridge_pipe_posix.cpp.o
+[14/87] Building CXX object CMakeFiles/chrome_control_mcp.dir/src/browser_mcp_tools.cpp.o
+[15/87] Building CXX object CMakeFiles/chrome_control_mcp_core.dir/src/browser_extension_installer.cpp.o
+[16/87] Building CXX object CMakeFiles/chrome_control_mcp_core.dir/src/posix_process_identity.cpp.o
+[17/87] Building CXX object CMakeFiles/chrome_control_mcp_core.dir/src/browser_bridge_relay_posix.cpp.o
+[18/87] Building CXX object CMakeFiles/chrome_control_mcp.dir/src/mcp_dispatch.cpp.o
+[19/87] Building CXX object CMakeFiles/chrome_control_mcp_core.dir/src/browser_uploads.cpp.o
+[20/87] Building CXX object CMakeFiles/chrome_control_mcp_core.dir/src/install_layout.cpp.o
+[21/87] Building CXX object CMakeFiles/chrome_control_mcp.dir/src/mcp_entry.cpp.o
+[22/87] Building CXX object CMakeFiles/test_native_messaging.dir/src/native_messaging.cpp.o
+[23/87] Building CXX object CMakeFiles/chrome_control_mcp_core.dir/src/browser_bridge_security.cpp.o
+[24/87] Building CXX object CMakeFiles/chrome_control_mcp_core.dir/src/browser_bridge_pipe_common.cpp.o
+[25/87] Building CXX object CMakeFiles/chrome_control_mcp_core.dir/src/updater.cpp.o
+[26/87] Building CXX object CMakeFiles/chrome_control_mcp_core.dir/src/browser_bridge.cpp.o
+[27/87] Building CXX object CMakeFiles/chrome_control_mcp_core.dir/src/browser_bridge_relay_common.cpp.o
+[28/87] Building CXX object CMakeFiles/chrome_control_mcp_core.dir/src/browser_control.cpp.o
+[29/87] Building CXX object CMakeFiles/test_updater.dir/src/browser_extension_installer.cpp.o
+[30/87] Building CXX object CMakeFiles/test_updater.dir/src/install_layout.cpp.o
+[31/87] Building CXX object CMakeFiles/test_browser_extension_installer.dir/src/browser_extension_installer.cpp.o
+[32/87] Building CXX object CMakeFiles/test_install_layout.dir/src/install_layout.cpp.o
+[33/87] Building CXX object CMakeFiles/test_browser_bridge.dir/src/browser_bridge.cpp.o
+[34/87] Building CXX object CMakeFiles/test_browser_extension_installer.dir/src/install_layout.cpp.o
+[35/87] Building CXX object CMakeFiles/test_updater.dir/src/updater.cpp.o
+[36/87] Building CXX object CMakeFiles/test_native_messaging.dir/tests/test_native_messaging.cpp.o
+[37/87] Building CXX object CMakeFiles/test_browser_uploads.dir/src/browser_uploads.cpp.o
+[38/87] Building CXX object CMakeFiles/test_browser_bridge_security.dir/src/browser_bridge_security.cpp.o
+[39/87] Building CXX object CMakeFiles/test_install_layout.dir/tests/test_install_layout.cpp.o
+[40/87] Building CXX object CMakeFiles/test_browser_bridge_security.dir/tests/test_browser_bridge_security.cpp.o
+[41/87] Building CXX object CMakeFiles/chrome_control_mcp_core.dir/src/browser_contract.cpp.o
+[42/87] Building CXX object CMakeFiles/test_updater.dir/tests/test_updater.cpp.o
 [43/87] Building CXX object CMakeFiles/test_browser_uploads.dir/tests/test_browser_uploads.cpp.o
-[44/87] Linking CXX static library libchrome_control_mcp_core.a
-[45/87] Building CXX object CMakeFiles/test_browser_bridge_pipe.dir/src/browser_bridge_pipe_posix.cpp.o
-[46/87] Building CXX object CMakeFiles/test_browser_bridge_pipe.dir/src/browser_bridge_security.cpp.o
-[47/87] Building CXX object CMakeFiles/test_updater.dir/tests/test_updater.cpp.o
-[48/87] Building CXX object CMakeFiles/test_browser_extension_installer.dir/tests/test_browser_extension_installer.cpp.o
-[49/87] Building CXX object CMakeFiles/test_browser_bridge_pipe.dir/src/browser_bridge_pipe_common.cpp.o
-[50/87] Automatic MOC for target test_browser_mcp_server
-[51/86] Linking CXX executable chrome_control_mcp; Staging Qt TLS backend
-[52/86] Building CXX object CMakeFiles/test_browser_bridge_relay.dir/src/posix_process_identity.cpp.o
-[53/86] Building CXX object CMakeFiles/test_browser_bridge_relay.dir/src/browser_bridge_relay_posix.cpp.o
-[54/86] Building CXX object CMakeFiles/test_browser_bridge_security.dir/tests/test_browser_bridge_security.cpp.o
-[55/86] Linking CXX executable test_install_layout
-[56/86] Linking CXX executable test_native_messaging
-[57/86] Linking CXX executable test_updater
-[58/86] Linking CXX executable test_browser_extension_installer
-[59/86] Linking CXX executable test_browser_uploads
+[44/87] Building CXX object CMakeFiles/test_browser_bridge_pipe.dir/src/posix_process_identity.cpp.o
+[45/87] Linking CXX static library libchrome_control_mcp_core.a
+[46/87] Building CXX object CMakeFiles/test_browser_bridge_pipe.dir/src/native_messaging.cpp.o
+[47/87] Building CXX object CMakeFiles/test_browser_bridge_pipe.dir/src/browser_bridge_pipe_common.cpp.o
+[48/87] Building CXX object CMakeFiles/test_browser_bridge_pipe.dir/src/browser_bridge_pipe_posix.cpp.o
+[49/87] Automatic MOC for target test_browser_mcp_server
+[50/86] Building CXX object CMakeFiles/test_browser_bridge_relay.dir/src/posix_process_identity.cpp.o
+[51/86] Building CXX object CMakeFiles/test_browser_bridge_relay.dir/src/browser_bridge_relay_posix.cpp.o
+[52/86] Building CXX object CMakeFiles/test_browser_extension_installer.dir/tests/test_browser_extension_installer.cpp.o
+[53/86] Building CXX object CMakeFiles/test_browser_contract.dir/src/browser_contract.cpp.o
+[54/86] Linking CXX executable chrome_control_mcp; Staging Qt TLS backend
+[55/86] Building CXX object CMakeFiles/test_browser_bridge_pipe.dir/src/browser_bridge_security.cpp.o
+[56/86] Building CXX object CMakeFiles/test_browser_bridge_relay.dir/src/browser_extension_installer.cpp.o
+[57/86] Linking CXX executable test_install_layout
+[58/86] Linking CXX executable test_native_messaging
+[59/86] Building CXX object CMakeFiles/test_browser_bridge_relay.dir/src/browser_uploads.cpp.o
 [60/86] Staging unpacked browser extension
-[61/86] Linking CXX executable test_browser_bridge_security
+[61/86] Building CXX object CMakeFiles/test_browser_bridge.dir/tests/test_browser_bridge.cpp.o
 [62/86] Building CXX object CMakeFiles/test_browser_bridge_relay.dir/src/browser_bridge_relay_common.cpp.o
-[63/86] Building CXX object CMakeFiles/test_browser_bridge.dir/tests/test_browser_bridge.cpp.o
-[64/86] Building CXX object CMakeFiles/test_browser_bridge_relay.dir/src/browser_uploads.cpp.o
-[65/86] Building CXX object CMakeFiles/test_browser_bridge_relay.dir/src/native_messaging.cpp.o
-[66/86] Building CXX object CMakeFiles/test_browser_bridge_relay.dir/src/browser_extension_installer.cpp.o
-[67/86] Building CXX object CMakeFiles/test_browser_contract.dir/src/browser_contract.cpp.o
-[68/86] Building CXX object CMakeFiles/test_browser_bridge.dir/src/browser_contract.cpp.o
-[69/86] Building CXX object CMakeFiles/test_browser_bridge_relay.dir/src/browser_bridge.cpp.o
-[70/86] Linking CXX executable test_browser_bridge
-[71/86] Building CXX object CMakeFiles/test_browser_bridge_relay.dir/src/install_layout.cpp.o
-[72/86] Building CXX object CMakeFiles/test_browser_bridge_relay.dir/src/browser_bridge_security.cpp.o
-[73/86] Building CXX object CMakeFiles/test_browser_bridge_relay.dir/src/browser_bridge_pipe_common.cpp.o
-[74/86] Building CXX object CMakeFiles/test_browser_mcp_server.dir/src/mcp_dispatch.cpp.o
-[75/86] Building CXX object CMakeFiles/test_browser_mcp_server.dir/src/browser_mcp_tools.cpp.o
-[76/86] Building CXX object CMakeFiles/test_browser_bridge_relay.dir/src/browser_bridge_pipe_posix.cpp.o
-[77/86] Building CXX object CMakeFiles/test_browser_bridge_relay.dir/src/browser_control.cpp.o
-[78/86] Building CXX object CMakeFiles/test_browser_contract.dir/tests/test_browser_contract.cpp.o
-[79/86] Building CXX object CMakeFiles/test_browser_bridge_pipe.dir/tests/test_browser_bridge_pipe.cpp.o
-[80/86] Linking CXX executable test_browser_contract
+[63/86] Building CXX object CMakeFiles/test_browser_bridge_relay.dir/src/install_layout.cpp.o
+[64/86] Linking CXX executable test_updater
+[65/86] Linking CXX executable test_browser_uploads
+[66/86] Building CXX object CMakeFiles/test_browser_bridge_relay.dir/src/browser_bridge.cpp.o
+[67/86] Linking CXX executable test_browser_extension_installer
+[68/86] Linking CXX executable test_browser_bridge_security
+[69/86] Building CXX object CMakeFiles/test_browser_mcp_server.dir/src/browser_mcp_tools.cpp.o
+[70/86] Building CXX object CMakeFiles/test_browser_bridge_relay.dir/src/native_messaging.cpp.o
+[71/86] Building CXX object CMakeFiles/test_browser_mcp_server.dir/src/mcp_dispatch.cpp.o
+[72/86] Building CXX object CMakeFiles/test_browser_bridge_relay.dir/src/browser_bridge_pipe_common.cpp.o
+[73/86] Building CXX object CMakeFiles/test_browser_contract.dir/tests/test_browser_contract.cpp.o
+[74/86] Building CXX object CMakeFiles/test_browser_bridge.dir/src/browser_contract.cpp.o
+[75/86] Building CXX object CMakeFiles/test_browser_bridge_relay.dir/src/browser_bridge_security.cpp.o
+[76/86] Building CXX object CMakeFiles/test_browser_bridge_relay.dir/src/browser_control.cpp.o
+[77/86] Linking CXX executable test_browser_contract
+[78/86] Building CXX object CMakeFiles/test_browser_bridge_relay.dir/src/browser_bridge_pipe_posix.cpp.o
+[79/86] Linking CXX executable test_browser_bridge
+[80/86] Building CXX object CMakeFiles/test_browser_bridge_pipe.dir/tests/test_browser_bridge_pipe.cpp.o
 [81/86] Linking CXX executable test_browser_bridge_pipe
 [82/86] Building CXX object CMakeFiles/test_browser_mcp_server.dir/tests/test_browser_mcp_server.cpp.o
 [83/86] Linking CXX executable test_browser_mcp_server
