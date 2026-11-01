@@ -9,10 +9,13 @@
 
 #include <QCoreApplication>
 #include <QJsonArray>
+#include <QJsonDocument>
 #include <QJsonValue>
+#include <QSet>
 #include <QStringList>
 #include <QVersionNumber>
 
+#include <iterator>
 #include <thread>
 
 namespace chrome_control_mcp {
@@ -154,25 +157,62 @@ bool BrowserControl::handles(const QString &name) {
          !name.startsWith(QStringLiteral("browser_update_"));
 }
 
-// Reconcile the single-threaded session with the pipe server's async connection
-// state. The server bumps its generation on every newly verified relay;
-// observing a new generation means a fresh browser session (the old ref_index
-// is dead), and losing the connection means no browser is reachable. Called on
-// the MCP thread immediately before each tool call, so the session never acts
-// on a connection it has not accounted for.
-void BrowserControl::syncSessionToConnection() {
-  const bool connected = pipe_.clientConnected();
-  const quint64 generation = pipe_.connectionGeneration();
-  if (connected) {
+// Reconcile with the pipe server's connections -- one per Chrome profile whose
+// extension reached this server. A new connection is a new profile (or the same
+// one back after a reload): nothing is known of its tabs yet. A connection that
+// has gone takes the refs and routing of its own tabs with it, and of any tab
+// no remaining connection is known to hold -- which, with one profile, is
+// every tab, exactly as a reconnect always cleared them. Called on the MCP
+// thread immediately before each tool call, so the session never acts on a
+// connection it has not accounted for.
+void BrowserControl::syncConnections() {
+  const QList<BridgeConnectionInfo> live = pipe_.connections();
+  if (!live.isEmpty()) {
     last_connected_at_ = Clock::now();
   }
-  if (connected && generation != observed_generation_) {
-    session_.onHostConnected();
-    observed_generation_ = generation;
-    peer_versions_ = pipe_.peerVersions();
-    version_notice_due_ = true;
-  } else if (!connected && session_.connected()) {
-    session_.onHostDisconnected();
+  QSet<quint64> present;
+  bool changed = false;
+  for (const BridgeConnectionInfo &info : live) {
+    present.insert(info.id);
+    if (!known_.contains(info.id)) {
+      known_.emplace(info.id, Known{.info = info,
+                                    .name = info.profile.name,
+                                    .email = info.profile.email,
+                                    .notice_due = true});
+      changed = true;
+    }
+  }
+  bool lost = false;
+  for (auto it = known_.begin(); it != known_.end();) {
+    if (present.contains(it->first)) {
+      ++it;
+      continue;
+    }
+    if (current_connection_ == it->first) {
+      current_connection_ = 0;
+    }
+    it = known_.erase(it);
+    lost = true;
+    changed = true;
+  }
+  if (lost) {
+    QSet<qint64> forget;
+    for (const qint64 tab : session_.trackedTabs()) {
+      if (!present.contains(tab_owner_.value(tab, 0))) {
+        forget.insert(tab);
+      }
+    }
+    session_.forgetTabs(forget);
+    for (auto it = tab_owner_.begin(); it != tab_owner_.end();) {
+      it = present.contains(it.value()) ? std::next(it) : tab_owner_.erase(it);
+    }
+    for (auto it = window_owner_.begin(); it != window_owner_.end();) {
+      it = present.contains(it.value()) ? std::next(it)
+                                        : window_owner_.erase(it);
+    }
+  }
+  if (changed || session_.connected() != !live.isEmpty()) {
+    session_.onConnectionsChanged(!live.isEmpty());
   }
 }
 
@@ -193,30 +233,44 @@ void BrowserControl::awaitAttachingRelay() const {
 
 ToolResult BrowserControl::invoke(const QString &name,
                                   const QJsonObject &arguments) {
+  last_route_ = 0;
   ToolResult result = dispatch(name, arguments);
   if (result.is_error && result.text.contains(kProtocolMismatchMarker)) {
     result.text += protocolMismatchGuidance();
   }
   // The extension's own words say only that it does not know the command;
   // that this server is newer than it, and what to do, is known only here.
+  const auto route = known_.find(last_route_);
   if (result.is_error && result.text.startsWith(kUnknownCommandMarker) &&
-      session_.connected() && extensionBehind(peer_versions_)) {
+      route != known_.end() && extensionBehind(route->second.info.versions)) {
     result.text +=
         QStringLiteral(". Chrome is running Chrome Control MCP extension %1, "
                        "older than this server (%2), which added it: reload "
                        "the extension at chrome://extensions (or restart "
                        "Chrome).")
-            .arg(extensionVersionText(peer_versions_), serverVersionText());
+            .arg(extensionVersionText(route->second.info.versions),
+                 serverVersionText());
   }
   return result;
 }
 
 QString BrowserControl::takeVersionNotice() {
-  if (!version_notice_due_) {
-    return {};
+  QStringList told;
+  for (auto &[id, known] : known_) {
+    if (!known.notice_due) {
+      continue;
+    }
+    known.notice_due = false;
+    const QString notice =
+        bridgeVersionNotice(serverVersionText(), known.info.versions);
+    if (notice.isEmpty()) {
+      continue;
+    }
+    told << (known_.size() > 1 ? QStringLiteral("In Chrome profile %1: %2")
+                                     .arg(profileName(id), notice)
+                               : notice);
   }
-  version_notice_due_ = false;
-  return bridgeVersionNotice(serverVersionText(), peer_versions_);
+  return told.join(QLatin1Char(' '));
 }
 
 QJsonObject BrowserControl::connectionVersions() const {
@@ -226,6 +280,26 @@ QJsonObject BrowserControl::connectionVersions() const {
     return version.isEmpty() ? QJsonValue(QJsonValue::Null)
                              : QJsonValue(version);
   };
+  QJsonArray profiles;
+  for (const BridgeConnectionInfo &info : pipe_.connections()) {
+    const auto known = known_.find(info.id);
+    const QString name =
+        known != known_.end() && !known->second.name.isEmpty()
+            ? known->second.name
+            : (info.profile.name.isEmpty() ? QStringLiteral("unnamed")
+                                           : info.profile.name);
+    const QString email =
+        known != known_.end() ? known->second.email : info.profile.email;
+    profiles.append(
+        QJsonObject{{QStringLiteral("name"), name},
+                    {QStringLiteral("email"), versionOrNull(email)},
+                    {QStringLiteral("extension_version"),
+                     versionOrNull(info.versions.extension)},
+                    {QStringLiteral("installed_version"),
+                     versionOrNull(info.versions.installed)},
+                    {QStringLiteral("notice"),
+                     bridgeVersionNotice(serverVersionText(), info.versions)}});
+  }
   return QJsonObject{
       {QStringLiteral("connected"), connected},
       // How many times a browser has attached to this server: a count that
@@ -237,7 +311,329 @@ QJsonObject BrowserControl::connectionVersions() const {
       {QStringLiteral("extension_version"), versionOrNull(peer.extension)},
       {QStringLiteral("installed_version"), versionOrNull(peer.installed)},
       {QStringLiteral("notice"),
-       connected ? bridgeVersionNotice(serverVersionText(), peer) : QString()}};
+       connected ? bridgeVersionNotice(serverVersionText(), peer) : QString()},
+      {QStringLiteral("profiles"), profiles}};
+}
+
+QString BrowserControl::profileName(quint64 id) const {
+  const auto known = known_.find(id);
+  if (known == known_.end() || known->second.name.isEmpty()) {
+    return QStringLiteral("unnamed");
+  }
+  return known->second.name;
+}
+
+QJsonObject BrowserControl::askProfile(quint64 id) {
+  QJsonObject payload;
+  const ToolResult asked = exchange(
+      id, session_.beginInternalCommand(QStringLiteral("profileState"), {}),
+      &payload);
+  if (asked.is_error) {
+    return {}; // an extension older than profiles: it cannot say
+  }
+  return payload;
+}
+
+quint64 BrowserControl::connectionForProfile(const QString &profile,
+                                             QString *error) {
+  const QString wanted = profile.trimmed();
+  QStringList names;
+  for (auto &[id, known] : known_) {
+    (void)askProfile(id); // refreshes the name: it may have been renamed
+    names << profileName(id);
+    if (known.name.compare(wanted, Qt::CaseInsensitive) == 0 ||
+        (!known.email.isEmpty() &&
+         known.email.compare(wanted, Qt::CaseInsensitive) == 0)) {
+      return id;
+    }
+  }
+  *error = QStringLiteral("No Chrome profile named \"%1\" is connected to "
+                          "this server; connected: %2.")
+               .arg(wanted, names.isEmpty() ? QStringLiteral("none")
+                                            : names.join(QStringLiteral(", ")));
+  return 0;
+}
+
+quint64 BrowserControl::lastFocusedConnection() {
+  if (known_.empty()) {
+    return 0;
+  }
+  if (known_.size() == 1) {
+    return known_.begin()->first;
+  }
+  quint64 best = 0;
+  double best_at = -1;
+  for (const auto &[id, known] : known_) {
+    const QJsonObject state = askProfile(id);
+    if (state.value(QStringLiteral("focused")).toBool()) {
+      return id; // the user is in this profile's window right now
+    }
+    const double at = state.value(QStringLiteral("focused_at")).toDouble();
+    // Ties -- nothing ever focused -- go to the oldest connection, which is
+    // the first one met.
+    if (at > best_at) {
+      best = id;
+      best_at = at;
+    }
+  }
+  return best;
+}
+
+quint64 BrowserControl::currentConnection() {
+  if (current_connection_ != 0 && known_.contains(current_connection_)) {
+    return current_connection_;
+  }
+  return lastFocusedConnection();
+}
+
+quint64 BrowserControl::ownerOfTab(qint64 tab_id) {
+  const auto known = tab_owner_.find(tab_id);
+  if (known != tab_owner_.end() && known_.contains(known.value())) {
+    return known.value();
+  }
+  for (const auto &[id, connection] : known_) {
+    QJsonObject payload;
+    const ToolResult asked =
+        exchange(id,
+                 session_.beginInternalCommand(
+                     QStringLiteral("findTab"),
+                     QJsonObject{{QStringLiteral("tab_id"), tab_id}}),
+                 &payload);
+    if (!asked.is_error && payload.value(QStringLiteral("exists")).toBool()) {
+      tab_owner_.insert(tab_id, id);
+      return id;
+    }
+  }
+  return 0;
+}
+
+quint64 BrowserControl::ownerOfWindow(qint64 window_id) {
+  const auto known = window_owner_.find(window_id);
+  if (known != window_owner_.end() && known_.contains(known.value())) {
+    return known.value();
+  }
+  for (const auto &[id, connection] : known_) {
+    (void)exchange(
+        id, session_.beginCommand(QStringLiteral("browser_windows"), {}));
+    const auto found = window_owner_.find(window_id);
+    if (found != window_owner_.end()) {
+      return found.value();
+    }
+  }
+  return 0;
+}
+
+bool BrowserControl::fansOut(const QString &name,
+                             const QJsonObject &arguments) const {
+  if (known_.size() < 2) {
+    return false; // one profile: the call goes to it, exactly as before
+  }
+  return name == QLatin1String("browser_tabs") ||
+         name == QLatin1String("browser_windows") ||
+         (name == QLatin1String("browser_release") &&
+          !arguments.contains(QStringLiteral("tab_id")));
+}
+
+quint64 BrowserControl::routeOne(const QString &name,
+                                 const QJsonObject &arguments, QString *error) {
+  if (known_.empty()) {
+    return 0; // nothing connected: the session refuses as it always has
+  }
+  const QString profile = arguments.value(QStringLiteral("profile")).toString();
+  const bool takes_profile = name == QLatin1String("browser_new_tab") ||
+                             name == QLatin1String("browser_window") ||
+                             name == QLatin1String("browser_cookies") ||
+                             name == QLatin1String("browser_permission");
+  if (takes_profile && !profile.trimmed().isEmpty()) {
+    return connectionForProfile(profile, error);
+  }
+  if (known_.size() == 1) {
+    return known_.begin()->first;
+  }
+  // A tab named outright, or through a ref bound to it.
+  qint64 tab_id = 0;
+  if (arguments.value(QStringLiteral("tab_id")).isDouble()) {
+    tab_id = arguments.value(QStringLiteral("tab_id")).toInteger();
+  } else {
+    for (const QString &key :
+         {QStringLiteral("ref"), QStringLiteral("to_ref")}) {
+      const QString ref = arguments.value(key).toString();
+      if (!ref.isEmpty()) {
+        tab_id = session_.refIndex()
+                     .value(ref)
+                     .toObject()
+                     .value(QStringLiteral("tabId"))
+                     .toInteger();
+        break;
+      }
+    }
+  }
+  if (tab_id > 0) {
+    const quint64 owner = ownerOfTab(tab_id);
+    // Not found anywhere: the agent's current profile answers, as the one
+    // browser always did, that it has no such tab.
+    return owner != 0 ? owner : currentConnection();
+  }
+  if (name == QLatin1String("browser_window") &&
+      arguments.value(QStringLiteral("window_id")).isDouble()) {
+    const quint64 owner =
+        ownerOfWindow(arguments.value(QStringLiteral("window_id")).toInteger());
+    return owner != 0 ? owner : currentConnection();
+  }
+  if (name == QLatin1String("browser_new_tab") ||
+      (name == QLatin1String("browser_window") &&
+       arguments.value(QStringLiteral("action"))
+               .toString()
+               .compare(QStringLiteral("new"), Qt::CaseInsensitive) == 0)) {
+    return lastFocusedConnection();
+  }
+  return currentConnection();
+}
+
+void BrowserControl::learnFromReply(quint64 id, const QJsonObject &reply) {
+  if (reply.value(QStringLiteral("tabId")).isDouble()) {
+    tab_owner_.insert(reply.value(QStringLiteral("tabId")).toInteger(), id);
+  }
+  const QJsonObject payload = reply.value(QStringLiteral("payload")).toObject();
+  if (payload.value(QStringLiteral("tab_id")).isDouble()) {
+    tab_owner_.insert(payload.value(QStringLiteral("tab_id")).toInteger(), id);
+  }
+  if (payload.value(QStringLiteral("window_id")).isDouble()) {
+    window_owner_.insert(payload.value(QStringLiteral("window_id")).toInteger(),
+                         id);
+  }
+  for (const QString &list :
+       {QStringLiteral("tabs"), QStringLiteral("your_tabs")}) {
+    for (const auto &entry : payload.value(list).toArray()) {
+      const QJsonObject tab = entry.toObject();
+      const QJsonValue tab_id = tab.contains(QStringLiteral("tab_id"))
+                                    ? tab.value(QStringLiteral("tab_id"))
+                                    : tab.value(QStringLiteral("id"));
+      if (tab_id.isDouble()) {
+        tab_owner_.insert(tab_id.toInteger(), id);
+      }
+      if (tab.value(QStringLiteral("window_id")).isDouble()) {
+        window_owner_.insert(tab.value(QStringLiteral("window_id")).toInteger(),
+                             id);
+      }
+    }
+  }
+  for (const auto &entry : payload.value(QStringLiteral("windows")).toArray()) {
+    const QJsonValue window_id =
+        entry.toObject().value(QStringLiteral("window_id"));
+    if (window_id.isDouble()) {
+      window_owner_.insert(window_id.toInteger(), id);
+    }
+  }
+  // The profile's name as the extension says it now: renamed on the options
+  // page since it attached, or first known now.
+  const auto known = known_.find(id);
+  if (known == known_.end()) {
+    return;
+  }
+  const QJsonValue name = payload.contains(QStringLiteral("profile_name"))
+                              ? payload.value(QStringLiteral("profile_name"))
+                              : payload.value(QStringLiteral("profile"));
+  const BridgePeerProfile said =
+      peerProfileFromJson(name, payload.value(QStringLiteral("profile_email")));
+  if (!said.name.isEmpty()) {
+    known->second.name = said.name;
+  }
+  if (!said.email.isEmpty()) {
+    known->second.email = said.email;
+  }
+}
+
+ToolResult BrowserControl::fanOut(const QString &name,
+                                  const QJsonObject &arguments) {
+  QJsonArray tabs;
+  QJsonArray your_tabs;
+  QJsonArray windows;
+  QJsonArray closed;
+  QJsonArray handed_back;
+  QJsonArray kept_open;
+  QJsonArray not_closed;
+  QJsonArray profiles;
+  QJsonArray failed;
+  qint64 count = 0;
+  qint64 still_held = 0;
+  bool capped = false;
+  const auto withProfile = [](const QJsonValue &entry, const QString &profile) {
+    QJsonObject object = entry.toObject();
+    object.insert(QStringLiteral("profile"), profile);
+    return object;
+  };
+  const auto append = [](QJsonArray &into, const QJsonArray &from,
+                         const auto &transform) {
+    for (const auto &entry : from) {
+      into.append(transform(entry));
+    }
+  };
+  for (const auto &[id, known] : known_) {
+    QJsonObject payload;
+    const ToolResult one =
+        exchange(id, session_.beginCommand(name, arguments), &payload);
+    const QString profile = profileName(id);
+    if (one.is_error) {
+      failed.append(QJsonObject{{QStringLiteral("profile"), profile},
+                                {QStringLiteral("error"), one.text}});
+      continue;
+    }
+    profiles.append(profile);
+    const auto tag = [&](const QJsonValue &entry) {
+      return withProfile(entry, profile);
+    };
+    const auto keep = [](const QJsonValue &entry) { return entry; };
+    append(tabs, payload.value(QStringLiteral("tabs")).toArray(), tag);
+    append(your_tabs, payload.value(QStringLiteral("your_tabs")).toArray(),
+           tag);
+    append(windows, payload.value(QStringLiteral("windows")).toArray(), tag);
+    append(closed, payload.value(QStringLiteral("closed")).toArray(), keep);
+    append(handed_back, payload.value(QStringLiteral("handed_back")).toArray(),
+           keep);
+    append(kept_open, payload.value(QStringLiteral("kept_open")).toArray(),
+           keep);
+    append(not_closed, payload.value(QStringLiteral("not_closed")).toArray(),
+           keep);
+    count += payload.value(QStringLiteral("count")).toInteger();
+    still_held += payload.value(QStringLiteral("tabs_still_held")).toInteger();
+    capped = capped || payload.value(QStringLiteral("capped")).toBool();
+  }
+  if (profiles.isEmpty() && !failed.isEmpty()) {
+    return {
+        .text =
+            failed.first().toObject().value(QStringLiteral("error")).toString(),
+        .is_error = true,
+        .image_base64 = {},
+        .image_mime = {}};
+  }
+  QJsonObject merged{{QStringLiteral("profiles"), profiles}};
+  if (name == QLatin1String("browser_tabs")) {
+    merged.insert(QStringLiteral("tabs"), tabs);
+    merged.insert(QStringLiteral("your_tabs"), your_tabs);
+    merged.insert(QStringLiteral("count"), static_cast<double>(count));
+    merged.insert(QStringLiteral("capped"), capped);
+  } else if (name == QLatin1String("browser_windows")) {
+    merged.insert(QStringLiteral("windows"), windows);
+  } else {
+    merged.insert(QStringLiteral("ok"), failed.isEmpty());
+    merged.insert(QStringLiteral("closed"), closed);
+    merged.insert(QStringLiteral("handed_back"), handed_back);
+    merged.insert(QStringLiteral("kept_open"), kept_open);
+    if (!not_closed.isEmpty()) {
+      merged.insert(QStringLiteral("not_closed"), not_closed);
+    }
+    merged.insert(QStringLiteral("tabs_still_held"),
+                  static_cast<double>(still_held));
+  }
+  if (!failed.isEmpty()) {
+    merged.insert(QStringLiteral("failed"), failed);
+  }
+  return {.text = QString::fromUtf8(
+              QJsonDocument(merged).toJson(QJsonDocument::Compact)),
+          .is_error = false,
+          .image_base64 = {},
+          .image_mime = {}};
 }
 
 ToolResult BrowserControl::dispatch(const QString &name,
@@ -281,13 +677,28 @@ ToolResult BrowserControl::dispatch(const QString &name,
       awaitAttachingRelay();
     }
   }
-  syncSessionToConnection();
+  syncConnections();
+  if (fansOut(name, arguments)) {
+    return fanOut(name, arguments);
+  }
+  QString route_error;
+  const quint64 target = routeOne(name, arguments, &route_error);
+  if (!route_error.isEmpty()) {
+    return {.text = route_error,
+            .is_error = true,
+            .image_base64 = {},
+            .image_mime = {}};
+  }
+  last_route_ = target;
+  if (target != 0) {
+    current_connection_ = target;
+  }
   // The calls that are not one command: their files go first, in pieces the
   // bridge can carry, and the command that uses them follows.
   if (name == QLatin1String("browser_upload") ||
       (name == QLatin1String("browser_clipboard") &&
        arguments.contains(QStringLiteral("paths")))) {
-    return invokeWithFiles(name, arguments);
+    return invokeWithFiles(target, name, arguments);
   }
   const browser::BrowserBridgeSession::Outgoing outgoing =
       session_.beginCommand(name, arguments);
@@ -308,11 +719,12 @@ ToolResult BrowserControl::dispatch(const QString &name,
               .image_mime = {}};
     }
   }
-  return exchange(outgoing);
+  return exchange(target, outgoing);
 }
 
 ToolResult BrowserControl::exchange(
-    const browser::BrowserBridgeSession::Outgoing &outgoing) {
+    quint64 id, const browser::BrowserBridgeSession::Outgoing &outgoing,
+    QJsonObject *reply_payload) {
   if (!outgoing.ok) {
     return {.text = outgoing.error,
             .is_error = true,
@@ -320,7 +732,8 @@ ToolResult BrowserControl::exchange(
             .image_mime = {}};
   }
   const BrowserBridgePipeServer::Exchange exchange =
-      pipe_.sendCommandAwaitReply(outgoing.frame);
+      id != 0 ? pipe_.sendCommandAwaitReply(id, outgoing.frame)
+              : pipe_.sendCommandAwaitReply(outgoing.frame);
   if (!exchange.ok) {
     // The transport failed (no relay, or a deadline/reset). Retire the
     // outstanding op so a late-arriving reply for it can never be mis-paired to
@@ -340,6 +753,12 @@ ToolResult BrowserControl::exchange(
             .image_base64 = {},
             .image_mime = {}};
   }
+  if (id != 0) {
+    learnFromReply(id, exchange.reply);
+  }
+  if (reply_payload != nullptr) {
+    *reply_payload = exchange.reply.value(QStringLiteral("payload")).toObject();
+  }
   if (incoming.is_error) {
     return {.text = incoming.error,
             .is_error = true,
@@ -352,7 +771,7 @@ ToolResult BrowserControl::exchange(
           .image_mime = incoming.image_mime};
 }
 
-ToolResult BrowserControl::invokeWithFiles(const QString &name,
+ToolResult BrowserControl::invokeWithFiles(quint64 id, const QString &name,
                                            const QJsonObject &arguments) {
   // Refuse a malformed call before any file is read or sent: chunks that went
   // ahead of a command the contract then rejects would sit in the extension's
@@ -386,7 +805,8 @@ ToolResult BrowserControl::invokeWithFiles(const QString &name,
             .image_mime = {}};
   }
   // Every file gets an id of its own so the extension can hold several at once
-  // and match each piece to the file it belongs to.
+  // and match each piece to the file it belongs to. Every piece goes to the
+  // profile the command itself goes to, which holds the files it names.
   QJsonArray manifest;
   int index = 0;
   for (const browser::UploadFile &file : batch.files) {
@@ -401,7 +821,7 @@ ToolResult BrowserControl::invokeWithFiles(const QString &name,
                           {QStringLiteral("seq"), seq},
                           {QStringLiteral("total"), total},
                           {QStringLiteral("data"), file.chunks.at(seq)}});
-      const ToolResult sent = exchange(chunk);
+      const ToolResult sent = exchange(id, chunk);
       if (sent.is_error) {
         // Say which file and where it stopped: "the upload failed" leaves a
         // caller with several files and no idea which one to look at.
@@ -429,7 +849,7 @@ ToolResult BrowserControl::invokeWithFiles(const QString &name,
   if (apply.ok) {
     apply.frame.insert(QStringLiteral("files"), manifest);
   }
-  return exchange(apply);
+  return exchange(id, apply);
 }
 
 } // namespace chrome_control_mcp

@@ -26,6 +26,10 @@
 #include <thread>
 #include <vector>
 
+#ifndef Q_OS_WIN
+#include <sys/socket.h>
+#endif
+
 using chrome_control_mcp::bridgeImageMismatchText;
 using chrome_control_mcp::BridgePeerVersions;
 using chrome_control_mcp::BridgeServerWatcher;
@@ -160,6 +164,223 @@ bool withAttachedControl(const BridgePeerVersions &versions,
   return attached;
 }
 
+// One Chrome profile's extension as the server meets it through a relay: it
+// answers the commands routing depends on as that profile would -- which
+// profile it is and when it was last focused, whether it has a tab, its tabs
+// and windows, a new tab, a release, a snapshot -- and echoes anything else
+// with its name, so a test can see which profile a call reached.
+struct ProfileExtension {
+  QString name;
+  QString email;
+  bool focused{false};
+  double focused_at{0};
+  QList<qint64> tabs;
+  QList<qint64> windows;
+  qint64 next_tab{0};
+  QString fail_cmd;          ///< A command this profile answers with an error.
+  QString extension_version; ///< Empty: the current version.
+  std::mutex mutex;
+  QStringList received; ///< "cmd" or "cmd:tab_id", in order.
+  QJsonObject last_command;
+
+  chrome_control_mcp::BrowserWriteFn writer() {
+    return [this](const QJsonObject &command) {
+      const std::lock_guard<std::mutex> lock(mutex);
+      last_command = command;
+      const QString cmd = command.value(QStringLiteral("cmd")).toString();
+      received
+          << (command.value(QStringLiteral("tab_id")).isDouble()
+                  ? QStringLiteral("%1:%2").arg(cmd).arg(
+                        command.value(QStringLiteral("tab_id")).toInteger())
+                  : cmd);
+      return true;
+    };
+  }
+
+  chrome_control_mcp::BrowserReadFn reader() {
+    return [this](QJsonObject *out) {
+      const std::lock_guard<std::mutex> lock(mutex);
+      const QJsonObject &command = last_command;
+      const QString cmd = command.value(QStringLiteral("cmd")).toString();
+      const qint64 tab = command.value(QStringLiteral("tab_id")).toInteger();
+      QJsonObject reply{
+          {QStringLiteral("type"), QStringLiteral("result")},
+          {QStringLiteral("id"), command.value(QStringLiteral("id"))}};
+      if (cmd == fail_cmd) {
+        *out = QJsonObject{
+            {QStringLiteral("type"), QStringLiteral("error")},
+            {QStringLiteral("id"), command.value(QStringLiteral("id"))},
+            {QStringLiteral("error"), QStringLiteral("%1 broke").arg(name)}};
+        return true;
+      }
+      QJsonObject payload{{QStringLiteral("profile"), name}};
+      if (cmd == QLatin1String("profileState")) {
+        payload = QJsonObject{{QStringLiteral("profile_name"), name},
+                              {QStringLiteral("focused"), focused},
+                              {QStringLiteral("focused_at"), focused_at}};
+        if (!email.isEmpty()) {
+          payload.insert(QStringLiteral("profile_email"), email);
+        }
+      } else if (cmd == QLatin1String("findTab")) {
+        payload = QJsonObject{{QStringLiteral("exists"), tabs.contains(tab)},
+                              {QStringLiteral("held"), false}};
+      } else if (cmd == QLatin1String("listTabs")) {
+        QJsonArray list;
+        for (const qint64 id : tabs) {
+          list.append(QJsonObject{{QStringLiteral("tab_id"), id},
+                                  {QStringLiteral("id"), id},
+                                  {QStringLiteral("index"), list.size()}});
+        }
+        payload.insert(QStringLiteral("tabs"), list);
+        payload.insert(QStringLiteral("your_tabs"), QJsonArray{});
+        payload.insert(QStringLiteral("count"), list.size());
+        payload.insert(QStringLiteral("capped"), false);
+      } else if (cmd == QLatin1String("listWindows")) {
+        QJsonArray list;
+        for (const qint64 id : windows) {
+          list.append(QJsonObject{{QStringLiteral("window_id"), id}});
+        }
+        payload.insert(QStringLiteral("windows"), list);
+      } else if (cmd == QLatin1String("newTab")) {
+        tabs.append(next_tab);
+        payload.insert(QStringLiteral("ok"), true);
+        payload.insert(QStringLiteral("tab_id"), next_tab);
+        reply.insert(QStringLiteral("tabId"), next_tab);
+        reply.insert(QStringLiteral("domEpoch"), 1);
+        ++next_tab;
+      } else if (cmd == QLatin1String("release")) {
+        payload.insert(QStringLiteral("ok"), true);
+        payload.insert(QStringLiteral("closed"), QJsonArray{tabs.value(0)});
+        payload.insert(QStringLiteral("handed_back"), QJsonArray{});
+        payload.insert(QStringLiteral("kept_open"), QJsonArray{});
+        payload.insert(QStringLiteral("tabs_still_held"), 0);
+      } else if (cmd == QLatin1String("snapshot")) {
+        payload = QJsonObject{
+            {QStringLiteral("url"), QStringLiteral("https://example.test/")},
+            {QStringLiteral("title"), name},
+            {QStringLiteral("nodes"),
+             QJsonArray{
+                 QJsonObject{{QStringLiteral("backendNodeId"), 7},
+                             {QStringLiteral("role"), QStringLiteral("button")},
+                             {QStringLiteral("name"), name},
+                             {QStringLiteral("interactable"), true}}}}};
+        reply.insert(QStringLiteral("tabId"), tab);
+        reply.insert(QStringLiteral("domEpoch"), 1);
+      } else if (tab != 0) {
+        reply.insert(QStringLiteral("tabId"), tab);
+        reply.insert(QStringLiteral("domEpoch"), 1);
+      }
+      reply.insert(QStringLiteral("payload"), payload);
+      *out = reply;
+      return true;
+    };
+  }
+
+  QStringList seen() {
+    const std::lock_guard<std::mutex> lock(mutex);
+    return received;
+  }
+};
+
+// One relay per profile attached to @p control, pumping until stopped. The
+// relay reports the profile's name and email in its hello, as a 1.10.0 relay
+// passes on what the extension said in attach_session.
+struct ProfileRelay {
+  NativeIpcHandle pipe{kInvalidNativeIpcHandle};
+  std::atomic<bool> running{true};
+  std::atomic<bool> done{false};
+  std::thread thread;
+
+  bool attach(const QString &rendezvous, ProfileExtension &extension) {
+    QString token;
+    int protocol = 0;
+    QString error;
+    pipe = relayConnect(rendezvous, &token, &protocol, &error);
+    if (pipe == kInvalidNativeIpcHandle) {
+      return false;
+    }
+    const BridgePeerVersions versions{.extension =
+                                          extension.extension_version.isEmpty()
+                                              ? thisVersion()
+                                              : extension.extension_version,
+                                      .installed = thisVersion()};
+    if (!relayHandshake(pipe, token, protocol, &error, versions, nullptr,
+                        {.name = extension.name, .email = extension.email})) {
+      return false;
+    }
+    thread = std::thread([this, &extension] {
+      while (running.load() &&
+             relayPumpOnce(pipe, extension.reader(), extension.writer())) {
+      }
+      done = true;
+    });
+    return true;
+  }
+
+  // Close the relay's end, as a profile's Chrome window closing or its
+  // extension reloading does. The pump sits in a blocking read of the pipe,
+  // and closing a handle another thread is reading waits for that read, so the
+  // read is ended first -- repeatedly, since the pump may not be in it yet.
+  void leave() {
+    running = false;
+    for (int attempt = 0; attempt < 500 && !done.load(); ++attempt) {
+#ifdef Q_OS_WIN
+      CancelSynchronousIo(static_cast<HANDLE>(thread.native_handle()));
+#else
+      ::shutdown(pipe, SHUT_RDWR);
+#endif
+      std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+    if (thread.joinable()) {
+      thread.join();
+    }
+    closeNativeIpcHandle(pipe);
+    pipe = kInvalidNativeIpcHandle;
+  }
+
+  ~ProfileRelay() {
+    running = false;
+    if (thread.joinable()) {
+      thread.join();
+    }
+    if (pipe != kInvalidNativeIpcHandle) {
+      closeNativeIpcHandle(pipe);
+    }
+  }
+};
+
+// Two profiles, work and personal, attached to one BrowserControl. @p calls
+// runs once both are connected; relays and control are torn down after.
+bool withTwoProfiles(ProfileExtension &work, ProfileExtension &personal,
+                     const std::function<void(BrowserControl &, ProfileRelay &,
+                                              ProfileRelay &)> &calls) {
+  QTemporaryDir dir;
+  const QString path = dir.filePath(QStringLiteral("r.json"));
+  ProfileRelay work_relay;
+  ProfileRelay personal_relay;
+  BrowserControl control(serverOptions(path));
+  QString error;
+  if (!control.start(&error) || !work_relay.attach(path, work) ||
+      !personal_relay.attach(path, personal)) {
+    return false;
+  }
+  const bool both = waitUntil(
+      [&control] {
+        return control.connectionVersions()
+                   .value(QStringLiteral("profiles"))
+                   .toArray()
+                   .size() == 2;
+      },
+      5000);
+  if (both) {
+    calls(control, work_relay, personal_relay);
+  }
+  work_relay.running = false;
+  personal_relay.running = false;
+  control.stop();
+  return both;
+}
+
 // A fake extension that behaves like a POLLING handler: it does not answer
 // until the test releases it. That is the only shape in which the
 // abandoned-exchange bug is observable -- a handler that replies promptly never
@@ -268,6 +489,12 @@ private slots:
   void control_toldOncePerConnectionWhenVersionsDisagree();
   void control_matchingVersionsAreNeverTold();
   void control_unknownCommandFromAnOlderExtensionSaysWhy();
+  void profiles_newTabGoesToTheOneNamedOrTheLastFocused();
+  void profiles_callsFollowTheirTab();
+  void profiles_listingsAndReleaseCoverEveryProfile();
+  void profiles_oneLeavingKeepsTheOthersRefs();
+  void profiles_statusAndNoticesNameEachProfile();
+  void profiles_oldestWinsATieAndAnOlderExtensionIsUnnamed();
   void browserPresence_openInputIsNotClosed();
   void browserPresence_waitingBytesAreNotAHangup();
   void browserPresence_closedWriteEndIsAHangup();
@@ -968,6 +1195,290 @@ void BrowserBridgeRelayTests::
   QCOMPARE(current_result.text, unknown);
 }
 
+void BrowserBridgeRelayTests::
+    profiles_newTabGoesToTheOneNamedOrTheLastFocused() {
+  ProfileExtension work;
+  work.name = QStringLiteral("work");
+  work.email = QStringLiteral("randy@work.example");
+  work.focused_at = 100;
+  work.next_tab = 100;
+  ProfileExtension personal;
+  personal.name = QStringLiteral("personal");
+  personal.focused_at = 200; // the user was in personal last
+  personal.next_tab = 200;
+  ToolResult named;
+  ToolResult by_email;
+  ToolResult upper;
+  ToolResult unnamed;
+  ToolResult unknown;
+  ToolResult focused_now;
+  QVERIFY(withTwoProfiles(
+      work, personal,
+      [&](BrowserControl &control, ProfileRelay &, ProfileRelay &) {
+        const auto open = [&control](const QJsonObject &args) {
+          return control.invoke(QStringLiteral("browser_new_tab"), args);
+        };
+        named = open({{QStringLiteral("profile"), QStringLiteral("work")}});
+        by_email = open({{QStringLiteral("profile"),
+                          QStringLiteral("Randy@Work.Example")}});
+        upper = open({{QStringLiteral("profile"), QStringLiteral("PERSONAL")}});
+        unnamed = open({});
+        unknown = open({{QStringLiteral("profile"), QStringLiteral("school")}});
+        // A window of work in front right now beats personal's later focus
+        // time.
+        work.focused = true;
+        focused_now = open({});
+      }));
+  QVERIFY2(!named.is_error, qPrintable(named.text));
+  QVERIFY2(!by_email.is_error, qPrintable(by_email.text));
+  QVERIFY2(!upper.is_error, qPrintable(upper.text));
+  QVERIFY2(!unnamed.is_error, qPrintable(unnamed.text));
+  QCOMPARE(work.seen().filter(QStringLiteral("newTab")).size(), 3);
+  QCOMPARE(personal.seen().filter(QStringLiteral("newTab")).size(), 2);
+  // Asked for a profile that is not there: refused, saying which are.
+  QVERIFY(unknown.is_error);
+  QVERIFY2(unknown.text.contains(QStringLiteral("\"school\"")) &&
+               unknown.text.contains(QStringLiteral("work")) &&
+               unknown.text.contains(QStringLiteral("personal")),
+           qPrintable(unknown.text));
+  QVERIFY2(!focused_now.is_error, qPrintable(focused_now.text));
+}
+
+void BrowserBridgeRelayTests::profiles_callsFollowTheirTab() {
+  ProfileExtension work;
+  work.name = QStringLiteral("work");
+  work.tabs = {11};
+  ProfileExtension personal;
+  personal.name = QStringLiteral("personal");
+  personal.tabs = {22};
+  ToolResult in_personal;
+  ToolResult in_work;
+  ToolResult current;
+  ToolResult missing;
+  ToolResult by_ref;
+  QVERIFY(withTwoProfiles(
+      work, personal,
+      [&](BrowserControl &control, ProfileRelay &, ProfileRelay &) {
+        const auto read = [&control](const QJsonObject &args) {
+          return control.invoke(QStringLiteral("browser_read"), args);
+        };
+        // Tab 22 has never been in a reply: the server asks which profile has
+        // it.
+        in_personal = read({{QStringLiteral("tab_id"), 22}});
+        in_work = read({{QStringLiteral("tab_id"), 11}});
+        // No tab named: the agent's current profile, the one it last used.
+        current = read({});
+        // In no profile: the current one answers, as the one browser always
+        // did.
+        missing = read({{QStringLiteral("tab_id"), 99}});
+        // A ref is bound to its tab, and so to its profile.
+        (void)control.invoke(QStringLiteral("browser_snapshot"),
+                             {{QStringLiteral("tab_id"), 22}});
+        (void)read({{QStringLiteral("tab_id"), 11}}); // now current: work
+        by_ref =
+            control.invoke(QStringLiteral("browser_click"),
+                           {{QStringLiteral("ref"), QStringLiteral("e1")}});
+      }));
+  QVERIFY2(!in_personal.is_error, qPrintable(in_personal.text));
+  QVERIFY(in_personal.text.contains(QStringLiteral("personal")));
+  QVERIFY(in_work.text.contains(QStringLiteral("work")));
+  QVERIFY2(current.text.contains(QStringLiteral("work")),
+           qPrintable(current.text));
+  QVERIFY(work.seen().contains(QStringLiteral("read:99")));
+  QVERIFY2(!by_ref.is_error, qPrintable(by_ref.text));
+  QVERIFY2(personal.seen().contains(QStringLiteral("click:22")),
+           qPrintable(personal.seen().join(QLatin1Char(' '))));
+  QVERIFY(!work.seen().contains(QStringLiteral("click:22")));
+}
+
+void BrowserBridgeRelayTests::profiles_listingsAndReleaseCoverEveryProfile() {
+  ProfileExtension work;
+  work.name = QStringLiteral("work");
+  work.tabs = {11, 12};
+  work.windows = {1};
+  ProfileExtension personal;
+  personal.name = QStringLiteral("personal");
+  personal.tabs = {22};
+  personal.windows = {2};
+  QJsonObject tabs;
+  QJsonObject windows;
+  QJsonObject released;
+  QJsonObject partial;
+  QVERIFY(withTwoProfiles(
+      work, personal,
+      [&](BrowserControl &control, ProfileRelay &, ProfileRelay &) {
+        const auto json = [&control](const QString &tool) {
+          return QJsonDocument::fromJson(control.invoke(tool, {}).text.toUtf8())
+              .object();
+        };
+        tabs = json(QStringLiteral("browser_tabs"));
+        windows = json(QStringLiteral("browser_windows"));
+        released = json(QStringLiteral("browser_release"));
+        personal.fail_cmd = QStringLiteral("listTabs");
+        partial = json(QStringLiteral("browser_tabs"));
+      }));
+  QCOMPARE(tabs.value(QStringLiteral("count")).toInt(), 3);
+  QStringList where;
+  for (const QJsonValue &tab : tabs.value(QStringLiteral("tabs")).toArray()) {
+    where
+        << QStringLiteral("%1@%2")
+               .arg(tab.toObject().value(QStringLiteral("tab_id")).toInt())
+               .arg(tab.toObject().value(QStringLiteral("profile")).toString());
+  }
+  QCOMPARE(where,
+           (QStringList{QStringLiteral("11@work"), QStringLiteral("12@work"),
+                        QStringLiteral("22@personal")}));
+  QCOMPARE(windows.value(QStringLiteral("windows")).toArray().size(), 2);
+  QCOMPARE(released.value(QStringLiteral("profiles")).toArray().size(), 2);
+  QCOMPARE(released.value(QStringLiteral("closed")).toArray().size(), 2);
+  QVERIFY(work.seen().contains(QStringLiteral("release")));
+  QVERIFY(personal.seen().contains(QStringLiteral("release")));
+  // A profile that fails is named; the rest are still listed.
+  QCOMPARE(partial.value(QStringLiteral("count")).toInt(), 2);
+  const QJsonArray failed = partial.value(QStringLiteral("failed")).toArray();
+  QCOMPARE(failed.size(), 1);
+  QCOMPARE(
+      failed.first().toObject().value(QStringLiteral("profile")).toString(),
+      QStringLiteral("personal"));
+}
+
+void BrowserBridgeRelayTests::profiles_oneLeavingKeepsTheOthersRefs() {
+  ProfileExtension work;
+  work.name = QStringLiteral("work");
+  work.tabs = {11};
+  ProfileExtension personal;
+  personal.name = QStringLiteral("personal");
+  personal.tabs = {22};
+  ToolResult work_ref;
+  ToolResult personal_ref;
+  QJsonObject after;
+  QVERIFY(withTwoProfiles(
+      work, personal,
+      [&](BrowserControl &control, ProfileRelay &, ProfileRelay &leaving) {
+        (void)control.invoke(QStringLiteral("browser_snapshot"),
+                             {{QStringLiteral("tab_id"), 11}}); // e1, work
+        (void)control.invoke(QStringLiteral("browser_snapshot"),
+                             {{QStringLiteral("tab_id"), 22}}); // e2, personal
+        leaving.leave();
+        QVERIFY(waitUntil(
+            [&control] {
+              return control.connectionVersions()
+                         .value(QStringLiteral("profiles"))
+                         .toArray()
+                         .size() == 1;
+            },
+            5000));
+        work_ref =
+            control.invoke(QStringLiteral("browser_click"),
+                           {{QStringLiteral("ref"), QStringLiteral("e1")}});
+        personal_ref =
+            control.invoke(QStringLiteral("browser_click"),
+                           {{QStringLiteral("ref"), QStringLiteral("e2")}});
+        after = control.connectionVersions();
+      }));
+  // Work's ref survived personal leaving; personal's went with it.
+  QVERIFY2(!work_ref.is_error, qPrintable(work_ref.text));
+  QVERIFY(work.seen().contains(QStringLiteral("click:11")));
+  QVERIFY(personal_ref.is_error);
+  QVERIFY2(personal_ref.text.contains(QStringLiteral("e2")),
+           qPrintable(personal_ref.text));
+  QCOMPARE(after.value(QStringLiteral("profiles"))
+               .toArray()
+               .first()
+               .toObject()
+               .value(QStringLiteral("name"))
+               .toString(),
+           QStringLiteral("work"));
+}
+
+void BrowserBridgeRelayTests::profiles_statusAndNoticesNameEachProfile() {
+  ProfileExtension work;
+  work.name = QStringLiteral("work");
+  work.email = QStringLiteral("randy@work.example");
+  work.extension_version = kOlder;
+  ProfileExtension personal;
+  personal.name = QStringLiteral("personal");
+  QString notice;
+  QJsonObject status;
+  QVERIFY(withTwoProfiles(
+      work, personal,
+      [&](BrowserControl &control, ProfileRelay &, ProfileRelay &) {
+        (void)control.invoke(QStringLiteral("browser_tabs"), {});
+        notice = control.takeVersionNotice();
+        status = control.connectionVersions();
+      }));
+  QVERIFY2(notice.startsWith(QStringLiteral("In Chrome profile work: ")) &&
+               notice.contains(kOlder) &&
+               !notice.contains(QStringLiteral("profile personal")),
+           qPrintable(notice));
+  const QJsonArray profiles =
+      status.value(QStringLiteral("profiles")).toArray();
+  QCOMPARE(profiles.size(), 2);
+  QStringList seen;
+  for (const QJsonValue &entry : profiles) {
+    const QJsonObject profile = entry.toObject();
+    seen << QStringLiteral("%1|%2|%3")
+                .arg(profile.value(QStringLiteral("name")).toString(),
+                     profile.value(QStringLiteral("email")).toString(),
+                     profile.value(QStringLiteral("extension_version"))
+                         .toString());
+  }
+  QCOMPARE(seen, (QStringList{
+                     QStringLiteral("work|randy@work.example|%1").arg(kOlder),
+                     QStringLiteral("personal||%1").arg(thisVersion())}));
+}
+
+void BrowserBridgeRelayTests::
+    profiles_oldestWinsATieAndAnOlderExtensionIsUnnamed() {
+  // No window of either has ever had focus: the oldest connection, the first
+  // to attach, gets the new tab.
+  ProfileExtension first;
+  first.name = QStringLiteral("first");
+  first.next_tab = 100;
+  ProfileExtension second;
+  second.name = QStringLiteral("second");
+  second.next_tab = 200;
+  ToolResult tie;
+  QVERIFY(withTwoProfiles(
+      first, second,
+      [&](BrowserControl &control, ProfileRelay &, ProfileRelay &) {
+        tie = control.invoke(QStringLiteral("browser_new_tab"), {});
+      }));
+  QVERIFY2(!tie.is_error, qPrintable(tie.text));
+  QCOMPARE(first.seen().filter(QStringLiteral("newTab")).size(), 1);
+  QCOMPARE(second.seen().filter(QStringLiteral("newTab")).size(), 0);
+
+  // An extension older than profiles: its relay says no profile, and it does
+  // not know profileState. It is called unnamed and never counts as focused,
+  // so a profile focused once wins the new tab although this one is older.
+  ProfileExtension older;
+  older.fail_cmd = QStringLiteral("profileState");
+  older.next_tab = 100;
+  ProfileExtension personal;
+  personal.name = QStringLiteral("personal");
+  personal.focused_at = 50;
+  personal.next_tab = 200;
+  ToolResult opened;
+  QJsonObject status;
+  QVERIFY(withTwoProfiles(
+      older, personal,
+      [&](BrowserControl &control, ProfileRelay &, ProfileRelay &) {
+        opened = control.invoke(QStringLiteral("browser_new_tab"), {});
+        status = control.connectionVersions();
+      }));
+  QVERIFY2(!opened.is_error, qPrintable(opened.text));
+  QCOMPARE(older.seen().filter(QStringLiteral("newTab")).size(), 0);
+  QCOMPARE(personal.seen().filter(QStringLiteral("newTab")).size(), 1);
+  QStringList names;
+  for (const QJsonValue &entry :
+       status.value(QStringLiteral("profiles")).toArray()) {
+    names << entry.toObject().value(QStringLiteral("name")).toString();
+  }
+  names.sort();
+  QCOMPARE(names, (QStringList{QStringLiteral("personal"),
+                               QStringLiteral("unnamed")}));
+}
+
 // Which record a relay connects to is now the extension's choice, so the rule
 // is a pure function and testable without a relay or a server.
 void BrowserBridgeRelayTests::
@@ -986,9 +1497,12 @@ void BrowserBridgeRelayTests::
                                                       QStringLiteral("300")),
            records.first());
 
-  // No preference: the newest, which is what a one-server install resolves to.
-  QCOMPARE(chrome_control_mcp::selectRendezvousRecord(records, QString{}),
-           records.first());
+  // No server named: the extension has no work for this port, because every
+  // server already has one of its ports. Connecting it to the newest would
+  // give that server a second connection of the same profile -- one that
+  // answers for the first's tabs and then goes away -- so nothing is returned.
+  QVERIFY(
+      chrome_control_mcp::selectRendezvousRecord(records, QString{}).isEmpty());
 
   // The server it asked for is gone. Substituting another would attach the
   // extension's session to a server it did not choose, so nothing is returned

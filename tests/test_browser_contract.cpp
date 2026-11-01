@@ -140,6 +140,8 @@ private slots:
   void buildCommand_uploadWithoutRefFillsThePagesChooser();
   void buildCommand_clipboardTakesOnlyWhatEachActionUses();
   void buildCommand_clipboardKeepsPathsOnThisSide();
+  void catalog_profileOnTheToolsThatOpenOrNameNoTab();
+  void buildCommand_profileIsCheckedAndKeptOnThisSide();
   void catalog_agentOnExactlyNewTabAndSelectTab();
   void buildCommand_agentIsValidatedAndCopied();
 };
@@ -1961,6 +1963,55 @@ void BrowserContractTests::buildCommand_clipboardKeepsPathsOnThisSide() {
                            {QStringLiteral("paths"), QJsonArray{}}},
                {})
                .ok);
+}
+
+// A profile is chosen where something new opens, and where per-profile state
+// is reached without a tab; every other call goes where its tab is.
+void BrowserContractTests::catalog_profileOnTheToolsThatOpenOrNameNoTab() {
+  QSet<QString> advertised;
+  const QHash<QString, QJsonObject> properties = catalogProperties();
+  for (auto it = properties.constBegin(); it != properties.constEnd(); ++it) {
+    if (it.value().contains(QStringLiteral("profile"))) {
+      advertised.insert(it.key());
+    }
+  }
+  QCOMPARE(advertised, (QSet<QString>{QStringLiteral("browser_new_tab"),
+                                      QStringLiteral("browser_window"),
+                                      QStringLiteral("browser_cookies"),
+                                      QStringLiteral("browser_permission")}));
+  const QJsonObject profile =
+      properties.value(QStringLiteral("browser_new_tab"))
+          .value(QStringLiteral("profile"))
+          .toObject();
+  QCOMPARE(profile.value(QStringLiteral("type")).toString(),
+           QStringLiteral("string"));
+  QCOMPARE(profile.value(QStringLiteral("maxLength")).toInt(), 254);
+  QVERIFY(profile.value(QStringLiteral("description"))
+              .toString()
+              .contains(QStringLiteral("last used")));
+}
+
+void BrowserContractTests::buildCommand_profileIsCheckedAndKeptOnThisSide() {
+  const ExtensionCommand opened = buildExtensionCommand(
+      QStringLiteral("browser_new_tab"),
+      QJsonObject{{QStringLiteral("profile"), QStringLiteral("  work ")}}, {});
+  QVERIFY2(opened.ok, qPrintable(opened.error));
+  // The server routes by it; the extension never sees it.
+  QVERIFY(!opened.command.contains(QStringLiteral("profile")));
+  const auto refused = [](const QString &tool, const QJsonValue &profile) {
+    return !buildExtensionCommand(
+                tool, QJsonObject{{QStringLiteral("profile"), profile}}, {})
+                .ok;
+  };
+  QVERIFY(refused(QStringLiteral("browser_new_tab"), 7));
+  QVERIFY(refused(QStringLiteral("browser_new_tab"), QStringLiteral("   ")));
+  QVERIFY(refused(QStringLiteral("browser_new_tab"),
+                  QString(255, QLatin1Char('x'))));
+  QVERIFY(
+      refused(QStringLiteral("browser_new_tab"), QStringLiteral("work\nhome")));
+  // A call that goes where its tab is takes no profile at all.
+  QVERIFY(refused(QStringLiteral("browser_click"), QStringLiteral("work")));
+  QVERIFY(refused(QStringLiteral("browser_tabs"), QStringLiteral("work")));
 }
 
 void BrowserContractTests::catalog_agentOnExactlyNewTabAndSelectTab() {

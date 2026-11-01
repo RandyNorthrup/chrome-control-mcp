@@ -1,0 +1,53 @@
+== EV-PROF-RED-NO-WORK-LIVE: a probe's port with no server becomes a second connection
+file: src/browser_bridge_relay_common.cpp
+mutated sha256: 710642b655f4fdc79a038951a3a255e9b990e7d39421d906c6d444d410022f43
+exit=1
+PASS without the identity permissions the extension still names its profile
+FAIL a port the extension has no server for never becomes a second connection -- {"profiles":[{"email":null,"extension_version":"1.0.0","installed_version":"1.10.0","name":"profile-7a88a9","notice":"Note: Chrome is running Chrome Control MC
+PASS it reloads itself into files that ask for more permissions and comes back enabled
+PASS after the update it has the identity permission and keeps its profile's name
+expected_failure_seen: true
+== EV-PROF-RED-UPGRADE: a generated name is not kept, so a reload renames the profile
+file: browser/extension/background.js
+mutated sha256: e309bd6901521920a599879837e9c31dd44f5917bd7a8a24b7969144cf19d1ad
+exit=1
+PASS without the identity permissions the extension still names its profile
+PASS a port the extension has no server for never becomes a second connection
+PASS it reloads itself into files that ask for more permissions and comes back enabled
+FAIL after the update it has the identity permission and keeps its profile's name -- {"identityAfter":"function","profiles":[{"email":null,"extension_version":"1.0.0","installed_version":"1.10.0","name":"profile-916a58","notice":"Note: Chro
+expected_failure_seen: true
+== EV-PROF-RED-OPTIONS-LIVE: a name saved on the options page is not picked up until a reload
+file: browser/extension/background.js
+mutated sha256: acd82945d29272d1f3cac85c3b8ba54804d0b4e1423aa8e001c7b932046b67a9
+exit=1
+PASS one server serves both profiles' extensions at once
+PASS signed out and unnamed, each profile has its own generated name
+FAIL each profile renamed on its options page is called so at once, with nothing reloaded -- {"shownWork":"work","shownPersonal":"personal","listing":["profile-07c08c","profile-2e4b6c"],"status":[{"email":null,"extension_version":"1.10.0","
+expected_failure_seen: true
+== restored
+src/browser_bridge_pipe_common.cpp 3554a3b6eacdf721ce820a4987d844c098d23943f6b658bbf6bcf606b6ddb0d3
+src/browser_control.cpp 69f4e6baed95e9e40231dbd1fb11d2401111e04bf87a0428e9c12dfc175ca639
+src/browser_bridge_relay_common.cpp ed725583b63f386aceabdfd7617938807bde36125693db71634f80ae2e9f5140
+browser/extension/background.js f07e86a5ab761628ce2e9f351e6eecb0008f9342ee0dd03f14ca10b9b6e79413
+mirror matches source: true
+rebuild exit=0
+green two exit=0
+PASS one server serves both profiles' extensions at once
+PASS signed out and unnamed, each profile has its own generated name
+PASS each profile renamed on its options page is called so at once, with nothing reloaded
+PASS a new tab opens in the profile named, matched without regard to case
+PASS a profile that is not connected is refused, naming those that are
+PASS with no profile named, a new tab opens in the profile whose window was last focused
+PASS a call naming a tab goes to the profile holding it
+PASS a tab the server has never seen is found in its profile
+PASS browser_tabs lists every profile's tabs, each naming its profile
+PASS browser_windows lists every profile's windows, each naming its profile
+PASS browser_release without a tab lets go in every profile
+PASS a profile leaving takes nothing of the other's: its refs still work
+PASS browser_extension_status lists the profiles still connected, with their versions
+PASS releasing at the end leaves nothing held
+green upgrade exit=0
+PASS without the identity permissions the extension still names its profile
+PASS a port the extension has no server for never becomes a second connection
+PASS it reloads itself into files that ask for more permissions and comes back enabled
+PASS after the update it has the identity permission and keeps its profile's name

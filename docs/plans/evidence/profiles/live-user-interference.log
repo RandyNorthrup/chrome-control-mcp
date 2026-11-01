@@ -1,0 +1,10 @@
+PASS session tab shows the fixture home page
+PASS snapshot reads the session tab after the user opened a tab
+PASS the tab the user opened is the one in front
+PASS typing lands in the session tab, not the user's
+PASS screenshot of the session tab while the user's tab is in front
+PASS the user's tab is still in front after the session typed, scrolled, and clicked
+PASS snapshot reads the session tab after the user opened a window
+PASS typing still lands in the session tab
+PASS browser_tabs lists the session's window
+PASS the session opened and closed no windows of its own

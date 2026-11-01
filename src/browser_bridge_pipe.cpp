@@ -36,6 +36,10 @@ constexpr DWORD kCancelWriteBudgetMs = 1000;
 // generation every iteration.
 constexpr DWORD kCancelDrainBudgetMs = 3000;
 
+// How long a refused relay is given to read the refusal before its instance is
+// disconnected.
+constexpr DWORD kRefusalLingerMs = 1000;
+
 // Native-messaging framing: a fixed 4-byte little-endian length prefix precedes
 // every body.
 constexpr int kFrameHeaderBytes = 4;
@@ -302,20 +306,14 @@ IdlePeer idlePeerState(HANDLE pipe) {
   return available == 0 ? IdlePeer::Present : IdlePeer::Talking;
 }
 
-// Pure ancestor-chain check: from `pid`, climb up to max_depth ancestors via
-// the child->parent map and return true iff one's lowercased image equals
-// target_basename_lower. The max_depth bound makes this terminate even on a
-// cyclic or malformed parent map (Toolhelp parent pids can be stale/reused).
-// Separated from the live snapshot below so the authorization decision is
-// unit-testable with a hand-built process tree.
-// Best-effort walk up the process tree looking for an ancestor image (e.g.
-// chrome.exe). Toolhelp parent pids can be stale/reused, so this is defense in
-// depth, not a hard boundary.
-bool hasAncestorImage(DWORD pid, const QString &target_basename_lower,
-                      int max_depth) {
+// Best-effort walk up the process tree to the nearest ancestor image (e.g.
+// chrome.exe), returning its pid or 0. Toolhelp parent pids can be
+// stale/reused, so this is defense in depth, not a hard boundary.
+DWORD ancestorWithImage(DWORD pid, const QString &target_basename_lower,
+                        int max_depth) {
   const HANDLE snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
   if (snapshot == INVALID_HANDLE_VALUE) {
-    return false;
+    return 0;
   }
   QHash<quint64, quint64> parent;
   QHash<quint64, QString> image;
@@ -330,8 +328,36 @@ bool hasAncestorImage(DWORD pid, const QString &target_basename_lower,
   }
   CloseHandle(snapshot);
 
-  return ancestorChainContainsImage(pid, parent, image, target_basename_lower,
-                                    max_depth);
+  return static_cast<DWORD>(nearestAncestorWithImage(
+      pid, parent, image, target_basename_lower, max_depth));
+}
+
+// One more instance of the bridge pipe, for the next relay. The first is
+// created with FILE_FLAG_FIRST_PIPE_INSTANCE, which is what refuses a squatter
+// that got the name first; the rest join it. Room for every admitted
+// connection, one instance listening, and one more being turned away.
+HANDLE createPipeInstance(const QString &name, bool first, QString *error) {
+  SECURITY_ATTRIBUTES attributes{};
+  PSECURITY_DESCRIPTOR descriptor = nullptr;
+  if (!buildBridgePipeSecurity(&attributes, &descriptor, error)) {
+    return INVALID_HANDLE_VALUE;
+  }
+  const std::wstring wide = name.toStdWString();
+  const HANDLE pipe =
+      CreateNamedPipeW(wide.c_str(),
+                       PIPE_ACCESS_DUPLEX | FILE_FLAG_OVERLAPPED |
+                           (first ? FILE_FLAG_FIRST_PIPE_INSTANCE : 0),
+                       PIPE_TYPE_BYTE | PIPE_READMODE_BYTE | PIPE_WAIT |
+                           PIPE_REJECT_REMOTE_CLIENTS,
+                       kMaxBridgeConnections + 2, kPipeBufferBytes,
+                       kPipeBufferBytes, 0, &attributes);
+  LocalFree(descriptor);
+  if (pipe == INVALID_HANDLE_VALUE && error != nullptr) {
+    *error = QStringLiteral(
+                 "CreateNamedPipe failed (err=%1); the name may be squatted")
+                 .arg(GetLastError());
+  }
+  return pipe;
 }
 
 } // namespace
@@ -345,6 +371,20 @@ bool liveBridgeOwnerExists(const QString &rendezvous_path) {
     return false;
   }
   return isOwnExecutable(static_cast<quint32>(record.app_pid));
+}
+
+bool BrowserBridgePipeServer::browserProcessAlive(quint64 pid) {
+  const HANDLE process = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE,
+                                     static_cast<DWORD>(pid));
+  if (process == nullptr) {
+    // Gone -- or not ours to open, which a Chrome of this user always is.
+    return GetLastError() == ERROR_ACCESS_DENIED;
+  }
+  DWORD code = 0;
+  const bool alive =
+      GetExitCodeProcess(process, &code) != FALSE && code == STILL_ACTIVE;
+  CloseHandle(process);
+  return alive;
 }
 
 bool BrowserBridgePipeServer::createPipeResources(QString *error) {
@@ -362,25 +402,8 @@ bool BrowserBridgePipeServer::createPipeResources(QString *error) {
   if (pipe_name_.isEmpty()) {
     return false;
   }
-  SECURITY_ATTRIBUTES attributes{};
-  PSECURITY_DESCRIPTOR descriptor = nullptr;
-  if (!buildBridgePipeSecurity(&attributes, &descriptor, error)) {
-    return false;
-  }
-  const std::wstring wide = pipe_name_.toStdWString();
-  pipe_ = CreateNamedPipeW(
-      wide.c_str(),
-      PIPE_ACCESS_DUPLEX | FILE_FLAG_OVERLAPPED | FILE_FLAG_FIRST_PIPE_INSTANCE,
-      PIPE_TYPE_BYTE | PIPE_READMODE_BYTE | PIPE_WAIT |
-          PIPE_REJECT_REMOTE_CLIENTS,
-      1, kPipeBufferBytes, kPipeBufferBytes, 0, &attributes);
-  LocalFree(descriptor);
+  pipe_ = createPipeInstance(pipe_name_, true, error);
   if (pipe_ == INVALID_HANDLE_VALUE) {
-    if (error != nullptr) {
-      *error = QStringLiteral(
-                   "CreateNamedPipe failed (err=%1); the name may be squatted")
-                   .arg(GetLastError());
-    }
     return false;
   }
   shutdown_event_ = CreateEventW(nullptr, TRUE, FALSE, nullptr);
@@ -388,8 +411,8 @@ bool BrowserBridgePipeServer::createPipeResources(QString *error) {
   const RendezvousRecord record{pipe_name_, token_, options_.protocol,
                                 static_cast<qint64>(GetCurrentProcessId())};
   // Fail closed (and leak nothing) if the shutdown event could not be created
-  // or the rendezvous record could not be written -- the I/O thread must have a
-  // valid abort event, and the relay must be able to discover the pipe.
+  // or the rendezvous record could not be written -- the I/O threads must have
+  // a valid abort event, and the relay must be able to discover the pipe.
   if (shutdown_event_ == nullptr ||
       !writeRendezvousRecord(rendezvous_path_, record, error)) {
     if (shutdown_event_ == nullptr && (error != nullptr)) {
@@ -453,6 +476,18 @@ void BrowserBridgePipeServer::stop() {
   if (thread_.joinable()) {
     thread_.join();
   }
+  // Every connection thread sees running_ false or its I/O aborted by the
+  // shutdown event, closes its own instance, and ends.
+  std::vector<ConnectionPtr> remaining;
+  {
+    const std::lock_guard<std::mutex> lock(mutex_);
+    remaining.swap(connections_);
+  }
+  for (const ConnectionPtr &connection : remaining) {
+    if (connection->thread.joinable()) {
+      connection->thread.join();
+    }
+  }
   if (pipe_ != INVALID_HANDLE_VALUE) {
     CloseHandle(pipe_);
     pipe_ = INVALID_HANDLE_VALUE;
@@ -480,6 +515,19 @@ void BrowserBridgePipeServer::run() {
         return;
       }
     }
+    reapFinished();
+    if (pipe_ == INVALID_HANDLE_VALUE) {
+      // Every instance is in use, or creating one failed. One frees up when a
+      // connection ends; look again shortly rather than spin.
+      pipe_ = createPipeInstance(pipe_name_, false, nullptr);
+      if (pipe_ == INVALID_HANDLE_VALUE) {
+        if (WaitForSingleObject(shutdown_event_, kAcceptRetryBackoffMs * 4) ==
+            WAIT_OBJECT_0) {
+          return;
+        }
+        continue;
+      }
+    }
     const ConnectResult connect = waitForConnection(pipe_, shutdown_event_);
     if (connect == ConnectResult::Shutdown) {
       return;
@@ -492,39 +540,46 @@ void BrowserBridgePipeServer::run() {
       Sleep(kAcceptRetryBackoffMs);
       continue;
     }
-    if (!handshake()) {
-      DisconnectNamedPipe(pipe_); // bad peer / handshake: drop and re-listen
-      continue;
-    }
+    // The connected instance belongs to its connection from here; the next
+    // relay gets a fresh one.
+    const auto connection = std::make_shared<Connection>();
+    connection->handle = pipe_;
+    pipe_ = createPipeInstance(pipe_name_, false, nullptr);
     {
       const std::lock_guard<std::mutex> lock(mutex_);
-      connected_ = true;
-      ++generation_;
-      peer_versions_ = handshake_versions_;
-      has_request_ = false; // no request may carry over from a prior connection
-      has_response_ = false;
+      connection->id = ++next_connection_id_;
+      connections_.push_back(connection);
+      connection->thread =
+          std::thread([this, connection] { serveConnection(connection); });
     }
-    cv_.notify_all();
-    serveConnected();
-    {
-      const std::lock_guard<std::mutex> lock(mutex_);
-      connected_ = false;
-    }
-    cv_.notify_all(); // wake a waiting sender so it does not hang on a dead
-                      // peer
-    DisconnectNamedPipe(pipe_);
   }
 }
 
-bool BrowserBridgePipeServer::handshake() {
+void BrowserBridgePipeServer::serveConnection(const ConnectionPtr &connection) {
+  if (handshake(*connection)) {
+    serveConnected(*connection);
+  }
+  {
+    const std::lock_guard<std::mutex> lock(mutex_);
+    connection->live = false;
+  }
+  cv_.notify_all(); // wake a sender waiting on this connection: it has ended
+  DisconnectNamedPipe(connection->handle);
+  CloseHandle(connection->handle);
+  connection->handle = INVALID_HANDLE_VALUE;
+  const std::lock_guard<std::mutex> lock(mutex_);
+  connection->finished = true;
+}
+
+bool BrowserBridgePipeServer::handshake(Connection &connection) {
   // One absolute budget for the whole handshake, so a dribbling peer cannot
-  // hold the sole pipe instance open past the deadline by restarting a per-read
-  // timer.
+  // hold an instance open past the deadline by restarting a per-read timer.
   const IoDeadline deadline{.m_deadline_tick =
                                 GetTickCount64() + options_.io_timeout_ms,
                             .m_cancel_event = shutdown_event_};
+  const HANDLE pipe = connection.handle;
   QJsonObject hello;
-  if (!readFrame(pipe_, deadline, &hello)) {
+  if (!readFrame(pipe, deadline, &hello)) {
     return false;
   }
   if (hello.value(QStringLiteral("type")).toString() !=
@@ -532,28 +587,55 @@ bool BrowserBridgePipeServer::handshake() {
       hello.value(QStringLiteral("token")).toString() != token_) {
     return false;
   }
-  if (hello.value(QStringLiteral("protocol")).toInt() != options_.protocol) {
-    writeFrame(pipe_,
-               QJsonObject{{QStringLiteral("type"), QStringLiteral("error")},
-                           {QStringLiteral("error"),
-                            QStringLiteral("protocol_mismatch")}},
-               deadline);
+  const auto refuse = [&](const QString &why) {
+    if (writeFrame(
+            pipe,
+            QJsonObject{{QStringLiteral("type"), QStringLiteral("error")},
+                        {QStringLiteral("error"), why}},
+            deadline)) {
+      // DisconnectNamedPipe discards whatever the relay has not read yet, so
+      // tearing down straight after the write lost the reason more often than
+      // not. Wait for the relay to read it and close its end, briefly.
+      const IoDeadline linger{.m_deadline_tick =
+                                  GetTickCount64() + kRefusalLingerMs,
+                              .m_cancel_event = shutdown_event_};
+      QJsonObject discarded;
+      readFrame(pipe, linger, &discarded);
+    }
     return false;
+  };
+  if (hello.value(QStringLiteral("protocol")).toInt() != options_.protocol) {
+    return refuse(QStringLiteral("protocol_mismatch"));
   }
   QString why;
-  if (!verifyPeer(&why)) {
-    writeFrame(pipe_,
-               QJsonObject{{QStringLiteral("type"), QStringLiteral("error")},
-                           {QStringLiteral("error"),
-                            QStringLiteral("unauthorized: %1").arg(why)}},
-               deadline);
-    return false;
+  quint64 browser_pid = 0;
+  if (!verifyPeer(pipe, &browser_pid, &why)) {
+    return refuse(QStringLiteral("unauthorized: %1").arg(why));
   }
-  handshake_versions_ = peerVersionsFromHello(hello);
+  QString refusal;
+  {
+    // Admitted before the welcome goes out, so two relays handshaking at once
+    // cannot both take the last place.
+    const std::lock_guard<std::mutex> lock(mutex_);
+    connection.versions = peerVersionsFromHello(hello);
+    connection.profile =
+        peerProfileFromJson(hello.value(QStringLiteral("profile_name")),
+                            hello.value(QStringLiteral("profile_email")));
+    connection.browser_pid = browser_pid;
+    for (const ConnectionPtr &candidate : connections_) {
+      if (candidate.get() == &connection) {
+        refusal = admit(candidate);
+      }
+    }
+  }
+  if (!refusal.isEmpty()) {
+    return refuse(refusal);
+  }
+  cv_.notify_all();
   // `version` is this server's own; a relay older than 1.9.0 reads only the
   // type and protocol of a welcome and ignores it.
   return writeFrame(
-      pipe_,
+      pipe,
       QJsonObject{
           {QStringLiteral("type"), QStringLiteral("welcome")},
           {QStringLiteral("protocol"), options_.protocol},
@@ -563,9 +645,11 @@ bool BrowserBridgePipeServer::handshake() {
       deadline);
 }
 
-bool BrowserBridgePipeServer::verifyPeer(QString *why) const {
+bool BrowserBridgePipeServer::verifyPeer(NativeIpcHandle handle,
+                                         quint64 *browser_pid,
+                                         QString *why) const {
   ULONG client_pid = 0;
-  if (GetNamedPipeClientProcessId(pipe_, &client_pid) == FALSE) {
+  if (GetNamedPipeClientProcessId(handle, &client_pid) == FALSE) {
     *why = QStringLiteral("cannot identify client");
     return false;
   }
@@ -573,38 +657,40 @@ bool BrowserBridgePipeServer::verifyPeer(QString *why) const {
     *why = QStringLiteral("client is not the bridge binary");
     return false;
   }
-  if (options_.require_chrome_ancestor &&
-      !hasAncestorImage(static_cast<DWORD>(client_pid),
-                        QStringLiteral("chrome.exe"),
-                        kChromeAncestorMaxDepth)) {
-    *why = QStringLiteral("client was not launched by Chrome");
-    return false;
+  if (options_.require_chrome_ancestor) {
+    const DWORD chrome = ancestorWithImage(static_cast<DWORD>(client_pid),
+                                           QStringLiteral("chrome.exe"),
+                                           kChromeAncestorMaxDepth);
+    if (chrome == 0) {
+      *why = QStringLiteral("client was not launched by Chrome");
+      return false;
+    }
+    *browser_pid = chrome;
   }
   return true;
 }
 
-void BrowserBridgePipeServer::serveConnected() {
+void BrowserBridgePipeServer::serveConnected(Connection &connection) {
+  const HANDLE pipe = connection.handle;
   while (true) {
     std::unique_lock<std::mutex> lock(mutex_);
     // Wait in slices, never for as long as it takes. From inside a wait only a
     // command can end, a relay that died between commands is indistinguishable
-    // from one that is idle -- and the single pipe instance stayed held for it,
-    // refusing every relay Chrome started afterwards, until a command happened
-    // along to fail.
+    // from one that is idle -- and its instance stayed held for it until a
+    // command happened along to fail.
     const bool asked = cv_.wait_for(
         lock, std::chrono::milliseconds(kBrowserBridgeIdlePeerCheckMs),
-        [this] { return has_request_ || !running_; });
+        [this, &connection] { return connection.has_request || !running_; });
     if (!running_) {
       return;
     }
     if (!asked) {
       // Looked at with the lock released, as all pipe I/O is. A command posted
       // meanwhile is safe either way: a live relay serves it on the next pass,
-      // and for a dead one this returns, run() marks the connection gone, and
-      // the sender -- which wakes on exactly that -- fails it. run() clears the
-      // slot before it serves another relay, so it never reaches the next one.
+      // and for a dead one this returns, the connection is marked gone, and
+      // the sender -- which wakes on exactly that -- fails it.
       lock.unlock();
-      if (idlePeerState(pipe_) != IdlePeer::Present) {
+      if (idlePeerState(pipe) != IdlePeer::Present) {
         // Gone, or talking with nothing asked. The second is not a relay that
         // is keeping to the protocol, and its bytes left unread would be taken
         // as the reply to the NEXT command, before that command was even sent.
@@ -612,8 +698,8 @@ void BrowserBridgePipeServer::serveConnected() {
       }
       continue;
     }
-    const QJsonObject request = request_frame_;
-    has_request_ = false;
+    const QJsonObject request = connection.request_frame;
+    connection.has_request = false;
     lock.unlock();
 
     const IoDeadline deadline{.m_deadline_tick =
@@ -622,10 +708,10 @@ void BrowserBridgePipeServer::serveConnected() {
     QJsonObject reply;
     Exchange result;
     QString why;
-    if (!writeFrame(pipe_, request, deadline)) {
+    if (!writeFrame(pipe, request, deadline)) {
       result.error = QStringLiteral(
           "browser did not accept the command (timeout or reset)");
-    } else if (!awaitReply(request, &reply, &why)) {
+    } else if (!awaitReply(pipe, request, &reply, &why)) {
       result.error = why;
       // Abandoning the exchange here does not stop the extension: a handler
       // that POLLS (browser_download runs to 120 s, well past this deadline)
@@ -639,7 +725,7 @@ void BrowserBridgePipeServer::serveConnected() {
                                                           kCancelWriteBudgetMs,
                                        .m_cancel_event = shutdown_event_};
       if (writeFrame(
-              pipe_,
+              pipe,
               QJsonObject{{QStringLiteral("type"), QStringLiteral("cancel")}},
               cancel_deadline)) {
         // Do not tear down until the relay has had the chance to act on it. The
@@ -649,7 +735,7 @@ void BrowserBridgePipeServer::serveConnected() {
                                                            kCancelDrainBudgetMs,
                                         .m_cancel_event = shutdown_event_};
         QJsonObject discarded;
-        readFrame(pipe_, drain_deadline, &discarded);
+        readFrame(pipe, drain_deadline, &discarded);
       }
     } else {
       result.ok = true;
@@ -657,18 +743,19 @@ void BrowserBridgePipeServer::serveConnected() {
     }
 
     lock.lock();
-    response_ = result;
-    has_response_ = true;
+    connection.response = result;
+    connection.has_response = true;
     cv_.notify_all();
     lock.unlock();
 
     if (!result.ok) {
-      return; // I/O failure: tear down the connection and re-listen
+      return; // I/O failure: tear down this connection
     }
   }
 }
 
-bool BrowserBridgePipeServer::awaitReply(const QJsonObject &request,
+bool BrowserBridgePipeServer::awaitReply(NativeIpcHandle handle,
+                                         const QJsonObject &request,
                                          QJsonObject *reply, QString *why) {
   const ULONGLONG started = GetTickCount64();
   const ULONGLONG absolute_end =
@@ -714,7 +801,7 @@ bool BrowserBridgePipeServer::awaitReply(const QJsonObject &request,
         // take longer than one budget to cross is not a silent peer.
         .m_refresh_ms = static_cast<DWORD>(options_.io_timeout_ms),
         .m_absolute_tick = absolute_end};
-    if (!readFrame(pipe_, deadline, reply, &end)) {
+    if (!readFrame(handle, deadline, reply, &end)) {
       *why = whyItEnded();
       return false;
     }
@@ -728,64 +815,6 @@ bool BrowserBridgePipeServer::awaitReply(const QJsonObject &request,
       return false;
     }
   }
-}
-
-BrowserBridgePipeServer::Exchange
-BrowserBridgePipeServer::sendCommandAwaitReply(const QJsonObject &frame) {
-  std::unique_lock<std::mutex> lock(mutex_);
-  if (!connected_ || !running_) {
-    return {.ok = false,
-            .reply = {},
-            .error = QStringLiteral("Browser not connected.")};
-  }
-  if (has_request_) {
-    return {.ok = false,
-            .reply = {},
-            .error =
-                QStringLiteral("A browser action is already in progress.")};
-  }
-  // Pin the connection identity, and wake on either sign that it has ended.
-  // The generation changes when a fresh relay replaces this one, and it cannot
-  // be missed -- connected_ oscillates false->true across a reconnect, so a
-  // sender watching only that could sleep through both edges and hang for the
-  // life of the next session. connected_ going false is the prompt sign: the
-  // I/O thread drops an idle connection whose relay has gone, possibly just
-  // after this request was posted, and no successor need ever arrive to move
-  // the generation on.
-  const quint64 my_generation = generation_;
-  // Ask the extension to report progress while it works. The deadline belongs
-  // to this transport, so the request for the beats that hold it open belongs
-  // here too. An extension older than this server ignores the flag and is
-  // simply held to the plain silence budget, as it always was.
-  request_frame_ = frame;
-  request_frame_.insert(QStringLiteral("progress"), true);
-  has_request_ = true;
-  has_response_ = false;
-  cv_.notify_all();
-  cv_.wait(lock, [this, my_generation] {
-    return has_response_ || !running_ || !connected_ ||
-           generation_ != my_generation;
-  });
-  // Always clear the slot on the way out: if the connection died before the I/O
-  // thread consumed the request, leaving has_request_ set would make the NEXT
-  // connection execute a stale command frame.
-  const bool got_response = has_response_;
-  Exchange result{};
-  // has_response_ is set true by the I/O worker thread in serveConnected();
-  // cppcheck's single-threaded flow cannot see that cross-thread write and
-  // wrongly deems got_response always-false here.
-  // cppcheck-suppress knownConditionTrueFalse
-  if (got_response) {
-    result = response_;
-  } else {
-    result = Exchange{.ok = false,
-                      .reply = {},
-                      .error = QStringLiteral(
-                          "Browser connection closed before it replied.")};
-  }
-  has_request_ = false;
-  has_response_ = false;
-  return result;
 }
 
 } // namespace chrome_control_mcp

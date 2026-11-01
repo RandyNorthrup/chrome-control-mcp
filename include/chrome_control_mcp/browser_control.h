@@ -8,10 +8,12 @@
 #include "chrome_control_mcp/mcp_tools.h"
 
 #include <QJsonArray>
+#include <QHash>
 #include <QJsonObject>
 #include <QString>
 
 #include <chrono>
+#include <map>
 #include <optional>
 #include <utility>
 
@@ -109,17 +111,19 @@ public:
   [[nodiscard]] ToolResult invoke(const QString &name,
                                   const QJsonObject &arguments);
 
-  /// The version notice for the current connection, the first time it is
-  /// asked for after that connection was made, and empty every other time --
-  /// so each connection tells its agent once, on whichever browser call comes
-  /// first, and a connection whose versions agree never does.
+  /// The version notice of every connection not yet told, the first time it
+  /// is asked for after that connection was made, and empty every other time
+  /// -- so each connection (each Chrome profile) tells its agent once, on
+  /// whichever browser call comes first, naming the profile when there are
+  /// several, and a connection whose versions agree never does.
   [[nodiscard]] QString takeVersionNotice();
 
   /// The running versions as browser_extension_status reports them: whether
   /// an extension is connected and how many connections there have been, this
-  /// server's version, the extension's and the installed one (null when not
-  /// said), and the notice (empty when they agree). Read from the connection
-  /// as it is now, at any time.
+  /// server's version, the newest connection's extension and installed
+  /// versions (null when not said), its notice (empty when they agree), and
+  /// under `profiles` every connected Chrome profile with its name, email,
+  /// versions and notice. Read from the connections as they are now.
   [[nodiscard]] QJsonObject connectionVersions() const;
 
 private:
@@ -136,13 +140,63 @@ private:
   /// Wait up to relay_attach_wait_ for a relay to attach.
   void awaitAttachingRelay() const;
 
-  void syncSessionToConnection();
+  /// What this side knows of one connection -- one Chrome profile -- beyond
+  /// what the pipe reports: its current name and email (the hello's, then the
+  /// latest any reply said), and whether its version notice is still to be
+  /// told.
+  struct Known {
+    BridgeConnectionInfo info;
+    QString name;
+    QString email;
+    bool notice_due{true};
+  };
 
-  /// One command round trip on an already-synced session: send @p frame and
-  /// feed the reply back in. Shared by the ordinary single-command path and by
-  /// the upload, which is several commands for one tool call.
+  /// Reconcile with the pipe's connections: new ones are recorded, and a
+  /// departed one takes the refs and routing of its own tabs with it -- and of
+  /// any tab no remaining connection is known to hold. Called on the MCP thread
+  /// before each tool call.
+  void syncConnections();
+
+  /// The connection a one-command call goes to, or 0 with @p error set.
+  [[nodiscard]] quint64 routeOne(const QString &name,
+                                 const QJsonObject &arguments, QString *error);
+  /// Whether this call goes to every connection and its replies are merged.
+  [[nodiscard]] bool fansOut(const QString &name,
+                             const QJsonObject &arguments) const;
+  /// The connection holding tab @p tab_id, asking each one whose tab it is
+  /// when no reply has said; 0 when none has it.
+  [[nodiscard]] quint64 ownerOfTab(qint64 tab_id);
+  /// The same for a window, by listing each connection's windows.
+  [[nodiscard]] quint64 ownerOfWindow(qint64 window_id);
+  /// The connection whose profile is named @p profile (a name or an email,
+  /// ignoring case), or 0 with @p error listing the names that are connected.
+  [[nodiscard]] quint64 connectionForProfile(const QString &profile,
+                                             QString *error);
+  /// The profile whose window the user last focused: one focused now, else
+  /// the most recently focused, else the oldest connection.
+  [[nodiscard]] quint64 lastFocusedConnection();
+  /// Ask connection @p id which profile it is (profileState); refreshes its
+  /// name. Empty when it cannot say (an extension older than profiles).
+  [[nodiscard]] QJsonObject askProfile(quint64 id);
+  /// The connection a call naming no tab goes to: the agent's current one.
+  [[nodiscard]] quint64 currentConnection();
+  /// A connection's name as agents see it.
+  [[nodiscard]] QString profileName(quint64 id) const;
+  /// Record which connection holds the tabs and windows a reply mentions,
+  /// and any newer profile name it carries.
+  void learnFromReply(quint64 id, const QJsonObject &reply);
+  /// Run @p name on every connection and merge the replies, each entry naming
+  /// its profile; a connection that fails is named in the result.
+  [[nodiscard]] ToolResult fanOut(const QString &name,
+                                  const QJsonObject &arguments);
+
+  /// One command round trip on an already-synced session, to connection @p id:
+  /// send the frame and feed the reply back in, learning what it says about
+  /// tabs, windows and the profile. Shared by every path, including the
+  /// upload, which is several commands for one tool call.
   [[nodiscard]] ToolResult
-  exchange(const browser::BrowserBridgeSession::Outgoing &outgoing);
+  exchange(quint64 id, const browser::BrowserBridgeSession::Outgoing &outgoing,
+           QJsonObject *reply_payload = nullptr);
 
   /// A tool call that carries files -- browser_upload, and browser_clipboard
   /// writing files: read the named files here, send their bytes as bridge-
@@ -150,16 +204,22 @@ private:
   /// round trips because Chrome accepts at most 1 MiB in one message from a
   /// native host, and a file is usually larger than the rest of a session's
   /// traffic put together.
-  [[nodiscard]] ToolResult invokeWithFiles(const QString &name,
+  [[nodiscard]] ToolResult invokeWithFiles(quint64 id, const QString &name,
                                            const QJsonObject &arguments);
 
   BrowserBridgePipeServer pipe_;
   browser::BrowserBridgeSession session_;
-  quint64 observed_generation_{0};
-  /// What the current connection reported, taken when it was first seen, and
-  /// whether its notice is still to be told.
-  BridgePeerVersions peer_versions_;
-  bool version_notice_due_{false};
+  /// Every connection this side has accounted for, by id, and which of them
+  /// holds each tab and window a reply has named.
+  std::map<quint64, Known> known_;
+  QHash<qint64, quint64> tab_owner_;
+  QHash<qint64, quint64> window_owner_;
+  /// The connection the agent's last routed call went to: where a call naming
+  /// no tab goes, since that is where its current tab is.
+  quint64 current_connection_{0};
+  /// The connection the call now being made went to, for the guidance an
+  /// unknown command from an older extension gets.
+  quint64 last_route_{0};
   /// Distinguishes one call's files from another's in the extension's buffer.
   quint64 upload_counter_{0};
   bool started_{false};

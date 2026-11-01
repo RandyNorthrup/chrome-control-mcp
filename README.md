@@ -36,11 +36,11 @@
 
 ## What's new
 
-| Version                                                                          | Released   | What changed                                                                                                                                                                                                                                                                                                                           |
-| -------------------------------------------------------------------------------- | ---------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| [1.9.0](https://github.com/RandyNorthrup/chrome-control-mcp/releases/tag/v1.9.0) | 2026-10-31 | **A clipboard for every agent.** Copy, cut and paste -- by key, with `browser_clipboard`, or through a page's own copy buttons -- use the agent's own clipboard. Never yours, never another agent's. And when Chrome is still running an older extension, your agent is told what to do, and from now on the extension updates itself. |
-| [1.8.2](https://github.com/RandyNorthrup/chrome-control-mcp/releases/tag/v1.8.2) | 2026-10-31 | **browser_release closes everything an agent opened.** Popups its clicks opened go with the tab, and a tab Chrome refuses to close is handed back and listed in `not_closed`, never reported closed.                                                                                                                                   |
-| [1.8.1](https://github.com/RandyNorthrup/chrome-control-mcp/releases/tag/v1.8.1) | 2026-10-31 | **Fixes from a day of multi-agent use.** Agent names in any script, upload replies that list what was delivered when the page clears its input, and two quality gates that had quietly stopped running restored.                                                                                                                       |
+| Version                                                                            | Released   | What changed                                                                                                                                                                                                                                                                                                                           |
+| ---------------------------------------------------------------------------------- | ---------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [1.10.0](https://github.com/RandyNorthrup/chrome-control-mcp/releases/tag/v1.10.0) | 2026-11-01 | **Chrome profiles, chosen per call.** One server serves every profile you load the extension in -- work, personal, each person's. An agent opens its tab in the one it names, or the one you used last, and every call follows its tab; listings say which profile each tab is in.                                                     |
+| [1.9.0](https://github.com/RandyNorthrup/chrome-control-mcp/releases/tag/v1.9.0)   | 2026-10-31 | **A clipboard for every agent.** Copy, cut and paste -- by key, with `browser_clipboard`, or through a page's own copy buttons -- use the agent's own clipboard. Never yours, never another agent's. And when Chrome is still running an older extension, your agent is told what to do, and from now on the extension updates itself. |
+| [1.8.2](https://github.com/RandyNorthrup/chrome-control-mcp/releases/tag/v1.8.2)   | 2026-10-31 | **browser_release closes everything an agent opened.** Popups its clicks opened go with the tab, and a tab Chrome refuses to close is handed back and listed in `not_closed`, never reported closed.                                                                                                                                   |
 
 Every release, with the day it shipped and what it changed, is in [CHANGELOG.md](CHANGELOG.md); each
 release page has its downloads. To hear about new ones, use **Watch → Custom → Releases** on this
@@ -96,6 +96,14 @@ Two agents behind one server are isolated but take turns: one server carries one
 time. Separate servers -- separate editor windows or clients -- run in parallel. The design record
 is [docs/MULTI_SESSION.md](docs/MULTI_SESSION.md).
 
+**Chrome profiles.** Load the extension in each profile agents may use -- work, personal, each
+person's -- and one server serves them all. An agent opens its tab in a profile by name
+(`browser_new_tab` with `profile: "work"`), or in the one whose window you used last, and every
+call with that `tab_id` goes there. `browser_tabs` names each tab's profile. A profile is called by
+its account email, or a name you give it on the extension's options page (chrome://extensions →
+Chrome Control MCP → Details → Extension options). A profile without the extension stays out of
+reach.
+
 **Stopping every agent at once:** click the extension's toolbar button while it is connected. Tabs
 the agents opened are left open for you, tabs they borrowed are handed back, and the groups and
 highlights come off. The button then reads "off", and nothing reconnects -- even after a browser
@@ -148,7 +156,8 @@ This one step is manual by Chrome's design, not by omission: branded Chrome igno
 `--load-extension`, and policy installs need a Web Store listing this project deliberately does not
 have. Updates reuse the same folder, so it is a one-time step, and from 1.9.0 on the extension
 reloads itself after an update once no agent is using it. Coming from an older version, press reload
-on it once (or restart Chrome).
+on it once (or restart Chrome). To let agents into another Chrome profile, load the same folder in
+that profile too.
 
 ## Connect any MCP client
 

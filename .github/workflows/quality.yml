@@ -376,6 +376,30 @@ jobs:
             ${{ matrix.chrome-args }} tests/e2e/extension_version_e2e.mjs \
             | tee extension-version-released.json
 
+      # Chrome profiles, chosen per call: two profiles of one headed Chrome served by one server --
+      # names, the options page, routing, merged listings, release, and one profile leaving (Linux
+      # only, under Xvfb: headless Chrome opens no second profile) -- and, on every platform, the
+      # update that brings them: an extension without the identity permissions reloads itself into
+      # files that ask for them and must come back enabled.
+      - name: Chrome profiles E2E (two profiles)
+        if: ${{ !cancelled() && steps.chrome.outcome == 'success' && runner.os == 'Linux' }}
+        shell: bash
+        run: >-
+          xvfb-run -a node tests/e2e/isolated_run.mjs --chrome="${{ steps.chrome.outputs.path }}"
+          --executable="${{ matrix.executable }}" --headed --second-profile="Profile 2"
+          ${{ matrix.chrome-args }} tests/e2e/profiles_e2e.mjs
+          | tee profiles-two.json
+
+      - name: Chrome profiles E2E (update into the identity permissions)
+        if: ${{ !cancelled() && steps.chrome.outcome == 'success' }}
+        shell: bash
+        run: >-
+          node tests/e2e/isolated_run.mjs --chrome="${{ steps.chrome.outputs.path }}"
+          --executable="${{ matrix.executable }}" --extension-version=1.0.0
+          --extension-strip-permissions=identity,identity.email
+          ${{ matrix.chrome-args }} tests/e2e/profiles_e2e.mjs
+          | tee profiles-upgrade.json
+
       # What each suite measured, kept whether it passed or failed: the reports carry the
       # per-configuration numbers a failure has to be read against.
       - name: Keep the suites' reports

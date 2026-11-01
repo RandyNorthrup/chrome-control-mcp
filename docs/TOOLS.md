@@ -71,6 +71,30 @@ characters. Each group gets a
 colour no other live group has; the first is pink. The frame and badge drawn on the page and the
 toolbar badge use the same colour and name, so a page can be matched to its agent at a glance.
 
+### Chrome profiles
+
+One server serves every Chrome profile the extension is loaded in -- up to eight, one connection
+each -- and every call goes to one of them, or to all:
+
+| Call                                                     | Goes to                                                            |
+| -------------------------------------------------------- | ------------------------------------------------------------------ |
+| a call naming a `tab_id`, or a `ref`                     | the profile holding that tab; one never seen is looked for in each |
+| `browser_new_tab`, `browser_window` with `action: "new"` | `profile` if given, else the profile whose window was last focused |
+| `browser_window` focus or close with `window_id`         | the profile holding that window                                    |
+| `browser_cookies`, `browser_permission`                  | `profile` if given, else the current profile                       |
+| `browser_tabs`, `browser_windows`                        | every profile, merged, each entry naming its `profile`             |
+| `browser_release` without `tab_id`                       | every profile                                                      |
+| anything else naming no tab                              | the current profile: the one the last routed call went to          |
+
+`profile` is a profile's name or its account email, without regard to case; one that matches no
+connected profile is refused with the names that are. With one profile connected, every call goes to
+it and nothing changes. A profile is called by the name given on the extension's options page, else
+its signed-in account's email, else a generated name that stays the same. When no window has ever
+had focus the oldest connection counts as last focused, and a profile whose extension is older than
+1.10.0 is called `unnamed` and never counts as focused. Index-addressed calls (`browser_close_tab`
+by `index`, `browser_group_tabs`) act in the current profile, whose listing the indices
+come from -- prefer `tab_id`.
+
 ## Navigation and capture
 
 - `browser_navigate`
@@ -371,7 +395,9 @@ used.
 pinned ID -- and, under `running`, what Chrome is actually running beside this server: `connected`,
 `connections` (how many times a browser has attached), `server_version`, `extension_version` and
 `installed_version` (null when not said: older than 1.9.0), and `notice`, the same advice the first
-reply on a connection carries, empty when everything agrees.
+reply on a connection carries, empty when everything agrees -- all of the newest connection -- and
+`profiles`, one entry per connected Chrome profile with its `name`, `email` (null when not signed
+in), versions and `notice`.
 
 `browser_extension_uninstall` reports whether it actually removed anything. Removing a registration
 that was never there succeeds at the system-call level on both platforms -- a missing key and a

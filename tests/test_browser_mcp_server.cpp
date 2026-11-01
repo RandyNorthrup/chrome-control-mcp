@@ -104,6 +104,8 @@ void BrowserMcpServerTests::initializeCarriesClientAgnosticInstructions() {
            QStringLiteral("never the system clipboard"),
            // A version notice is for the user, who alone can act on it.
            QStringLiteral("tell the user what it says"),
+           // Which Chrome profile a tab opens in is the agent's to choose.
+           QStringLiteral("browser_new_tab's profile"),
            QStringLiteral("browser_release"),
            QStringLiteral("handed back"),
            QStringLiteral("keep_open:true"),

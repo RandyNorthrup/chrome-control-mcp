@@ -1177,6 +1177,165 @@ async function reloadForNewerHost(hostProtocol) {
 // Three short numbers and nothing else, as every release has been called.
 const VERSION_PATTERN = /^\d{1,5}\.\d{1,5}\.\d{1,5}$/;
 
+// -- Chrome profile identity ------------------------------------------------------------------
+//
+// Chrome gives every profile (work, personal, each person's) its own instance of this extension,
+// and each reaches the server through a relay of its own. Agents choose a profile by name, so each
+// instance says which profile it is: the name the user gave it on the options page, else the
+// signed-in account's email, else a name generated once and kept in the profile. Chrome tells an
+// extension nothing about its profile's own name.
+const PROFILE_NAME_KEY = "chrome_control_mcp.profileName";
+const PROFILE_GENERATED_KEY = "chrome_control_mcp.profileGenerated";
+const PROFILE_FOCUSED_KEY = "chrome_control_mcp.profileFocusedAt";
+const MAX_PROFILE_NAME_CHARS = 64;
+// The longest a port's attach waits for the profile's name to be read at worker start.
+const PROFILE_IDENTITY_WAIT_MS = 2000;
+const profileIdentity = {
+  custom: "",
+  email: "",
+  generated: "",
+  // When one of this profile's windows last took focus, from this or an earlier worker.
+  focusedAt: 0,
+  // Whether this worker has read the above yet.
+  loaded: false,
+};
+
+// The tab strip's rule -- no control, format or separator characters -- with runs of whitespace
+// collapsed, as the server does with what it is sent.
+function cleanProfileName(value) {
+  const text = typeof value === "string" ? value : "";
+  return tabStripText(
+    text.replace(/[\p{C}\p{Zl}\p{Zp}]/gu, "").replace(/\s+/g, " "),
+    MAX_PROFILE_NAME_CHARS,
+  );
+}
+
+function generatedProfileName() {
+  return (
+    "profile-" +
+    Math.floor(Math.random() * 0x1000000)
+      .toString(16)
+      .padStart(6, "0")
+  );
+}
+
+function profileName() {
+  return (
+    profileIdentity.custom || profileIdentity.email || profileIdentity.generated
+  );
+}
+
+// The profile as the server is told it.
+function profileFields() {
+  const fields = { profile_name: profileName() };
+  if (profileIdentity.email) {
+    fields.profile_email = profileIdentity.email;
+  }
+  return fields;
+}
+
+async function loadProfileIdentity() {
+  try {
+    const stored = await chrome.storage.local.get([
+      PROFILE_NAME_KEY,
+      PROFILE_GENERATED_KEY,
+    ]);
+    profileIdentity.custom = cleanProfileName(
+      stored && stored[PROFILE_NAME_KEY],
+    );
+    let generated = cleanProfileName(stored && stored[PROFILE_GENERATED_KEY]);
+    if (!/^profile-[0-9a-f]{6}$/.test(generated)) {
+      // Unique enough to tell a household's profiles apart; nothing about it is secret.
+      generated = generatedProfileName();
+      await chrome.storage.local.set({ [PROFILE_GENERATED_KEY]: generated });
+    }
+    profileIdentity.generated = generated;
+  } catch (_e) {
+    // Storage unavailable: a name from this worker's life only, still unique enough to choose by.
+    profileIdentity.generated ||= generatedProfileName();
+  }
+  try {
+    const info = await chrome.identity.getProfileUserInfo({
+      accountStatus: "ANY",
+    });
+    const email =
+      info && typeof info.email === "string" ? info.email.trim() : "";
+    profileIdentity.email = /^[^@\s]+@[^@\s]+$/.test(email)
+      ? email.slice(0, 254)
+      : "";
+  } catch (_e) {
+    profileIdentity.email = "";
+  }
+  try {
+    const stored = await chrome.storage.session.get(PROFILE_FOCUSED_KEY);
+    profileIdentity.focusedAt =
+      Number((stored && stored[PROFILE_FOCUSED_KEY]) || 0) || 0;
+  } catch (_e) {
+    // Not known: never focused, as far as choosing goes.
+  }
+  profileIdentity.loaded = true;
+}
+
+// A rename on the options page takes effect at once: the next listing and the next profileState
+// say the new name, and that is where the server learns it.
+function noteProfileStorage(changes, area) {
+  if (area === "local" && changes && changes[PROFILE_NAME_KEY]) {
+    profileIdentity.custom = cleanProfileName(
+      changes[PROFILE_NAME_KEY].newValue,
+    );
+  }
+}
+
+// One of this profile's windows took focus. A window of another profile taking it reaches only
+// that profile's instance, so each knows only its own last time -- which is all the server needs
+// to find the profile the user last used.
+function noteWindowFocus(windowId) {
+  if (
+    typeof windowId !== "number" ||
+    windowId === chrome.windows.WINDOW_ID_NONE
+  ) {
+    return;
+  }
+  profileIdentity.focusedAt = Date.now();
+  try {
+    void chrome.storage.session.set({
+      [PROFILE_FOCUSED_KEY]: profileIdentity.focusedAt,
+    });
+  } catch (_e) {
+    // Kept in memory for this worker; a later one starts not knowing.
+  }
+}
+
+// Which profile this is, and whether and when the user was last in it: what the server asks every
+// profile when an agent's new tab names none.
+async function handleProfileState(_session) {
+  const last = await chrome.windows.getLastFocused().catch(() => null);
+  return {
+    ...profileFields(),
+    focused: Boolean(last && last.focused),
+    focused_at: profileIdentity.focusedAt,
+  };
+}
+
+// Whether this profile has tab @p tab_id: how the server finds the profile of a tab it has not
+// seen, before sending the call that names it.
+async function handleFindTab(session, args) {
+  const tabId = Number(args && args.tab_id);
+  if (!Number.isInteger(tabId)) {
+    return { exists: false };
+  }
+  const tab = await chrome.tabs.get(tabId).catch(() => null);
+  return { exists: Boolean(tab), held: session.tabs.has(tabId) };
+}
+
+const profileIdentityLoad = loadProfileIdentity();
+if (chrome.storage && chrome.storage.onChanged) {
+  chrome.storage.onChanged.addListener(noteProfileStorage);
+}
+if (chrome.windows && chrome.windows.onFocusChanged) {
+  chrome.windows.onFocusChanged.addListener(noteWindowFocus);
+}
+
 // The version Chrome is running: the manifest it loaded, which stays what it was until the
 // extension is reloaded, whatever the files on disk now say.
 function extensionVersion() {
@@ -1677,11 +1836,25 @@ function onHostMessage(session, msg) {
     // With this extension's version, which the relay passes on to the server: an update that keeps
     // the protocol leaves Chrome running the old extension, and the server is what can tell the
     // agent. An older relay reads only the session.
-    send(session, {
-      type: "attach_session",
-      session: session.serverId,
-      version: extensionVersion(),
-    });
+    const attach = () =>
+      send(session, {
+        type: "attach_session",
+        session: session.serverId,
+        version: extensionVersion(),
+        ...profileFields(),
+      });
+    if (profileIdentity.loaded) {
+      attach();
+    } else {
+      // A port opened as the worker starts can be offered servers before the profile's name has
+      // been read from storage; told then, the server would know the profile by no name at all.
+      void Promise.race([
+        profileIdentityLoad,
+        new Promise((resolve) => {
+          setTimeout(resolve, PROFILE_IDENTITY_WAIT_MS);
+        }),
+      ]).then(attach);
+    }
     if (session.serverId === "") {
       // Every offered server is already held, so this port has nothing to do.
       // Mark it so losing it does not start the reconnect cycle: retrying would
@@ -2035,6 +2208,9 @@ const COMMAND_TABLE = new Map([
   ],
   ["reload", { fn: handleReload, tab: true, args: false }],
   ["listTabs", { fn: handleListTabs, tab: false, args: false }],
+  // The server's own questions, never a tool: which profile this is, and whether it has a tab.
+  ["profileState", { fn: handleProfileState, tab: false, args: false }],
+  ["findTab", { fn: handleFindTab, tab: false, args: true }],
   ["selectTab", { fn: handleSelectTab, tab: false, args: true }],
   ["newTab", { fn: handleNewTab, tab: false, args: true }],
   ["closeTab", { fn: handleCloseTab, tab: false, args: true }],
@@ -10059,6 +10235,8 @@ async function handleListTabs(session) {
     count: tabs.length,
     capped: tabs.length > MAX_LIST_TABS,
     your_tabs: yours,
+    // Which Chrome profile this listing is from: the server merges every profile's.
+    profile: profileName(),
   };
 }
 
@@ -10361,7 +10539,7 @@ async function handleListWindows(session) {
   // Remember which ids were actually shown, so a focus/close can prove the id it was given names
   // a window the caller was told about rather than one it produced on its own.
   session.lastWindowListing = new Set(list.map((w) => w.window_id));
-  return { windows: list };
+  return { windows: list, profile: profileName() };
 }
 
 // How long a new window is watched for a compositor-granted focus. The window maps and the

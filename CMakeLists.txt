@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.25)
 
-project(chrome_control_mcp VERSION 1.9.0 LANGUAGES CXX)
+project(chrome_control_mcp VERSION 1.10.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -442,6 +442,14 @@ if(BUILD_TESTING)
                 "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_browser_extension_versions.mjs"
     )
     set_tests_properties(test_browser_extension_versions PROPERTIES TIMEOUT 120)
+
+    # Each Chrome profile's instance says which profile it is -- its name, else its account email,
+    # else a stable generated name -- and answers the server's profileState and findTab.
+    add_test(NAME test_browser_extension_profiles
+        COMMAND "${NODE_EXECUTABLE}" --test
+                "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_browser_extension_profiles.mjs"
+    )
+    set_tests_properties(test_browser_extension_profiles PROPERTIES TIMEOUT 120)
 
     # Every version string agrees, and the version being shipped has its changelog entry and
     # release note -- checked on each push, not first discovered by the release workflow.

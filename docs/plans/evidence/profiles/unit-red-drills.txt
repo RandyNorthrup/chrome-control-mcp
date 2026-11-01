@@ -1,0 +1,87 @@
+== EV-PROF-RED-SEVERAL: the server admits a ninth relay
+file: src/browser_bridge_pipe_common.cpp
+mutated sha256: 59daa2d58dbb5e106b2d98f613eb5ad8aab48e78ad411ef23bbf949096caa4eb
+ctest exit=8
+9: FAIL!  : BrowserBridgePipeTests::ninthRelay_isRefusedAndTheEightKeepWorking() Compared values are not the same
+9: Totals: 30 passed, 1 failed, 0 skipped, 0 blacklisted, 5727ms
+expected_failure_seen: true
+== EV-PROF-RED-INDEPENDENT: a connection leaving forgets every profile's tabs
+file: src/browser_control.cpp
+mutated sha256: bb6058ee3fca833b166a43d72024ffcaa70b8e3c567e948de7a80f8bc01291d2
+ctest exit=8
+10: FAIL!  : BrowserBridgeRelayTests::profiles_oneLeavingKeepsTheOthersRefs() '!work_ref.is_error' returned FALSE. (Unknown element ref 'e1'; call browser_snapshot to refresh)
+10: Totals: 35 passed, 1 failed, 0 skipped, 0 blacklisted, 5534ms
+expected_failure_seen: true
+== EV-PROF-RED-OTHER-BROWSER: an exited Chrome still counts as being served
+file: src/browser_bridge_pipe_common.cpp
+mutated sha256: aabad258b85763004b43819d9396b41c27d1ce7edb2f9165c1fe56107610f3f6
+ctest exit=8
+9: FAIL!  : BrowserBridgePipeTests::otherBrowser_isRefusedOnlyWhileItsChromeRuns() 'otherBrowserRefusal(200, {100}, exited).isEmpty()' returned FALSE. ()
+9: Totals: 30 passed, 1 failed, 0 skipped, 0 blacklisted, 5687ms
+expected_failure_seen: true
+== EV-PROF-RED-NAME-SERVER: a profile name is bounded by the email's limit
+file: src/browser_bridge_pipe_common.cpp
+mutated sha256: 821a328458c4753cd8e46d92889f0bbf2fd37b3823c327419e44822ba58f3113
+ctest exit=8
+9: FAIL!  : BrowserBridgePipeTests::profile_isCleanedAsUntrustedText() Compared values are not the same
+9: Totals: 30 passed, 1 failed, 0 skipped, 0 blacklisted, 5707ms
+expected_failure_seen: true
+== EV-PROF-RED-NEW-TAB: a window in front right now does not count
+file: src/browser_control.cpp
+mutated sha256: 42bdaf71aa0e101a1a5f729e4b961be32e2a575caeb35fbd8eba3d462dd315d3
+ctest exit=8
+10: FAIL!  : BrowserBridgeRelayTests::profiles_newTabGoesToTheOneNamedOrTheLastFocused() Compared values are not the same
+10: Totals: 35 passed, 1 failed, 0 skipped, 0 blacklisted, 5706ms
+expected_failure_seen: true
+== EV-PROF-RED-BY-TAB: a call naming a tab goes to the current profile
+file: src/browser_control.cpp
+mutated sha256: 7e8cf3a7a1488d1d99efa212520f48ebda6296b9b5dfd295d89e6165a1c371f7
+ctest exit=8
+10: FAIL!  : BrowserBridgeRelayTests::profiles_callsFollowTheirTab() 'in_personal.text.contains(QStringLiteral("personal"))' returned FALSE. ()
+10: FAIL!  : BrowserBridgeRelayTests::profiles_oneLeavingKeepsTheOthersRefs() 'personal_ref.is_error' returned FALSE. ()
+10: Totals: 34 passed, 2 failed, 0 skipped, 0 blacklisted, 5585ms
+expected_failure_seen: true
+== EV-PROF-RED-ALL: browser_tabs asks one profile only
+file: src/browser_control.cpp
+mutated sha256: 50247c49ab4acc2cbecd4242f0d3ce73eb4f974ec6dede8a7a0d37ff39e9f52f
+ctest exit=8
+10: FAIL!  : BrowserBridgeRelayTests::profiles_listingsAndReleaseCoverEveryProfile() Compared values are not the same
+10: Totals: 35 passed, 1 failed, 0 skipped, 0 blacklisted, 5611ms
+expected_failure_seen: true
+== EV-PROF-RED-STATUS: a version notice does not say which profile it is about
+file: src/browser_control.cpp
+mutated sha256: 852c4c93013aafe030b5ea35df280172d84f3163668d8718b84c7811c10207c7
+ctest exit=8
+10: FAIL!  : BrowserBridgeRelayTests::profiles_statusAndNoticesNameEachProfile() 'notice.startsWith(QStringLiteral("In Chrome profile work: ")) && notice.contains(kOlder) && !notice.contains(QStringLiteral("profile personal"))' returned FAL
+10: Totals: 35 passed, 1 failed, 0 skipped, 0 blacklisted, 5608ms
+expected_failure_seen: true
+== EV-PROF-RED-SINGLE: an extension older than profiles counts as focused
+file: src/browser_control.cpp
+mutated sha256: c6d48604edc85cdabef79daca388183a6649fbb23c339bbed16a3f977fde5e22
+ctest exit=8
+10: FAIL!  : BrowserBridgeRelayTests::profiles_oldestWinsATieAndAnOlderExtensionIsUnnamed() Compared values are not the same
+10: Totals: 35 passed, 1 failed, 0 skipped, 0 blacklisted, 5672ms
+expected_failure_seen: true
+== EV-PROF-RED-NO-WORK: a relay told no server connects to the newest anyway
+file: src/browser_bridge_relay_common.cpp
+mutated sha256: 710642b655f4fdc79a038951a3a255e9b990e7d39421d906c6d444d410022f43
+ctest exit=8
+10: FAIL!  : BrowserBridgeRelayTests::selectRecord_honoursTheSessionTheExtensionNamed() 'chrome_control_mcp::selectRendezvousRecord(records, QString{}).isEmpty()' returned FALSE. ()
+10: Totals: 35 passed, 1 failed, 0 skipped, 0 blacklisted, 5717ms
+expected_failure_seen: true
+== EV-PROF-RED-OLDER-RELAY: a 1.9.0 relay is served beside another connection of its Chrome
+file: src/browser_bridge_pipe_common.cpp
+mutated sha256: c3ff9e4440cc042295395dfb46ef2403084177acdceebb722c263afe7f7179e3
+ctest exit=8
+9: FAIL!  : BrowserBridgePipeTests::olderRelay_isServedOnlyAloneFromItsChrome() 'refused.contains(QStringLiteral("older than 1.10.0"))' returned FALSE. ()
+9: Totals: 30 passed, 1 failed, 0 skipped, 0 blacklisted, 5729ms
+expected_failure_seen: true
+== restored
+src/browser_bridge_pipe_common.cpp 3554a3b6eacdf721ce820a4987d844c098d23943f6b658bbf6bcf606b6ddb0d3
+src/browser_control.cpp 69f4e6baed95e9e40231dbd1fb11d2401111e04bf87a0428e9c12dfc175ca639
+src/browser_bridge_relay_common.cpp ed725583b63f386aceabdfd7617938807bde36125693db71634f80ae2e9f5140
+browser/extension/background.js f07e86a5ab761628ce2e9f351e6eecb0008f9342ee0dd03f14ca10b9b6e79413
+mirror matches source: true
+rebuild exit=0
+green test_browser_bridge_pipe exit=0 9: Totals: 31 passed, 0 failed, 0 skipped, 0 blacklisted, 5726ms
+green test_browser_bridge_relay exit=0 10: Totals: 36 passed, 0 failed, 0 skipped, 0 blacklisted, 5716ms

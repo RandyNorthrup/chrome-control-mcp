@@ -200,6 +200,19 @@ Measured with no server running: 6 attempts in 75 s, the same as 1.7.0.
   error"), the browser's own pages, other extensions' pages -- can be held and grouped but not
   driven or drawn on. A command there says what the page is and what to do instead.
 
+## Chrome profiles (1.10.0)
+
+A server serves every Chrome profile its extension is loaded in, each over a connection of its own,
+and an agent chooses one per call: `browser_new_tab` with `profile` (a name or an account email),
+or the profile whose window the user last used. After that, every call with the tab's `tab_id`
+goes to that profile, and a call naming no tab goes to the profile the last call went to.
+
+What is per profile is what lives in that profile's extension: each agent's tab group and colour,
+its clipboard, its held tabs and their leases. An agent working in two profiles has a group in
+each, and a clipboard in each -- copying in one and pasting in the other is not offered. Profiles of
+two Chromes at once are not served together. The design record is
+[plans/chrome-profiles.md](plans/chrome-profiles.md).
+
 ## Why 1.8.0 changed the unit of isolation
 
 1.5.0 made the unit of isolation the **server**. Daily use showed that was the wrong unit, and that

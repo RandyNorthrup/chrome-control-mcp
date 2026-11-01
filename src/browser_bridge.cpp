@@ -235,6 +235,31 @@ void BrowserBridgeSession::onHostDisconnected() {
   ++session_epoch_;
 }
 
+void BrowserBridgeSession::onConnectionsChanged(bool any_connected) {
+  connected_ = any_connected;
+  outstanding_id_.clear();
+  outstanding_cmd_.clear();
+  outstanding_tab_id_ = 0;
+  ++session_epoch_;
+}
+
+void BrowserBridgeSession::forgetTabs(const QSet<qint64> &tabs) {
+  for (const qint64 tab : tabs) {
+    dropTab(tab);
+  }
+}
+
+QSet<qint64> BrowserBridgeSession::trackedTabs() const {
+  QSet<qint64> tracked;
+  for (auto it = tabs_.constBegin(); it != tabs_.constEnd(); ++it) {
+    tracked.insert(it.key());
+  }
+  for (auto it = ref_index_.constBegin(); it != ref_index_.constEnd(); ++it) {
+    tracked.insert(entryTabId(it.value()));
+  }
+  return tracked;
+}
+
 void BrowserBridgeSession::onDetached() {
   markAllStale();
   // A snapshot already in flight was captured against the now-detached DOM;

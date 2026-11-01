@@ -1,0 +1,22 @@
+== uname: Linux 6.18.54.1-microsoft-standard-WSL2
+== gcc: gcc (GCC) 16.2.1 20260810
+== clang: clang version 22.1.8
+== cppcheck: Cppcheck 2.22.0
+== gcc build exit=0 warnings=0
+== ctest exit=0 100% tests passed out of 24
+== clang build exit=0
+== clang-tidy exit=0 errors=0
+== cppcheck exit=0
+== semgrep exit=0 Ran 221 rules on 54 files: 0 findings.
+== live display-matrix exit=0 {"ok":true,"checks":3335,"configurations":35}
+== live full-browser exit=0 {"ok":true,"cases":177}
+== live user-interference exit=0 {"ok":true,"checks":10}
+== live multi-agent exit=0 {"ok":true,"checks":25}
+== live clipboard exit=0 {"ok":true,"checks":24}
+== live extension-version-current exit=0 {"ok":true,"checks":6}
+== live extension-version-older exit=0 {"ok":true,"checks":12}
+== live extension-version-released exit=0 {"ok":true,"checks":8}
+== live profiles-two exit=0 {"ok":true,"checks":14}
+== live profiles-upgrade exit=0 {"ok":true,"checks":4}
+== done
+== ctest rerun on the final CHANGELOG exit=0 100% tests passed out of 24

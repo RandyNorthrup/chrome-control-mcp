@@ -14,6 +14,8 @@
 #include <QtTest/QtTest>
 
 #include <atomic>
+#include <memory>
+#include <vector>
 #include <chrono>
 #include <cstring>
 #include <thread>
@@ -23,6 +25,7 @@
 #include <sys/un.h>
 #endif
 
+using chrome_control_mcp::BridgeConnectionInfo;
 using chrome_control_mcp::BrowserBridgePipeServer;
 using chrome_control_mcp::closeNativeIpcHandle;
 using chrome_control_mcp::encodeFrame;
@@ -287,6 +290,72 @@ BrowserBridgePipeServer::Options testOptions(const QString &rendezvous,
   return options;
 }
 
+QJsonObject commandFrame(const QString &id) {
+  return QJsonObject{{QStringLiteral("type"), QStringLiteral("command")},
+                     {QStringLiteral("id"), id},
+                     {QStringLiteral("cmd"), QStringLiteral("snapshot")}};
+}
+
+// A relay serving one Chrome profile: it handshakes as @p profile and answers
+// every command it is sent with the profile's name, until the server closes the
+// connection -- or, given @p serve, after that many commands, when it closes
+// its own end. Declared before the server in a test, so a failed check stops
+// the server first and this thread always has an end to reach.
+struct EchoRelay {
+  std::thread thread;
+  std::atomic<int> served{0};
+
+  EchoRelay() = default;
+  EchoRelay(const EchoRelay &) = delete;
+  EchoRelay &operator=(const EchoRelay &) = delete;
+  ~EchoRelay() {
+    if (thread.joinable()) {
+      thread.join();
+    }
+  }
+
+  void start(const QString &name, const QString &token, const QString &profile,
+             int serve = 0, const QString &email = {}) {
+    thread = std::thread([this, name, token, profile, serve, email] {
+      QJsonObject hello{{QStringLiteral("type"), QStringLiteral("hello")},
+                        {QStringLiteral("token"), token},
+                        {QStringLiteral("protocol"), kBrowserBridgeProtocol},
+                        {QStringLiteral("profile_name"), profile}};
+      if (!email.isEmpty()) {
+        hello.insert(QStringLiteral("profile_email"), email);
+      }
+      const NativeIpcHandle handle = clientConnect(name);
+      if (handle == kInvalidNativeIpcHandle) {
+        return;
+      }
+      QJsonObject welcome;
+      if (clientWrite(handle, hello) && clientRead(handle, &welcome) &&
+          welcome.value(QStringLiteral("type")).toString() ==
+              QLatin1String("welcome")) {
+        QJsonObject command;
+        while (clientRead(handle, &command)) {
+          // Counted before the reply goes, so a test that has its reply sees
+          // the count.
+          const int count = ++served;
+          clientWrite(
+              handle,
+              QJsonObject{
+                  {QStringLiteral("type"), QStringLiteral("result")},
+                  {QStringLiteral("id"), command.value(QStringLiteral("id"))},
+                  {QStringLiteral("cmd"), command.value(QStringLiteral("cmd"))},
+                  {QStringLiteral("payload"),
+                   QJsonObject{{QStringLiteral("profile"), profile}}}});
+          flushClient(handle);
+          if (serve > 0 && count >= serve) {
+            break;
+          }
+        }
+      }
+      closeNativeIpcHandle(handle);
+    });
+  }
+};
+
 } // namespace
 
 class BrowserBridgePipeTests : public QObject {
@@ -316,6 +385,12 @@ private slots:
   void ensurePublished_takesOverARecordLeftByAnExitedServer();
   void ensurePublished_refusesWhileNotRunning();
   void sweep_removesDepartedServersAndSparesTheLiving();
+  void severalRelays_areServedTogetherEachByItsOwn();
+  void ninthRelay_isRefusedAndTheEightKeepWorking();
+  void oneRelayLeaving_leavesTheOthersServed();
+  void profile_isCleanedAsUntrustedText();
+  void otherBrowser_isRefusedOnlyWhileItsChromeRuns();
+  void olderRelay_isServedOnlyAloneFromItsChrome();
 };
 
 void BrowserBridgePipeTests::send_beforeAnyClientReturnsNotConnected() {
@@ -1343,6 +1418,186 @@ void BrowserBridgePipeTests::sweep_removesDepartedServersAndSparesTheLiving() {
   // does not churn the directory.
   QCOMPARE(chrome_control_mcp::sweepStaleRendezvousRecords(own), 0);
   QVERIFY(QFile::exists(own));
+}
+
+// Several relays at once: one per Chrome profile whose extension reaches the
+// server. Each answers only what was sent to it, saying which profile it is.
+void BrowserBridgePipeTests::severalRelays_areServedTogetherEachByItsOwn() {
+  QTemporaryDir dir;
+  EchoRelay work;
+  EchoRelay personal;
+  BrowserBridgePipeServer server(
+      testOptions(dir.filePath(QStringLiteral("r.json")), 30'000));
+  QString error;
+  QVERIFY2(server.start(&error), qPrintable(error));
+  work.start(server.pipeName(), server.token(), QStringLiteral("work"));
+  personal.start(server.pipeName(), server.token(), QStringLiteral("personal"));
+  QVERIFY(
+      waitUntil([&server] { return server.connections().size() == 2; }, 5000));
+  QCOMPARE(server.connectionGeneration(), quint64{2});
+
+  for (const BridgeConnectionInfo &connection : server.connections()) {
+    const auto exchange = server.sendCommandAwaitReply(
+        connection.id, commandFrame(QStringLiteral("p-%1").arg(connection.id)));
+    QVERIFY2(exchange.ok, qPrintable(exchange.error));
+    // Answered by the relay it was sent to, and no other.
+    QCOMPARE(exchange.reply.value(QStringLiteral("payload"))
+                 .toObject()
+                 .value(QStringLiteral("profile"))
+                 .toString(),
+             connection.profile.name);
+  }
+  QCOMPARE(work.served.load(), 1);
+  QCOMPARE(personal.served.load(), 1);
+  // The call that names no connection goes to the newest, as it always has
+  // gone to the one.
+  const auto newest =
+      server.sendCommandAwaitReply(commandFrame(QStringLiteral("p-0")));
+  QVERIFY2(newest.ok, qPrintable(newest.error));
+  server.stop();
+}
+
+void BrowserBridgePipeTests::ninthRelay_isRefusedAndTheEightKeepWorking() {
+  QTemporaryDir dir;
+  std::vector<std::unique_ptr<EchoRelay>> relays;
+  BrowserBridgePipeServer server(
+      testOptions(dir.filePath(QStringLiteral("r.json")), 30'000));
+  QString error;
+  QVERIFY2(server.start(&error), qPrintable(error));
+  for (int i = 0; i < chrome_control_mcp::kMaxBridgeConnections; ++i) {
+    relays.push_back(std::make_unique<EchoRelay>());
+    relays.back()->start(server.pipeName(), server.token(),
+                         QStringLiteral("p%1").arg(i));
+    // One at a time: on Windows each takes the instance that was listening.
+    const auto want = static_cast<qsizetype>(i + 1);
+    QVERIFY(waitUntil(
+        [&server, want] { return server.connections().size() == want; }, 5000));
+  }
+  const HandshakeAttempt ninth = attemptHandshake(
+      server.pipeName(),
+      QJsonObject{{QStringLiteral("type"), QStringLiteral("hello")},
+                  {QStringLiteral("token"), server.token()},
+                  {QStringLiteral("protocol"), kBrowserBridgeProtocol}});
+  QVERIFY(ninth.got_frame);
+  QCOMPARE(ninth.reply.value(QStringLiteral("type")).toString(),
+           QStringLiteral("error"));
+  QVERIFY2(ninth.reply.value(QStringLiteral("error"))
+               .toString()
+               .contains(QStringLiteral("too many connections")),
+           qPrintable(ninth.reply.value(QStringLiteral("error")).toString()));
+  QCOMPARE(server.connections().size(),
+           qsizetype{chrome_control_mcp::kMaxBridgeConnections});
+  const auto first = server.sendCommandAwaitReply(
+      server.connections().first().id, commandFrame(QStringLiteral("n-1")));
+  QVERIFY2(first.ok, qPrintable(first.error));
+  server.stop();
+}
+
+void BrowserBridgePipeTests::oneRelayLeaving_leavesTheOthersServed() {
+  QTemporaryDir dir;
+  EchoRelay staying;
+  EchoRelay leaving;
+  BrowserBridgePipeServer server(
+      testOptions(dir.filePath(QStringLiteral("r.json")), 30'000));
+  QString error;
+  QVERIFY2(server.start(&error), qPrintable(error));
+  staying.start(server.pipeName(), server.token(), QStringLiteral("staying"));
+  leaving.start(server.pipeName(), server.token(), QStringLiteral("leaving"),
+                /*serve=*/1);
+  QVERIFY(
+      waitUntil([&server] { return server.connections().size() == 2; }, 5000));
+  quint64 leaving_id = 0;
+  quint64 staying_id = 0;
+  for (const BridgeConnectionInfo &connection : server.connections()) {
+    (connection.profile.name == QLatin1String("leaving") ? leaving_id
+                                                         : staying_id) =
+        connection.id;
+  }
+  // The leaver answers once, then closes its end.
+  QVERIFY(server
+              .sendCommandAwaitReply(leaving_id,
+                                     commandFrame(QStringLiteral("l-1")))
+              .ok);
+  QVERIFY(
+      waitUntil([&server] { return server.connections().size() == 1; }, 5000));
+  QCOMPARE(server.connections().first().id, staying_id);
+  // Its id is gone for good, and the other connection never noticed.
+  const auto gone = server.sendCommandAwaitReply(
+      leaving_id, commandFrame(QStringLiteral("l-2")));
+  QVERIFY(!gone.ok);
+  QCOMPARE(gone.error, QStringLiteral("Browser not connected."));
+  const auto still = server.sendCommandAwaitReply(
+      staying_id, commandFrame(QStringLiteral("s-1")));
+  QVERIFY2(still.ok, qPrintable(still.error));
+  server.stop();
+}
+
+void BrowserBridgePipeTests::profile_isCleanedAsUntrustedText() {
+  QTemporaryDir dir;
+  EchoRelay relay;
+  BrowserBridgePipeServer server(
+      testOptions(dir.filePath(QStringLiteral("r.json")), 30'000));
+  QString error;
+  QVERIFY2(server.start(&error), qPrintable(error));
+  // A bidi override, a control character and a line break around the name; an
+  // email that is not one.
+  relay.start(server.pipeName(), server.token(),
+              QString::fromUtf8("\xe2\x80\xae"
+                                "work\x07\n  home"),
+              0, QStringLiteral("not an email"));
+  QVERIFY(
+      waitUntil([&server] { return server.connections().size() == 1; }, 5000));
+  const BridgeConnectionInfo info = server.connections().first();
+  QCOMPARE(info.profile.name, QStringLiteral("work home"));
+  QVERIFY(info.profile.email.isEmpty());
+  server.stop();
+
+  // Bounded, and a real address kept.
+  const auto profile = chrome_control_mcp::peerProfileFromJson(
+      QJsonValue(QString(500, QLatin1Char('x'))),
+      QJsonValue(QStringLiteral("randy@example.com")));
+  QCOMPARE(profile.name.size(),
+           qsizetype{chrome_control_mcp::kMaxProfileNameChars});
+  QCOMPARE(profile.email, QStringLiteral("randy@example.com"));
+}
+
+void BrowserBridgePipeTests::otherBrowser_isRefusedOnlyWhileItsChromeRuns() {
+  using chrome_control_mcp::otherBrowserRefusal;
+  const auto alive = [](quint64) { return true; };
+  const auto exited = [](quint64) { return false; };
+  // Unknown (the ancestor check is off), or the same Chrome: admitted.
+  QVERIFY(otherBrowserRefusal(0, {100}, alive).isEmpty());
+  QVERIFY(otherBrowserRefusal(100, {100, 100}, alive).isEmpty());
+  QVERIFY(otherBrowserRefusal(100, {0}, alive).isEmpty());
+  QVERIFY(otherBrowserRefusal(100, {}, alive).isEmpty());
+  // Another Chrome, still running: refused, naming it.
+  const QString refused = otherBrowserRefusal(200, {100}, alive);
+  QVERIFY2(refused.contains(QStringLiteral("100")) &&
+               refused.contains(QStringLiteral("one Chrome at a time")),
+           qPrintable(refused));
+  // Another Chrome that has exited -- a restart whose old relays are not yet
+  // noticed gone: admitted at once.
+  QVERIFY(otherBrowserRefusal(200, {100}, exited).isEmpty());
+}
+
+void BrowserBridgePipeTests::olderRelay_isServedOnlyAloneFromItsChrome() {
+  using chrome_control_mcp::olderRelayRefusal;
+  // A relay older than 1.10.0 beside another connection of its Chrome: it
+  // may be a port with no work that it connected anyway, so it is refused.
+  const QString refused =
+      olderRelayRefusal(100, QStringLiteral("1.9.0"), {100});
+  QVERIFY2(refused.contains(QStringLiteral("older than 1.10.0")),
+           qPrintable(refused));
+  // From before relays said their version, the same.
+  QVERIFY(!olderRelayRefusal(100, QString{}, {100}).isEmpty());
+  // Alone from its Chrome, it is served as it always was.
+  QVERIFY(olderRelayRefusal(100, QStringLiteral("1.9.0"), {}).isEmpty());
+  QVERIFY(olderRelayRefusal(100, QStringLiteral("1.9.0"), {0}).isEmpty());
+  // A relay of this version never connects a port with no work.
+  QVERIFY(olderRelayRefusal(100, QStringLiteral("1.10.0"), {100}).isEmpty());
+  QVERIFY(olderRelayRefusal(100, QStringLiteral("1.11.2"), {100}).isEmpty());
+  // Chrome not known (the ancestor check is off): nothing to compare.
+  QVERIFY(olderRelayRefusal(0, QStringLiteral("1.9.0"), {0}).isEmpty());
 }
 
 QTEST_MAIN(BrowserBridgePipeTests)

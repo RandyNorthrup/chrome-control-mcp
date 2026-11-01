@@ -65,15 +65,15 @@ asks for that is no longer published yields no connection rather than a substitu
 
 The frames on the relay's stdio, in the order they can appear:
 
-| Frame                                    | Direction         | When                                                       |
-| ---------------------------------------- | ----------------- | ---------------------------------------------------------- |
-| `bridge_offers {protocol, servers}`      | relay → extension | first, before anything else                                |
-| `attach_session {session, version}`      | extension → relay | only in answer to `bridge_offers`                          |
-| `bridge_ready {protocol, version}`       | relay → extension | the chosen server welcomed the relay; pumping starts       |
-| `bridge_unavailable {error}`             | relay → extension | instead of `bridge_ready`, after which the relay exits     |
-| `bridge_servers {servers}`               | relay → extension | while pumping, whenever the set of running servers changes |
-| `command`, `cancel`                      | relay → extension | forwarded from the server                                  |
-| `progress`, then one `result` or `error` | extension → relay | only in answer to a `command`                              |
+| Frame                                                            | Direction         | When                                                       |
+| ---------------------------------------------------------------- | ----------------- | ---------------------------------------------------------- |
+| `bridge_offers {protocol, servers}`                              | relay → extension | first, before anything else                                |
+| `attach_session {session, version, profile_name, profile_email}` | extension → relay | only in answer to `bridge_offers`                          |
+| `bridge_ready {protocol, version}`                               | relay → extension | the chosen server welcomed the relay; pumping starts       |
+| `bridge_unavailable {error}`                                     | relay → extension | instead of `bridge_ready`, after which the relay exits     |
+| `bridge_servers {servers}`                                       | relay → extension | while pumping, whenever the set of running servers changes |
+| `command`, `cancel`                                              | relay → extension | forwarded from the server                                  |
+| `progress`, then one `result` or `error`                         | extension → relay | only in answer to a `command`                              |
 
 Protocol 2 command frames may name the tab they act on (`tab_id`), and replies say which tab they
 acted on (`tabId`, with that tab's own `domEpoch`) and which tabs the session stopped holding
@@ -96,6 +96,26 @@ newer installed version, but only when no session holds a tab, no command is run
 run for 10 s, so an update that keeps the protocol no longer leaves Chrome running the old extension
 until someone reloads it by hand. The design is in
 [plans/extension-version.md](plans/extension-version.md).
+
+**Several relays per server, one per Chrome profile (1.10.0).** Chrome gives each profile its own
+instance of the extension, each with its own relay. The server's acceptor hands every relay that
+connects to a thread of its own, which handshakes, verifies and serves it with the same silence
+budget, progress beats, idle checks and cancel the single connection had; up to eight are admitted,
+and the ninth is refused with a reason. On Windows each connection gets its own pipe instance (the
+first created with `FILE_FLAG_FIRST_PIPE_INSTANCE`, the rest joining it); on POSIX each is an
+accepted socket. `attach_session` carries the profile's name and email, which the relay passes on
+as `profile_name` and `profile_email` and the server cleans as untrusted text. Tab and window ids are
+unique only within one Chrome process, so a relay from a second, still-running Chrome -- found the
+same way the server already finds the Chrome above each relay -- is refused while another is
+served. A port the extension has no server for -- every offered server already has one of its
+ports -- answers the offer with no session, and its relay connects nowhere; a relay older than
+1.10.0 connected it to the newest server anyway, so such a relay is served only alone from its
+Chrome. `BrowserControl` keeps, per connection, its name and which tabs and windows it holds,
+learned from every reply; it routes each call by its tab, its ref's tab, the `profile` it names, or
+the current profile, fans listings and release out to every connection and merges them, and
+asks each extension `profileState` (name, focus) and `findTab` when it has to. A connection that
+goes away takes the refs and routing of its own tabs only. The design is in
+[plans/chrome-profiles.md](plans/chrome-profiles.md).
 
 `bridge_servers` is how a server started later is found. A relay offers its list once, so before it
 existed a second editor opening was noticed only when the extension's 30 s alarm next opened a port.

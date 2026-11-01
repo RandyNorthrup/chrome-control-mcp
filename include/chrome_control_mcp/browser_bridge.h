@@ -5,6 +5,7 @@
 
 #include <QHash>
 #include <QJsonObject>
+#include <QSet>
 #include <QString>
 
 /// @file browser_bridge.h
@@ -68,6 +69,20 @@ public:
   /// The relay disconnected (Chrome closed, extension unloaded): no browser is
   /// reachable until a new host connects. Same clearing as onHostConnected.
   void onHostDisconnected();
+
+  /// With several relays -- one per Chrome profile -- a connection arriving or
+  /// leaving is not a whole new browser: only the leaving one's tabs lose
+  /// their refs (forgetTabs, called with exactly those). This records that the
+  /// set of connections changed: whether any remains, and that any op in
+  /// flight belonged to the old set. With one profile, a reconnect is
+  /// forgetTabs(every tracked tab) plus this, which is onHostConnected.
+  void onConnectionsChanged(bool any_connected);
+
+  /// Forget the refs and per-tab state of @p tabs.
+  void forgetTabs(const QSet<qint64> &tabs);
+
+  /// Every tab that has refs or per-tab state.
+  [[nodiscard]] QSet<qint64> trackedTabs() const;
 
   /// The DOM may have changed under every tab's refs at once (a CDP detach we
   /// cannot attribute to one tab): mark every tab stale, so act-by-ref is

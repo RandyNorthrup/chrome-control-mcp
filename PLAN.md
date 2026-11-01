@@ -3,7 +3,7 @@
 ## Release target
 
 Ship standalone, MIT-licensed Chrome Control MCP from `main` with the same browser tool surface on
-Windows, Linux, and macOS. Current release: 1.9.0 (2026-10-31).
+Windows, Linux, and macOS. Current release: 1.10.0 (2026-11-01).
 
 ## Completed
 
@@ -62,10 +62,10 @@ Windows, Linux, and macOS. Current release: 1.9.0 (2026-10-31).
       under the 3.15 the Qt install step switched it to (1.8.1)
 - [x] Run `test_browser_extension_tabs.mjs` and `test_release_versions.mjs` in ctest, and so in CI
       (1.8.1)
-- [ ] Support Chrome profiles (work, personal, other people), chosen per call: one server
+- [x] Support Chrome profiles (work, personal, other people), chosen per call: one server
       connected to every profile's extension at once, `profile` on `browser_new_tab`, and each
-      tab's profile in `browser_tabs`. Today a server binds to whichever profile's extension reaches
-      it first, and an agent cannot choose. Decided 2026-10-31; next after 1.9.0.
+      tab's profile in `browser_tabs` (1.10.0;
+      [docs/plans/chrome-profiles.md](docs/plans/chrome-profiles.md))
 - [x] Notice a Chrome extension older than its server: versions exchanged on connect, the agent told
       once per connection in any client, and the extension reloading itself once per newer install
       while nobody uses it (1.9.0;

@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Chrome Control MCP</title>
+    <style>
+      :root {
+        --text: #1f2328;
+        --muted: #59636e;
+        --surface: #ffffff;
+        --field: #ffffff;
+        --border: #d1d9e0;
+        --accent: #d6246e;
+        --accent-text: #ffffff;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --text: #e6edf3;
+          --muted: #9198a1;
+          --surface: #0d1117;
+          --field: #151b23;
+          --border: #3d444d;
+          --accent: #ff4f9a;
+          --accent-text: #0d1117;
+        }
+      }
+      body {
+        margin: 16px;
+        min-width: 360px;
+        max-width: 560px;
+        font:
+          14px/1.5 system-ui,
+          sans-serif;
+        color: var(--text);
+        background: var(--surface);
+      }
+      h1 {
+        font-size: 16px;
+        margin: 0 0 8px;
+      }
+      p {
+        margin: 0 0 12px;
+        color: var(--muted);
+      }
+      label {
+        display: block;
+        font-weight: 600;
+        margin-bottom: 4px;
+      }
+      input {
+        box-sizing: border-box;
+        width: 100%;
+        padding: 6px 8px;
+        font: inherit;
+        color: var(--text);
+        background: var(--field);
+        border: 1px solid var(--border);
+        border-radius: 6px;
+      }
+      input:focus-visible,
+      button:focus-visible {
+        outline: 2px solid var(--accent);
+        outline-offset: 2px;
+      }
+      .actions {
+        display: flex;
+        gap: 8px;
+        margin: 12px 0;
+      }
+      button {
+        padding: 6px 12px;
+        font: inherit;
+        color: var(--text);
+        background: var(--field);
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        cursor: pointer;
+      }
+      button.primary {
+        color: var(--accent-text);
+        background: var(--accent);
+        border-color: var(--accent);
+      }
+      #current {
+        color: var(--text);
+        font-weight: 600;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>This profile, as agents see it</h1>
+    <p>
+      Agents choose a Chrome profile by its name when they open a tab, and see
+      it beside every tab they list. Each profile that has this extension has
+      its own name.
+    </p>
+    <p id="account"></p>
+    <label for="name">Name for agents</label>
+    <input id="name" maxlength="64" autocomplete="off" spellcheck="false" />
+    <div class="actions">
+      <button id="save" class="primary" type="button">Save</button>
+      <button id="clear" type="button">Use the account email</button>
+    </div>
+    <p>Agents call this profile <span id="current"></span>.</p>
+    <p id="status" role="status" aria-live="polite"></p>
+    <script src="options.js"></script>
+  </body>
+</html>

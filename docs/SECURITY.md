@@ -26,21 +26,22 @@ guarantee.
 The extension asks for exactly what it uses, and the set is chosen rather than accumulated. From
 `browser/extension/manifest.json`:
 
-| Permission        | What it is for                                                                                                             |
-| ----------------- | -------------------------------------------------------------------------------------------------------------------------- |
-| `nativeMessaging` | the bridge to the MCP server                                                                                               |
-| `debugger`        | every page action, over the DevTools protocol                                                                              |
-| `tabs`            | resolving and listing tabs                                                                                                 |
-| `tabGroups`       | the per-agent tab groups that show which tabs are under control                                                            |
-| `contentSettings` | `browser_permission`                                                                                                       |
-| `cookies`         | `browser_cookies`                                                                                                          |
-| `downloads`       | `browser_download`, and landing a recording as a file                                                                      |
-| `offscreen`       | a hidden document to run the video encoder in                                                                              |
-| `alarms`          | re-arming the bridge after the service worker is retired, and standing idle sessions down                                  |
-| `storage`         | the pause switch, the reconnect backoff, the once-per-protocol reload, and which tabs each session holds across a restart  |
-| `scripting`       | taking the control frame off a page whose debugger attachment has already ended                                            |
-| `webNavigation`   | knowing which tab a link or script opened a new tab from, so an agent's popup is the agent's and the user's new tab is not |
-| `<all_urls>`      | (host permission) the assistant can be asked to drive any page the user can open                                           |
+| Permission                   | What it is for                                                                                                                                |
+| ---------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| `nativeMessaging`            | the bridge to the MCP server                                                                                                                  |
+| `debugger`                   | every page action, over the DevTools protocol                                                                                                 |
+| `tabs`                       | resolving and listing tabs                                                                                                                    |
+| `tabGroups`                  | the per-agent tab groups that show which tabs are under control                                                                               |
+| `contentSettings`            | `browser_permission`                                                                                                                          |
+| `cookies`                    | `browser_cookies`                                                                                                                             |
+| `downloads`                  | `browser_download`, and landing a recording as a file                                                                                         |
+| `offscreen`                  | a hidden document to run the video encoder in                                                                                                 |
+| `alarms`                     | re-arming the bridge after the service worker is retired, and standing idle sessions down                                                     |
+| `storage`                    | the pause switch, the reconnect backoff, the once-per-protocol reload, which tabs each session holds across a restart, and the profile's name |
+| `scripting`                  | taking the control frame off a page whose debugger attachment has already ended                                                               |
+| `webNavigation`              | knowing which tab a link or script opened a new tab from, so an agent's popup is the agent's and the user's new tab is not                    |
+| `identity`, `identity.email` | naming a Chrome profile by its signed-in account's email, so agents can choose a profile (1.10.0)                                             |
+| `<all_urls>`                 | (host permission) the assistant can be asked to drive any page the user can open                                                              |
 
 Together these amount to full control of the browser. Use trusted builds only.
 
@@ -77,6 +78,18 @@ Recordings are written through `chrome.downloads` to a relative path under the u
 folder, validated the same way `browser_download` validates a filename: no absolute path, no `..`.
 The video never travels back through the bridge -- a reply is capped far below the size of any real
 recording -- so `browser_record_stop` returns a path.
+
+## Chrome profiles
+
+Each Chrome profile the extension is loaded in is reachable by agents through one server; a profile
+without the extension is not, which is how to keep a profile out of reach. A profile is named, by
+default, by its signed-in account's email (`chrome.identity.getProfileUserInfo`), and that email
+appears in `browser_tabs`, `browser_extension_status` and version notes -- so it reaches agents and
+the AI service behind them. Naming the profile on the extension's options page keeps the email out
+of every listing; the server still sees it, and status still reports it. Names and emails come from
+the extension and are cleaned on the server as untrusted text (printable only, bounded, an email
+that is not one dropped). The server admits at most eight relays, and none from a second Chrome
+while one is served.
 
 ## Uploads
 

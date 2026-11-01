@@ -796,6 +796,15 @@ async function runConfig(config, { chrome, executable, fixture, extraArgs }) {
     check(
       "the browser's own tab stayed in front throughout",
       listing.tabs.find((tab) => tab.active)?.id === front.id,
+      JSON.stringify({
+        front,
+        tabs: listing.tabs.map(({ id, active, url, window_id }) => ({
+          id,
+          active,
+          url,
+          window_id,
+        })),
+      }),
     );
   } catch (error) {
     check(

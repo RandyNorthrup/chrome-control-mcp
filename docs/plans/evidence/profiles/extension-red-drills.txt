@@ -1,0 +1,19 @@
+green before: exit 0, ℹ pass 7
+== EV-PROF-RED-NAME-EXT: the email wins over the user's name for a profile
+file: browser/extension/background.js
+mutated sha256: 189b400394d9af98ba70a9d16bfd77a463b1c960b2c1a18f168c6bf1dedc76df
+mutated exit 1; failing: the user's name for a profile wins over its email, and a rename lands at once; a port offered servers before the profile's name is read attaches once it is, named; the user's name for a profile wins over its email, and a rename lands at once; a port offered servers before the profile's name is read attaches once it is, named
+expected_failure_seen: true
+restored exit 0; bytes identical (f07e86a5ab761628ce2e9f351e6eecb0008f9342ee0dd03f14ca10b9b6e79413)
+== EV-PROF-RED-OPTIONS: the options page saves the name as typed, uncleaned
+file: browser/extension/options.js
+mutated sha256: ace6c70b418ad17fff7c1c602c48b37f4ae29d9a68b0765b6e9c27b3fb5df494
+mutated exit 1; failing: the options page cleans a name the way the worker reads it, and saves or clears it; the options page cleans a name the way the worker reads it, and saves or clears it
+expected_failure_seen: true
+restored exit 0; bytes identical (b623989419f2423f594dfa643d005aa53dcb2a7d3f28d7e2a4103435a7eaf8b7)
+== EV-PROF-RED-NAME-RACE: a port attaches before the profile's name has been read
+file: browser/extension/background.js
+mutated sha256: 9cd86a534266b7880bcd4bc28ec561a6105951cf18ac3bb8b9ead665daa89ebd
+mutated exit 1; failing: a port offered servers before the profile's name is read attaches once it is, named; a port offered servers before the profile's name is read attaches once it is, named
+expected_failure_seen: true
+restored exit 0; bytes identical (f07e86a5ab761628ce2e9f351e6eecb0008f9342ee0dd03f14ca10b9b6e79413)

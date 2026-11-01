@@ -8,7 +8,9 @@
 // Usage: node tests/e2e/isolated_run.mjs --chrome=<Chrome for Testing binary>
 //          [--executable=<chrome_control_mcp>] [--scale=1] [--window=1280x800] [--zoom=100]
 //          [--chrome-arg=<flag>]... [--extension=<folder>] [--extension-version=<x.y.z>]
+//          [--extension-strip-permissions=<a,b>] [--headed] [--second-profile=<name>]
 //          <suite.mjs>
+// --headed needs a display: on Linux, run it under xvfb-run.
 // The suite's own report is passed through on stdout, and its exit code is this runner's.
 
 import assert from "node:assert/strict";
@@ -50,6 +52,11 @@ const browser = await prepareIsolatedChrome({
     .map((arg) => arg.slice("--chrome-arg=".length)),
   extension: option("extension") || null,
   extensionVersion: option("extension-version") || null,
+  stripPermissions: (option("extension-strip-permissions") || "")
+    .split(",")
+    .filter(Boolean),
+  headed: process.argv.includes("--headed"),
+  secondProfile: option("second-profile") || null,
 });
 let exitCode;
 try {
@@ -60,6 +67,9 @@ try {
       ...browser.env,
       CHROME_PATH: chrome,
       CHROME_USER_DATA_DIR: browser.profile,
+      // The extension folder this browser loads, for a suite that changes its files on disk.
+      CHROME_CONTROL_MCP_E2E_EXTENSION: browser.extension,
+      CHROME_CONTROL_MCP_E2E_SECOND_PROFILE: option("second-profile") || "",
     },
     stdio: ["ignore", "inherit", "inherit"],
   });

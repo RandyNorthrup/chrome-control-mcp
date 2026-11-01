@@ -115,9 +115,11 @@ bool writeStdoutFrame(const QJsonObject &message) {
 // exits the process immediately afterwards -- the fields the thread writes are
 // never read on this path.
 // The extension's answer to the offer: which server it wants, and -- from 1.9.0
-// on -- its own manifest version, which travels on to that server.
+// on -- its own manifest version, and from 1.10.0 its Chrome profile, which
+// travel on to that server.
 bool awaitAttachSession(int timeout_ms, QString *wanted,
-                        QString *extension_version) {
+                        QString *extension_version,
+                        BridgePeerProfile *profile) {
   struct Pending {
     std::atomic<bool> done{false};
     bool ok{false};
@@ -149,6 +151,9 @@ bool awaitAttachSession(int timeout_ms, QString *wanted,
   *wanted = pending->frame.value(QStringLiteral("session")).toString();
   *extension_version =
       bridgeVersionOrEmpty(pending->frame.value(QStringLiteral("version")));
+  *profile = peerProfileFromJson(
+      pending->frame.value(QStringLiteral("profile_name")),
+      pending->frame.value(QStringLiteral("profile_email")));
   return true;
 }
 
@@ -160,9 +165,11 @@ QString selectRendezvousRecord(const QStringList &records,
     return {};
   }
   if (wanted.isEmpty()) {
-    // No preference expressed: the newest record, which is what a single-server
-    // install always resolves to.
-    return records.first();
+    // No server named: the extension has no work for this port -- every
+    // server it was offered already has one of its ports. Connecting it to
+    // the newest anyway would hand that server a second connection of the
+    // same profile that answers for the first's tabs and then goes away.
+    return {};
   }
   const auto match = std::find_if(
       records.cbegin(), records.cend(), [&wanted](const QString &record) {
@@ -267,7 +274,7 @@ bool readFrameBody(const ReadExactFn &read_exact, quint32 length,
 
 bool relayHandshake(NativeIpcHandle pipe, const QString &token, int protocol,
                     QString *error, const BridgePeerVersions &versions,
-                    QString *server_version) {
+                    QString *server_version, const BridgePeerProfile &profile) {
   QJsonObject hello{{QStringLiteral("type"), QStringLiteral("hello")},
                     {QStringLiteral("token"), token},
                     {QStringLiteral("protocol"), protocol}};
@@ -276,6 +283,12 @@ bool relayHandshake(NativeIpcHandle pipe, const QString &token, int protocol,
   }
   if (!versions.installed.isEmpty()) {
     hello.insert(QStringLiteral("relay_version"), versions.installed);
+  }
+  if (!profile.name.isEmpty()) {
+    hello.insert(QStringLiteral("profile_name"), profile.name);
+  }
+  if (!profile.email.isEmpty()) {
+    hello.insert(QStringLiteral("profile_email"), profile.email);
   }
   if (!relayWritePipeFrame(pipe, hello)) {
     setError(error, QStringLiteral("Failed to send the bridge hello."));
@@ -444,7 +457,9 @@ int runBrowserRelay() {
 
   QString wanted;
   QString extension_version;
-  if (!awaitAttachSession(kRelayAttachTimeoutMs, &wanted, &extension_version)) {
+  BridgePeerProfile profile;
+  if (!awaitAttachSession(kRelayAttachTimeoutMs, &wanted, &extension_version,
+                          &profile)) {
     // An extension older than this relay treats the offer as an unknown frame
     // type and never answers. The protocol version is never exchanged on this
     // path, so the message has to carry the diagnosis itself.
@@ -464,22 +479,27 @@ int runBrowserRelay() {
     pipe = relayConnect(chosen, &token, &protocol, &error);
   }
   if (!nativeIpcHandleIsValid(pipe) && error.isEmpty()) {
-    error = records.isEmpty()
-                ? QStringLiteral("No running Chrome Control MCP server has "
-                                 "published a bridge record.")
-                : QStringLiteral(
-                      "The Chrome Control MCP server the extension asked "
-                      "for (%1) is no longer published.")
-                      .arg(wanted);
+    if (records.isEmpty()) {
+      error = QStringLiteral("No running Chrome Control MCP server has "
+                             "published a bridge record.");
+    } else if (wanted.isEmpty()) {
+      error = QStringLiteral("Every running Chrome Control MCP server already "
+                             "has a connection from this extension; this port "
+                             "has none to attach to.");
+    } else {
+      error = QStringLiteral("The Chrome Control MCP server the extension "
+                             "asked for (%1) is no longer published.")
+                  .arg(wanted);
+    }
   }
   // This relay is the program Chrome starts from the installed copy, so its
   // version is the installed version: the server compares it with its own and
   // with the extension's, and the extension with its manifest.
   const QString installed = QString::fromLatin1(kBrowserExtensionVersion);
   if (!nativeIpcHandleIsValid(pipe) ||
-      !relayHandshake(
-          pipe, token, protocol, &error,
-          {.extension = extension_version, .installed = installed})) {
+      !relayHandshake(pipe, token, protocol, &error,
+                      {.extension = extension_version, .installed = installed},
+                      nullptr, profile)) {
     // Tell the extension the bridge is down so it can surface it, then exit
     // cleanly; Chrome relaunches the host on the next port connection.
     (void)writeStdoutFrame(QJsonObject{

@@ -74,8 +74,11 @@ inline constexpr int kRelayAttachTimeoutMs = 5000;
 /// (@p records, newest first) and the session the extension asked for
 /// (@p wanted, a pid as a string).
 ///
-/// An empty @p wanted means the extension expressed no preference and the
-/// newest record is taken. A @p wanted naming a record that is not in the list
+/// An empty @p wanted means the extension has no work for this port -- every
+/// server it was offered already has one of its ports -- and yields an empty
+/// string: the relay connects nowhere and reports the bridge unavailable, which
+/// the extension takes as "nothing to retry for". A @p wanted naming a record
+/// that is not in the list
 /// yields an empty string: the server it asked for is gone, and connecting to a
 /// different one instead would attach the extension's session to a server it
 /// did not choose. Pure, so the rule is testable without a relay.
@@ -243,11 +246,14 @@ readBrowserReplyPastProgress(const BrowserReadFn &browser_read,
 /// and the relay's own -- as `extension_version` and `relay_version`, each only
 /// when known, so a relay that knows neither sends the hello it always did.
 /// The server's own version from the welcome lands in @p server_version when
-/// given (empty from a server older than 1.9.0).
+/// given (empty from a server older than 1.9.0). @p profile -- the Chrome
+/// profile the extension serves -- goes as `profile_name` and
+/// `profile_email`, again only when known.
 [[nodiscard]] bool relayHandshake(NativeIpcHandle pipe, const QString &token,
                                   int protocol, QString *error,
                                   const BridgePeerVersions &versions = {},
-                                  QString *server_version = nullptr);
+                                  QString *server_version = nullptr,
+                                  const BridgePeerProfile &profile = {});
 
 /// Pump exactly one command/reply exchange: block for a command frame from @p
 /// pipe (sent by the server), forward it to the browser via @p browser_write,

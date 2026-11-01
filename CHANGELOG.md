@@ -6,32 +6,83 @@ Every release, newest first, with the day it shipped. A version jumps to its ent
 entry's heading opens its GitHub release page and downloads. To hear about new releases, use
 **Watch → Custom → Releases** on GitHub, or the [releases feed](https://github.com/RandyNorthrup/chrome-control-mcp/releases.atom).
 
-| Version                    | Released   | What it is                                                              |
-| -------------------------- | ---------- | ----------------------------------------------------------------------- |
-| [1.9.0](#190---2026-10-31) | 2026-10-31 | A clipboard for every agent                                             |
-| [1.8.2](#182---2026-10-31) | 2026-10-31 | browser_release closes everything an agent opened                       |
-| [1.8.1](#181---2026-10-31) | 2026-10-31 | Fixes from a day of multi-agent use                                     |
-| [1.8.0](#180---2026-10-31) | 2026-10-31 | Agents share one browser without touching each other's tabs             |
-| [1.7.0](#170---2026-09-27) | 2026-09-27 | Scroll and ref fixes; the extension stops starting processes while idle |
-| [1.6.1](#161---2026-09-25) | 2026-09-25 | Fixes from a clean-install test of every tool                           |
-| [1.6.0](#160---2026-09-24) | 2026-09-24 | Agents can read the console and network; live tests on Windows          |
-| [1.5.5](#155---2026-09-23) | 2026-09-23 | A failed drag no longer stops the session answering                     |
-| [1.5.4](#154---2026-09-23) | 2026-09-23 | A ref acts on the element named, never the one beside it                |
-| [1.5.3](#153---2026-09-23) | 2026-09-23 | Recording and README text corrected; no change in behaviour             |
-| [1.5.2](#152---2026-09-23) | 2026-09-23 | Fixes navigation, recording, and two editors sharing one browser        |
-| [1.5.1](#151---2026-09-23) | 2026-09-23 | Windows: the bridge attaches again                                      |
-| [1.5.0](#150---2026-09-23) | 2026-09-23 | Several agents at once, and tab recording                               |
-| [1.4.0](#140---2026-09-22) | 2026-09-22 | The server updates itself, and installs from the VS Code Marketplace    |
-| [1.3.1](#131---2026-09-22) | 2026-09-22 | A clear message when the browser cannot be reached                      |
-| [1.3.0](#130---2026-09-22) | 2026-09-22 | Uploads work on sites that hide the file input                          |
-| [1.2.2](#122---2026-09-22) | 2026-09-22 | 1.2.0's file uploads on a build that passes every check                 |
-| [1.2.1](#121---2026-09-22) | 2026-09-22 | 1.2.0 rebuilt to pass clang-tidy; no change in behaviour                |
-| [1.2.0](#120---2026-09-22) | 2026-09-22 | File uploads                                                            |
-| [1.1.2](#112---2026-09-22) | 2026-09-22 | 1.1.1 rebuilt to pass the format check; no change in behaviour          |
-| [1.1.1](#111---2026-09-22) | 2026-09-22 | A screenshot of a background tab no longer ends the session             |
-| [1.1.0](#110---2026-09-21) | 2026-09-21 | The agent works in a tab of its own                                     |
-| [1.0.1](#101---2026-09-16) | 2026-09-16 | The bridge recovers when another server takes or removes its record     |
-| [1.0.0](#100---2026-08-20) | 2026-08-20 | First public release                                                    |
+| Version                      | Released   | What it is                                                              |
+| ---------------------------- | ---------- | ----------------------------------------------------------------------- |
+| [1.10.0](#1100---2026-11-01) | 2026-11-01 | Chrome profiles, chosen per call                                        |
+| [1.9.0](#190---2026-10-31)   | 2026-10-31 | A clipboard for every agent                                             |
+| [1.8.2](#182---2026-10-31)   | 2026-10-31 | browser_release closes everything an agent opened                       |
+| [1.8.1](#181---2026-10-31)   | 2026-10-31 | Fixes from a day of multi-agent use                                     |
+| [1.8.0](#180---2026-10-31)   | 2026-10-31 | Agents share one browser without touching each other's tabs             |
+| [1.7.0](#170---2026-09-27)   | 2026-09-27 | Scroll and ref fixes; the extension stops starting processes while idle |
+| [1.6.1](#161---2026-09-25)   | 2026-09-25 | Fixes from a clean-install test of every tool                           |
+| [1.6.0](#160---2026-09-24)   | 2026-09-24 | Agents can read the console and network; live tests on Windows          |
+| [1.5.5](#155---2026-09-23)   | 2026-09-23 | A failed drag no longer stops the session answering                     |
+| [1.5.4](#154---2026-09-23)   | 2026-09-23 | A ref acts on the element named, never the one beside it                |
+| [1.5.3](#153---2026-09-23)   | 2026-09-23 | Recording and README text corrected; no change in behaviour             |
+| [1.5.2](#152---2026-09-23)   | 2026-09-23 | Fixes navigation, recording, and two editors sharing one browser        |
+| [1.5.1](#151---2026-09-23)   | 2026-09-23 | Windows: the bridge attaches again                                      |
+| [1.5.0](#150---2026-09-23)   | 2026-09-23 | Several agents at once, and tab recording                               |
+| [1.4.0](#140---2026-09-22)   | 2026-09-22 | The server updates itself, and installs from the VS Code Marketplace    |
+| [1.3.1](#131---2026-09-22)   | 2026-09-22 | A clear message when the browser cannot be reached                      |
+| [1.3.0](#130---2026-09-22)   | 2026-09-22 | Uploads work on sites that hide the file input                          |
+| [1.2.2](#122---2026-09-22)   | 2026-09-22 | 1.2.0's file uploads on a build that passes every check                 |
+| [1.2.1](#121---2026-09-22)   | 2026-09-22 | 1.2.0 rebuilt to pass clang-tidy; no change in behaviour                |
+| [1.2.0](#120---2026-09-22)   | 2026-09-22 | File uploads                                                            |
+| [1.1.2](#112---2026-09-22)   | 2026-09-22 | 1.1.1 rebuilt to pass the format check; no change in behaviour          |
+| [1.1.1](#111---2026-09-22)   | 2026-09-22 | A screenshot of a background tab no longer ends the session             |
+| [1.1.0](#110---2026-09-21)   | 2026-09-21 | The agent works in a tab of its own                                     |
+| [1.0.1](#101---2026-09-16)   | 2026-09-16 | The bridge recovers when another server takes or removes its record     |
+| [1.0.0](#100---2026-08-20)   | 2026-08-20 | First public release                                                    |
+
+## [1.10.0] - 2026-11-01
+
+Agents work in every Chrome profile, and choose which.
+
+### Added
+
+- **One server serves every Chrome profile at once.** Chrome gives each profile its own instance of
+  the extension, each with its own relay, and the server took exactly one relay -- so it served
+  whichever profile's extension reached it first, and refused the rest, which backed off for up to
+  half an hour. It now takes up to eight, one per profile, each handshaken and served on a thread of
+  its own; one connecting, reloading or leaving touches nothing of another's tabs, refs or calls.
+- **`profile` on `browser_new_tab`**, and on `browser_window` (to open a window),
+  `browser_cookies` and `browser_permission`: a profile's name or account email, without regard to
+  case. Named nowhere, a new tab opens in the profile whose window the user last focused; with one
+  profile, exactly where it always did. A name that matches no connected profile is refused with the
+  names that are.
+- **Calls follow their tab.** A call with a `tab_id`, or a ref, goes to the profile holding that tab
+  -- one the server has never seen is looked for in every profile -- and a call naming no tab goes to
+  the profile the last call went to.
+- **Every profile in the listings.** `browser_tabs` and `browser_windows` merge every profile's
+  entries, each naming its `profile`; `browser_release` without a `tab_id` lets go in every
+  profile. A profile that fails to answer is named in the reply, and the others are still listed.
+- **Profiles have names.** The signed-in Google account's email, or a name given on the extension's
+  new options page (work, personal), which takes effect at once; a profile with neither gets a
+  generated name that stays the same. `browser_extension_status` lists every connected profile with
+  its name, email and versions, and version notes say which profile they are about.
+- The MCP `instructions` tell every client's agents to open their tab in the right profile.
+
+### Changed
+
+- The extension asks for the `identity` and `identity.email` permissions, to name a profile by its
+  account; that email reaches agents. Measured live: an extension reloading itself into these
+  permissions comes back enabled, so the update needs nothing from the user.
+- A relay from a second, still-running Chrome -- another install, or another user data directory --
+  is refused while one Chrome is served, saying why: tab ids are unique only within one Chrome. A
+  Chrome that has exited no longer counts, so after a restart the new one is admitted at once.
+- A relay the server refuses now gets to read why before its pipe is disconnected; Windows discarded
+  the reason when the instance was torn down straight after it was written.
+- A port of the extension that has no server to attach to -- every server already has one of its
+  ports, as when it probes for new ones -- now connects nowhere; its relay used to connect it to the
+  newest server anyway, which took one relay and turned it away. A relay older than 1.10.0 still
+  does, so it is served only alone from its Chrome, as before.
+- The live harness can run a headed Chrome under Xvfb with a second profile, and stage the extension
+  without chosen permissions. A new live suite, `profiles_e2e`, runs two profiles on Linux and the
+  update into the new permissions on all three platforms.
+- The live harness waits for the tab it turns Developer mode on in to close before a suite starts;
+  one suite reading the active tab at once was handed that closing tab (the harness since 1.9.0;
+  met in two of four full display-matrix runs here, one configuration each). The display matrix now
+  says which tab was in front when that check fails.
 
 ## [1.9.0] - 2026-10-31
 
@@ -1075,6 +1126,7 @@ tried were broken.
 - Unused JSON-RPC client payload helpers and obsolete test-only native-host loop.
 - Redundant quality branch; development and delivery now happen directly on `main`.
 
+[1.10.0]: https://github.com/RandyNorthrup/chrome-control-mcp/releases/tag/v1.10.0
 [1.9.0]: https://github.com/RandyNorthrup/chrome-control-mcp/releases/tag/v1.9.0
 [1.8.2]: https://github.com/RandyNorthrup/chrome-control-mcp/releases/tag/v1.8.2
 [1.8.1]: https://github.com/RandyNorthrup/chrome-control-mcp/releases/tag/v1.8.1

@@ -124,7 +124,11 @@ function assertWindowsHostRegistration(executable) {
 // settings. `extension` loads another extension folder than the one staged beside the executable
 // (a released one, to meet an older extension); `extensionVersion` loads that extension as if its
 // manifest said another version (to meet one older or newer than the installed copy without
-// building one). A copy keeps the manifest's key, so it keeps the ID the native host allows.
+// building one); `stripPermissions` leaves those permissions out of the copy (to meet an
+// extension older than a release that added them). A copy keeps the manifest's key, so it keeps the
+// ID the native host allows. `headed` runs a real window -- under Xvfb on Linux -- which a second
+// profile needs: `secondProfile` opens that profile in the same Chrome once it has started, and
+// headless Chrome does not open one at all.
 // Returns the environment the MCP server must run with to pair with it, and launch():
 // start the server with that environment first, then launch -- which waits for the server's
 // rendezvous record, so the extension's first connection at startup finds it rather than waiting
@@ -138,6 +142,9 @@ export async function prepareIsolatedChrome({
   extraArgs = [],
   extension: extensionDir = null,
   extensionVersion = null,
+  stripPermissions = [],
+  headed = false,
+  secondProfile = null,
 }) {
   // Windows registers native-messaging hosts in the registry, one key for the user, so this
   // browser cannot be given a registration of its own -- and does not need one. The user's key
@@ -206,12 +213,17 @@ export async function prepareIsolatedChrome({
   let extension = extensionDir
     ? path.resolve(extensionDir)
     : path.join(path.dirname(executable), "extension");
-  if (extensionVersion) {
+  if (extensionVersion || stripPermissions.length > 0) {
     const staged = path.join(root, "extension");
     await cp(extension, staged, { recursive: true });
     const manifestPath = path.join(staged, "manifest.json");
     const manifest = JSON.parse(await readFile(manifestPath, "utf8"));
-    manifest.version = extensionVersion;
+    if (extensionVersion) {
+      manifest.version = extensionVersion;
+    }
+    manifest.permissions = (manifest.permissions || []).filter(
+      (permission) => !stripPermissions.includes(permission),
+    );
     await writeFile(manifestPath, JSON.stringify(manifest, null, 2));
     extension = staged;
   }
@@ -274,7 +286,7 @@ export async function prepareIsolatedChrome({
       ...(scaleFactor === 1
         ? []
         : [`--force-device-scale-factor=${scaleFactor}`]),
-      "--headless=new",
+      ...(headed ? [] : ["--headless=new"]),
       "--remote-debugging-port=0",
       // A CI image whose kernel forbids unprivileged user namespaces leaves Chrome with no usable
       // sandbox, and it refuses to start; --no-sandbox is passed there and nowhere else.
@@ -314,9 +326,62 @@ export async function prepareIsolatedChrome({
       throw new Error(`The isolated browser did not start: ${stderr}`);
     }
     await enableDeveloperMode(devtools);
+    if (secondProfile) {
+      await openSecondProfile(devtools, {
+        chrome,
+        profile,
+        extension,
+        env,
+        name: secondProfile,
+        extraArgs,
+      });
+    }
     return devtools;
   };
-  return { env, profile, launch, close, stderr: () => stderr };
+  return { env, profile, extension, launch, close, stderr: () => stderr };
+}
+
+// Open profile @p name in the running Chrome: a second launch with the same user data directory
+// hands its arguments to the running process through its singleton and exits. The extension loaded
+// from the command line loads in that profile too -- measured: one service worker of this
+// extension's ID per profile -- and its relay reaches the same server.
+async function openSecondProfile(
+  devtools,
+  { chrome, profile, extension, env, name, extraArgs },
+) {
+  const workers = async () => {
+    const list = await (
+      await fetch(`http://127.0.0.1:${devtools.port}/json/list`)
+    ).json();
+    return list.filter(
+      (entry) =>
+        entry.type === "service_worker" &&
+        entry.url ===
+          "chrome-extension://iojehhmnaigcejfcpmilpclmeljhlkaa/background.js",
+    ).length;
+  };
+  const launcher = spawn(
+    chrome,
+    [
+      `--user-data-dir=${profile}`,
+      `--profile-directory=${name}`,
+      `--load-extension=${extension}`,
+      `--disable-extensions-except=${extension}`,
+      "--no-first-run",
+      "--no-default-browser-check",
+      ...extraArgs,
+      "about:blank",
+    ],
+    { env, stdio: "ignore" },
+  );
+  launcher.on("error", () => {});
+  for (let attempt = 0; attempt < 120; attempt += 1) {
+    if ((await workers()) >= 2) {
+      return;
+    }
+    await sleep(250);
+  }
+  throw new Error(`The second profile (${name}) did not start its extension`);
 }
 
 // Developer mode on, as in every Chrome this extension runs in: Load unpacked needs it.
@@ -380,5 +445,17 @@ async function enableDeveloperMode(devtools) {
     }
   } finally {
     await fetch(`${base}/json/close/${page.id}`).catch(() => {});
+    // Closing answers before the tab is gone. A suite that reads the active tab straight away --
+    // as the display matrix does, to check the user's tab stays in front -- has been handed this
+    // one (measured once in 35 configurations), so wait until it has left the target list.
+    for (let attempt = 0; attempt < 50; attempt += 1) {
+      const open = await fetch(`${base}/json/list`)
+        .then((response) => response.json())
+        .catch(() => []);
+      if (!open.some((target) => target.id === page.id)) {
+        break;
+      }
+      await sleep(100);
+    }
   }
 }

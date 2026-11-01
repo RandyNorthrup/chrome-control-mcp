@@ -7,13 +7,17 @@
 #include "chrome_control_mcp/native_messaging.h"
 
 #include <QHash>
+#include <QList>
 #include <QJsonObject>
 #include <QJsonValue>
 #include <QString>
 
 #include <condition_variable>
+#include <functional>
+#include <memory>
 #include <mutex>
 #include <thread>
+#include <vector>
 
 /// @file browser_bridge_pipe.h
 /// @brief The browser-control bridge pipe SERVER, hosted in the long-lived MCP
@@ -107,6 +111,14 @@ ancestorChainContainsImage(quint64 pid, const QHash<quint64, quint64> &parent,
                            const QHash<quint64, QString> &image,
                            const QString &target_basename_lower, int max_depth);
 
+/// The same walk, returning the nearest such ancestor's pid, or 0. For a relay
+/// that is the Chrome browser process that started it, which is how the server
+/// tells one Chrome's profiles from another Chrome's.
+[[nodiscard]] quint64
+nearestAncestorWithImage(quint64 pid, const QHash<quint64, quint64> &parent,
+                         const QHash<quint64, QString> &image,
+                         const QString &target_basename_lower, int max_depth);
+
 /// What a bridge connection says about its far ends, as the relay passes it on
 /// in its hello: the running extension's manifest version, and the relay's own
 /// version, which is the INSTALLED version -- Chrome starts the relay from the
@@ -129,6 +141,72 @@ struct BridgePeerVersions {
 /// `relay_version`), each checked by bridgeVersionOrEmpty.
 [[nodiscard]] BridgePeerVersions
 peerVersionsFromHello(const QJsonObject &hello);
+
+/// How many relays one server serves at once: one per Chrome profile whose
+/// extension reaches it. Chrome gives every profile its own instance of the
+/// extension, each with its own relay, and the server once took exactly one --
+/// so it bound to whichever profile got there first and refused the rest. The
+/// bound keeps anything that can reach the pipe from pinning threads.
+inline constexpr int kMaxBridgeConnections = 8;
+
+/// Longest profile name, and longest email, a relay may report.
+inline constexpr int kMaxProfileNameChars = 64;
+inline constexpr int kMaxProfileEmailChars = 254;
+
+/// The profile a connection serves, as its relay reported it in the hello
+/// (`profile_name`, `profile_email`). Both come from the extension and end up
+/// in an agent's context, so both are cleaned here: printable characters only,
+/// whitespace collapsed, bounded, and the email must look like one. Empty means
+/// not said -- an extension or relay older than profile support.
+struct BridgePeerProfile {
+  QString name;
+  QString email;
+};
+
+/// @p value as printable text of at most @p max_chars, whitespace collapsed,
+/// or empty.
+[[nodiscard]] QString bridgeLabelOrEmpty(const QJsonValue &value,
+                                         int max_chars);
+
+/// The profile a relay's hello (or an extension's reply) reports.
+[[nodiscard]] BridgePeerProfile peerProfileFromJson(const QJsonValue &name,
+                                                    const QJsonValue &email);
+
+/// One connection as BrowserBridgePipeServer::connections() describes it.
+struct BridgeConnectionInfo {
+  /// Given by this server, never reused: a profile that reconnects is a new
+  /// connection, and anything known about the old one ends with it.
+  quint64 id{0};
+  BridgePeerVersions versions;
+  BridgePeerProfile profile;
+  /// The Chrome process the relay was started by, or 0 when not known (the
+  /// Chrome-ancestor check is off, as in tests).
+  quint64 browser_pid{0};
+};
+
+/// Why a relay from Chrome process @p incoming is refused while connections
+/// from @p serving are open, or empty to admit it. Tab and window ids are
+/// unique only within one Chrome process, which every profile of one user data
+/// directory shares; a relay from another, still-running Chrome is refused.
+/// One whose Chrome has exited (@p alive says no) does not count: after a
+/// restart the old relays can take a moment to be noticed gone, and the new
+/// Chrome is admitted at once rather than refused for that moment. Pure, so the
+/// rule is testable without a browser.
+[[nodiscard]] QString
+otherBrowserRefusal(quint64 incoming, const QList<quint64> &serving,
+                    const std::function<bool(quint64)> &alive);
+
+/// Why a relay of version @p relay_version from Chrome process @p incoming is
+/// refused while connections from @p serving are open, or empty to admit it. A
+/// relay older than 1.10.0 connects even a port of the extension that has no
+/// server -- one answering its offer with no session, because every server
+/// already has one of its ports -- to the newest server, which took one relay
+/// and refused it. Beside another connection of its own Chrome such a relay is
+/// refused the same way, so a port with no work never becomes a second
+/// profile. Pure, so the rule is testable without a browser.
+[[nodiscard]] QString olderRelayRefusal(quint64 incoming,
+                                        const QString &relay_version,
+                                        const QList<quint64> &serving);
 
 class BrowserBridgePipeServer {
 public:
@@ -182,7 +260,7 @@ public:
   /// server of our own image owns the record (that one keeps the browser).
   [[nodiscard]] bool ensurePublished(QString *error);
 
-  /// True while a verified relay is connected.
+  /// True while at least one verified relay is connected.
   [[nodiscard]] bool clientConnected() const;
 
   /// Increments on every newly verified relay connection. The MCP dispatch
@@ -190,43 +268,90 @@ public:
   /// session.
   [[nodiscard]] quint64 connectionGeneration() const;
 
-  /// What the connected relay reported about the extension and the installed
-  /// copy (see BridgePeerVersions). Set in the same step that makes a
-  /// connection current, so a caller that sees a new generation sees its
-  /// versions; empty while nothing is connected.
+  /// What the newest connected relay reported about the extension and the
+  /// installed copy (see BridgePeerVersions) -- with one profile, the
+  /// connection's. Set in the same step that admits a connection, so a caller
+  /// that sees a new generation sees its versions; empty while nothing is
+  /// connected.
   [[nodiscard]] BridgePeerVersions peerVersions() const;
 
-  /// Send one command frame and block for the correlated reply. Call from a
+  /// Every connection being served, oldest first.
+  [[nodiscard]] QList<BridgeConnectionInfo> connections() const;
+
+  /// Send one command frame to the newest connection and block for the
+  /// correlated reply -- with one profile, to the connection. Call from a
   /// single thread only (the MCP thread); the server serves one op at a time.
   /// Returns ok == false with a reason when no relay is connected, on a
   /// deadline (the connection is reset), or on a framing error.
   [[nodiscard]] Exchange sendCommandAwaitReply(const QJsonObject &frame);
 
+  /// The same, to the connection @p connection_id (see connections()); a
+  /// connection that has gone is reported as not connected.
+  [[nodiscard]] Exchange sendCommandAwaitReply(quint64 connection_id,
+                                               const QJsonObject &frame);
+
   [[nodiscard]] QString pipeName() const { return pipe_name_; }
   [[nodiscard]] QString token() const { return token_; }
 
 private:
+  // One relay connection: its own handle, thread, and command slot, so a
+  // profile's connection arriving, working or leaving touches nothing of
+  // another's. Every field but `handle` and `thread` is guarded by mutex_;
+  // `handle` is used only by the connection's own thread once admitted.
+  struct Connection {
+    quint64 id{0};
+    NativeIpcHandle handle{kInvalidNativeIpcHandle};
+    std::thread thread;
+    bool live{false};     ///< Admitted, and its relay not yet known gone.
+    bool finished{false}; ///< Its thread has ended; ready to be joined.
+    BridgePeerVersions versions;
+    BridgePeerProfile profile;
+    quint64 browser_pid{0};
+    bool has_request{false};
+    bool has_response{false};
+    QJsonObject request_frame;
+    Exchange response;
+  };
+  using ConnectionPtr = std::shared_ptr<Connection>;
+
   // Create the named pipe + shutdown event and publish the rendezvous record.
   // Sets pipe_, shutdown_event_, token_ on success; on any failure frees
   // whatever it created and returns false with @p error set. Extracted from
   // start() so its lifecycle guard stays small.
   [[nodiscard]] bool createPipeResources(QString *error);
+  // The acceptor: waits for each relay and hands it to a thread of its own,
+  // so a slow handshake never holds up the next one.
   void run();
-  bool handshake();
+  // A connection's whole life on its own thread: handshake, admission,
+  // serving, and the handle closed once it ends.
+  void serveConnection(const ConnectionPtr &connection);
+  bool handshake(Connection &connection);
   // Serve commands on the verified connection until it ends: an exchange
   // fails, the server stops, or -- looked at every
   // kBrowserBridgeIdlePeerCheckMs while no command is waiting -- the relay has
-  // gone or has spoken unprompted. Returning is what makes run() mark the
-  // connection gone and listen for the next relay.
-  void serveConnected();
+  // gone or has spoken unprompted.
+  void serveConnected(Connection &connection);
   // Read the reply to @p request, reading past the progress beats the extension
   // sends while it is still working. Each beat restarts the silence budget;
   // max_exchange_ms bounds the whole wait regardless. False with @p why set
   // when either budget is spent, saying WHICH -- silence and a command that ran
   // too long are different faults and want different answers from the caller.
-  [[nodiscard]] bool awaitReply(const QJsonObject &request, QJsonObject *reply,
+  [[nodiscard]] bool awaitReply(NativeIpcHandle handle,
+                                const QJsonObject &request, QJsonObject *reply,
                                 QString *why);
-  bool verifyPeer(QString *why) const;
+  // Verifies the peer on @p handle and, when the Chrome-ancestor check is on,
+  // says which Chrome process started it.
+  bool verifyPeer(NativeIpcHandle handle, quint64 *browser_pid,
+                  QString *why) const;
+  // Under mutex_: why @p connection may not be admitted now (the bound, or
+  // another Chrome), or empty -- in which case it is admitted.
+  [[nodiscard]] QString admit(const ConnectionPtr &connection);
+  // Under mutex_: the newest live connection, or null.
+  [[nodiscard]] ConnectionPtr newestLive() const;
+  // Join and forget connections whose threads have ended. Not under mutex_.
+  void reapFinished();
+  // Whether process @p pid is still running; per platform.
+  static bool browserProcessAlive(quint64 pid);
 
   Options options_;
   QString pipe_name_;
@@ -235,11 +360,12 @@ private:
   QString rendezvous_error_; ///< Why rendezvous_path_ is empty, when it is.
 
 #ifdef Q_OS_WIN
+  // The instance waiting for the next relay; a connected one moves to its
+  // Connection and a fresh instance takes its place.
   NativeIpcHandle pipe_{kInvalidNativeIpcHandle};
   void *shutdown_event_{nullptr};
 #else
   int listener_fd_{-1};
-  int connection_fd_{-1};
   int shutdown_pipe_[2]{-1, -1};
 #endif
   std::thread thread_;
@@ -256,18 +382,10 @@ private:
   mutable std::mutex mutex_;
   std::condition_variable cv_;
   bool running_{false};
-  bool connected_{false};
   quint64 generation_{0};
-  BridgePeerVersions peer_versions_;
-  // What the hello being handshaken said; I/O thread only, made current as
-  // peer_versions_ with the connection itself.
-  BridgePeerVersions handshake_versions_;
-
-  // Single in-flight command slot handed from the MCP thread to the I/O thread.
-  bool has_request_{false};
-  bool has_response_{false};
-  QJsonObject request_frame_;
-  Exchange response_;
+  quint64 next_connection_id_{0};
+  // Every connection with a thread, admitted or not yet, oldest first.
+  std::vector<ConnectionPtr> connections_;
 };
 
 } // namespace chrome_control_mcp

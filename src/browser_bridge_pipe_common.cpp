@@ -20,7 +20,9 @@
 #include <QFileInfo>
 #include <QRegularExpression>
 #include <QStringList>
+#include <QVersionNumber>
 
+#include <algorithm>
 #include <utility>
 
 namespace chrome_control_mcp {
@@ -38,11 +40,11 @@ constexpr Qt::CaseSensitivity kRendezvousPathCase =
 
 } // namespace
 
-bool ancestorChainContainsImage(quint64 pid,
-                                const QHash<quint64, quint64> &parent,
-                                const QHash<quint64, QString> &image,
-                                const QString &target_basename_lower,
-                                int max_depth) {
+quint64 nearestAncestorWithImage(quint64 pid,
+                                 const QHash<quint64, quint64> &parent,
+                                 const QHash<quint64, QString> &image,
+                                 const QString &target_basename_lower,
+                                 int max_depth) {
   quint64 current = pid;
   for (int depth = 0; depth < max_depth && current != 0; ++depth) {
     const auto it = parent.constFind(current);
@@ -50,11 +52,20 @@ bool ancestorChainContainsImage(quint64 pid,
       break;
     }
     if (image.value(it.value()) == target_basename_lower) {
-      return true;
+      return it.value();
     }
     current = it.value();
   }
-  return false;
+  return 0;
+}
+
+bool ancestorChainContainsImage(quint64 pid,
+                                const QHash<quint64, quint64> &parent,
+                                const QHash<quint64, QString> &image,
+                                const QString &target_basename_lower,
+                                int max_depth) {
+  return nearestAncestorWithImage(pid, parent, image, target_basename_lower,
+                                  max_depth) != 0;
 }
 
 BrowserBridgePipeServer::BrowserBridgePipeServer()
@@ -121,7 +132,7 @@ bool BrowserBridgePipeServer::ensurePublished(QString *error) {
 
 bool BrowserBridgePipeServer::clientConnected() const {
   const std::lock_guard<std::mutex> lock(mutex_);
-  return connected_;
+  return newestLive() != nullptr;
 }
 
 quint64 BrowserBridgePipeServer::connectionGeneration() const {
@@ -131,7 +142,215 @@ quint64 BrowserBridgePipeServer::connectionGeneration() const {
 
 BridgePeerVersions BrowserBridgePipeServer::peerVersions() const {
   const std::lock_guard<std::mutex> lock(mutex_);
-  return connected_ ? peer_versions_ : BridgePeerVersions{};
+  const ConnectionPtr newest = newestLive();
+  return newest ? newest->versions : BridgePeerVersions{};
+}
+
+QList<BridgeConnectionInfo> BrowserBridgePipeServer::connections() const {
+  const std::lock_guard<std::mutex> lock(mutex_);
+  QList<BridgeConnectionInfo> live;
+  for (const ConnectionPtr &connection : connections_) {
+    if (connection->live) {
+      live.append({.id = connection->id,
+                   .versions = connection->versions,
+                   .profile = connection->profile,
+                   .browser_pid = connection->browser_pid});
+    }
+  }
+  return live;
+}
+
+BrowserBridgePipeServer::ConnectionPtr
+BrowserBridgePipeServer::newestLive() const {
+  const auto newest = std::find_if(
+      connections_.rbegin(), connections_.rend(),
+      [](const ConnectionPtr &connection) { return connection->live; });
+  return newest != connections_.rend() ? *newest : nullptr;
+}
+
+QString BrowserBridgePipeServer::admit(const ConnectionPtr &connection) {
+  int live = 0;
+  QList<quint64> serving;
+  for (const ConnectionPtr &other : connections_) {
+    if (other->live) {
+      ++live;
+      serving.append(other->browser_pid);
+    }
+  }
+  if (live >= kMaxBridgeConnections) {
+    return QStringLiteral("too many connections: this server already serves "
+                          "%1 Chrome profiles, the most it takes")
+        .arg(kMaxBridgeConnections);
+  }
+  QString other = otherBrowserRefusal(connection->browser_pid, serving,
+                                      &browserProcessAlive);
+  if (!other.isEmpty()) {
+    return other;
+  }
+  QString older = olderRelayRefusal(connection->browser_pid,
+                                    connection->versions.installed, serving);
+  if (!older.isEmpty()) {
+    return older;
+  }
+  connection->live = true;
+  ++generation_;
+  return {};
+}
+
+void BrowserBridgePipeServer::reapFinished() {
+  std::vector<ConnectionPtr> done;
+  {
+    const std::lock_guard<std::mutex> lock(mutex_);
+    for (auto it = connections_.begin(); it != connections_.end();) {
+      if ((*it)->finished) {
+        done.push_back(*it);
+        it = connections_.erase(it);
+      } else {
+        ++it;
+      }
+    }
+  }
+  for (const ConnectionPtr &connection : done) {
+    if (connection->thread.joinable()) {
+      connection->thread.join();
+    }
+  }
+}
+
+BrowserBridgePipeServer::Exchange
+BrowserBridgePipeServer::sendCommandAwaitReply(const QJsonObject &frame) {
+  quint64 id = 0;
+  {
+    const std::lock_guard<std::mutex> lock(mutex_);
+    const ConnectionPtr newest = newestLive();
+    if (newest) {
+      id = newest->id;
+    }
+  }
+  return sendCommandAwaitReply(id, frame);
+}
+
+BrowserBridgePipeServer::Exchange
+BrowserBridgePipeServer::sendCommandAwaitReply(quint64 connection_id,
+                                               const QJsonObject &frame) {
+  std::unique_lock<std::mutex> lock(mutex_);
+  ConnectionPtr connection;
+  for (const ConnectionPtr &candidate : connections_) {
+    if (candidate->id == connection_id && candidate->live) {
+      connection = candidate;
+    }
+  }
+  if (!connection || !running_) {
+    return {.ok = false,
+            .reply = {},
+            .error = QStringLiteral("Browser not connected.")};
+  }
+  if (connection->has_request) {
+    return {.ok = false,
+            .reply = {},
+            .error =
+                QStringLiteral("A browser action is already in progress.")};
+  }
+  // Ask the extension to report progress while it works. The deadline belongs
+  // to this transport, so the request for the beats that hold it open belongs
+  // here too. An extension older than this server ignores the flag and is
+  // simply held to the plain silence budget, as it always was.
+  connection->request_frame = frame;
+  connection->request_frame.insert(QStringLiteral("progress"), true);
+  connection->has_request = true;
+  connection->has_response = false;
+  cv_.notify_all();
+  // Wake on the reply, or on any sign the connection has ended: its thread
+  // drops an idle connection whose relay has gone, possibly just after this
+  // request was posted. A reconnecting profile is a NEW connection, so a
+  // request can never be served by a relay it was not sent to.
+  cv_.wait(lock, [this, &connection] {
+    return connection->has_response || !running_ || !connection->live;
+  });
+  // Always clear the slot on the way out: a request left set would be served
+  // later by a connection that has moved on.
+  const bool got_response = connection->has_response;
+  Exchange result{};
+  // has_response is set by the connection's own thread in serveConnected();
+  // cppcheck's single-threaded flow cannot see that cross-thread write.
+  // cppcheck-suppress knownConditionTrueFalse
+  if (got_response) {
+    result = connection->response;
+  } else {
+    result = Exchange{.ok = false,
+                      .reply = {},
+                      .error = QStringLiteral(
+                          "Browser connection closed before it replied.")};
+  }
+  connection->has_request = false;
+  connection->has_response = false;
+  return result;
+}
+
+QString bridgeLabelOrEmpty(const QJsonValue &value, int max_chars) {
+  const QString raw = value.toString();
+  QString kept;
+  kept.reserve(raw.size());
+  for (const QChar ch : raw) {
+    // As for client names: isPrint refuses control and format characters
+    // (bidi overrides that would reorder what an agent reads) and lone
+    // surrogates; line and paragraph separators are "printable" and still
+    // break a one-line label.
+    const QChar::Category category = ch.category();
+    if (ch.isPrint() && category != QChar::Separator_Line &&
+        category != QChar::Separator_Paragraph) {
+      kept.append(ch);
+    }
+  }
+  return kept.simplified().left(max_chars).trimmed();
+}
+
+BridgePeerProfile peerProfileFromJson(const QJsonValue &name,
+                                      const QJsonValue &email) {
+  BridgePeerProfile profile{
+      .name = bridgeLabelOrEmpty(name, kMaxProfileNameChars),
+      .email = bridgeLabelOrEmpty(email, kMaxProfileEmailChars)};
+  // An address, or nothing: one '@' with text either side and no spaces.
+  static const QRegularExpression kEmail(
+      QRegularExpression::anchoredPattern(QStringLiteral("[^@\\s]+@[^@\\s]+")));
+  if (!kEmail.match(profile.email).hasMatch()) {
+    profile.email.clear();
+  }
+  return profile;
+}
+
+QString otherBrowserRefusal(quint64 incoming, const QList<quint64> &serving,
+                            const std::function<bool(quint64)> &alive) {
+  if (incoming == 0) {
+    return {};
+  }
+  const auto other =
+      std::find_if(serving.cbegin(), serving.cend(), [&](quint64 pid) {
+        return pid != 0 && pid != incoming && alive(pid);
+      });
+  if (other == serving.cend()) {
+    return {};
+  }
+  return QStringLiteral("another Chrome (process %1) is already being served; "
+                        "this server serves the profiles of one Chrome at a "
+                        "time")
+      .arg(*other);
+}
+
+QString olderRelayRefusal(quint64 incoming, const QString &relay_version,
+                          const QList<quint64> &serving) {
+  // A 1.10.0 relay connects nowhere for a port with no server, so it is
+  // never one of these; nor is a relay whose Chrome is not known.
+  static const QVersionNumber kRelayKnowsNoWork(1, 10, 0);
+  if (incoming == 0 ||
+      QVersionNumber::fromString(relay_version) >= kRelayKnowsNoWork ||
+      !serving.contains(incoming)) {
+    return {};
+  }
+  return QStringLiteral(
+      "this Chrome is already being served, and a relay older than 1.10.0 "
+      "serves only one connection per Chrome; update Chrome Control MCP to "
+      "serve several Chrome profiles");
 }
 
 QString bridgeVersionOrEmpty(const QJsonValue &value) {

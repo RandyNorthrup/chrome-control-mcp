@@ -5,7 +5,91 @@ after [Earlier evidence](#earlier-evidence) is a dated record of the build it na
 suite counts and versions were true of that build and are not current. A result is recorded here
 only when a command actually produced it.
 
-## Current: 1.9.0 (2026-10-31)
+## Current: 1.10.0 (2026-11-01)
+
+1.10.0 lets one server serve every Chrome profile the extension is loaded in, with agents choosing a
+profile per call, naming profiles (account email, a name given on the new options page, or a
+generated one), and listing every profile's tabs. Everything else is 1.9.0 and earlier, whose
+evidence follows and still stands. The plan, its acceptance criteria and its evidence ledger are
+[plans/chrome-profiles.md](plans/chrome-profiles.md), with the raw outputs in
+[plans/evidence/profiles/](plans/evidence/profiles/). Every suite that existed before this work ran
+again against the 1.10.0 build as its regression proof (AC-PROF-SINGLE); the earlier plans' own
+ledgers are closed records of their releases and were not re-stamped.
+
+### 1.10.0: suites
+
+| Where                                                  | Result                                                              |
+| ------------------------------------------------------ | ------------------------------------------------------------------- |
+| Windows, local: ctest                                  | 25/25 (pipe 31/31, relay 36/36, contract 71/71)                     |
+| Linux (WSL2), local: ctest                             | 24/24                                                               |
+| Local: `npm run test:js`                               | 217/217 across 12 files                                             |
+| Local: pre-commit, all files                           | every hook passes, Gitleaks included                                |
+| Linux, local: GCC 16, clang 22                         | no warnings                                                         |
+| Linux, local: run-clang-tidy, exhaustive cppcheck      | clean                                                               |
+| Linux, local: Semgrep 1.174.0, Python 3.12             | 221 rules, 54 files, 0 findings                                     |
+| Built server, both security profiles                   | 53 tools full, 14 read-only                                         |
+| Linux, Chrome for Testing 153: two profiles, headed    | 14/14                                                               |
+| Linux, Chrome for Testing 153: the update, one profile | 4/4                                                                 |
+| Linux, Chrome for Testing 153: display matrix          | 35 configurations, 3335 checks                                      |
+| Linux, Chrome for Testing 153: full suite              | ok: 48 tools, 177 live cases                                        |
+| Linux, Chrome for Testing 153: earlier suites          | interference 10/10, multi-agent 25/25, clipboard 24/24              |
+| Linux, Chrome for Testing 153: versions                | same version 6/6; older, reloading itself 12/12; released 1.8.2 8/8 |
+
+`profiles_e2e.mjs` runs two ways. With two profiles of one headed Chrome under Xvfb (headless Chrome
+opens no second profile) and one server, it checks: both served at once; each with its own
+generated name (the test Chrome is signed out); each renamed through its own options page and
+called so at once, nothing reloaded; new tabs in the profile named, without regard to case; an
+unknown profile refused, naming those connected; with none named, the profile whose window was last
+focused; calls following their tab, including a tab the server had never seen; `browser_tabs` and
+`browser_windows` naming each entry's profile; `browser_release` letting go in both; one profile
+reloading while the other's refs keep working; status listing those still connected. With one
+profile, staged as 1.0.0 without the `identity` permissions, it checks that the extension still
+names its profile, that a probe for new servers finding every server held never becomes a second
+connection, and that the extension reloads itself into files asking for the permissions, comes back
+enabled, and keeps its name.
+
+### 1.10.0: red drills
+
+Seventeen mutations, each reverting one behaviour. Each was seen to fail its own test for that
+reason, then restored byte for byte and green again. Server and live drills ran in the WSL mirror
+(`unit-red-drills.txt`, `live-red-drills.txt`), extension drills on Windows
+(`extension-red-drills.txt`):
+
+- **Transport:** a ninth relay admitted; an exited Chrome still counted as served; a name bounded by
+  the email's limit; a relay told "no server" connecting to the newest anyway; a 1.9.0 relay served
+  beside another connection of its Chrome.
+- **Routing:** a connection leaving forgetting every profile's tabs; a window in front not counting
+  as focused; a call naming a tab going to the current profile; `browser_tabs` asking one profile;
+  a version note not naming its profile; an extension older than profiles counting as focused.
+- **Extension:** the email winning over the user's name; the options page saving a name uncleaned;
+  a port attaching before the profile's name was read.
+- **Live:** a probe's port becoming a second connection; a generated name not kept across the
+  update's reload; a rename on the options page not picked up until a reload.
+
+### 1.10.0: found on the way
+
+The evidence passes found three defects before release, each now covered by a test that failed
+without its fix:
+
+- **A port with no server became a second "profile".** When every server already has one of its
+  ports -- the extension probing for new servers, or a surplus port at startup -- the extension
+  answers the relay's offer with no session. The relay connected that port to the newest server
+  anyway. A server of one connection had turned it away; the new server admitted it as a second
+  connection of the same profile, which answered for real tabs and closed. The display matrix saw
+  `the browser's relay closed the connection 1054 ms into click`. The relay now connects such a port
+  nowhere. A relay older than 1.10.0 still connects it, so the server serves one only alone from its
+  Chrome.
+- **A profile could attach nameless.** A port opened as the worker starts can be offered servers
+  before the profile's name is read from storage; the two-profile case once listed a profile as
+  `unnamed`. Attaching now waits for the read, at most two seconds.
+- **The harness handed a suite its own closing tab.** The live harness turns Developer mode on in a
+  `chrome://extensions` tab, and closing a tab over DevTools answers before the tab is gone. A suite
+  reading the active tab at once could get that tab: the display matrix's "the browser's own tab
+  stayed in front throughout" failed in two of four full runs, one configuration each, once the
+  failure was made to say which tab was in front (`chrome://extensions/`). The harness, as it has
+  been since 1.9.0, now waits for the tab to go.
+
+### 1.9.0 (2026-10-31)
 
 1.9.0 adds per-agent clipboards (extension, `browser_clipboard`, the MCP `instructions`), has the
 server, the relay and the extension exchange versions so the agent is told when Chrome is running
@@ -360,37 +444,39 @@ These are why file pickers are caught rather than shown
   native. Pinned by `test_browser_mcp_server`, by `test_browser_contract` (47 browser tools), and by
   `scripts/mcp_smoke.mjs`, which CI runs against every server it builds.
 - Bridge protocol: 2 (`kBrowserBridgeProtocol`, `BRIDGE_PROTOCOL`).
-- Extension version 1.9.0, ID `iojehhmnaigcejfcpmilpclmeljhlkaa`, native host
+- Extension version 1.10.0, ID `iojehhmnaigcejfcpmilpclmeljhlkaa`, native host
   `com.chromecontrolmcp.browser`, minimum Chrome 116. Delivered as an unpacked directory; no private
   key, packaged browser artifact, store account, or enterprise policy.
 
 ### Test suites
 
-| Suite                                 | Runs in        | Coverage                                                                                                            |
-| ------------------------------------- | -------------- | ------------------------------------------------------------------------------------------------------------------- |
-| `test_browser_contract`               | ctest          | 47 browser-tool schemas, command translation, `tab_id`, `agent` and clipboard validation, refs bound to tabs        |
-| `test_native_messaging`               | ctest          | native frame codec and host handshake                                                                               |
-| `test_browser_bridge`                 | ctest          | reply correlation, per-tab snapshots and staleness, refs dropped for released tabs, client name                     |
-| `test_browser_extension_installer`    | ctest          | public identity and isolated native-host lifecycle                                                                  |
-| `test_browser_uploads`                | ctest          | upload path rules, roots confinement, and byte-exact chunking                                                       |
-| `test_browser_bridge_security`        | ctest          | ACL/permissions, nonce, per-pid rendezvous records, runtime-directory override                                      |
-| `test_browser_bridge_pipe`            | ctest          | IPC handshake, peer verification, deadlines and beats, idle-peer departure, why an exchange ended, reconnect, sweep |
-| `test_browser_bridge_relay`           | ctest          | relay/bridge/session end to end, offers of running servers only, `bridge_servers`, progress                         |
-| `test_install_layout`                 | ctest          | version-directory safety, link swap under an open file, pruning, install lock                                       |
-| `test_updater`                        | ctest          | asset naming, checksums, version order, staged install, an older build leaving a newer current                      |
-| `test_browser_mcp_server`             | ctest          | identity, `instructions`, 53 tools, profiles, envelopes, schemas, MCP content                                       |
-| `test_windows_process_identity`       | ctest, Windows | identity across a junction, from a child launched through one                                                       |
-| `test_browser_extension_pure`         | both           | service-worker security, storage, geometry, and decision functions                                                  |
-| `test_browser_extension_transport`    | both           | reconnect backoff and pause, offers, readiness handshake, protocol mismatch, refused commands                       |
-| `test_browser_extension_session`      | both           | what a tab stops believing when its debugger attachment ends                                                        |
-| `test_browser_extension_multisession` | both           | one port per server, and the leases that keep sessions apart                                                        |
-| `test_browser_extension_recording`    | both           | recording refusals, the timeline, and discard when the tab or session ends                                          |
-| `test_browser_extension_offscreen`    | both           | the recorder host loaded for real, against a captureStream-less OffscreenCanvas                                     |
-| `test_vscode_payload`                 | both           | VSIX payload rules, with red drills for a link that survives pruning                                                |
-| `test_extension_install_cycle`        | ctest          | install, status and uninstall tools driven through the built server against a real registration                     |
-| `test_browser_extension_tabs`         | both           | whose tab it is, popups, per-agent groups and names, release, parking, idle, file choosers                          |
-| `test_browser_extension_clipboard`    | both           | chords never sent as keys, one agent never reaching another's, the page command window, clearing                    |
-| `test_release_versions`               | both           | one version everywhere, with its changelog entry and release note                                                   |
+| Suite                                 | Runs in        | Coverage                                                                                                                                                                                                                                   |
+| ------------------------------------- | -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `test_browser_contract`               | ctest          | 47 browser-tool schemas, command translation, `tab_id`, `agent` and clipboard validation, refs bound to tabs                                                                                                                               |
+| `test_native_messaging`               | ctest          | native frame codec and host handshake                                                                                                                                                                                                      |
+| `test_browser_bridge`                 | ctest          | reply correlation, per-tab snapshots and staleness, refs dropped for released tabs, client name                                                                                                                                            |
+| `test_browser_extension_installer`    | ctest          | public identity and isolated native-host lifecycle                                                                                                                                                                                         |
+| `test_browser_uploads`                | ctest          | upload path rules, roots confinement, and byte-exact chunking                                                                                                                                                                              |
+| `test_browser_bridge_security`        | ctest          | ACL/permissions, nonce, per-pid rendezvous records, runtime-directory override                                                                                                                                                             |
+| `test_browser_bridge_pipe`            | ctest          | IPC handshake, peer verification, deadlines and beats, idle-peer departure, why an exchange ended, reconnect, sweep, several relays at once, the ninth refused, another Chrome refused, an older relay served alone, profile names cleaned |
+| `test_browser_bridge_relay`           | ctest          | relay/bridge/session end to end, offers of running servers only, `bridge_servers`, progress, versions, routing across profiles                                                                                                             |
+| `test_install_layout`                 | ctest          | version-directory safety, link swap under an open file, pruning, install lock                                                                                                                                                              |
+| `test_updater`                        | ctest          | asset naming, checksums, version order, staged install, an older build leaving a newer current                                                                                                                                             |
+| `test_browser_mcp_server`             | ctest          | identity, `instructions`, 53 tools, profiles, envelopes, schemas, MCP content                                                                                                                                                              |
+| `test_windows_process_identity`       | ctest, Windows | identity across a junction, from a child launched through one                                                                                                                                                                              |
+| `test_browser_extension_pure`         | both           | service-worker security, storage, geometry, and decision functions                                                                                                                                                                         |
+| `test_browser_extension_transport`    | both           | reconnect backoff and pause, offers, readiness handshake, protocol mismatch, refused commands                                                                                                                                              |
+| `test_browser_extension_session`      | both           | what a tab stops believing when its debugger attachment ends                                                                                                                                                                               |
+| `test_browser_extension_multisession` | both           | one port per server, and the leases that keep sessions apart                                                                                                                                                                               |
+| `test_browser_extension_recording`    | both           | recording refusals, the timeline, and discard when the tab or session ends                                                                                                                                                                 |
+| `test_browser_extension_offscreen`    | both           | the recorder host loaded for real, against a captureStream-less OffscreenCanvas                                                                                                                                                            |
+| `test_vscode_payload`                 | both           | VSIX payload rules, with red drills for a link that survives pruning                                                                                                                                                                       |
+| `test_extension_install_cycle`        | ctest          | install, status and uninstall tools driven through the built server against a real registration                                                                                                                                            |
+| `test_browser_extension_tabs`         | both           | whose tab it is, popups, per-agent groups and names, release, parking, idle, file choosers                                                                                                                                                 |
+| `test_browser_extension_clipboard`    | both           | chords never sent as keys, one agent never reaching another's, the page command window, clearing                                                                                                                                           |
+| `test_browser_extension_versions`     | both           | the versions the extension reports, and reloading itself once into a newer install                                                                                                                                                         |
+| `test_browser_extension_profiles`     | both           | a profile's name, email and generated name, renames, focus, `profileState`, `findTab`, the options page                                                                                                                                    |
+| `test_release_versions`               | both           | one version everywhere, with its changelog entry and release note                                                                                                                                                                          |
 
 "Both" means ctest and `npm run test:js`; CI runs ctest on Windows, Linux and macOS.
 
@@ -423,19 +509,23 @@ node tests/e2e/isolated_run.mjs --chrome=<CfT> --executable=<server> tests/e2e/f
 node tests/e2e/isolated_run.mjs --chrome=<CfT> --executable=<server> tests/e2e/multi_agent_e2e.mjs
 node tests/e2e/isolated_run.mjs --chrome=<CfT> --executable=<server> tests/e2e/user_interference_e2e.mjs
 node tests/e2e/display_matrix_e2e.mjs --chrome=<CfT> --parallel=2 --executable=<server>
+xvfb-run -a node tests/e2e/isolated_run.mjs --chrome=<CfT> --executable=<server> --headed \
+  --second-profile="Profile 2" tests/e2e/profiles_e2e.mjs
 node tools/backoff_probe.mjs <chrome> <unpacked extension dir> [seconds]
 ```
 
 ### Claim boundary
 
-Verified for 1.8.1: source build and automated suites on Windows and Linux locally and on all three
-platforms in CI; strict native analysis and a clean Semgrep scan; sanitizers; the live suites in
-Chrome for Testing on all three platforms in CI and on Linux locally; and, for everything
-1.8.1 leaves unchanged, the 1.8.0 evidence below, including a real-world run in a real Chrome
-profile on Windows. Not verified: a real Chrome profile on macOS or Linux; why Chrome stalls in the
-one display configuration above. No Linux machine has ever installed a release through
-`browser_update_apply`. This is strong software evidence, not a claim about every website, Chrome
-release, desktop environment, or machine configuration.
+Verified for 1.10.0: source build and automated suites on Windows and Linux locally; strict native
+analysis and a clean Semgrep scan; the live suites, two profiles included, in Chrome for Testing on
+Linux locally; and, for everything 1.10.0 leaves unchanged, the 1.9.0 and earlier evidence that
+follows, including a real-world run in a real Chrome profile on Windows. Not verified: a signed-in
+profile named by its account email in a live Chrome (the test Chrome is signed out; the email path is
+unit-tested against a stand-in for Chrome's identity API); two profiles at once on Windows or macOS
+(the two-profile case needs a headed Chrome and runs on Linux under Xvfb); a real Chrome profile on
+macOS or Linux; why Chrome stalls in the one display configuration above. No Linux machine has ever
+installed a release through `browser_update_apply`. This is strong software evidence, not a claim
+about every website, Chrome release, desktop environment, or machine configuration.
 
 ## Earlier evidence
 

@@ -114,7 +114,11 @@ QString serverInstructions() {
       "back, not closed; pass keep_open:true to leave a page open for the "
       "user. A reply may end with a note that the Chrome extension or this "
       "server is out of date; tell the user what it says, since only they can "
-      "reload the extension or restart the server.");
+      "reload the extension or restart the server. The user may have several "
+      "Chrome profiles connected (browser_tabs names each tab's profile): "
+      "open your tab in the right one with browser_new_tab's profile, such as "
+      "\"work\", or it opens in the profile the user last used; every call "
+      "with your tab_id then goes to that profile.");
 }
 
 QJsonObject initializeResult() {

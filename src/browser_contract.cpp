@@ -907,6 +907,19 @@ bool takesAgentName(const QString &tool) {
          tool == QLatin1String("browser_select_tab");
 }
 
+// The tools that take a `profile`: the ones that open something new, and the
+// two whose state lives per profile and that name no tab -- cookies and site
+// permissions. Every other call goes to the profile its tab is in.
+bool takesProfile(const QString &tool) {
+  return tool == QLatin1String("browser_new_tab") ||
+         tool == QLatin1String("browser_window") ||
+         tool == QLatin1String("browser_cookies") ||
+         tool == QLatin1String("browser_permission");
+}
+
+// Longest profile a call may name: an email address at its longest.
+constexpr qsizetype kMaxProfileArgChars = 254;
+
 // Longest agent name, in characters (code points). Short because it becomes a
 // tab-group title in a tab strip that has room for a word, not a sentence.
 constexpr qsizetype kMaxAgentNameChars = 24;
@@ -959,6 +972,32 @@ QString applyAgentName(const QJsonObject &arguments, QJsonObject &command) {
         .arg(kMaxAgentNameChars);
   }
   command.insert(QStringLiteral("agent"), name);
+  return QString();
+}
+
+// A profile named by a call: a string of printable characters, 1 to 254 of
+// them after trimming. It is the server's to route by and never reaches the
+// extension, so it is checked here and not copied into the command. Empty on
+// success.
+QString checkProfileArg(const QJsonObject &arguments) {
+  if (!arguments.contains(QStringLiteral("profile"))) {
+    return QString();
+  }
+  const QJsonValue value = arguments.value(QStringLiteral("profile"));
+  if (!value.isString()) {
+    return QStringLiteral("profile must be a string");
+  }
+  const QString profile = value.toString().trimmed();
+  if (profile.isEmpty() || profile.size() > kMaxProfileArgChars) {
+    return QStringLiteral("profile must be 1 to %1 characters after trimming")
+        .arg(kMaxProfileArgChars);
+  }
+  if (std::any_of(profile.cbegin(), profile.cend(), [](QChar ch) {
+        return !ch.isPrint() && !ch.isSurrogate();
+      })) {
+    return QStringLiteral("profile must contain only printable characters (no "
+                          "control characters)");
+  }
   return QString();
 }
 
@@ -1137,6 +1176,12 @@ QString applyClipboardArgs(const QJsonObject &arguments) {
 // an error string (empty on success).
 QString applyToolExtras(const QString &tool, const QJsonObject &arguments,
                         const QJsonObject &ref_index, QJsonObject &command) {
+  if (takesProfile(tool)) {
+    const QString profile = checkProfileArg(arguments);
+    if (!profile.isEmpty()) {
+      return profile;
+    }
+  }
   if (tool == QLatin1String("browser_drag")) {
     return applyDragExtra(arguments, ref_index, command);
   }
@@ -1193,6 +1238,9 @@ QSet<QString> allowedArgKeys(const QString &tool, const CmdSpec &spec) {
   if (takesAgentName(tool)) {
     allowed.insert(QStringLiteral("agent"));
   }
+  if (takesProfile(tool)) {
+    allowed.insert(QStringLiteral("profile"));
+  }
   return allowed;
 }
 
@@ -1234,6 +1282,22 @@ QJsonObject tabIdProperty(const QString &description) {
 // The `agent` property on the tools that make a tab this session's. Length is
 // advertised as well as enforced (applyAgentName); maxLength counts UTF-16
 // units in some validators, which only ever makes them stricter than ours.
+// The Chrome profile a call opens its tab or window in, or reads cookies and
+// sets permissions in.
+QJsonObject profileProperty(const QString &what) {
+  QJsonObject property = stringProperty(
+      QStringLiteral("The Chrome profile to %1, by the name browser_tabs and "
+                     "browser_extension_status show (a name such as work, or "
+                     "the profile's account email; case does not matter). "
+                     "Omit for the profile of the Chrome window the user last "
+                     "used.")
+          .arg(what));
+  property.insert(QStringLiteral("minLength"), 1);
+  property.insert(QStringLiteral("maxLength"),
+                  static_cast<int>(kMaxProfileArgChars));
+  return property;
+}
+
 QJsonObject agentProperty() {
   QJsonObject property = stringProperty(QStringLiteral(
       "A short name for the agent doing this work (e.g. \"research\"). Tabs "
@@ -1809,7 +1873,9 @@ void appendTabTools(QJsonArray &tools) {
       toolSchema(
           QJsonObject{{QStringLiteral("url"), stringProperty(QStringLiteral(
                                                   "URL to open (optional)."))},
-                      {QStringLiteral("agent"), agentProperty()}},
+                      {QStringLiteral("agent"), agentProperty()},
+                      {QStringLiteral("profile"),
+                       profileProperty(QStringLiteral("open the tab in"))}},
           {})));
   tools.append(toolEntry(
       QStringLiteral("browser_close_tab"),
@@ -2024,7 +2090,10 @@ void appendWindowTools(QJsonArray &tools) {
                                          "Target window id for focus/close."))},
                       {QStringLiteral("url"),
                        stringProperty(QStringLiteral(
-                           "URL to open for action new (optional)."))}},
+                           "URL to open for action new (optional)."))},
+                      {QStringLiteral("profile"),
+                       profileProperty(QStringLiteral(
+                           "open the window in, for action new"))}},
           QJsonArray{QStringLiteral("action")})));
 }
 
@@ -2134,6 +2203,8 @@ void appendPermissionTool(QJsonArray &tools) {
           QJsonObject{{QStringLiteral("name"),
                        stringProperty(QStringLiteral(
                            "Permission to set, e.g. geolocation or camera."))},
+                      {QStringLiteral("profile"),
+                       profileProperty(QStringLiteral("set it in"))},
                       {QStringLiteral("setting"),
                        stringProperty(
                            QStringLiteral("allow, block, or ask (default)."))},
@@ -2190,6 +2261,8 @@ void appendCookiesTool(QJsonArray &tools) {
           QJsonObject{
               {QStringLiteral("action"),
                stringProperty(QStringLiteral("get, set, or remove."))},
+              {QStringLiteral("profile"),
+               profileProperty(QStringLiteral("use the cookies of"))},
               {QStringLiteral("url"),
                stringProperty(QStringLiteral(
                    "Cookie url (optional; defaults to the active tab)."))},
