@@ -45,9 +45,12 @@ struct ExtensionInstallResult {
 /// reason. Empty when @p registered_exe is empty (nothing registered says
 /// nothing about a mismatch) or when it already names @p running_exe.
 ///
-/// Pure so the wording and the comparison can be tested without a registry or a
-/// manifest: paths are compared the way the platform compares them, which on
-/// Windows means case-insensitively.
+/// Needs no registry or manifest, so the wording and the comparison can be
+/// tested directly. Paths are compared the way the platform compares them,
+/// which on Windows means case-insensitively, after following links: a managed
+/// install registers its stable link while the server reports the version it
+/// resolves to, and those are one file. A path that does not exist is compared
+/// as written.
 [[nodiscard]] QString nativeHostRegistrationNote(const QString &registered_exe,
                                                  const QString &running_exe);
 
