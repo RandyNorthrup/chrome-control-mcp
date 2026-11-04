@@ -154,6 +154,7 @@ private slots:
   void uninstallRemovesOnlyOwnedRegistration();
   void registrationNote_namesBothExecutablesAndTheFix();
   void registrationNote_silentWhenNothingToSay();
+  void registrationNote_followsLinksToTheSameFile();
   void registeredHostExecutable_readsTheManifest();
 };
 
@@ -325,6 +326,43 @@ void BrowserExtensionInstallerTests::registrationNote_silentWhenNothingToSay() {
   QVERIFY(nativeHostRegistrationNote(QStringLiteral("C:/CCM/ccm.exe"),
                                      QStringLiteral("c:/ccm/CCM.EXE"))
               .isEmpty());
+#endif
+}
+
+void BrowserExtensionInstallerTests::
+    registrationNote_followsLinksToTheSameFile() {
+#ifdef Q_OS_WIN
+  QSKIP("QFile::link makes a .lnk shortcut on Windows, not a reparse point.");
+#else
+  // A managed install registers the stable `current` link, while a running
+  // server reports the version directory the link resolves to. Those are one
+  // file, and the relay compares resolved images, so calling them a mismatch
+  // sends the operator to a re-registration that writes the same link again.
+  QTemporaryDir dir;
+  QVERIFY(dir.isValid());
+  const QDir root(dir.path());
+  QVERIFY(root.mkpath(QStringLiteral("versions/1.0.0")));
+  const QString versioned = makeFile(
+      root.filePath(QStringLiteral("versions/1.0.0/host")), "the program");
+  const QString current = root.filePath(QStringLiteral("current"));
+  QVERIFY(
+      QFile::link(root.filePath(QStringLiteral("versions/1.0.0")), current));
+  const QString stable = QDir(current).filePath(QStringLiteral("host"));
+
+  QVERIFY(nativeHostRegistrationNote(stable, versioned).isEmpty());
+  QVERIFY(nativeHostRegistrationNote(versioned, stable).isEmpty());
+
+  // Resolving links must not hide a real mismatch: a second copy with the same
+  // bytes is a different image, and the relay refuses it.
+  const QString copy =
+      makeFile(root.filePath(QStringLiteral("copy")), "the program");
+  QVERIFY(!nativeHostRegistrationNote(stable, copy).isEmpty());
+
+  // A registration naming a file that is gone cannot be resolved, and it is
+  // still a mismatch worth reporting, under the path the registration names.
+  const QString missing = root.filePath(QStringLiteral("gone/host"));
+  const QString note = nativeHostRegistrationNote(missing, versioned);
+  QVERIFY(note.contains(QDir::toNativeSeparators(missing)));
 #endif
 }
 

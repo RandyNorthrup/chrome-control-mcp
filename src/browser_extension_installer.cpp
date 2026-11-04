@@ -467,11 +467,20 @@ QString nativeHostRegistrationNote(const QString &registered_exe,
 #else
   constexpr Qt::CaseSensitivity pathCase = Qt::CaseSensitive;
 #endif
-  const QString registered = QDir::cleanPath(registered_exe);
-  const QString running = QDir::cleanPath(running_exe);
-  if (registered.compare(running, pathCase) == 0) {
+  // Compare the files, not their spellings: the relay this note explains
+  // compares resolved images, and a managed install registers the stable
+  // `current` link while the running server reports the version directory it
+  // resolves to. A path that no longer exists has nothing to resolve to, and
+  // is compared as written.
+  const auto resolved = [](const QString &path) {
+    const QString canonical = QFileInfo(path).canonicalFilePath();
+    return canonical.isEmpty() ? QDir::cleanPath(path) : canonical;
+  };
+  if (resolved(registered_exe).compare(resolved(running_exe), pathCase) == 0) {
     return QString();
   }
+  const QString registered = QDir::cleanPath(registered_exe);
+  const QString running = QDir::cleanPath(running_exe);
   return QStringLiteral(
              "Chrome's native-messaging host is registered to %1, but this "
              "server is %2. Chrome starts the registered executable, and the "
