@@ -53,8 +53,9 @@ Windows, Linux, and macOS. Current release: 1.11.1 (2026-11-07).
       evidence for 1.8 is Windows only; CI covers all three platforms in Chrome for Testing.
 - [x] Explain the macOS `relay_forwardsProgressBeatsAndStillDeliversTheReply` failure on the
       `v1.8.0` tag's Quality run: a timing margin of about 125 ms in the test, widened in 1.8.1
-- [ ] Find why headless Chrome for Testing 153 stalls on Windows in display-matrix configurations
-      that capture 3840x2160 device pixels: three CI screenshots (all on tag-push runs), and once
+- [ ] Find why headless Chrome for Testing 153 stalls or exits on Windows in display-matrix
+      configurations that capture 3840x2160 device pixels -- twice more on the v1.11.1 tag, where it
+      held up publishing until the job ran again: three CI screenshots (all on tag-push runs), and once
       in six local runs through the suite's own DevTools pinch, a call the extension takes no part
       in. Since 1.9.0 a failed screenshot reports whether Chrome still answers DevTools
       ([VERIFICATION.md](docs/VERIFICATION.md#open-a-chrome-stall-in-one-display-configuration))

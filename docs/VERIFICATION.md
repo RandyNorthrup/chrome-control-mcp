@@ -60,6 +60,25 @@ reason, then the committed source restored byte for byte and the check green aga
   U+202A-U+202E, U+2066-U+2069), planted in a scratch file, fails the hook; ordinary non-ASCII
   text (an em dash, accents, an emoji, a line separator, a no-break space) passes it.
 
+### 1.11.1: CI and the release
+
+The release commit, `42bce8b`
+([Quality run 42395721470](https://github.com/RandyNorthrup/chrome-control-mcp/actions/runs/42395721470)):
+all nine jobs passed. Pull request #5's own branch passed all nine on `3f3b52a` before it was
+merged as `afcbccd`.
+
+The v1.11.1 tag ([release run 42396410061](https://github.com/RandyNorthrup/chrome-control-mcp/actions/runs/42396410061)):
+the four archives built and tested, and the live suites passed on Linux and macOS. On Windows the
+display matrix failed two configurations, `1x-3840x2160-zoom100-classic` and
+`1.5x-2560x1440-zoom100-overlay` -- both pinch 1.5, both capturing 3840x2160 device pixels -- each
+on a screenshot: "the browser's relay closed the connection 390 ms into screenshot, before replying
+(connection reset); the browser did not answer DevTools (fetch failed); the page did not answer
+DevTools (fetch failed)". That is Chrome itself exiting, as recorded under
+[the open item below](#open-a-chrome-stall-in-one-display-configuration), on a path 1.11.1 does not
+touch: the capture never returned, so the server's PNG reader never ran. Nothing was published. The
+failed job was run again and passed; the GitHub release published at 18:13:30 and 1.11.1 reached the
+Marketplace for all four targets.
+
 ### 1.11.0 (2026-11-01)
 
 1.11.0 lets `browser_upload` carry files up to 2 GiB (or what `CHROME_CONTROL_MCP_UPLOAD_MAX_MB` sets),
@@ -601,6 +620,13 @@ the relay -- a child of Chrome -- went with it. The extension and the bridge wer
 not the fault. It is also the first occurrence on a main-branch push rather than a tag. Why Chrome
 for Testing stops capturing 3840x2160 pixels on the GPU-less Windows runner is still not
 established.
+
+The `v1.11.1` tag met it twice in one run, now that the live suites gate publishing:
+`1x-3840x2160-zoom100-classic` and `1.5x-2560x1440-zoom100-overlay`, both pinch 1.5 and 3840x2160
+device pixels, both with Chrome's DevTools endpoint gone. Linux and macOS passed the same
+configurations, and the job passed when run again. A capture of fewer device pixels is the likely
+way round it whatever Chrome's cause; screenshots scaled to CSS pixels and capped are planned for a
+coming release.
 
 ### Chrome's file chooser, measured on Chrome 153
 
