@@ -15,7 +15,6 @@
 #include <QStandardPaths>
 
 #include <algorithm>
-#include <cstring>
 
 namespace chrome_control_mcp::browser {
 
@@ -94,20 +93,24 @@ constexpr int kPngMinHeaderBytes = 24;
 // of the (untrusted) payload. Returns false unless it is a valid PNG header
 // with positive dimensions.
 bool pngDimensions(const QByteArray &png, int &width, int &height) {
-  static const unsigned char kSignature[8] = {0x89, 0x50, 0x4E, 0x47,
-                                              0x0D, 0x0A, 0x1A, 0x0A};
+  // Read through QByteArray's own bounded operations rather than raw pointers:
+  // GCC 16 with Qt 6.12's headers takes constData() for the one-byte empty
+  // buffer on a path the size check has already ruled out, and refuses the
+  // build (-Werror=array-bounds).
+  static constexpr char kSignature[] = "\x89PNG\r\n\x1a\n";
   if (png.size() < kPngMinHeaderBytes ||
-      std::memcmp(png.constData(), kSignature, kPngSignatureLength) != 0 ||
-      std::memcmp(png.constData() + kPngIhdrTypeOffset, "IHDR",
-                  kPngChunkTypeLength) != 0) {
+      png.first(kPngSignatureLength) !=
+          QByteArrayView(kSignature, kPngSignatureLength) ||
+      png.sliced(kPngIhdrTypeOffset, kPngChunkTypeLength) !=
+          QByteArrayView("IHDR")) {
     return false;
   }
-  const auto *bytes = reinterpret_cast<const unsigned char *>(png.constData());
-  const auto be32 = [bytes](int offset) {
-    return (static_cast<quint32>(bytes[offset]) << 24) |
-           (static_cast<quint32>(bytes[offset + 1]) << 16) |
-           (static_cast<quint32>(bytes[offset + 2]) << 8) |
-           static_cast<quint32>(bytes[offset + 3]);
+  const auto byte = [&png](int at) {
+    return static_cast<quint32>(static_cast<unsigned char>(png.at(at)));
+  };
+  const auto be32 = [&byte](int offset) {
+    return (byte(offset) << 24) | (byte(offset + 1) << 16) |
+           (byte(offset + 2) << 8) | byte(offset + 3);
   };
   width = static_cast<int>(be32(kPngWidthOffset));
   height = static_cast<int>(be32(kPngHeightOffset));
