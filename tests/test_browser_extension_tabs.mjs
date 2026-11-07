@@ -381,8 +381,8 @@ test("an agent named in any script keeps its own group and its whole name", asyn
 
 test("a name is still bounded for the tab strip: no control characters, 24 characters at most", async () => {
   const { worker } = await attachedBrowser();
-  assert.equal(worker.agentArg({ agent: "a‮b\u0007c d" }), "abcd");
-  assert.equal(worker.agentArg({ agent: "‏\u0000" }), undefined);
+  assert.equal(worker.agentArg({ agent: "a\u202Eb\u0007c\u2028d" }), "abcd");
+  assert.equal(worker.agentArg({ agent: "\u200F\u0000" }), undefined);
   // 25 astral characters: the cut is on code points, never inside a surrogate pair.
   assert.equal(worker.agentArg({ agent: "😀".repeat(25) }), "😀".repeat(24));
   assert.equal(worker.agentArg({ agent: "  ok  " }), "ok");

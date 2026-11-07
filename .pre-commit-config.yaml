@@ -35,6 +35,16 @@ repos:
 
   - repo: local
     hooks:
+      # Invisible bidirectional controls (LRM, RLM, the embeddings and overrides, the isolates)
+      # make source read differently from how it compiles, and GCC's -Wbidi-chars rejects them;
+      # a test that needs one builds it from a code point. pygrep matches bytes, so the
+      # pattern is their UTF-8 spelling, in ASCII escapes a Windows command line carries intact.
+      - id: no-bidirectional-characters
+        name: No invisible bidirectional characters
+        language: pygrep
+        entry: '\xe2\x80[\x8e\x8f\xaa-\xae]|\xe2\x81[\xa6-\xa9]'
+        types: [text]
+
       - id: prettier
         name: Prettier
         entry: npm exec -- prettier --check
