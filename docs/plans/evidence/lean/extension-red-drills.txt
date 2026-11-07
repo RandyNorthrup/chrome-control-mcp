@@ -1,19 +1,19 @@
-baseline: exit=0 
+baseline: exit=0
 == drill read-window: 'args.offset >= 0 ? args.offset : 0' -> 'args.offset >= 0 ? 0 : 0'
    before sha256 fd8ca33216c31a5e20b47d358d817ecc43499b2b0dd12f3677b9830d6b6d22aa
    mutated sha256 2af6fccc15e444400b81dd779356be2bcb8ffbfba8a257084bddd3b600e6cca6
    planted: exit=1; failed: a read's scope and window come from its arguments, bounded
    restored byte for byte
-   restored: exit=0  
+   restored: exit=0
 == drill page-read-slice: 'content: text.slice(offset, offset + maxChars),' -> 'content: text.slice(0, maxChars),'
    before sha256 fd8ca33216c31a5e20b47d358d817ecc43499b2b0dd12f3677b9830d6b6d22aa
    mutated sha256 a50a670dc5749f5bd832a9f02028628c18cfa66980674c9e63e0998376d5eac3
    planted: exit=1; failed: the page read returns the window asked for and the whole text's length
    restored byte for byte
-   restored: exit=0  
+   restored: exit=0
 == drill offscreen-below: 'box.y >= rect.y + rect.height' -> 'box.y >= rect.y + rect.height + 100000'
    before sha256 fd8ca33216c31a5e20b47d358d817ecc43499b2b0dd12f3677b9830d6b6d22aa
    mutated sha256 c4f61444394f41abe9056c2383842492c71b7dff5ec8fe5083e6c079777b8159
    planted: exit=1; failed: only main-document records wholly outside the visible rect are marked off-screen
    restored byte for byte
-   restored: exit=0  
+   restored: exit=0

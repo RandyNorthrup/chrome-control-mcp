@@ -415,9 +415,9 @@ measured.
       "status": "verified",
       "evidence": [
         "EV-LEAN-UNIT-JS-2",
-        "EV-LEAN-RED-EXT-WINDOW-2",
-        "EV-LEAN-RED-EXT-PAGE-2",
-        "EV-LEAN-RED-EXT-OFFSCREEN-2",
+        "EV-LEAN-RED-EXT-WINDOW-3",
+        "EV-LEAN-RED-EXT-PAGE-3",
+        "EV-LEAN-RED-EXT-OFFSCREEN-3",
         "EV-LEAN-RED-COMPAT-2"
       ],
       "blocker": null,
@@ -5194,7 +5194,7 @@ measured.
         "AC-LEAN-SNAP-SCOPE"
       ],
       "kind": "red",
-      "status": "pass",
+      "status": "stale",
       "command": [
         "node",
         "--test",
@@ -5233,7 +5233,7 @@ measured.
           }
         ]
       },
-      "reason": null,
+      "reason": "Superseded: the repository's trailing-whitespace hook trimmed the drill log (four lines, spaces only); the same drills are recorded against the trimmed bytes",
       "scope_sha256": "8862aaa38caf533f7d6b8d6e9cd0acb7d4ccd8122fed381cebe9085578831a90",
       "environment": {
         "platform": "windows",
@@ -5329,7 +5329,7 @@ measured.
         "AC-LEAN-READ"
       ],
       "kind": "red",
-      "status": "pass",
+      "status": "stale",
       "command": [
         "node",
         "--test",
@@ -5368,7 +5368,7 @@ measured.
           }
         ]
       },
-      "reason": null,
+      "reason": "Superseded: the repository's trailing-whitespace hook trimmed the drill log (four lines, spaces only); the same drills are recorded against the trimmed bytes",
       "scope_sha256": "8862aaa38caf533f7d6b8d6e9cd0acb7d4ccd8122fed381cebe9085578831a90",
       "environment": {
         "platform": "windows",
@@ -5464,7 +5464,7 @@ measured.
         "AC-LEAN-READ"
       ],
       "kind": "red",
-      "status": "pass",
+      "status": "stale",
       "command": [
         "node",
         "--test",
@@ -5503,7 +5503,7 @@ measured.
           }
         ]
       },
-      "reason": null,
+      "reason": "Superseded: the repository's trailing-whitespace hook trimmed the drill log (four lines, spaces only); the same drills are recorded against the trimmed bytes",
       "scope_sha256": "8862aaa38caf533f7d6b8d6e9cd0acb7d4ccd8122fed381cebe9085578831a90",
       "environment": {
         "platform": "windows",
@@ -6637,6 +6637,411 @@ measured.
           {
             "path": "src/browser_contract.cpp",
             "sha256": "8c98cb0dc07908bddc0710994fdd75de69086056668db52ebf300242f32043e3"
+          }
+        ]
+      },
+      "reason": null,
+      "scope_sha256": "8862aaa38caf533f7d6b8d6e9cd0acb7d4ccd8122fed381cebe9085578831a90",
+      "environment": {
+        "platform": "windows",
+        "tools": {
+          "chrome-for-testing": "153.0.8010.52",
+          "cmake": "4.4.5",
+          "node": "v24.20.0",
+          "python": "3.14.10",
+          "wsl2-arch-cmake": "4.4.5",
+          "wsl2-arch-node": "v26.13.0",
+          "wsl2-arch-python": "3.12.16",
+          "wsl2-arch-semgrep": "1.174.0"
+        }
+      },
+      "inputs": [
+        {
+          "path": "CMakeLists.txt",
+          "sha256": "5062fcc74406ece3ed66729a08b0f2f0bd802b70caad6c468320c71a2f7c32b3"
+        },
+        {
+          "path": "browser/extension/background.js",
+          "sha256": "fd8ca33216c31a5e20b47d358d817ecc43499b2b0dd12f3677b9830d6b6d22aa"
+        },
+        {
+          "path": "docs/QUALITY.md",
+          "sha256": "b4e3dbb2c08c0732aeb0cac90875bb8d06df149618946ede1d82ea6172bb88d7"
+        },
+        {
+          "path": "include/chrome_control_mcp/browser_bridge.h",
+          "sha256": "08fb6fc1ee5f49d49319d95c2bacfed063736d844369f677e1f43278d51bac31"
+        },
+        {
+          "path": "include/chrome_control_mcp/browser_contract.h",
+          "sha256": "a0bb87032ed68b11a0d116abfa9a3efc9a7434d64b884580619e7c870643e002"
+        },
+        {
+          "path": "scripts/mcp_smoke.mjs",
+          "sha256": "0cc86d851931fb4bd40eeb4cc3fdbf59eb515954d0e98d68b0c7cdccdc398158"
+        },
+        {
+          "path": "src/browser_bridge.cpp",
+          "sha256": "60b27fb407e2c171f04a4a492a8e83c7e71eeb1d1be0d4b47ef1837c95e1e1cf"
+        },
+        {
+          "path": "src/browser_contract.cpp",
+          "sha256": "1bc261eb0544cb64486f832baac89b69bdbc88afaaedf93848c459427ebde4cb"
+        },
+        {
+          "path": "src/browser_mcp_tools.cpp",
+          "sha256": "1e02b18007a539c8679f4a70200b6f276d2738ce28a1611d909f82f59a944ef4"
+        },
+        {
+          "path": "src/mcp_dispatch.cpp",
+          "sha256": "3b692ed6db4e44fff98e3dbb8b859ff12d5802b02904707e8fa4e4800aee5822"
+        },
+        {
+          "path": "tests/e2e/fixture_server.mjs",
+          "sha256": "6151b9cdd6b67161415d50f8d14331acd671a4a79e7f24bdbbc06c400a654434"
+        },
+        {
+          "path": "tests/e2e/full_browser_e2e.mjs",
+          "sha256": "7dfa8c99ad65fd730eb6d45d35b2b4572e82c39e8a77df91086d0dde999d5749"
+        },
+        {
+          "path": "tests/e2e/meter_e2e.mjs",
+          "sha256": "3c6ec7d789f81780b5a04a482f25c7e8ce7c07789b6ed5efe20e8fbf8b79aa07"
+        },
+        {
+          "path": "tests/test_browser_bridge_relay.cpp",
+          "sha256": "391b53ad5c25dcfc7c390ea89b24f25e602a7e44fa15fef210386673c5693dd1"
+        },
+        {
+          "path": "tests/test_browser_contract.cpp",
+          "sha256": "cb985f0c1c1a96c6bfb3d504a891eb0b1b5ebcb9640f5c5af2ad225c93fe3a43"
+        },
+        {
+          "path": "tests/test_browser_extension_pure.mjs",
+          "sha256": "8363e31ce593848ca2fca4226f18ac8acd30bd1959795a68b7f387c28f36e710"
+        },
+        {
+          "path": "tests/test_browser_mcp_server.cpp",
+          "sha256": "5f4a57621112a0438605c66a6ec1a72b4c910a4dddf471c10eafda046b23b175"
+        },
+        {
+          "path": "tests/test_browser_views.cpp",
+          "sha256": "dc0400ac1b66628ea0fff70a8e44bbaca03746bd6385b802184ff0ee7fd1708a"
+        }
+      ]
+    },
+    {
+      "id": "EV-LEAN-RED-EXT-WINDOW-3",
+      "acceptance": [
+        "AC-LEAN-READ"
+      ],
+      "kind": "red",
+      "status": "pass",
+      "command": [
+        "node",
+        "--test",
+        "--test-reporter=tap",
+        "tests/test_browser_extension_pure.mjs"
+      ],
+      "method": "Drill (read-window): the extension reads from the start whatever the offset. Planted, the suite failed in a read's scope and window come from its arguments, bounded; restored byte for byte and green again",
+      "exit_code": 0,
+      "artifact": {
+        "path": "docs/plans/evidence/lean/extension-red-drills.txt",
+        "sha256": "686f93b03f781ecd1de4a641d7e0269c0739a7592f58926ef51fe6d782f307e5"
+      },
+      "red": {
+        "mutation": "the extension reads from the start whatever the offset",
+        "baseline_exit": 0,
+        "mutated_exit": 1,
+        "restored_exit": 0,
+        "expected_diagnostic": "a read's scope and window come from its arguments, bounded",
+        "observed_diagnostic": "a read's scope and window come from its arguments, bounded",
+        "before": [
+          {
+            "path": "browser/extension/background.js",
+            "sha256": "fd8ca33216c31a5e20b47d358d817ecc43499b2b0dd12f3677b9830d6b6d22aa"
+          }
+        ],
+        "after": [
+          {
+            "path": "browser/extension/background.js",
+            "sha256": "fd8ca33216c31a5e20b47d358d817ecc43499b2b0dd12f3677b9830d6b6d22aa"
+          }
+        ],
+        "mutated": [
+          {
+            "path": "browser/extension/background.js",
+            "sha256": "2af6fccc15e444400b81dd779356be2bcb8ffbfba8a257084bddd3b600e6cca6"
+          }
+        ]
+      },
+      "reason": null,
+      "scope_sha256": "8862aaa38caf533f7d6b8d6e9cd0acb7d4ccd8122fed381cebe9085578831a90",
+      "environment": {
+        "platform": "windows",
+        "tools": {
+          "chrome-for-testing": "153.0.8010.52",
+          "cmake": "4.4.5",
+          "node": "v24.20.0",
+          "python": "3.14.10",
+          "wsl2-arch-cmake": "4.4.5",
+          "wsl2-arch-node": "v26.13.0",
+          "wsl2-arch-python": "3.12.16",
+          "wsl2-arch-semgrep": "1.174.0"
+        }
+      },
+      "inputs": [
+        {
+          "path": "CMakeLists.txt",
+          "sha256": "5062fcc74406ece3ed66729a08b0f2f0bd802b70caad6c468320c71a2f7c32b3"
+        },
+        {
+          "path": "browser/extension/background.js",
+          "sha256": "fd8ca33216c31a5e20b47d358d817ecc43499b2b0dd12f3677b9830d6b6d22aa"
+        },
+        {
+          "path": "docs/QUALITY.md",
+          "sha256": "b4e3dbb2c08c0732aeb0cac90875bb8d06df149618946ede1d82ea6172bb88d7"
+        },
+        {
+          "path": "include/chrome_control_mcp/browser_bridge.h",
+          "sha256": "08fb6fc1ee5f49d49319d95c2bacfed063736d844369f677e1f43278d51bac31"
+        },
+        {
+          "path": "include/chrome_control_mcp/browser_contract.h",
+          "sha256": "a0bb87032ed68b11a0d116abfa9a3efc9a7434d64b884580619e7c870643e002"
+        },
+        {
+          "path": "scripts/mcp_smoke.mjs",
+          "sha256": "0cc86d851931fb4bd40eeb4cc3fdbf59eb515954d0e98d68b0c7cdccdc398158"
+        },
+        {
+          "path": "src/browser_bridge.cpp",
+          "sha256": "60b27fb407e2c171f04a4a492a8e83c7e71eeb1d1be0d4b47ef1837c95e1e1cf"
+        },
+        {
+          "path": "src/browser_contract.cpp",
+          "sha256": "1bc261eb0544cb64486f832baac89b69bdbc88afaaedf93848c459427ebde4cb"
+        },
+        {
+          "path": "src/browser_mcp_tools.cpp",
+          "sha256": "1e02b18007a539c8679f4a70200b6f276d2738ce28a1611d909f82f59a944ef4"
+        },
+        {
+          "path": "src/mcp_dispatch.cpp",
+          "sha256": "3b692ed6db4e44fff98e3dbb8b859ff12d5802b02904707e8fa4e4800aee5822"
+        },
+        {
+          "path": "tests/e2e/fixture_server.mjs",
+          "sha256": "6151b9cdd6b67161415d50f8d14331acd671a4a79e7f24bdbbc06c400a654434"
+        },
+        {
+          "path": "tests/e2e/full_browser_e2e.mjs",
+          "sha256": "7dfa8c99ad65fd730eb6d45d35b2b4572e82c39e8a77df91086d0dde999d5749"
+        },
+        {
+          "path": "tests/e2e/meter_e2e.mjs",
+          "sha256": "3c6ec7d789f81780b5a04a482f25c7e8ce7c07789b6ed5efe20e8fbf8b79aa07"
+        },
+        {
+          "path": "tests/test_browser_bridge_relay.cpp",
+          "sha256": "391b53ad5c25dcfc7c390ea89b24f25e602a7e44fa15fef210386673c5693dd1"
+        },
+        {
+          "path": "tests/test_browser_contract.cpp",
+          "sha256": "cb985f0c1c1a96c6bfb3d504a891eb0b1b5ebcb9640f5c5af2ad225c93fe3a43"
+        },
+        {
+          "path": "tests/test_browser_extension_pure.mjs",
+          "sha256": "8363e31ce593848ca2fca4226f18ac8acd30bd1959795a68b7f387c28f36e710"
+        },
+        {
+          "path": "tests/test_browser_mcp_server.cpp",
+          "sha256": "5f4a57621112a0438605c66a6ec1a72b4c910a4dddf471c10eafda046b23b175"
+        },
+        {
+          "path": "tests/test_browser_views.cpp",
+          "sha256": "dc0400ac1b66628ea0fff70a8e44bbaca03746bd6385b802184ff0ee7fd1708a"
+        }
+      ]
+    },
+    {
+      "id": "EV-LEAN-RED-EXT-PAGE-3",
+      "acceptance": [
+        "AC-LEAN-READ"
+      ],
+      "kind": "red",
+      "status": "pass",
+      "command": [
+        "node",
+        "--test",
+        "--test-reporter=tap",
+        "tests/test_browser_extension_pure.mjs"
+      ],
+      "method": "Drill (page-read-slice): the page read returns the first window whatever the offset. Planted, the suite failed in the page read returns the window asked for and the whole text's length; restored byte for byte and green again",
+      "exit_code": 0,
+      "artifact": {
+        "path": "docs/plans/evidence/lean/extension-red-drills.txt",
+        "sha256": "686f93b03f781ecd1de4a641d7e0269c0739a7592f58926ef51fe6d782f307e5"
+      },
+      "red": {
+        "mutation": "the page read returns the first window whatever the offset",
+        "baseline_exit": 0,
+        "mutated_exit": 1,
+        "restored_exit": 0,
+        "expected_diagnostic": "the page read returns the window asked for and the whole text's length",
+        "observed_diagnostic": "the page read returns the window asked for and the whole text's length",
+        "before": [
+          {
+            "path": "browser/extension/background.js",
+            "sha256": "fd8ca33216c31a5e20b47d358d817ecc43499b2b0dd12f3677b9830d6b6d22aa"
+          }
+        ],
+        "after": [
+          {
+            "path": "browser/extension/background.js",
+            "sha256": "fd8ca33216c31a5e20b47d358d817ecc43499b2b0dd12f3677b9830d6b6d22aa"
+          }
+        ],
+        "mutated": [
+          {
+            "path": "browser/extension/background.js",
+            "sha256": "a50a670dc5749f5bd832a9f02028628c18cfa66980674c9e63e0998376d5eac3"
+          }
+        ]
+      },
+      "reason": null,
+      "scope_sha256": "8862aaa38caf533f7d6b8d6e9cd0acb7d4ccd8122fed381cebe9085578831a90",
+      "environment": {
+        "platform": "windows",
+        "tools": {
+          "chrome-for-testing": "153.0.8010.52",
+          "cmake": "4.4.5",
+          "node": "v24.20.0",
+          "python": "3.14.10",
+          "wsl2-arch-cmake": "4.4.5",
+          "wsl2-arch-node": "v26.13.0",
+          "wsl2-arch-python": "3.12.16",
+          "wsl2-arch-semgrep": "1.174.0"
+        }
+      },
+      "inputs": [
+        {
+          "path": "CMakeLists.txt",
+          "sha256": "5062fcc74406ece3ed66729a08b0f2f0bd802b70caad6c468320c71a2f7c32b3"
+        },
+        {
+          "path": "browser/extension/background.js",
+          "sha256": "fd8ca33216c31a5e20b47d358d817ecc43499b2b0dd12f3677b9830d6b6d22aa"
+        },
+        {
+          "path": "docs/QUALITY.md",
+          "sha256": "b4e3dbb2c08c0732aeb0cac90875bb8d06df149618946ede1d82ea6172bb88d7"
+        },
+        {
+          "path": "include/chrome_control_mcp/browser_bridge.h",
+          "sha256": "08fb6fc1ee5f49d49319d95c2bacfed063736d844369f677e1f43278d51bac31"
+        },
+        {
+          "path": "include/chrome_control_mcp/browser_contract.h",
+          "sha256": "a0bb87032ed68b11a0d116abfa9a3efc9a7434d64b884580619e7c870643e002"
+        },
+        {
+          "path": "scripts/mcp_smoke.mjs",
+          "sha256": "0cc86d851931fb4bd40eeb4cc3fdbf59eb515954d0e98d68b0c7cdccdc398158"
+        },
+        {
+          "path": "src/browser_bridge.cpp",
+          "sha256": "60b27fb407e2c171f04a4a492a8e83c7e71eeb1d1be0d4b47ef1837c95e1e1cf"
+        },
+        {
+          "path": "src/browser_contract.cpp",
+          "sha256": "1bc261eb0544cb64486f832baac89b69bdbc88afaaedf93848c459427ebde4cb"
+        },
+        {
+          "path": "src/browser_mcp_tools.cpp",
+          "sha256": "1e02b18007a539c8679f4a70200b6f276d2738ce28a1611d909f82f59a944ef4"
+        },
+        {
+          "path": "src/mcp_dispatch.cpp",
+          "sha256": "3b692ed6db4e44fff98e3dbb8b859ff12d5802b02904707e8fa4e4800aee5822"
+        },
+        {
+          "path": "tests/e2e/fixture_server.mjs",
+          "sha256": "6151b9cdd6b67161415d50f8d14331acd671a4a79e7f24bdbbc06c400a654434"
+        },
+        {
+          "path": "tests/e2e/full_browser_e2e.mjs",
+          "sha256": "7dfa8c99ad65fd730eb6d45d35b2b4572e82c39e8a77df91086d0dde999d5749"
+        },
+        {
+          "path": "tests/e2e/meter_e2e.mjs",
+          "sha256": "3c6ec7d789f81780b5a04a482f25c7e8ce7c07789b6ed5efe20e8fbf8b79aa07"
+        },
+        {
+          "path": "tests/test_browser_bridge_relay.cpp",
+          "sha256": "391b53ad5c25dcfc7c390ea89b24f25e602a7e44fa15fef210386673c5693dd1"
+        },
+        {
+          "path": "tests/test_browser_contract.cpp",
+          "sha256": "cb985f0c1c1a96c6bfb3d504a891eb0b1b5ebcb9640f5c5af2ad225c93fe3a43"
+        },
+        {
+          "path": "tests/test_browser_extension_pure.mjs",
+          "sha256": "8363e31ce593848ca2fca4226f18ac8acd30bd1959795a68b7f387c28f36e710"
+        },
+        {
+          "path": "tests/test_browser_mcp_server.cpp",
+          "sha256": "5f4a57621112a0438605c66a6ec1a72b4c910a4dddf471c10eafda046b23b175"
+        },
+        {
+          "path": "tests/test_browser_views.cpp",
+          "sha256": "dc0400ac1b66628ea0fff70a8e44bbaca03746bd6385b802184ff0ee7fd1708a"
+        }
+      ]
+    },
+    {
+      "id": "EV-LEAN-RED-EXT-OFFSCREEN-3",
+      "acceptance": [
+        "AC-LEAN-SNAP-SCOPE"
+      ],
+      "kind": "red",
+      "status": "pass",
+      "command": [
+        "node",
+        "--test",
+        "--test-reporter=tap",
+        "tests/test_browser_extension_pure.mjs"
+      ],
+      "method": "Drill (offscreen-below): elements below the viewport are not marked off-screen. Planted, the suite failed in only main-document records wholly outside the visible rect are marked off-screen; restored byte for byte and green again",
+      "exit_code": 0,
+      "artifact": {
+        "path": "docs/plans/evidence/lean/extension-red-drills.txt",
+        "sha256": "686f93b03f781ecd1de4a641d7e0269c0739a7592f58926ef51fe6d782f307e5"
+      },
+      "red": {
+        "mutation": "elements below the viewport are not marked off-screen",
+        "baseline_exit": 0,
+        "mutated_exit": 1,
+        "restored_exit": 0,
+        "expected_diagnostic": "only main-document records wholly outside the visible rect are marked off-screen",
+        "observed_diagnostic": "only main-document records wholly outside the visible rect are marked off-screen",
+        "before": [
+          {
+            "path": "browser/extension/background.js",
+            "sha256": "fd8ca33216c31a5e20b47d358d817ecc43499b2b0dd12f3677b9830d6b6d22aa"
+          }
+        ],
+        "after": [
+          {
+            "path": "browser/extension/background.js",
+            "sha256": "fd8ca33216c31a5e20b47d358d817ecc43499b2b0dd12f3677b9830d6b6d22aa"
+          }
+        ],
+        "mutated": [
+          {
+            "path": "browser/extension/background.js",
+            "sha256": "c4f61444394f41abe9056c2383842492c71b7dff5ec8fe5083e6c079777b8159"
           }
         ]
       },
