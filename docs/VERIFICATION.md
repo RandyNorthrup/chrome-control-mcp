@@ -67,6 +67,21 @@ reason, then the copy restored byte for byte and the check green again (`unit-re
 - _In the extension:_ a read from the start whatever the offset, the page read's window, and elements
   below the viewport left unmarked each fail their test in `test_browser_extension_pure.mjs`.
 
+### 1.12.0: CI and the release
+
+The release commit, `0aa270f` ([Quality run 42408886381](https://github.com/RandyNorthrup/chrome-control-mcp/actions/runs/42408886381)):
+builds, tests, analysis and both sanitizers passed on all three platforms; the format, lint and
+secret scan job refused four new evidence files (trailing spaces, a final newline, one report
+Prettier had not formatted), which the local hook run had not seen because it ran before they were
+staged. `e55cd13` formatted them and recorded the one affected drill log's receipts again
+([run 42409585251](https://github.com/RandyNorthrup/chrome-control-mcp/actions/runs/42409585251),
+documents only: passed).
+
+The v1.12.0 tag ([release run 42409723921](https://github.com/RandyNorthrup/chrome-control-mcp/actions/runs/42409723921)):
+the four archives built and tested, and the live browser suites passed on Linux, macOS and Windows at
+the first attempt. The GitHub release published at 20:28:09 and 1.12.0 reached the Marketplace for all
+four targets; the tag's Quality run passed.
+
 ### 1.12.0: found on the way
 
 - **Chrome's inline text runs.** The first live run showed find returning `inlinetextbox` lines:
