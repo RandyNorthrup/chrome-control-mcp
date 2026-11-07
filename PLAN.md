@@ -3,7 +3,7 @@
 ## Release target
 
 Ship standalone, MIT-licensed Chrome Control MCP from `main` with the same browser tool surface on
-Windows, Linux, and macOS. Current release: 1.11.1 (2026-11-07).
+Windows, Linux, and macOS. Current release: 1.12.0 (2026-11-07).
 
 ## Completed
 
@@ -59,10 +59,19 @@ Windows, Linux, and macOS. Current release: 1.11.1 (2026-11-07).
       in six local runs through the suite's own DevTools pinch, a call the extension takes no part
       in. Since 1.9.0 a failed screenshot reports whether Chrome still answers DevTools
       ([VERIFICATION.md](docs/VERIFICATION.md#open-a-chrome-stall-in-one-display-configuration))
+- [ ] The rest of the token and speed research
+      ([docs/research](docs/research/browser-mcp-speed-and-token-efficiency.md)): action replies that
+      say what changed, screenshots at CSS scale with a zoom (which would also capture fewer than
+      3840x2160 device pixels), `browser_fill_form`, opt-in unchanged snapshots, the latency items
+      (the scroll settle, the Linux click delay, the relay's 25 ms poll, per-command DevTools work),
+      and a default snapshot cap once the meter shows it loses nothing
 - [x] Restore the Semgrep gate: the job keeps its pinned Python 3.12, since `semgrep-core` crashes
       under the 3.15 the Qt install step switched it to (1.8.1)
 - [x] Run `test_browser_extension_tabs.mjs` and `test_release_versions.mjs` in ctest, and so in CI
       (1.8.1)
+- [x] Find elements without a whole snapshot (`browser_find`), scope, filter and cap snapshots,
+      page reads, a smaller catalog, and a meter of what each tool costs (1.12.0;
+      [docs/plans/lean-observations.md](docs/plans/lean-observations.md))
 - [x] Upload files of any size an agent needs, not just documents: up to 2 GiB by default and
       `CHROME_CONTROL_MCP_UPLOAD_MAX_MB`, each file read a piece at a time and staged in the page
       that uses it (1.11.0; [docs/plans/large-uploads.md](docs/plans/large-uploads.md))

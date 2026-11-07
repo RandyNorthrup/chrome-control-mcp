@@ -6,6 +6,7 @@
 #include <QJsonArray>
 #include <QJsonObject>
 #include <QString>
+#include <QVector>
 
 /// @file browser_contract.h
 /// @brief Pure, OS-agnostic contract for the assistant's browser-control
@@ -26,6 +27,24 @@
 /// extension side and the live MCP wiring build against this contract.
 namespace chrome_control_mcp::browser {
 
+/// One shown line of a rendered snapshot, kept beside the outline so a find
+/// and the snapshot's options choose lines without parsing text back. `text`
+/// is the line as the outline prints it, without indentation or newline;
+/// `parent` is the index of the nearest shown ancestor, -1 at the top, and
+/// `depth` how many shown ancestors it has. `offscreen` is the capture's own
+/// mark, true only for a main-document element wholly outside the viewport.
+struct SnapshotLine {
+  QString text;
+  QString role;
+  QString name;
+  QString value;
+  QString ref;
+  qsizetype parent{-1};
+  int depth{0};
+  bool interactable{false};
+  bool offscreen{false};
+};
+
 /// The rendered view of one DOM capture, ready for the model.
 ///
 /// `outline` is the human/model-facing text (a Playwright-aria-style indented
@@ -36,6 +55,9 @@ namespace chrome_control_mcp::browser {
 /// number in `ref_index` (carried or new), 0 when it is empty: a caller that
 /// must never hand out the same name twice keeps the maximum of it across
 /// snapshots and passes one more as the next snapshot's first_new_ref.
+/// `lines` are the outline's lines as data, `notes` the truncation and
+/// omitted-frame lines that close it, and `positions` whether the capture said
+/// where the viewport is (an extension older than 1.12.0 does not).
 struct SnapshotView {
   QString url;
   QString title;
@@ -43,6 +65,52 @@ struct SnapshotView {
   QJsonObject ref_index;
   int element_count{0};
   qint64 highest_ref{0};
+  QVector<SnapshotLine> lines;
+  QString notes;
+  bool positions{false};
+};
+
+/// What part of a snapshot to show: the subtree under `ref`, `depth` levels
+/// below its root (-1 for all), a `filter` ("" for all, "interactive", or
+/// "viewport"), and at most `max_chars` characters (0 for no cap).
+struct OutlineOptions {
+  QString ref;
+  int depth{-1};
+  QString filter;
+  int max_chars{0};
+  [[nodiscard]] bool any() const {
+    return !ref.isEmpty() || depth >= 0 || !filter.isEmpty() || max_chars > 0;
+  }
+};
+
+/// A snapshot shown under options: the outline text, how many of the view's
+/// lines it shows, and an error the model can act on when an option cannot be
+/// honoured for this capture (a ref no longer shown, positions not reported).
+struct Outline {
+  QString text;
+  int shown{0};
+  int total{0};
+  QString error;
+};
+
+/// What browser_find looks for: `text` (literal words; with `natural`, a
+/// phrase whose role words become a role filter) or a `regex`, optionally
+/// within one `role`, returning at most `max_results` lines.
+struct FindQuery {
+  QString text;
+  bool natural{false};
+  QString regex;
+  QString role;
+  int max_results{10};
+};
+
+/// Which part of a page browser_read returns: `max_chars` characters from
+/// `offset`, and whether it asked for one element or the main content
+/// (`scoped`), which only an extension 1.12.0 or later can honour.
+struct ReadRequest {
+  qint64 offset{0};
+  qint64 max_chars{30'000};
+  bool scoped{false};
 };
 
 /// One translated extension command. `ok` is false with a human-readable
@@ -131,5 +199,43 @@ struct ExtensionCommand {
 [[nodiscard]] ExtensionCommand
 buildExtensionCommand(const QString &tool, const QJsonObject &arguments,
                       const QJsonObject &ref_index);
+
+/// Read browser_snapshot's options out of a tool call's arguments into @p out.
+/// Empty on success, else why they cannot be honoured.
+[[nodiscard]] QString outlineOptionsFrom(const QJsonObject &arguments,
+                                         OutlineOptions *out);
+
+/// Show @p view under @p options. Applied in one order: the subtree under the
+/// ref, the depth below its root, the filter, and last the character cap,
+/// which collapses the largest regions holding nothing on screen (or, with no
+/// positions, nothing near the top), no landmark and no heading, to one line
+/// each, rather than cutting the outline at its tail.
+[[nodiscard]] Outline renderOutline(const SnapshotView &view,
+                                    const OutlineOptions &options);
+
+/// Read browser_find's arguments into @p out. Empty on success, else why the
+/// call cannot be honoured: none or several of text, query and regex; a value
+/// too long; a pattern that does not compile; max_results out of range.
+[[nodiscard]] QString findQueryFrom(const QJsonObject &arguments,
+                                    FindQuery *out);
+
+/// The lines of @p view that match @p query, best first, each in the
+/// snapshot's exact line format with its ref and followed by the containers
+/// it sits in; or, with no match, the closest names on the page. Code, not a
+/// model: the same query on the same capture always gives the same answer.
+[[nodiscard]] QString renderFind(const SnapshotView &view,
+                                 const FindQuery &query);
+
+/// Read browser_read's paging and scoping arguments into @p out. Empty on
+/// success, else why they cannot be honoured.
+[[nodiscard]] QString readRequestFrom(const QJsonObject &arguments,
+                                      ReadRequest *out);
+
+/// Fit the extension's read payload to @p request, in place: page a reply an
+/// older extension returned whole, add `offset`, `total` and `next_offset`,
+/// and refuse a scoped read an older extension answered with the whole page.
+/// Empty on success, else the error to return.
+[[nodiscard]] QString pageRead(QJsonObject &payload,
+                               const ReadRequest &request);
 
 } // namespace chrome_control_mcp::browser

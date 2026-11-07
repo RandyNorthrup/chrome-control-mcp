@@ -845,7 +845,7 @@ void BrowserBridgeRelayTests::control_snapshotRoundTripsThroughRelay() {
   QCOMPARE(result.text,
            QStringLiteral("url: https://example.test/\ntitle: Example\n"
                           "tab_id: 1\nelements: 1\n"
-                          "  - button \"Sign in\" [ref=e1]\n"));
+                          "- button \"Sign in\" [ref=e1]\n"));
 }
 
 // The first call of a newly started agent lands before the extension has found

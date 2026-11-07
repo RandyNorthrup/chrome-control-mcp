@@ -552,6 +552,51 @@ function toneWav() {
   return buffer;
 }
 
+// browser_find, the snapshot's options and paged reads (docs/plans/lean-observations.md): a Messages
+// dialog whose button says when it was clicked, a story long enough to need two pages of
+// browser_read, a feed far below the fold ending in a Load more button, and a footer past it all.
+function findPage() {
+  const sentence = "The quick brown fox jumps over the lazy dog. ";
+  const posts = Array.from(
+    { length: 60 },
+    (_, i) => `<li>Post ${i + 1}: an update from the feed</li>`,
+  ).join("");
+  // A document of its own, not htmlPage's: that template puts everything inside one <main>, and a
+  // footer inside <main> is not the page's contentinfo landmark.
+  return `<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Find fixture</title>
+  <style>body { font-family: system-ui, sans-serif; margin: 1rem; }</style>
+</head>
+<body>
+  <header><nav aria-label="Site"><a href="/">Home</a></nav></header>
+  <main>
+    <h1>Inbox</h1>
+    <div role="dialog" aria-label="Messages">
+      <button id="send" type="button">Send message</button>
+      <label>Write your reply <input id="reply" type="text"></label>
+      <a href="#replies" id="replies">View replies (1)</a>
+      <a href="#support">Send message to support</a>
+      <p id="sent">sent: no</p>
+    </div>
+    <article id="story"><h2>Story</h2><p>${sentence.repeat(900)}</p></article>
+    <section aria-label="Posts" style="margin-top: 4000px">
+      <ul>${posts}</ul>
+      <button id="more" type="button">Load more</button>
+    </section>
+  </main>
+  <footer><a href="#privacy">Privacy</a></footer>
+  <script>
+    document.getElementById("send").addEventListener("click", () => {
+      document.getElementById("sent").textContent = "sent: yes";
+    });
+  </script>
+</body>
+</html>`;
+}
+
 export async function startFixtureServer() {
   const audio = toneWav();
   const server = http.createServer((request, response) => {
@@ -594,6 +639,10 @@ export async function startFixtureServer() {
         "text/html; charset=utf-8",
         geometryPage(url.searchParams.get("scrollbar") === "classic"),
       );
+      return;
+    }
+    if (url.pathname === "/find") {
+      send(200, "text/html; charset=utf-8", findPage());
       return;
     }
     if (url.pathname === "/page2") {

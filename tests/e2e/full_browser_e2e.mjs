@@ -32,6 +32,7 @@ const EXPECTED_TOOLS = [
   "browser_extension_status",
   "browser_navigate",
   "browser_snapshot",
+  "browser_find",
   "browser_back",
   "browser_forward",
   "browser_reload",
@@ -153,6 +154,7 @@ async function main() {
   const cases = [];
   const generatedFiles = new Set();
   let originalActiveTabId = null;
+  let originalActiveTabUrl = null;
   let originalWindowId = null;
   let createdWindowId = null;
   let cookieName = null;
@@ -177,7 +179,14 @@ async function main() {
       // browser_tabs lists the SESSION's window. While the session is working in a window of its
       // own, the user's tab is simply not in this listing; anywhere else, it is gone.
       if (sessionIsInUsersWindow) {
-        throw new Error(`${label} closed the user's tab`);
+        // Which tab was taken for the user's, and what the window holds now: without both, a
+        // failure here cannot say whether a tool closed a tab or the baseline caught the wrong one.
+        const now = listing.tabs
+          .map((tab) => `${tab.id}${tab.active ? "*" : ""} ${tab.url}`)
+          .join("; ");
+        throw new Error(
+          `${label} closed the user's tab (${originalActiveTabId} ${originalActiveTabUrl}); the window now holds: ${now}`,
+        );
       }
       return;
     }
@@ -303,10 +312,28 @@ async function main() {
     );
     assert.equal(extensionInstall.state, "prepared");
 
-    const baselineTabs = await tabs("capture baseline tabs");
+    let baselineTabs = await tabs("capture baseline tabs");
+    // The harness opens chrome://extensions to turn Developer mode on and closes it before the
+    // suite starts. Gone from DevTools' target list, it can still be listed -- active -- for a
+    // moment by the tabs the extension sees (measured: one run in eight took it as the user's
+    // tab, which then vanished). It is never the user's tab, so the baseline waits it out.
+    const harnessPage = (listing) =>
+      String(
+        (listing.tabs.find((tab) => tab.active) || {}).url || "",
+      ).startsWith("chrome://extensions");
+    for (let wait = 0; wait < 50 && harnessPage(baselineTabs); wait += 1) {
+      await sleep(100);
+      baselineTabs = jsonContent(
+        await client.request("tools/call", {
+          name: "browser_tabs",
+          arguments: {},
+        }),
+      );
+    }
     const baselineActive = baselineTabs.tabs.find((tab) => tab.active);
     assert.ok(baselineActive, "No active baseline tab");
     originalActiveTabId = baselineActive.id;
+    originalActiveTabUrl = baselineActive.url;
 
     const baselineWindows = jsonContent(
       await runTool("browser_windows", {}, "capture baseline windows"),
@@ -1613,6 +1640,274 @@ async function main() {
       "close fixture window",
     );
     createdWindowId = null;
+
+    // browser_find, the snapshot's options and paged, scoped reads
+    // (docs/plans/lean-observations.md), on a page of their own in a tab of their own.
+    const findTab = jsonContent(
+      await runTool(
+        "browser_new_tab",
+        { url: `${fixture.origin}/find` },
+        "open the find page",
+      ),
+    ).tab_id;
+    const at = { tab_id: findTab };
+    await runTool(
+      "browser_wait_for",
+      { ...at, text: "sent: no" },
+      "the find page loaded",
+    );
+    const refused = async (name, args, label, pattern) => {
+      const began = Date.now();
+      const result = await client.request("tools/call", {
+        name,
+        arguments: args,
+      });
+      const text = textContent(result);
+      assert.ok(result.isError, `${label}: not refused: ${text.slice(0, 300)}`);
+      assert.match(text, pattern, `${label}: ${text.slice(0, 300)}`);
+      seen.add(name);
+      cases.push({
+        tool: name,
+        case: label,
+        milliseconds: Date.now() - began,
+        status: "passed",
+      });
+      process.stderr.write(`PASS ${name} :: ${label}\n`);
+      return text;
+    };
+    const found = textContent(
+      await runTool(
+        "browser_find",
+        { ...at, text: "Send message" },
+        "find by visible text",
+      ),
+    );
+    assert.match(
+      found,
+      /\nFound 2 matches for text "Send message":\n- button "Send message" \[ref=e\d+\]/,
+      `the exact match comes first: ${found.slice(0, 600)}`,
+    );
+    assert.match(
+      found,
+      /\n {4}in: dialog "Messages" \[ref=e\d+\]/,
+      `a match names the dialog it sits in: ${found.slice(0, 600)}`,
+    );
+    const sendRef = refFor(found, "Send message");
+    await runTool(
+      "browser_click",
+      { ...at, ref: sendRef },
+      "click a find result with no snapshot between",
+    );
+    await runTool(
+      "browser_wait_for",
+      { ...at, text: "sent: yes" },
+      "the click on a find result reached its button",
+    );
+    assert.match(
+      textContent(
+        await runTool(
+          "browser_find",
+          { ...at, text: "View replies (1)" },
+          "find a name with brackets and a count",
+        ),
+      ),
+      /- link "View replies \(1\)" \[ref=e\d+\]/,
+    );
+    assert.match(
+      textContent(
+        await runTool(
+          "browser_find",
+          { ...at, query: "Send message button" },
+          "find by a phrase whose role word filters",
+        ),
+      ),
+      /Found 1 match for query "Send message button":\n- button "Send message"/,
+    );
+    const below = textContent(
+      await runTool(
+        "browser_find",
+        { ...at, regex: "^load" },
+        "find by pattern, below the fold",
+      ),
+    );
+    assert.match(
+      below,
+      /- button "Load more" \[ref=e\d+\]\n {4}off-screen/,
+      `an element below the fold says so: ${below.slice(0, 600)}`,
+    );
+    assert.match(
+      textContent(
+        await runTool(
+          "browser_find",
+          { ...at, text: "Sned mesage" },
+          "find with no match names the closest",
+        ),
+      ),
+      /No element matches text "Sned mesage"\. Closest names: "Send message"/,
+    );
+    await refused(
+      "browser_find",
+      at,
+      "find with nothing to look for is refused",
+      /text[\s\S]*query[\s\S]*regex/,
+    );
+    await refused(
+      "browser_find",
+      { ...at, regex: "([a" },
+      "find with a broken pattern is refused",
+      /does not compile/,
+    );
+
+    const dialogRef = (found.match(/in: dialog "Messages" \[ref=(e\d+)\]/) ||
+      [])[1];
+    const scoped = textContent(
+      await runTool(
+        "browser_snapshot",
+        { ...at, ref: dialogRef },
+        "snapshot one region by ref",
+      ),
+    );
+    assert.match(
+      scoped,
+      /\nshown: \d+ of \d+ lines\n- dialog "Messages" \[ref=/,
+    );
+    assert.ok(
+      !scoped.includes("Load more"),
+      "a region's snapshot shows that region alone",
+    );
+    assert.equal(
+      refFor(scoped, "Send message"),
+      sendRef,
+      "a region's snapshot gives the page's own refs",
+    );
+    const interactive = textContent(
+      await runTool(
+        "browser_snapshot",
+        { ...at, filter: "interactive" },
+        "snapshot the interactive elements",
+      ),
+    );
+    assert.ok(
+      !interactive.includes("- statictext") &&
+        interactive.includes('button "Load more"'),
+      interactive.slice(0, 2000),
+    );
+    const onScreen = textContent(
+      await runTool(
+        "browser_snapshot",
+        { ...at, filter: "viewport" },
+        "snapshot what is on screen",
+      ),
+    );
+    assert.ok(
+      onScreen.includes('button "Send message"') &&
+        !onScreen.includes('button "Load more"') &&
+        /lines off-screen/.test(onScreen),
+      onScreen.slice(0, 2000),
+    );
+    const capped = textContent(
+      await runTool(
+        "browser_snapshot",
+        { ...at, max_chars: 1500 },
+        "snapshot within a character cap",
+      ),
+    );
+    assert.ok(
+      /lines omitted: browser_snapshot ref=e\d+/.test(capped) &&
+        capped.includes("shortened to fit max_chars 1500") &&
+        capped.includes("- contentinfo"),
+      `the cap collapses regions, not the tail: ${capped.slice(0, 2500)}`,
+    );
+
+    const firstPage = jsonContent(
+      await runTool("browser_read", at, "read the first page of a long page"),
+    );
+    assert.ok(
+      firstPage.offset === 0 &&
+        firstPage.content.length === 30000 &&
+        firstPage.next_offset === 30000 &&
+        firstPage.total > 30000 &&
+        firstPage.total < 60000,
+      JSON.stringify({ ...firstPage, content: firstPage.content.length }),
+    );
+    const secondPage = jsonContent(
+      await runTool(
+        "browser_read",
+        { ...at, offset: firstPage.next_offset },
+        "read the next page",
+      ),
+    );
+    assert.ok(
+      secondPage.offset === 30000 &&
+        secondPage.next_offset === undefined &&
+        firstPage.content.length + secondPage.content.length ===
+          firstPage.total,
+      JSON.stringify({ ...secondPage, content: secondPage.content.length }),
+    );
+    const story = jsonContent(
+      await runTool(
+        "browser_read",
+        { ...at, selector: "#story" },
+        "read one element by selector",
+      ),
+    );
+    assert.ok(
+      story.scope === "selector" &&
+        story.content.startsWith("Story") &&
+        !story.content.includes("Load more"),
+      story.content.slice(0, 200),
+    );
+    const mainText = jsonContent(
+      await runTool(
+        "browser_read",
+        { ...at, mode: "main", max_chars: 200000 },
+        "read the main content",
+      ),
+    );
+    assert.ok(
+      mainText.content.includes("Inbox") &&
+        !mainText.content.includes("Privacy") &&
+        !mainText.content.includes("Home"),
+      mainText.content.slice(0, 200),
+    );
+    const dialogText = jsonContent(
+      await runTool(
+        "browser_read",
+        { ...at, ref: dialogRef },
+        "read one element by ref",
+      ),
+    );
+    assert.ok(
+      dialogText.content.includes("sent: yes") &&
+        !dialogText.content.includes("Story"),
+      dialogText.content.slice(0, 200),
+    );
+    await refused(
+      "browser_read",
+      { ...at, offset: firstPage.total + 10 },
+      "a read past the end is refused",
+      /past the end/,
+    );
+    await refused(
+      "browser_read",
+      { ...at, selector: "#nothing-here" },
+      "a selector that matches nothing is refused",
+      /No element matches the selector/,
+    );
+
+    // A find's refs go stale with the page, exactly as a snapshot's do.
+    await runTool(
+      "browser_navigate",
+      { ...at, url: `${fixture.origin}/find` },
+      "load the find page again",
+    );
+    await refused(
+      "browser_click",
+      { ...at, ref: sendRef },
+      "a find ref from before a navigation is refused",
+      /snapshot/i,
+    );
+    await runTool("browser_close_tab", at, "close the find page");
 
     const uninstall = jsonContent(
       await runTool(

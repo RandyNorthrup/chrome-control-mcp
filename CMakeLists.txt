@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.25)
 
-project(chrome_control_mcp VERSION 1.11.1 LANGUAGES CXX)
+project(chrome_control_mcp VERSION 1.12.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -244,6 +244,15 @@ if(BUILD_TESTING)
     )
     target_link_libraries(test_browser_contract PRIVATE Qt6::Core Qt6::Test)
     configure_qt_test(test_browser_contract)
+    # The views over one capture: slimming, the snapshot's options and elision,
+    # browser_find, browser_read's paging, and those through the session.
+    add_executable(test_browser_views
+        tests/test_browser_views.cpp
+        src/browser_contract.cpp
+        src/browser_bridge.cpp
+    )
+    target_link_libraries(test_browser_views PRIVATE Qt6::Core Qt6::Test)
+    configure_qt_test(test_browser_views)
     # Windows only: the question it answers -- does a junction make one file
     # look like two processes -- does not exist where the install layout uses
     # a symbolic link and both sides already resolve it.

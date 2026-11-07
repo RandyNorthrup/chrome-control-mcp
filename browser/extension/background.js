@@ -103,6 +103,9 @@ const STRUCTURAL_ROLES = new Set([
 // Hard caps so a hostile or enormous page cannot blow up the worker or the frame.
 const MAX_CAPTURE_NODES = 2000;
 const MAX_READ_CHARS = 200000;
+// What one read returns when the caller names no size: a page at a time, under the size at
+// which clients stop showing a reply inline.
+const DEFAULT_READ_CHARS = 30000;
 const NAV_TIMEOUT_MS = 15000;
 const DEFAULT_SCROLL_PX = 400;
 // How many omitted cross-origin frame URLs a reply LISTS; a hostile page could otherwise spawn
@@ -5737,6 +5740,45 @@ function buildBoundsMap(snapshot) {
   return map;
 }
 
+// The backend ids of the main document's nodes. DOMSnapshot lists the main frame's document
+// first; a same-process subframe's layout boxes are in its own document's coordinates, so only
+// these can be compared with the viewport.
+function mainDocumentBackends(snapshot) {
+  const doc = snapshot && snapshot.documents && snapshot.documents[0];
+  const ids = doc && doc.nodes && doc.nodes.backendNodeId;
+  return new Set(Array.isArray(ids) ? ids : []);
+}
+
+// The part of the main document on screen, in its own (CSS px) coordinates: the layout viewport's
+// scroll plus a pinch's offset inside it, at the pinch's size.
+function visibleRect(state) {
+  return {
+    x: state.scrollX + state.offsetX,
+    y: state.scrollY + state.offsetY,
+    width: state.width / state.scale,
+    height: state.height / state.scale,
+  };
+}
+
+// Mark every main-document record wholly outside the visible rect. A record with no box, or from a
+// subframe, says nothing about where it is and is left unmarked -- read as on screen.
+function markOffscreen(nodes, mainBackends, rect) {
+  for (const rec of nodes) {
+    const box = rec.bounds;
+    if (!box || !mainBackends.has(rec.backendNodeId)) {
+      continue;
+    }
+    if (
+      box.x + box.width <= rect.x ||
+      box.x >= rect.x + rect.width ||
+      box.y + box.height <= rect.y ||
+      box.y >= rect.y + rect.height
+    ) {
+      rec.offscreen = true;
+    }
+  }
+}
+
 function isEditableRole(role) {
   return role === "textbox" || role === "searchbox";
 }
@@ -6226,6 +6268,13 @@ async function captureSnapshot(session, tabId) {
   const fileInputs = await collectFileInputs(tabId, withMedia);
   const nodes = withMedia.concat(fileInputs.nodes);
   const truncated = built.truncated || media.truncated || fileInputs.truncated;
+  // Where the viewport is, and which elements are wholly outside it: browser_snapshot's viewport
+  // filter, browser_find's ordering and the elision of long outlines read these. A capture whose
+  // viewport could not be read carries none, and is read as an older extension's.
+  const shown = await viewportState(tabId);
+  if (shown.ok) {
+    markOffscreen(nodes, mainDocumentBackends(snapshot), visibleRect(shown));
+  }
   const info = await tabInfo(tabId);
   // getFullAXTree + DOMSnapshot cover the main frame and its SAME-process subframes.
   // Cross-origin (out-of-process) iframes live in separate targets this single pass does
@@ -6266,6 +6315,17 @@ async function captureSnapshot(session, tabId) {
     iframesOmitted,
     omittedFrames,
     omittedFramesTruncated,
+    ...(shown.ok
+      ? {
+          viewport: {
+            scrollX: shown.scrollX,
+            scrollY: shown.scrollY,
+            width: shown.width,
+            height: shown.height,
+            scale: shown.scale,
+          },
+        }
+      : {}),
   };
 }
 
@@ -6317,44 +6377,154 @@ async function readOmittedFrames(tabId) {
   };
 }
 
+// The part of the page a read covers: the whole page, one element by ref, the first element a
+// selector matches, or the page's main content. The server sends at most one of them.
+function readScope(args) {
+  if (args && typeof args.backendNodeId === "number") {
+    return "ref";
+  }
+  if (args && typeof args.selector === "string" && args.selector.trim()) {
+    return "selector";
+  }
+  if (args && args.mode === "main") {
+    return "main";
+  }
+  return "page";
+}
+
+// Which characters a read returns: from `offset`, at most `max_chars` of them, never more than one
+// reply may carry. The server always sends both; the defaults are for a caller that did not.
+function readWindow(args) {
+  const offset =
+    args && Number.isInteger(args.offset) && args.offset >= 0 ? args.offset : 0;
+  const asked =
+    args && Number.isInteger(args.max_chars) && args.max_chars > 0
+      ? args.max_chars
+      : DEFAULT_READ_CHARS;
+  return { offset, maxChars: Math.min(asked, MAX_READ_CHARS) };
+}
+
+// Runs in the page, as a fixed function: the selector and the window are arguments, never source.
+// Takes the scope's text (or html), returns the window asked for and the whole text's length -- so
+// a long page crosses the debugger a page at a time rather than whole. The control overlay is
+// lifted out around the read, as every read here does, so its labels never read as page text.
+// `this` is the element for a read by ref.
+function pageReadFn(format, scope, selector, offset, maxChars, presenceIds) {
+  const lifted = [];
+  for (const id of presenceIds) {
+    const node = document.getElementById(id);
+    if (node && node.parentNode) {
+      lifted.push([node, node.parentNode, node.nextSibling]);
+      node.parentNode.removeChild(node);
+    }
+  }
+  try {
+    let element = null;
+    if (scope === "ref") {
+      element = this;
+    } else if (scope === "selector") {
+      element = document.querySelector(selector);
+      if (!element) {
+        return { missing: true };
+      }
+    } else if (scope === "main") {
+      let longest = -1;
+      for (const candidate of document.querySelectorAll(
+        "main, [role=main], article",
+      )) {
+        const length = (candidate.innerText || "").length;
+        if (length > longest) {
+          element = candidate;
+          longest = length;
+        }
+      }
+    }
+    const root = document.body || document.documentElement;
+    let text = "";
+    if (format === "html") {
+      const source = element || document.documentElement;
+      text = source ? source.outerHTML : "";
+    } else {
+      const source = element || root;
+      text = source ? source.innerText || "" : "";
+    }
+    return {
+      total: text.length,
+      content: text.slice(offset, offset + maxChars),
+    };
+  } finally {
+    for (let i = lifted.length - 1; i >= 0; i--) {
+      const [node, parent, next] = lifted[i];
+      parent.insertBefore(
+        node,
+        next && next.parentNode === parent ? next : null,
+      );
+    }
+  }
+}
+
 async function handleRead(session, tabId, args) {
   const format = readFormat(args);
+  const scope = readScope(args);
+  const { offset, maxChars } = readWindow(args);
   await ensureAttached(session, tabId);
-  const read =
-    format === "html"
-      ? "document.documentElement ? document.documentElement.outerHTML : ''"
-      : "document.body ? document.body.innerText : " +
-        "(document.documentElement ? document.documentElement.innerText : '')";
-  const res = await sendCdp(tabId, "Runtime.evaluate", {
-    expression: presenceFreeReadScript(read),
-    returnByValue: true,
-  });
+  const callArgs = [
+    format,
+    scope,
+    scope === "selector" ? args.selector : "",
+    offset,
+    maxChars,
+    PRESENCE_IDS,
+  ];
+  const res =
+    scope === "ref"
+      ? await sendCdp(tabId, "Runtime.callFunctionOn", {
+          objectId: await resolveNodeObjectId(tabId, args.backendNodeId),
+          functionDeclaration: pageReadFn.toString(),
+          arguments: callArgs.map((value) => ({ value })),
+          returnByValue: true,
+        })
+      : await sendCdp(tabId, "Runtime.evaluate", {
+          expression:
+            "(" +
+            pageReadFn.toString() +
+            ").apply(null, " +
+            JSON.stringify(callArgs) +
+            ")",
+          returnByValue: true,
+        });
+  const value = res && res.result ? res.result.value : null;
   // An evaluation that threw (a page can redefine HTMLElement.prototype.innerText, or the read
   // can land while document.body is null) has established nothing about the page. Reporting it as
   // empty content with ok tells the model the page has no text, which is a claim about the page
   // rather than about the failure.
+  if (value && value.missing === true) {
+    throw new Error(
+      "No element matches the selector " +
+        JSON.stringify(args.selector) +
+        "; check it, or read by ref from browser_find.",
+    );
+  }
   if (
     !res ||
     res.exceptionDetails ||
-    !res.result ||
-    typeof res.result.value !== "string"
+    !value ||
+    typeof value.content !== "string" ||
+    !Number.isInteger(value.total)
   ) {
     throw new Error(
       "Could not read the page content; take a fresh snapshot and try again.",
     );
   }
-  let content = res.result.value;
-  let truncated = false;
-  if (content.length > MAX_READ_CHARS) {
-    content = content.slice(0, MAX_READ_CHARS);
-    truncated = true;
-  }
   const info = await tabInfo(tabId);
   const frames = await readOmittedFrames(tabId);
   return {
     format,
-    content,
-    truncated,
+    content: value.content,
+    truncated: value.total > offset + value.content.length,
+    offset,
+    total: value.total,
+    scope,
     url: info.url,
     title: info.title,
     iframesOmitted: frames.iframesOmitted,

@@ -97,8 +97,12 @@ QString serverInstructions() {
       "agents may share this server or the browser, and a call without tab_id "
       "acts on whichever tab is current. When several agents share this "
       "server, each should also pass its own short agent name to "
-      "browser_new_tab so its tabs get their own coloured tab group. Element "
-      "refs from browser_snapshot are bound to the tab they came from. Tabs "
+      "browser_new_tab so its tabs get their own coloured tab group. To act "
+      "on an element, find it with browser_find (its visible text, or a "
+      "phrase such as \"Send message button\") before taking a whole "
+      "browser_snapshot: its refs work the same and its reply is far "
+      "smaller. Element refs from browser_find and browser_snapshot are "
+      "bound to the tab they came from. Tabs "
       "you work in sit in an \"AI\" tab group and carry a frame in that "
       "group's colour; a tab held by "
       "another session is refused. Clicking a file input never opens a "
@@ -400,6 +404,7 @@ bool mcpToolIsReadOnly(const QString &tool_name) {
       // session's own record of it, which is the only state either one touches.
       QStringLiteral("browser_console"),
       QStringLiteral("browser_extension_status"),
+      QStringLiteral("browser_find"),
       QStringLiteral("browser_get_attribute"),
       QStringLiteral("browser_get_value"),
       QStringLiteral("browser_network"),

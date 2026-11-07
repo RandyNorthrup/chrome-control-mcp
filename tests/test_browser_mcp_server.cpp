@@ -58,6 +58,7 @@ private slots:
   void releaseIsAdvertisedAndNotReadOnly();
   void fullCatalogContainsEveryBrowserAndInstallerTool();
   void readOnlyCatalogFiltersMutatingTools();
+  void catalogStaysWithinItsBudgetAndStable();
   void updateToolsAreServedNativelyNotThroughTheBridge();
   void notificationGetsNoResponse();
   void malformedEnvelopeIsRejected();
@@ -108,6 +109,8 @@ void BrowserMcpServerTests::initializeCarriesClientAgnosticInstructions() {
            QStringLiteral("browser_new_tab's profile"),
            QStringLiteral("browser_release"),
            QStringLiteral("handed back"),
+           // Find before a whole snapshot: the cheap way to an element.
+           QStringLiteral("browser_find"),
            QStringLiteral("keep_open:true"),
        }) {
     QVERIFY2(instructions.contains(needed), qPrintable(needed));
@@ -123,6 +126,8 @@ void BrowserMcpServerTests::initializeCarriesClientAgnosticInstructions() {
     QVERIFY2(!instructions.contains(client, Qt::CaseInsensitive),
              qPrintable(client));
   }
+  // Claude Code cuts server instructions at 4,096 characters.
+  QVERIFY(instructions.size() <= 4096);
 }
 
 // clientInfo.name titles the tab group the extension marks this session's tabs
@@ -179,13 +184,37 @@ void BrowserMcpServerTests::releaseIsAdvertisedAndNotReadOnly() {
            -32602);
 }
 
+// A client keeps the catalog as part of every prompt and caches it as a
+// prefix, so it is held to a byte budget -- 1.11.1's was 44,965 bytes for 53
+// tools -- and must be the same bytes every time it is listed.
+void BrowserMcpServerTests::catalogStaysWithinItsBudgetAndStable() {
+  BrowserControl browser;
+  const auto first =
+      handleRequest(request(QStringLiteral("tools/list"), 2), &browser);
+  const auto second =
+      handleRequest(request(QStringLiteral("tools/list"), 3), &browser);
+  QVERIFY(first.has_value() && second.has_value());
+  const QByteArray listed = QJsonDocument(first->value(QStringLiteral("result"))
+                                              .toObject()
+                                              .value(QStringLiteral("tools"))
+                                              .toArray())
+                                .toJson(QJsonDocument::Compact);
+  const QByteArray again = QJsonDocument(second->value(QStringLiteral("result"))
+                                             .toObject()
+                                             .value(QStringLiteral("tools"))
+                                             .toArray())
+                               .toJson(QJsonDocument::Compact);
+  QCOMPARE(listed, again);
+  QVERIFY2(listed.size() <= 43500, qPrintable(QString::number(listed.size())));
+}
+
 void BrowserMcpServerTests::fullCatalogContainsEveryBrowserAndInstallerTool() {
   BrowserControl browser;
   const auto response =
       handleRequest(request(QStringLiteral("tools/list"), 2), &browser);
   QVERIFY(response.has_value());
   const QSet<QString> names = catalogNames(*response);
-  QCOMPARE(names.size(), 53);
+  QCOMPARE(names.size(), 54);
   for (const QString &expected : {
            QStringLiteral("browser_navigate"),
            QStringLiteral("browser_snapshot"),
@@ -238,8 +267,9 @@ void BrowserMcpServerTests::readOnlyCatalogFiltersMutatingTools() {
       handleRequest(request(QStringLiteral("tools/list"), 2), &browser, policy);
   QVERIFY(response.has_value());
   const QSet<QString> names = catalogNames(*response);
-  QCOMPARE(names.size(), 14);
+  QCOMPARE(names.size(), 15);
   QVERIFY(names.contains(QStringLiteral("browser_snapshot")));
+  QVERIFY(names.contains(QStringLiteral("browser_find")));
   QVERIFY(names.contains(QStringLiteral("browser_extension_status")));
   QVERIFY(names.contains(QStringLiteral("browser_update_check")));
   QVERIFY(names.contains(QStringLiteral("browser_update_status")));

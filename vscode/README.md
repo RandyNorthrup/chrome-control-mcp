@@ -6,7 +6,7 @@
 and without ever taking your screen.**
 
 This extension installs the [Chrome Control MCP](https://github.com/RandyNorthrup/chrome-control-mcp)
-server and registers it with VS Code, so its 53 tools are available to chat without editing an
+server and registers it with VS Code, so its 54 tools are available to chat without editing an
 `mcp.json` or knowing a path. The same server works with any MCP client -- Claude Code, Codex,
 Cursor, Claude Desktop -- and several of them can share one browser at once.
 
@@ -88,7 +88,7 @@ CHROME_CONTROL_MCP_SECURITY_PROFILE=read_only
 CHROME_CONTROL_MCP_REDACT_SENSITIVE_OUTPUT=true
 ```
 
-The read-only profile exposes 14 tools and independently refuses hidden mutating calls.
+The read-only profile exposes 15 tools and independently refuses hidden mutating calls.
 
 ## Requirements
 

@@ -1,0 +1,55 @@
+{
+  "ok": true,
+  "case": "older",
+  "checks": [
+    {
+      "check": "the relay reports the installed version, this build's",
+      "status": "passed"
+    },
+    {
+      "check": "browser_extension_status names the running version and the fix",
+      "status": "passed"
+    },
+    {
+      "check": "the first browser reply on the connection carries the notice, after its own content",
+      "status": "passed"
+    },
+    {
+      "check": "and the reply itself is still the JSON it always was",
+      "status": "passed"
+    },
+    {
+      "check": "a later reply on the same connection carries none",
+      "status": "passed"
+    },
+    {
+      "check": "left idle, the extension reloads itself for the newer installed copy, never sooner than its quiet period",
+      "status": "passed"
+    },
+    {
+      "check": "it comes back, still saying the older version: its folder was not updated",
+      "status": "passed"
+    },
+    {
+      "check": "and remembers the version it reloaded for",
+      "status": "passed"
+    },
+    {
+      "check": "the new connection is told again",
+      "status": "passed"
+    },
+    {
+      "check": "it does not reload again for that version: no loop",
+      "status": "passed"
+    },
+    {
+      "check": "after the reload the bridge works",
+      "status": "passed"
+    },
+    {
+      "check": "releasing works",
+      "status": "passed"
+    }
+  ],
+  "error": null
+}

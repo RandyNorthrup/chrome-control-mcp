@@ -4,11 +4,16 @@
 #include "chrome_control_mcp/browser_contract.h"
 
 #include <QHash>
+#include <QMap>
+#include <QRegularExpression>
 #include <QSet>
+#include <QStringList>
 #include <QVector>
 
 #include <algorithm>
 #include <limits>
+#include <numeric>
+#include <optional>
 #include <utility>
 
 namespace chrome_control_mcp::browser {
@@ -44,6 +49,36 @@ constexpr double kMaxExactIntegerDouble = 9.0e15;
 constexpr int kMaxValueChars = 60;
 // Spaces of indentation rendered per outline depth level.
 constexpr int kSpacesPerIndentLevel = 2;
+// The most lines a find returns, and the longest text, pattern or role it
+// takes.
+constexpr int kMaxFindResults = 20;
+constexpr int kMaxFindTextChars = 200;
+constexpr int kMaxFindRoleChars = 40;
+// How many containers a find result names as its context, and how many near
+// names a find with no match suggests.
+constexpr int kFindContextAncestors = 3;
+constexpr qsizetype kClosestNames = 3;
+// Find scores, by what kind of match a name made; higher ranks first.
+constexpr int kScoreExact = 100;
+constexpr int kScorePrefix = 80;
+constexpr int kScoreWord = 60;
+constexpr int kScoreRegex = 50;
+constexpr int kScoreSubstring = 40;
+constexpr int kScoreOverlapBase = 20;
+constexpr int kScoreOverlapSpan = 20;
+constexpr int kScoreValue = 15;
+constexpr int kScoreRoleOnly = 10;
+constexpr int kBoostActionable = 5;
+constexpr int kBoostOnScreen = 3;
+// The shortest word a phrase compares on its own.
+constexpr qsizetype kMinOverlapWordChars = 2;
+// browser_snapshot's option bounds.
+constexpr int kMaxOutlineDepth = 50;
+constexpr int kMinOutlineChars = 1000;
+constexpr int kMaxOutlineChars = 2'000'000;
+// browser_read's page: the most one page holds, and the longest selector.
+constexpr qint64 kMaxReadChars = 200'000;
+constexpr qsizetype kMaxSelectorChars = 1000;
 
 // Collapse to a single line and length-cap an untrusted string. simplified()
 // strips newlines/tabs, which is what stops a hostile role/title/url from
@@ -109,6 +144,42 @@ bool roleIsStructuralNoise(const QString &role) {
          role == QLatin1String("inlinetextbox");
 }
 
+// The landmark roles: the regions a page declares for its parts. They head a
+// find result's context, survive every snapshot filter and elision, and carry
+// refs so one region can be snapshotted on its own.
+bool roleIsLandmark(const QString &role) {
+  static const QSet<QString> kLandmarks{
+      QStringLiteral("banner"),      QStringLiteral("complementary"),
+      QStringLiteral("contentinfo"), QStringLiteral("form"),
+      QStringLiteral("main"),        QStringLiteral("navigation"),
+      QStringLiteral("region"),      QStringLiteral("search")};
+  return kLandmarks.contains(role);
+}
+
+// A container worth naming: a landmark, or a dialog, table, list, feed or
+// article -- something an agent may read on its own with browser_snapshot's
+// ref, or want to know a match sits inside. These carry refs.
+bool roleIsContainer(const QString &role) {
+  static const QSet<QString> kContainers{
+      QStringLiteral("alertdialog"), QStringLiteral("article"),
+      QStringLiteral("dialog"),      QStringLiteral("feed"),
+      QStringLiteral("grid"),        QStringLiteral("list"),
+      QStringLiteral("table"),       QStringLiteral("tree"),
+      QStringLiteral("treegrid")};
+  return roleIsLandmark(role) || kContainers.contains(role);
+}
+
+// The containers a find result names as where a match sits: lists are left
+// out, being too common to say anything.
+bool roleIsContext(const QString &role) {
+  return roleIsContainer(role) && role != QLatin1String("list") &&
+         role != QLatin1String("tree");
+}
+
+bool roleIsHeading(const QString &role) {
+  return role == QLatin1String("heading");
+}
+
 // A file input the page hides on purpose. The extension collects these straight
 // from the DOM and marks them, because the pattern is universal -- the real
 // `<input type="file">` is set to display:none and a styled button is put in
@@ -147,14 +218,16 @@ bool nodeIsRenderable(const QJsonObject &node, bool interactable,
   return true;
 }
 
-// A node gets an actionable [ref] if it is interactable, OR if it exposes an
+// A node gets an actionable [ref] if it is interactable, if it is a container
+// worth reading on its own (roleIsContainer), OR if it exposes an
 // inspectable value
 // -- a progress bar, meter, output, or any value/range-bearing node. Without
 // this, a read-only display (e.g. a <progress> or role=progressbar) has no ref,
 // so browser_get_value / get_attribute / box cannot target it even though the
 // model may need to read it.
 bool nodeIsRefWorthy(const QJsonObject &node, bool interactable) {
-  if (interactable || node.contains(QStringLiteral("value"))) {
+  if (interactable || node.contains(QStringLiteral("value")) ||
+      roleIsContainer(node.value(QStringLiteral("role")).toString())) {
     return true;
   }
   return node.contains(QStringLiteral("valuemin")) &&
@@ -236,33 +309,6 @@ QString stateSuffix(const QJsonObject &node) {
                                QStringLiteral(")");
 }
 
-QString buildNodeLine(const QJsonObject &node, const QString &name,
-                      const QString &ref) {
-  int depth = node.value(QStringLiteral("depth")).toInt(0);
-  depth = qBound(0, depth, kMaxIndentDepth);
-  // role is untrusted: escape + cap it like name, so a hostile role cannot
-  // inject newlines/brackets/quotes and forge fake outline lines or [ref=...]
-  // entries.
-  QString role = escapeName(node.value(QStringLiteral("role")).toString());
-  if (role.isEmpty()) {
-    role = QStringLiteral("generic");
-  }
-  QString line = QString(static_cast<qsizetype>(depth) * kSpacesPerIndentLevel,
-                         QLatin1Char(' ')) +
-                 QStringLiteral("- ") + role;
-  if (!name.isEmpty()) {
-    line += QStringLiteral(" \"") + name + QLatin1Char('"');
-  }
-  if (!ref.isEmpty()) {
-    line += QStringLiteral(" [ref=") + ref + QLatin1Char(']');
-  }
-  const QString suffix = stateSuffix(node);
-  if (!suffix.isEmpty()) {
-    line += QLatin1Char(' ') + suffix;
-  }
-  return line + QLatin1Char('\n');
-}
-
 // -- Command translation -----------------------------------------------------
 
 struct ArgSpec {
@@ -285,7 +331,21 @@ QHash<QString, CmdSpec> interactionCommandSpecs() {
         QStringLiteral("none"),
         {{QStringLiteral("url"), QStringLiteral("string"), true}}}},
       {QStringLiteral("browser_snapshot"),
-       {QStringLiteral("snapshot"), QStringLiteral("none"), {}}},
+       {QStringLiteral("snapshot"),
+        QStringLiteral("optional"),
+        {{QStringLiteral("depth"), QStringLiteral("int"), false},
+         {QStringLiteral("filter"), QStringLiteral("string"), false},
+         {QStringLiteral("max_chars"), QStringLiteral("int"), false}}}},
+      // A find takes the same capture as a snapshot; its arguments travel
+      // with the command and are read back here when the reply arrives.
+      {QStringLiteral("browser_find"),
+       {QStringLiteral("snapshot"),
+        QStringLiteral("none"),
+        {{QStringLiteral("text"), QStringLiteral("string"), false},
+         {QStringLiteral("query"), QStringLiteral("string"), false},
+         {QStringLiteral("regex"), QStringLiteral("string"), false},
+         {QStringLiteral("role"), QStringLiteral("string"), false},
+         {QStringLiteral("max_results"), QStringLiteral("int"), false}}}},
       {QStringLiteral("browser_click"),
        {QStringLiteral("click"),
         QStringLiteral("required"),
@@ -391,8 +451,12 @@ QHash<QString, CmdSpec> pageAndTabCommandSpecs() {
        {QStringLiteral("reload"), QStringLiteral("none"), {}}},
       {QStringLiteral("browser_read"),
        {QStringLiteral("read"),
-        QStringLiteral("none"),
-        {{QStringLiteral("format"), QStringLiteral("string"), false}}}},
+        QStringLiteral("optional"),
+        {{QStringLiteral("format"), QStringLiteral("string"), false},
+         {QStringLiteral("offset"), QStringLiteral("int"), false},
+         {QStringLiteral("max_chars"), QStringLiteral("int"), false},
+         {QStringLiteral("selector"), QStringLiteral("string"), false},
+         {QStringLiteral("mode"), QStringLiteral("string"), false}}}},
       {QStringLiteral("browser_screenshot"),
        {QStringLiteral("screenshot"),
         QStringLiteral("none"),
@@ -1183,6 +1247,25 @@ QString applyToolExtras(const QString &tool, const QJsonObject &arguments,
       return profile;
     }
   }
+  if (tool == QLatin1String("browser_find")) {
+    FindQuery query;
+    return findQueryFrom(arguments, &query);
+  }
+  if (tool == QLatin1String("browser_snapshot")) {
+    OutlineOptions options;
+    return outlineOptionsFrom(arguments, &options);
+  }
+  if (tool == QLatin1String("browser_read")) {
+    ReadRequest request;
+    QString error = readRequestFrom(arguments, &request);
+    if (error.isEmpty()) {
+      // The page size always travels, so the extension pages the text in the
+      // page rather than sending the whole of it.
+      command.insert(QStringLiteral("offset"), request.offset);
+      command.insert(QStringLiteral("max_chars"), request.max_chars);
+    }
+    return error;
+  }
   if (tool == QLatin1String("browser_drag")) {
     return applyDragExtra(arguments, ref_index, command);
   }
@@ -1271,6 +1354,25 @@ QJsonObject typedProperty(const QString &type, const QString &description) {
                      {QStringLiteral("description"), description}};
 }
 
+// An integer property with its bounds advertised, so a client that validates
+// schemas refuses an out-of-range value before it is sent; the same bounds are
+// enforced here whatever the client does.
+QJsonObject boundedInteger(const QString &description, int minimum,
+                           int maximum) {
+  QJsonObject property = typedProperty(QStringLiteral("integer"), description);
+  property.insert(QStringLiteral("minimum"), minimum);
+  property.insert(QStringLiteral("maximum"), maximum);
+  return property;
+}
+
+// A string property that takes one of a fixed set of values.
+QJsonObject choiceProperty(const QString &description,
+                           const QStringList &choices) {
+  QJsonObject property = stringProperty(description);
+  property.insert(QStringLiteral("enum"), QJsonArray::fromStringList(choices));
+  return property;
+}
+
 // A tab_id property. The minimum is advertised as well as enforced
 // (argSemanticError), so a client that validates schemas refuses a 0 before it
 // is sent.
@@ -1317,9 +1419,8 @@ QJsonObject agentProperty() {
 // away from acting on the wrong page.
 QString tabIdDescription() {
   return QStringLiteral(
-      "Chrome tab id to act on (from browser_new_tab or browser_tabs). Omit "
-      "to use this session's current tab. When several agents share this "
-      "server, each should pass its own tab's id on every call.");
+      "Your tab's id, from browser_new_tab or browser_tabs. Omit for this "
+      "session's current tab.");
 }
 
 // Add tab_id to every tab-scoped tool's schema, from the command specs rather
@@ -1378,10 +1479,68 @@ void appendNavTools(QJsonArray &tools) {
   tools.append(toolEntry(
       QStringLiteral("browser_snapshot"),
       QStringLiteral(
-          "Capture a filtered DOM tree of the active tab: interactable "
-          "elements "
-          "with a stable [ref] used by browser_click / browser_type."),
-      toolSchema({}, {})));
+          "Capture the page as an outline of its elements, each with a [ref] "
+          "that browser_click, browser_type and the other element tools take. "
+          "To locate one element, browser_find is far smaller. Options narrow "
+          "it: ref (one element's subtree), depth, filter (\"interactive\": "
+          "elements with refs and headings; \"viewport\": what is on screen) "
+          "and max_chars (a cap that collapses off-screen regions to one line "
+          "each instead of cutting the end)."),
+      toolSchema(
+          QJsonObject{
+              {QStringLiteral("ref"),
+               stringProperty(QStringLiteral(
+                   "Show only this element's subtree: a ref from an earlier "
+                   "snapshot or find, such as a dialog, form or region."))},
+              {QStringLiteral("depth"),
+               boundedInteger(QStringLiteral("Levels below the root to show."),
+                              0, kMaxOutlineDepth)},
+              {QStringLiteral("filter"),
+               choiceProperty(
+                   QStringLiteral(
+                       "\"all\" (the default), \"interactive\" (elements with "
+                       "refs, plus headings) or \"viewport\" (only what is on "
+                       "screen)."),
+                   {QStringLiteral("all"), QStringLiteral("interactive"),
+                    QStringLiteral("viewport")})},
+              {QStringLiteral("max_chars"),
+               boundedInteger(
+                   QStringLiteral(
+                       "Cap the outline at this many characters: the largest "
+                       "off-screen regions collapse to one line each, with "
+                       "the ref to read them by."),
+                   kMinOutlineChars, kMaxOutlineChars)}},
+          {})));
+  tools.append(toolEntry(
+      QStringLiteral("browser_find"),
+      QStringLiteral(
+          "Find elements on the page by visible text or name and get their "
+          "refs: the snapshot's lines for just the matches, best first, each "
+          "with the dialog or landmark it sits in -- far smaller than a whole "
+          "browser_snapshot. Give text (the words to look for), query (the "
+          "same as a phrase, where a role word such as button, link, field, "
+          "checkbox, tab, menu or heading filters by role) or regex. The refs "
+          "work with every element tool right away."),
+      toolSchema(
+          QJsonObject{
+              {QStringLiteral("text"),
+               stringProperty(QStringLiteral(
+                   "Words in the element's name or value, any case."))},
+              {QStringLiteral("query"),
+               stringProperty(QStringLiteral(
+                   "The same as a phrase, e.g. \"Send message button\": role "
+                   "words become a role filter."))},
+              {QStringLiteral("regex"),
+               stringProperty(
+                   QStringLiteral("A pattern the name must match, any case."))},
+              {QStringLiteral("role"),
+               stringProperty(QStringLiteral(
+                   "Only elements of this role, e.g. button, link, field."))},
+              {QStringLiteral("max_results"),
+               boundedInteger(
+                   QStringLiteral("Most matches to show (default 10)."), 1,
+                   kMaxFindResults)}},
+          {})));
   tools.append(toolEntry(
       QStringLiteral("browser_back"),
       QStringLiteral(
@@ -1401,14 +1560,37 @@ void appendNavTools(QJsonArray &tools) {
   tools.append(toolEntry(QStringLiteral("browser_reload"),
                          QStringLiteral("Reload the active tab."),
                          toolSchema({}, {})));
-  tools.append(
-      toolEntry(QStringLiteral("browser_read"),
-                QStringLiteral(
-                    "Read the active tab's content as text (default) or html."),
-                toolSchema(QJsonObject{{QStringLiteral("format"),
-                                        stringProperty(QStringLiteral(
-                                            "\"text\" or \"html\"."))}},
-                           {})));
+  tools.append(toolEntry(
+      QStringLiteral("browser_read"),
+      QStringLiteral(
+          "Read the page's text (default) or html, 30,000 characters at a "
+          "time: a longer page's reply gives next_offset, which offset takes "
+          "to continue. ref or selector reads one element; mode \"main\" "
+          "reads the page's main content."),
+      toolSchema(
+          QJsonObject{
+              {QStringLiteral("format"),
+               choiceProperty(
+                   QStringLiteral("\"text\" or \"html\"."),
+                   {QStringLiteral("text"), QStringLiteral("html")})},
+              {QStringLiteral("max_chars"),
+               boundedInteger(
+                   QStringLiteral("Characters to return (default 30000)."), 1,
+                   static_cast<int>(kMaxReadChars))},
+              {QStringLiteral("offset"),
+               boundedInteger(
+                   QStringLiteral("Where to start: a reply's next_offset."), 0,
+                   std::numeric_limits<int>::max())},
+              {QStringLiteral("ref"),
+               stringProperty(QStringLiteral("Read only this element."))},
+              {QStringLiteral("selector"),
+               stringProperty(QStringLiteral(
+                   "Read only the first element this CSS selector matches."))},
+              {QStringLiteral("mode"),
+               choiceProperty(
+                   QStringLiteral("\"main\": the page's main content."),
+                   {QStringLiteral("main")})}},
+          {})));
   tools.append(toolEntry(
       QStringLiteral("browser_screenshot"),
       QStringLiteral(
@@ -1654,19 +1836,14 @@ void appendFormControlTools(QJsonArray &tools) {
   tools.append(toolEntry(
       QStringLiteral("browser_upload"),
       QStringLiteral(
-          "Give a file input one or more local files, exactly as the user "
-          "picking them would: the page receives real File objects and its "
-          "input/change handlers run. File dialogs are intercepted and never "
-          "shown, so clicking a file input or the button that opens one "
-          "reports that a file chooser opened; then call this with just paths "
-          "and no ref to fill that chooser. Or name the input directly: [ref] "
-          "may be the file input itself or the control that opens it -- the "
-          "button, label, or menu item a person would click -- and a hidden "
-          "input is also listed in the snapshot as filechooser (hidden). Pass "
-          "absolute paths; more than one needs an input marked multiple. "
-          "Files are read by this server and sent over the bridge, up to 2 GiB "
-          "each unless CHROME_CONTROL_MCP_UPLOAD_MAX_MB sets another bound; "
-          "no path reaches the page."),
+          "Give a file input local files as the user picking them would: the "
+          "page gets real File objects and its handlers run. A click on a file "
+          "input never opens a dialog -- the reply says a file chooser opened; "
+          "then call this with paths and no ref. Or pass ref: the input, or "
+          "the button or label that opens it (a hidden input shows in the "
+          "snapshot as filechooser (hidden)). Absolute paths; several need an "
+          "input marked multiple. Up to 2 GiB a file, or what "
+          "CHROME_CONTROL_MCP_UPLOAD_MAX_MB sets; no path reaches the page."),
       toolSchema(
           QJsonObject{
               {QStringLiteral("ref"),
@@ -1739,17 +1916,14 @@ void appendFormControlTools(QJsonArray &tools) {
   tools.append(toolEntry(
       QStringLiteral("browser_clipboard"),
       QStringLiteral(
-          "Your own clipboard: each agent has one, separate from the user's "
-          "and every other agent's, and nothing you do reaches the system "
-          "clipboard. Copy, cut and paste keys in browser_press_key "
-          "(Control or Meta with C, X, V) use it, and so do a page's own copy "
-          "and paste buttons when you click them. Use this to put post text, "
-          "HTML or an image on it and paste it into any editor -- the page "
-          "gets a real paste, with formatting and files -- instead of a shell "
-          "clipboard command, which other agents and the user share. Files "
-          "are read by this server (absolute paths, as for browser_upload); "
-          "no path reaches the page. The clipboard is emptied when you "
-          "release your last tab."),
+          "Your own clipboard, separate from the user's and every other "
+          "agent's; nothing reaches the system clipboard. Copy, cut and paste "
+          "keys (browser_press_key, Control or Meta with C, X, V) and a page's "
+          "copy and paste buttons use it. Put text, HTML or an image on it to "
+          "paste into any editor -- the page gets a real paste, with "
+          "formatting and files -- instead of a shell clipboard command, "
+          "which everyone shares. Files: absolute paths, as for "
+          "browser_upload. Emptied when you release your last tab."),
       toolSchema(
           QJsonObject{
               {QStringLiteral("action"), clipboardAction},
@@ -1905,15 +2079,13 @@ void appendTabTools(QJsonArray &tools) {
   tools.append(toolEntry(
       QStringLiteral("browser_release"),
       QStringLiteral(
-          "Call this when your task is done. Tabs this session opened are "
-          "closed; tabs it borrowed from the user are handed back, never "
-          "closed; the AI tab group and the highlight are removed. When other "
-          "agents share this server, pass your tab_id to release only your own "
-          "tabs: that tab, every tab opened from it (popups, links that open a "
-          "new tab), and, if you gave browser_new_tab an agent name, every tab "
-          "under that name. The reply lists what was closed, handed back, and "
-          "kept open. Pass keep_open:true to hand the tabs you opened to the "
-          "user instead of closing them."),
+          "Call this when your task is done: tabs this session opened close, "
+          "tabs it borrowed are handed back, never closed, and the AI group "
+          "and highlight go. With other agents on this server, pass your "
+          "tab_id to release only your tabs: that tab, tabs opened from it, "
+          "and every tab under your agent name. keep_open:true hands the tabs "
+          "you opened to the user instead. The reply lists what was closed, "
+          "handed back and kept."),
       toolSchema(
           QJsonObject{
               {QStringLiteral("tab_id"),
@@ -2321,16 +2493,12 @@ void appendRecordTools(QJsonArray &tools) {
   tools.append(toolEntry(
       QStringLiteral("browser_record_start"),
       QStringLiteral(
-          "Start recording the session's tab to a .webm video. Video only -- "
-          "no audio is captured. Recording continues until "
-          "browser_record_stop, which is what returns the saved path: the "
-          "video never comes back through a tool reply. filename is optional "
-          "and must be a relative name (no absolute path, no \"..\"). "
-          "Starting a second recording for the same session is refused; stop "
-          "the first. Frames come from the debugger this session already "
-          "holds, so Chrome raises no separate recording indicator: what "
-          "it shows is the debugging banner that is up for the whole "
-          "session, recording or not."),
+          "Record the session's tab to a .webm video (no audio) until "
+          "browser_record_stop, which returns the saved path; the video never "
+          "comes back in a reply. filename: optional, a relative name (no "
+          "\"..\"). One recording per session at a time. Chrome shows no "
+          "separate recording indicator, only the debugging banner that is "
+          "up for the whole session."),
       toolSchema(
           QJsonObject{
               {QStringLiteral("filename"),
@@ -2449,6 +2617,641 @@ void appendOmittedFramesNote(const QJsonObject &capture, QString &outline) {
   }
 }
 
+// -- Shown lines: slimming, options, elision, find ---------------------------
+
+// One renderable capture record, before slimming decides whether it shows.
+struct RawLine {
+  QJsonObject node;
+  QString role;
+  QString name;
+  QString ref;
+  int raw_depth{0};
+  bool interactable{false};
+};
+
+// A record's line: role, name, ref and state, without indentation. role is
+// untrusted, so it arrives escaped and capped like name: a hostile role cannot
+// inject newlines, brackets or quotes and forge outline lines or [ref=]
+// entries.
+QString nodeLineText(const RawLine &raw) {
+  QString line = QStringLiteral("- ") + raw.role;
+  if (!raw.name.isEmpty()) {
+    line += QStringLiteral(" \"") + raw.name + QLatin1Char('"');
+  }
+  if (!raw.ref.isEmpty()) {
+    line += QStringLiteral(" [ref=") + raw.ref + QLatin1Char(']');
+  }
+  const QString suffix = stateSuffix(raw.node);
+  if (!suffix.isEmpty()) {
+    line += QLatin1Char(' ') + suffix;
+  }
+  return line;
+}
+
+// A text record that only repeats words its parent's name already says: a
+// link "Send message" with a text child "Send message", or the inline text
+// runs Chrome splits a text node into. The parent carries the words (and the
+// ref); the child adds nothing but a line. Compared on the page's own names,
+// not the capped ones the outline prints, so a long label still matches.
+bool repeatsParentName(const RawLine &line, const RawLine &parent) {
+  const bool text = line.role == QLatin1String("statictext") ||
+                    line.role == QLatin1String("inlinetextbox");
+  if (!text || !line.ref.isEmpty()) {
+    return false;
+  }
+  // An inline run is one laid-out line of its text node, by definition part
+  // of it -- however long the text, and however its name was capped.
+  if (line.role == QLatin1String("inlinetextbox") &&
+      parent.role == QLatin1String("statictext")) {
+    return true;
+  }
+  const QString words =
+      line.node.value(QStringLiteral("name")).toString().simplified();
+  const QString said =
+      parent.node.value(QStringLiteral("name")).toString().simplified();
+  return !words.isEmpty() && !said.isEmpty() &&
+         said.contains(words, Qt::CaseInsensitive);
+}
+
+// An unnamed, stateless record with no ref and nothing to act on: a wrapper.
+// One holding a single shown line folds into it.
+bool isBareWrapper(const RawLine &line) {
+  return line.ref.isEmpty() && !line.interactable && line.name.isEmpty() &&
+         !roleIsHeading(line.role) && !roleIsContainer(line.role) &&
+         stateSuffix(line.node).isEmpty();
+}
+
+QString indentFor(int depth) {
+  return QString(static_cast<qsizetype>(depth) * kSpacesPerIndentLevel,
+                 QLatin1Char(' '));
+}
+
+// Each record's nearest renderable ancestor, from the raw depths: records
+// arrive in document (pre-)order, so the ancestors are the open stack.
+QVector<qsizetype> rawParents(const QVector<RawLine> &raw) {
+  QVector<qsizetype> parent(raw.size(), -1);
+  QVector<qsizetype> open;
+  for (qsizetype i = 0; i < raw.size(); ++i) {
+    while (!open.isEmpty() &&
+           raw.at(open.last()).raw_depth >= raw.at(i).raw_depth) {
+      open.removeLast();
+    }
+    parent.replace(i, open.isEmpty() ? -1 : open.last());
+    open.append(i);
+  }
+  return parent;
+}
+
+// The renderable records as the lines a snapshot shows. Two rules remove only
+// repetition -- text that repeats its parent's name, and wrappers holding a
+// single shown line -- and indentation then counts shown ancestors, not the
+// page's raw nesting, which reached 40 spaces under dropped wrappers.
+QVector<SnapshotLine> slimLines(const QVector<RawLine> &raw) {
+  const qsizetype count = raw.size();
+  const QVector<qsizetype> parent = rawParents(raw);
+  QVector<bool> shown(count, true);
+  for (qsizetype i = 0; i < count; ++i) {
+    shown.replace(i, parent.at(i) < 0 ||
+                         !repeatsParentName(raw.at(i), raw.at(parent.at(i))));
+  }
+  const auto shownParent = [&parent, &shown](qsizetype i) {
+    qsizetype up = parent.at(i);
+    while (up >= 0 && !shown.at(up)) {
+      up = parent.at(up);
+    }
+    return up;
+  };
+  QVector<int> children(count, 0);
+  for (qsizetype i = 0; i < count; ++i) {
+    const qsizetype up = shown.at(i) ? shownParent(i) : -1;
+    if (up >= 0) {
+      children.replace(up, children.at(up) + 1);
+    }
+  }
+  for (qsizetype i = 0; i < count; ++i) {
+    if (children.at(i) == 1 && isBareWrapper(raw.at(i))) {
+      shown.replace(i, false);
+    }
+  }
+  QVector<SnapshotLine> lines;
+  QVector<qsizetype> line_of(count, -1);
+  for (qsizetype i = 0; i < count; ++i) {
+    if (!shown.at(i)) {
+      continue;
+    }
+    const qsizetype up = shownParent(i);
+    SnapshotLine line;
+    line.text = nodeLineText(raw.at(i));
+    line.role = raw.at(i).role;
+    line.name = raw.at(i).name;
+    line.value =
+        oneLine(raw.at(i).node.value(QStringLiteral("value")).toString(),
+                kMaxValueChars);
+    line.ref = raw.at(i).ref;
+    line.parent = up < 0 ? -1 : line_of.at(up);
+    line.depth =
+        up < 0 ? 0
+               : std::min(lines.at(line_of.at(up)).depth + 1, kMaxIndentDepth);
+    line.interactable = raw.at(i).interactable;
+    line.offscreen = raw.at(i).node.value(QStringLiteral("offscreen")).toBool();
+    line_of.replace(i, lines.size());
+    lines.append(line);
+  }
+  return lines;
+}
+
+// One line of an outline being built: which snapshot line, under which entry,
+// at what depth here, and its text with indentation and newline.
+struct OutlineEntry {
+  qsizetype line{0};
+  qsizetype parent{-1};
+  int depth{0};
+  QString rendered;
+};
+
+// Each entry's subtree end, one past its last descendant, from the depths.
+QVector<qsizetype> subtreeEnds(const QVector<OutlineEntry> &entries) {
+  const qsizetype count = entries.size();
+  QVector<qsizetype> ends(count, count);
+  QVector<qsizetype> open;
+  for (qsizetype i = 0; i < count; ++i) {
+    while (!open.isEmpty() &&
+           entries.at(open.last()).depth >= entries.at(i).depth) {
+      ends.replace(open.last(), i);
+      open.removeLast();
+    }
+    open.append(i);
+  }
+  return ends;
+}
+
+// What a collapsed region's line says about the lines it stands for, and how
+// to reach them.
+QString omittedStub(qsizetype hidden, const QString &ref) {
+  if (ref.isEmpty()) {
+    return QStringLiteral(" (%1 lines omitted; browser_find reaches them)")
+        .arg(hidden);
+  }
+  return QStringLiteral(
+             " (%1 lines omitted: browser_snapshot ref=%2, or browser_find)")
+      .arg(QString::number(hidden), ref);
+}
+
+// Which entries an elided outline keeps whatever it costs: the lines on
+// screen -- or, with no positions, the top half of the budget -- every
+// landmark and heading, and the ancestors of each.
+QVector<bool> elisionKeeps(const QVector<OutlineEntry> &entries,
+                           const SnapshotView &view, int max_chars) {
+  const qsizetype count = entries.size();
+  QVector<bool> kept(count, false);
+  qsizetype running = 0;
+  for (qsizetype i = 0; i < count; ++i) {
+    const SnapshotLine &line = view.lines.at(entries.at(i).line);
+    const bool on_screen =
+        view.positions ? !line.offscreen : running < max_chars / 2;
+    running += entries.at(i).rendered.size();
+    if (on_screen || roleIsLandmark(line.role) || roleIsHeading(line.role)) {
+      for (qsizetype up = i; up >= 0 && !kept.at(up);
+           up = entries.at(up).parent) {
+        kept.replace(up, true);
+      }
+    }
+  }
+  return kept;
+}
+
+// One way to shorten an elided outline: hide entries [first, end) behind a
+// stub. A region's stub rides on its own first line (`own_line` false, the
+// region's root is `anchor`); a run of sibling regions under one parent gets a
+// stub line of its own (`own_line` true, the parent is `anchor`, -1 at the
+// top). `saved` is the characters it takes off.
+struct Elision {
+  qsizetype first{0};
+  qsizetype end{0};
+  qsizetype anchor{-1};
+  qsizetype saved{0};
+  bool own_line{false};
+};
+
+// The ref a stub names: the region's root, or the parent of a run.
+QString elisionRef(const QVector<OutlineEntry> &entries,
+                   const SnapshotView &view, const Elision &elision) {
+  return elision.anchor < 0
+             ? QString()
+             : view.lines.at(entries.at(elision.anchor).line).ref;
+}
+
+// Every region and every run of sibling regions that holds none of what
+// elisionKeeps names, with what hiding it would save.
+QVector<Elision> elisionCandidates(const QVector<OutlineEntry> &entries,
+                                   const SnapshotView &view,
+                                   const QVector<qsizetype> &ends,
+                                   const QVector<qsizetype> &kept_before,
+                                   const QVector<qsizetype> &chars_before) {
+  const qsizetype count = entries.size();
+  const auto free_of_kept = [&kept_before](qsizetype from, qsizetype to) {
+    return kept_before.at(to) == kept_before.at(from);
+  };
+  QVector<Elision> candidates;
+  const auto consider = [&](Elision elision) {
+    const qsizetype stub =
+        omittedStub(elision.end - elision.first,
+                    elisionRef(entries, view, elision))
+            .size() +
+        (elision.own_line
+             ? entries.at(elision.first).depth * kSpacesPerIndentLevel + 6
+             : 0);
+    elision.saved =
+        chars_before.at(elision.end) - chars_before.at(elision.first) - stub;
+    if (elision.saved > 0) {
+      candidates.append(elision);
+    }
+  };
+  for (qsizetype i = 0; i < count; ++i) {
+    if (ends.at(i) - i >= 2 && free_of_kept(i + 1, ends.at(i))) {
+      consider({i + 1, ends.at(i), i, 0, false});
+    }
+  }
+  // Runs: consecutive children of one parent, each wholly free of kept
+  // lines. Parents in document order, so equal savings break the same way on
+  // every run.
+  QMap<qsizetype, QVector<qsizetype>> children;
+  for (qsizetype i = 0; i < count; ++i) {
+    auto kids = children.find(entries.at(i).parent);
+    if (kids == children.end()) {
+      kids = children.insert(entries.at(i).parent, {});
+    }
+    kids->append(i);
+  }
+  for (auto it = children.cbegin(); it != children.cend(); ++it) {
+    qsizetype run_first = -1;
+    qsizetype run_end = -1;
+    int run_children = 0;
+    const auto close_run = [&]() {
+      // One child alone is its own region, which keeps its line and names
+      // its own ref; a run is two siblings or more.
+      if (run_first >= 0 && run_children >= 2) {
+        consider({run_first, run_end, it.key(), 0, true});
+      }
+      run_first = -1;
+    };
+    for (const qsizetype child : it.value()) {
+      if (free_of_kept(child, ends.at(child))) {
+        if (run_first < 0) {
+          run_first = child;
+          run_children = 0;
+        }
+        run_end = ends.at(child);
+        ++run_children;
+      } else {
+        close_run();
+      }
+    }
+    close_run();
+  }
+  return candidates;
+}
+
+// Fit an outline to max_chars without cutting it at the tail: what
+// elisionKeeps names stays, and the largest regions -- or runs of sibling
+// regions -- holding none of it collapse to one line with a count and a way
+// in. Only when what must stay is itself over the cap is the rest cut, at a
+// line boundary, saying so.
+QString elideOutline(const QVector<OutlineEntry> &entries,
+                     const SnapshotView &view, int max_chars) {
+  const qsizetype count = entries.size();
+  const QVector<qsizetype> ends = subtreeEnds(entries);
+  const QVector<bool> kept = elisionKeeps(entries, view, max_chars);
+  QVector<qsizetype> kept_before(count + 1, 0);
+  QVector<qsizetype> chars_before(count + 1, 0);
+  for (qsizetype i = 0; i < count; ++i) {
+    kept_before.replace(i + 1, kept_before.at(i) + (kept.at(i) ? 1 : 0));
+    chars_before.replace(i + 1,
+                         chars_before.at(i) + entries.at(i).rendered.size());
+  }
+  QVector<Elision> candidates =
+      elisionCandidates(entries, view, ends, kept_before, chars_before);
+  // Largest first: anything holding another candidate saves more than it, so
+  // the outer one collapses and the ones inside are never counted twice.
+  std::stable_sort(
+      candidates.begin(), candidates.end(),
+      [](const Elision &a, const Elision &b) { return a.saved > b.saved; });
+  qsizetype total = chars_before.at(count);
+  QVector<bool> hidden(count, false);
+  QVector<qsizetype> tail_stub(count, -1);
+  QVector<qsizetype> line_stub(count, -1);
+  for (qsizetype c = 0; c < candidates.size(); ++c) {
+    const Elision &elision = candidates.at(c);
+    if (total <= max_chars) {
+      break;
+    }
+    if (hidden.at(elision.first) ||
+        (!elision.own_line && hidden.at(elision.anchor))) {
+      continue;
+    }
+    std::fill(hidden.begin() + elision.first, hidden.begin() + elision.end,
+              true);
+    if (elision.own_line) {
+      line_stub.replace(elision.first, c);
+    } else {
+      tail_stub.replace(elision.anchor, c);
+    }
+    total -= elision.saved;
+  }
+  const auto stubFor = [&](qsizetype c) {
+    const Elision &elision = candidates.at(c);
+    return omittedStub(elision.end - elision.first,
+                       elisionRef(entries, view, elision));
+  };
+  QString text;
+  for (qsizetype i = 0; i < count; ++i) {
+    if (line_stub.at(i) >= 0) {
+      text += indentFor(entries.at(i).depth) + QStringLiteral("- ...") +
+              stubFor(line_stub.at(i)) + QLatin1Char('\n');
+    }
+    if (hidden.at(i)) {
+      continue;
+    }
+    if (tail_stub.at(i) >= 0) {
+      text += entries.at(i).rendered.chopped(1) + stubFor(tail_stub.at(i)) +
+              QLatin1Char('\n');
+    } else {
+      text += entries.at(i).rendered;
+    }
+  }
+  if (text.size() > max_chars) {
+    const qsizetype cut = text.lastIndexOf(QLatin1Char('\n'), max_chars - 1);
+    const qsizetype keep = cut < 0 ? 0 : cut + 1;
+    const qsizetype rest = text.mid(keep).count(QLatin1Char('\n'));
+    text = text.left(keep) +
+           QStringLiteral("  ... (%1 more lines: narrow with browser_snapshot "
+                          "ref or filter, or raise max_chars)\n")
+               .arg(rest);
+  }
+  return text + QStringLiteral("  ... (shortened to fit max_chars %1: "
+                               "browser_snapshot ref=<a region> reads one "
+                               "part, browser_find locates an element)\n")
+                    .arg(max_chars);
+}
+
+// Roles a find names in words: "field" means any text entry, "menu" any menu
+// item. A role word not listed here matches only itself.
+const QHash<QString, QStringList> &roleWords() {
+  static const QStringList kEntry{
+      QStringLiteral("textbox"), QStringLiteral("searchbox"),
+      QStringLiteral("combobox"), QStringLiteral("spinbutton")};
+  static const QStringList kChoice{QStringLiteral("combobox"),
+                                   QStringLiteral("listbox")};
+  static const QHash<QString, QStringList> kWords{
+      {QStringLiteral("button"), {QStringLiteral("button")}},
+      {QStringLiteral("link"), {QStringLiteral("link")}},
+      {QStringLiteral("field"), kEntry},
+      {QStringLiteral("input"), kEntry},
+      {QStringLiteral("textbox"), kEntry},
+      {QStringLiteral("checkbox"), {QStringLiteral("checkbox")}},
+      {QStringLiteral("radio"), {QStringLiteral("radio")}},
+      {QStringLiteral("tab"), {QStringLiteral("tab")}},
+      {QStringLiteral("menu"),
+       {QStringLiteral("menu"), QStringLiteral("menuitem"),
+        QStringLiteral("menuitemcheckbox"), QStringLiteral("menuitemradio")}},
+      {QStringLiteral("heading"), {QStringLiteral("heading")}},
+      {QStringLiteral("image"),
+       {QStringLiteral("image"), QStringLiteral("img")}},
+      {QStringLiteral("dropdown"), kChoice},
+      {QStringLiteral("select"), kChoice},
+      {QStringLiteral("option"), {QStringLiteral("option")}},
+      {QStringLiteral("switch"), {QStringLiteral("switch")}},
+      {QStringLiteral("slider"), {QStringLiteral("slider")}},
+      {QStringLiteral("dialog"),
+       {QStringLiteral("dialog"), QStringLiteral("alertdialog")}}};
+  return kWords;
+}
+
+// The role word @p word stands for, plural or not; empty when it is not one.
+QString roleWordKey(const QString &word) {
+  if (roleWords().contains(word)) {
+    return word;
+  }
+  if (word.endsWith(QLatin1Char('s')) &&
+      roleWords().contains(word.chopped(1))) {
+    return word.chopped(1);
+  }
+  return {};
+}
+
+QSet<QString> rolesFor(const QString &role) {
+  const QString key = roleWordKey(role);
+  if (key.isEmpty()) {
+    return {role};
+  }
+  const QStringList &roles = roleWords().value(key);
+  return {roles.cbegin(), roles.cend()};
+}
+
+QString normalized(const QString &text) {
+  return text.simplified().toCaseFolded();
+}
+
+QStringList wordsOf(const QString &text) {
+  static const QRegularExpression kBetweenWords(
+      QStringLiteral("[^\\p{L}\\p{N}]+"),
+      QRegularExpression::UseUnicodePropertiesOption);
+  return text.split(kBetweenWords, Qt::SkipEmptyParts);
+}
+
+// Whether the match of @p length at @p at in @p haystack starts and ends on a
+// word boundary.
+bool wordBounded(const QString &haystack, qsizetype at, qsizetype length) {
+  const qsizetype after = at + length;
+  return (at == 0 || !haystack.at(at - 1).isLetterOrNumber()) &&
+         (after >= haystack.size() || !haystack.at(after).isLetterOrNumber());
+}
+
+// How well a normalised name matches a normalised needle: whole name, start,
+// a whole word, anywhere; and for a phrase, how many of its words the name
+// has. Zero is no match.
+int nameScore(const QString &name, const QString &needle, bool natural) {
+  if (name.isEmpty() || needle.isEmpty()) {
+    return 0;
+  }
+  if (name == needle) {
+    return kScoreExact;
+  }
+  if (name.startsWith(needle)) {
+    return kScorePrefix;
+  }
+  const qsizetype at = name.indexOf(needle);
+  if (at >= 0) {
+    return wordBounded(name, at, needle.size()) ? kScoreWord : kScoreSubstring;
+  }
+  if (!natural) {
+    return 0;
+  }
+  QStringList wanted = wordsOf(needle);
+  wanted.removeIf(
+      [](const QString &word) { return word.size() < kMinOverlapWordChars; });
+  if (wanted.isEmpty()) {
+    return 0;
+  }
+  const QStringList have = wordsOf(name);
+  const auto matched = std::count_if(
+      wanted.cbegin(), wanted.cend(),
+      [&have](const QString &word) { return have.contains(word); });
+  if (matched * 2 < wanted.size()) {
+    return 0;
+  }
+  return kScoreOverlapBase +
+         static_cast<int>(kScoreOverlapSpan * matched / wanted.size());
+}
+
+struct FindMatch {
+  qsizetype line{0};
+  int score{0};
+};
+
+// Every line matching the needle (or the pattern), within @p roles when any
+// are given, best first and in page order among equals.
+QVector<FindMatch> matchLines(const SnapshotView &view, const QString &needle,
+                              bool natural, const QRegularExpression *pattern,
+                              const QSet<QString> &roles) {
+  QVector<FindMatch> matches;
+  for (qsizetype i = 0; i < view.lines.size(); ++i) {
+    const SnapshotLine &line = view.lines.at(i);
+    if (!roles.isEmpty() && !roles.contains(line.role)) {
+      continue;
+    }
+    int score = 0;
+    if (pattern != nullptr) {
+      if (pattern->match(line.name).hasMatch()) {
+        score = kScoreRegex;
+      } else if (!line.value.isEmpty() &&
+                 pattern->match(line.value).hasMatch()) {
+        score = kScoreValue;
+      }
+    } else if (needle.isEmpty()) {
+      score = kScoreRoleOnly;
+    } else {
+      score = nameScore(normalized(line.name), needle, natural);
+      if (score == 0 && normalized(line.value).contains(needle)) {
+        score = kScoreValue;
+      }
+    }
+    if (score == 0) {
+      continue;
+    }
+    if (!line.ref.isEmpty()) {
+      score += kBoostActionable;
+    }
+    if (view.positions && !line.offscreen) {
+      score += kBoostOnScreen;
+    }
+    matches.append({i, score});
+  }
+  std::stable_sort(
+      matches.begin(), matches.end(),
+      [](const FindMatch &a, const FindMatch &b) { return a.score > b.score; });
+  return matches;
+}
+
+// Where a match sits: off-screen when it is, then up to three containers above
+// it, nearest first.
+QString findContext(const SnapshotView &view, qsizetype at) {
+  QStringList parts;
+  for (qsizetype up = view.lines.at(at).parent;
+       up >= 0 && parts.size() < kFindContextAncestors;
+       up = view.lines.at(up).parent) {
+    const SnapshotLine &line = view.lines.at(up);
+    if (!roleIsContext(line.role)) {
+      continue;
+    }
+    QString part = line.role;
+    if (!line.name.isEmpty()) {
+      part += QStringLiteral(" \"") + line.name + QLatin1Char('"');
+    }
+    if (!line.ref.isEmpty()) {
+      part += QStringLiteral(" [ref=") + line.ref + QLatin1Char(']');
+    }
+    parts.append(part);
+  }
+  QString context = parts.isEmpty() ? QString()
+                                    : QStringLiteral("in: ") +
+                                          parts.join(QStringLiteral(" > "));
+  if (view.positions && view.lines.at(at).offscreen) {
+    context = context.isEmpty() ? QStringLiteral("off-screen")
+                                : QStringLiteral("off-screen; ") + context;
+  }
+  return context;
+}
+
+// The share of character pairs two strings have in common (Dice's
+// coefficient): 1 for the same text, 0 for nothing alike.
+double pairSimilarity(const QString &a, const QString &b) {
+  if (a.size() < 2 || b.size() < 2) {
+    return a == b ? 1.0 : 0.0;
+  }
+  QHash<QString, int> pairs;
+  for (qsizetype i = 0; i + 1 < a.size(); ++i) {
+    const QString pair = a.mid(i, 2);
+    pairs.insert(pair, pairs.value(pair) + 1);
+  }
+  int shared = 0;
+  for (qsizetype i = 0; i + 1 < b.size(); ++i) {
+    const auto it = pairs.find(b.mid(i, 2));
+    if (it != pairs.end() && it.value() > 0) {
+      --it.value();
+      ++shared;
+    }
+  }
+  return 2.0 * shared / static_cast<double>(a.size() + b.size() - 2);
+}
+
+// The names on the page nearest to what a find looked for, as a sentence;
+// empty when nothing is near.
+QString closestNames(const SnapshotView &view, const QString &needle) {
+  struct Near {
+    QString name;
+    double similarity{0.0};
+  };
+  QVector<Near> near;
+  QSet<QString> seen;
+  for (const SnapshotLine &line : view.lines) {
+    const QString name = normalized(line.name);
+    if (name.isEmpty() || seen.contains(name)) {
+      continue;
+    }
+    seen.insert(name);
+    const double similarity = pairSimilarity(name, needle);
+    if (similarity > 0.0) {
+      near.append({line.name, similarity});
+    }
+  }
+  std::stable_sort(near.begin(), near.end(), [](const Near &a, const Near &b) {
+    return a.similarity > b.similarity;
+  });
+  QStringList names;
+  for (qsizetype i = 0; i < std::min(near.size(), kClosestNames); ++i) {
+    names.append(QLatin1Char('"') + near.at(i).name + QLatin1Char('"'));
+  }
+  return names.isEmpty()
+             ? QString()
+             : QStringLiteral("Closest names: ") +
+                   names.join(QStringLiteral(", ")) + QStringLiteral(". ");
+}
+
+// How a find names what it looked for, in its own replies.
+QString describeFind(const FindQuery &query) {
+  QString what =
+      !query.regex.isEmpty()
+          ? QStringLiteral("regex /") + query.regex + QLatin1Char('/')
+          : (query.natural ? QStringLiteral("query \"")
+                           : QStringLiteral("text \"")) +
+                query.text + QLatin1Char('"');
+  if (!query.role.isEmpty()) {
+    what += QStringLiteral(" with role ") + query.role;
+  }
+  return what;
+}
+
 } // namespace
 
 bool commandIsTabScoped(const QString &cmd) {
@@ -2481,8 +3284,8 @@ SnapshotView renderSnapshot(const QJsonObject &capture,
       oneLine(capture.value(QStringLiteral("url")).toString(), kMaxUrlChars);
   view.title = oneLine(capture.value(QStringLiteral("title")).toString(),
                        kMaxTitleChars);
+  view.positions = capture.value(QStringLiteral("viewport")).isObject();
 
-  QString outline;
   QJsonObject ref_index;
   // A ref names a NODE, not a position. The outline is rebuilt on every
   // snapshot, and numbering purely by document order means an element that
@@ -2517,6 +3320,7 @@ SnapshotView renderSnapshot(const QJsonObject &capture,
   // injection surface.
   bool truncated = capture.value(QStringLiteral("truncated")).toBool();
   const QJsonArray nodes = capture.value(QStringLiteral("nodes")).toArray();
+  QVector<RawLine> raw;
   int scanned = 0;
   for (const QJsonValue value : nodes) {
     if (scanned >= kMaxScanNodes) {
@@ -2538,8 +3342,9 @@ SnapshotView renderSnapshot(const QJsonObject &capture,
       truncated = true;
       break;
     }
-    // An interactable OR value-bearing node with a valid integer backendNodeId
-    // gets a ref; otherwise it is shown for context but cannot be acted on.
+    // An interactable OR value-bearing node, or a container, with a valid
+    // integer backendNodeId gets a ref; otherwise it is shown for context but
+    // cannot be acted on.
     qint64 backend_id = 0;
     QString ref;
     if (nodeIsRefWorthy(node, interactable) &&
@@ -2564,22 +3369,379 @@ SnapshotView renderSnapshot(const QJsonObject &capture,
                             node.value(QStringLiteral("role")).toString()},
                            {QStringLiteral("name"), name}});
     }
-    outline += buildNodeLine(node, name, ref);
+    QString role = escapeName(node.value(QStringLiteral("role")).toString());
+    if (role.isEmpty()) {
+      role = QStringLiteral("generic");
+    }
+    raw.append({node, role, name, ref,
+                std::max(0, node.value(QStringLiteral("depth")).toInt(0)),
+                interactable});
     ++emitted;
   }
+  QString notes;
   if (truncated) {
-    outline += QStringLiteral(
-        "  ... (more elements omitted; the page is very large)\n");
+    notes += QStringLiteral(
+        "  ... (more elements omitted; the page is very large: browser_find "
+        "searches what was captured, browser_snapshot ref reads one part)\n");
   }
   // The single-pass capture does not reach cross-origin (out-of-process)
   // iframes; when the extension reports them, name the omitted frames so the
   // model can navigate into them rather than treat the snapshot as the whole
   // page.
-  appendOmittedFramesNote(capture, outline);
+  appendOmittedFramesNote(capture, notes);
 
-  view.outline = std::move(outline);
+  view.lines = slimLines(raw);
+  const QString outline =
+      std::accumulate(view.lines.cbegin(), view.lines.cend(), QString(),
+                      [](QString text, const SnapshotLine &line) {
+                        return std::move(text) + indentFor(line.depth) +
+                               line.text + QLatin1Char('\n');
+                      });
+  view.outline = outline + notes;
+  view.notes = std::move(notes);
   view.ref_index = std::move(ref_index);
   return view;
+}
+
+QString outlineOptionsFrom(const QJsonObject &arguments, OutlineOptions *out) {
+  OutlineOptions options;
+  options.ref = arguments.value(QStringLiteral("ref")).toString();
+  if (arguments.contains(QStringLiteral("depth"))) {
+    const int depth = arguments.value(QStringLiteral("depth")).toInt(-1);
+    if (depth < 0 || depth > kMaxOutlineDepth) {
+      return QStringLiteral("depth must be between 0 and %1.")
+          .arg(kMaxOutlineDepth);
+    }
+    options.depth = depth;
+  }
+  if (arguments.contains(QStringLiteral("filter"))) {
+    const QString filter = arguments.value(QStringLiteral("filter")).toString();
+    if (filter != QLatin1String("all") &&
+        filter != QLatin1String("interactive") &&
+        filter != QLatin1String("viewport")) {
+      return QStringLiteral(
+          "filter must be \"all\", \"interactive\" or \"viewport\".");
+    }
+    options.filter = filter == QLatin1String("all") ? QString() : filter;
+  }
+  if (arguments.contains(QStringLiteral("max_chars"))) {
+    const int max_chars = arguments.value(QStringLiteral("max_chars")).toInt(0);
+    if (max_chars < kMinOutlineChars || max_chars > kMaxOutlineChars) {
+      return QStringLiteral("max_chars must be between %1 and %2.")
+          .arg(kMinOutlineChars)
+          .arg(kMaxOutlineChars);
+    }
+    options.max_chars = max_chars;
+  }
+  *out = std::move(options);
+  return {};
+}
+
+Outline renderOutline(const SnapshotView &view, const OutlineOptions &options) {
+  Outline out;
+  const qsizetype count = view.lines.size();
+  out.total = static_cast<int>(count);
+  QVector<bool> chosen(count, true);
+  int base = 0;
+  if (!options.ref.isEmpty()) {
+    const auto root = std::find_if(view.lines.cbegin(), view.lines.cend(),
+                                   [&options](const SnapshotLine &line) {
+                                     return line.ref == options.ref;
+                                   });
+    if (root == view.lines.cend()) {
+      out.error = QStringLiteral("Element ref '") + options.ref +
+                  QStringLiteral("' is not shown on the page any more; call "
+                                 "browser_snapshot without ref, or "
+                                 "browser_find.");
+      return out;
+    }
+    const qsizetype at = root - view.lines.cbegin();
+    base = root->depth;
+    qsizetype end = at + 1;
+    while (end < count && view.lines.at(end).depth > base) {
+      ++end;
+    }
+    for (qsizetype i = 0; i < count; ++i) {
+      chosen.replace(i, i >= at && i < end);
+    }
+  }
+  qsizetype off_screen = 0;
+  if (options.filter == QLatin1String("viewport") && !view.positions) {
+    out.error = QStringLiteral(
+        "This Chrome extension is older than the server and does not say "
+        "where elements are, so filter \"viewport\" cannot be applied. Reload "
+        "Chrome Control MCP at chrome://extensions, or use filter "
+        "\"interactive\".");
+    return out;
+  }
+  for (qsizetype i = 0; i < count; ++i) {
+    const SnapshotLine &line = view.lines.at(i);
+    if (!chosen.at(i)) {
+      continue;
+    }
+    if (options.depth >= 0 && line.depth - base > options.depth) {
+      chosen.replace(i, false);
+    } else if (options.filter == QLatin1String("interactive")) {
+      chosen.replace(i, !line.ref.isEmpty() || roleIsHeading(line.role));
+    } else if (options.filter == QLatin1String("viewport") && line.offscreen) {
+      chosen.replace(i, false);
+      ++off_screen;
+    }
+  }
+  QVector<OutlineEntry> entries;
+  QVector<qsizetype> entry_of(count, -1);
+  for (qsizetype i = 0; i < count; ++i) {
+    if (!chosen.at(i)) {
+      continue;
+    }
+    qsizetype up = view.lines.at(i).parent;
+    while (up >= 0 && !chosen.at(up)) {
+      up = view.lines.at(up).parent;
+    }
+    OutlineEntry entry;
+    entry.line = i;
+    entry.parent = up < 0 ? -1 : entry_of.at(up);
+    entry.depth = up < 0 ? 0
+                         : std::min(entries.at(entry_of.at(up)).depth + 1,
+                                    kMaxIndentDepth);
+    entry.rendered =
+        indentFor(entry.depth) + view.lines.at(i).text + QLatin1Char('\n');
+    entry_of.replace(i, entries.size());
+    entries.append(entry);
+  }
+  out.shown = static_cast<int>(entries.size());
+  QString text = std::accumulate(entries.cbegin(), entries.cend(), QString(),
+                                 [](QString joined, const OutlineEntry &entry) {
+                                   return std::move(joined) + entry.rendered;
+                                 });
+  if (options.max_chars > 0 && text.size() > options.max_chars) {
+    text = elideOutline(entries, view, options.max_chars);
+  }
+  if (off_screen > 0) {
+    text += QStringLiteral("  ... (%1 lines off-screen: browser_snapshot "
+                           "without filter, or browser_find)\n")
+                .arg(off_screen);
+  }
+  out.text = text + view.notes;
+  return out;
+}
+
+QString findQueryFrom(const QJsonObject &arguments, FindQuery *out) {
+  FindQuery query;
+  const QString text =
+      arguments.value(QStringLiteral("text")).toString().trimmed();
+  const QString phrase =
+      arguments.value(QStringLiteral("query")).toString().trimmed();
+  const QString pattern = arguments.value(QStringLiteral("regex")).toString();
+  const int given = static_cast<int>(!text.isEmpty()) +
+                    static_cast<int>(!phrase.isEmpty()) +
+                    static_cast<int>(!pattern.isEmpty());
+  if (given == 0) {
+    return QStringLiteral(
+        "browser_find needs one of text (the words to look for), query (the "
+        "same as a phrase, where a role word such as \"button\" or \"link\" "
+        "filters by role) or regex (a pattern).");
+  }
+  if (given > 1) {
+    return QStringLiteral(
+        "Give browser_find one of text, query or regex, not several.");
+  }
+  query.text = text.isEmpty() ? phrase : text;
+  query.natural = !phrase.isEmpty();
+  query.regex = pattern;
+  if (query.text.size() > kMaxFindTextChars ||
+      query.regex.size() > kMaxFindTextChars) {
+    return QStringLiteral(
+               "browser_find takes at most %1 characters; look for a shorter "
+               "part of the name.")
+        .arg(kMaxFindTextChars);
+  }
+  if (!query.regex.isEmpty()) {
+    const QRegularExpression compiled(
+        query.regex, QRegularExpression::CaseInsensitiveOption |
+                         QRegularExpression::UseUnicodePropertiesOption);
+    if (!compiled.isValid()) {
+      return QStringLiteral("regex does not compile: %1 (at character %2).")
+          .arg(compiled.errorString(),
+               QString::number(compiled.patternErrorOffset()));
+    }
+  }
+  query.role =
+      arguments.value(QStringLiteral("role")).toString().trimmed().toLower();
+  if (query.role.size() > kMaxFindRoleChars) {
+    return QStringLiteral("role takes at most %1 characters.")
+        .arg(kMaxFindRoleChars);
+  }
+  if (arguments.contains(QStringLiteral("max_results"))) {
+    const int max_results =
+        arguments.value(QStringLiteral("max_results")).toInt(0);
+    if (max_results < 1 || max_results > kMaxFindResults) {
+      return QStringLiteral("max_results must be between 1 and %1.")
+          .arg(kMaxFindResults);
+    }
+    query.max_results = max_results;
+  }
+  *out = std::move(query);
+  return {};
+}
+
+QString renderFind(const SnapshotView &view, const FindQuery &query) {
+  QSet<QString> roles =
+      query.role.isEmpty() ? QSet<QString>{} : rolesFor(query.role);
+  QString needle = normalized(query.text);
+  if (query.natural) {
+    QStringList words;
+    for (const QString &word :
+         needle.split(QLatin1Char(' '), Qt::SkipEmptyParts)) {
+      const QString key = roleWordKey(word);
+      if (key.isEmpty()) {
+        words.append(word);
+      } else {
+        roles.unite(rolesFor(key));
+      }
+    }
+    needle = words.join(QLatin1Char(' '));
+  }
+  std::optional<QRegularExpression> pattern;
+  if (!query.regex.isEmpty()) {
+    pattern.emplace(query.regex,
+                    QRegularExpression::CaseInsensitiveOption |
+                        QRegularExpression::UseUnicodePropertiesOption);
+  }
+  QVector<FindMatch> matches =
+      matchLines(view, needle, query.natural,
+                 pattern.has_value() ? &*pattern : nullptr, roles);
+  // A role word can be part of the name itself ("Image settings"): with
+  // nothing found under the role it implied, look again by the whole phrase.
+  if (matches.isEmpty() && query.natural && query.role.isEmpty() &&
+      !roles.isEmpty()) {
+    matches = matchLines(view, normalized(query.text), true, nullptr, {});
+  }
+  const QString what = describeFind(query);
+  if (matches.isEmpty()) {
+    return QStringLiteral("No element matches ") + what + QStringLiteral(". ") +
+           closestNames(view,
+                        needle.isEmpty() ? normalized(query.text) : needle) +
+           QStringLiteral("Try fewer words, or browser_snapshot with filter "
+                          "\"interactive\".\n") +
+           view.notes;
+  }
+  const qsizetype shown =
+      std::min<qsizetype>(matches.size(), query.max_results);
+  QString text = QStringLiteral("Found %1 %2 for ")
+                     .arg(QString::number(matches.size()),
+                          matches.size() == 1 ? QStringLiteral("match")
+                                              : QStringLiteral("matches")) +
+                 what +
+                 (shown < matches.size()
+                      ? QStringLiteral(" (showing the best %1):\n").arg(shown)
+                      : QStringLiteral(":\n"));
+  for (qsizetype k = 0; k < shown; ++k) {
+    const qsizetype at = matches.at(k).line;
+    text += view.lines.at(at).text + QLatin1Char('\n');
+    const QString context = findContext(view, at);
+    if (!context.isEmpty()) {
+      text += QStringLiteral("    ") + context + QLatin1Char('\n');
+    }
+  }
+  return text + view.notes;
+}
+
+QString readRequestFrom(const QJsonObject &arguments, ReadRequest *out) {
+  ReadRequest request;
+  if (arguments.contains(QStringLiteral("offset"))) {
+    const qint64 offset =
+        arguments.value(QStringLiteral("offset")).toInteger(-1);
+    if (offset < 0) {
+      return QStringLiteral("offset must be 0 or more.");
+    }
+    request.offset = offset;
+  }
+  if (arguments.contains(QStringLiteral("max_chars"))) {
+    const qint64 max_chars =
+        arguments.value(QStringLiteral("max_chars")).toInteger(0);
+    if (max_chars < 1 || max_chars > kMaxReadChars) {
+      return QStringLiteral("max_chars must be between 1 and %1.")
+          .arg(kMaxReadChars);
+    }
+    request.max_chars = max_chars;
+  }
+  const bool by_ref = arguments.contains(QStringLiteral("ref"));
+  const bool by_selector = arguments.contains(QStringLiteral("selector"));
+  const bool by_mode = arguments.contains(QStringLiteral("mode"));
+  if (static_cast<int>(by_ref) + static_cast<int>(by_selector) +
+          static_cast<int>(by_mode) >
+      1) {
+    return QStringLiteral(
+        "browser_read reads one of ref, selector or mode at a time.");
+  }
+  if (by_selector) {
+    const QString selector =
+        arguments.value(QStringLiteral("selector")).toString();
+    if (selector.trimmed().isEmpty() || selector.size() > kMaxSelectorChars) {
+      return QStringLiteral(
+                 "selector must be a CSS selector of at most %1 characters.")
+          .arg(kMaxSelectorChars);
+    }
+  }
+  if (by_mode && arguments.value(QStringLiteral("mode")).toString() !=
+                     QLatin1String("main")) {
+    return QStringLiteral("mode must be \"main\": the page's main content.");
+  }
+  request.scoped = by_ref || by_selector || by_mode;
+  *out = request;
+  return {};
+}
+
+QString pageRead(QJsonObject &payload, const ReadRequest &request) {
+  if (request.scoped && !payload.contains(QStringLiteral("scope"))) {
+    return QStringLiteral(
+        "This Chrome extension is older than the server and reads only the "
+        "whole page, so it cannot read one element or the main content. "
+        "Reload Chrome Control MCP at chrome://extensions, then read again.");
+  }
+  QString content = payload.value(QStringLiteral("content")).toString();
+  const auto pastEnd = [](qint64 offset, qint64 total) {
+    return QStringLiteral("offset %1 is past the end of the text, which is %2 "
+                          "characters long.")
+        .arg(QString::number(offset), QString::number(total));
+  };
+  qint64 total = 0;
+  const qint64 offset = request.offset;
+  if (payload.contains(QStringLiteral("total"))) {
+    // A current extension paged the text itself: hold it to what was asked.
+    total = payload.value(QStringLiteral("total")).toInteger(-1);
+    if (total < 0 ||
+        payload.value(QStringLiteral("offset")).toInteger(-1) != offset) {
+      return QStringLiteral("The browser extension returned a different part "
+                            "of the page than asked; read again.");
+    }
+    if (offset > 0 && offset >= total) {
+      return pastEnd(offset, total);
+    }
+    content = content.left(request.max_chars);
+  } else {
+    // An extension older than 1.12.0 returned the text from its start, up to
+    // its own cap: page it here.
+    total = content.size();
+    if (offset > 0 && offset >= total) {
+      return pastEnd(offset, total);
+    }
+    content = content.mid(offset, request.max_chars);
+  }
+  const qint64 end = offset + content.size();
+  payload.insert(QStringLiteral("content"), content);
+  payload.insert(QStringLiteral("offset"), offset);
+  payload.insert(QStringLiteral("total"), total);
+  payload.insert(QStringLiteral("truncated"),
+                 end < total ||
+                     payload.value(QStringLiteral("truncated")).toBool());
+  if (end < total) {
+    payload.insert(QStringLiteral("next_offset"), end);
+  } else {
+    payload.remove(QStringLiteral("next_offset"));
+  }
+  return {};
 }
 
 QJsonArray browserToolCatalog() {

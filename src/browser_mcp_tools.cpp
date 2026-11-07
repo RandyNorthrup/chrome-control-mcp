@@ -259,17 +259,13 @@ QJsonArray toolCatalog() {
       toolEntry(
           QStringLiteral("browser_extension_install"),
           QStringLiteral(
-              "Prepare the unpacked Chrome Control MCP browser extension by "
-              "registering its current-user native messaging host, and return "
-              "the exact folder to load. Loading that folder is a ONE-TIME "
-              "MANUAL step the person at the keyboard must do in "
-              "chrome://extensions; it cannot be automated, and no assistant "
-              "should try. Branded Chrome 137 and later ignore "
-              "--load-extension, policy installation needs a Web Store "
-              "listing, and driving the browser's own windows is not a "
-              "supported install path. Report the folder and the three clicks "
-              "to the user instead: Developer mode on, Load unpacked, pick the "
-              "folder. No package or private key is required.")),
+              "Register this server's native-messaging host and return the "
+              "folder of the unpacked browser extension. Loading it is a "
+              "ONE-TIME MANUAL step only the person at the keyboard can do in "
+              "chrome://extensions; no assistant should try to automate it "
+              "(Chrome ignores --load-extension, and its own windows are not "
+              "an install path). Tell the user the folder and the three "
+              "clicks: Developer mode on, Load unpacked, pick the folder.")),
       toolEntry(QStringLiteral("browser_extension_uninstall"),
                 QStringLiteral("Remove the Chrome Control MCP native messaging "
                                "host registration. If the unpacked "
@@ -298,17 +294,14 @@ QJsonArray toolCatalog() {
       toolEntry(
           QStringLiteral("browser_update_apply"),
           QStringLiteral(
-              "Install the newest release and point this install's stable link "
-              "at it. The running executable is never overwritten -- the new "
-              "version is staged in its own directory, verified against the "
-              "SHA-256 published with the release, and swapped in -- so the "
-              "update cannot fail on a locked file. The MCP command path, the "
-              "Chrome unpacked-extension folder, and the native-messaging "
-              "registration all keep working unchanged. A copy that is not yet "
-              "running from a managed install is first moved into one, which "
-              "is the only time the client's command path has to change. The "
-              "new build takes effect when the client next starts the server; "
-              "this process keeps serving the old one until then.")),
+              "Install the newest release: staged in its own directory, "
+              "checked against the release's SHA-256 and swapped in behind "
+              "this install's stable link, so the running executable is never "
+              "overwritten. The command path, the extension folder and the "
+              "native-messaging registration keep working (a copy not yet in "
+              "a managed install moves into one first, the only time the "
+              "command path changes). Takes effect when the client next starts "
+              "the server.")),
   };
 }
 

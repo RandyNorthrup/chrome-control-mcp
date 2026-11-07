@@ -1,0 +1,345 @@
+{
+  "ok": true,
+  "catalog": {
+    "full": {
+      "tools": 54,
+      "bytes": 42951,
+      "tokens_est": 10738,
+      "tab_id_copies": 39,
+      "tab_id_bytes": 3553,
+      "instructions_chars": 1960,
+      "longest": [
+        {
+          "name": "browser_permission",
+          "chars": 521
+        },
+        {
+          "name": "browser_upload",
+          "chars": 512
+        },
+        {
+          "name": "browser_clipboard",
+          "chars": 491
+        },
+        {
+          "name": "browser_console",
+          "chars": 485
+        },
+        {
+          "name": "browser_hover",
+          "chars": 449
+        },
+        {
+          "name": "browser_select_tab",
+          "chars": 441
+        }
+      ]
+    },
+    "read_only": {
+      "tools": 15,
+      "bytes": 10875,
+      "tokens_est": 2719,
+      "tab_id_copies": 10,
+      "tab_id_bytes": 890,
+      "instructions_chars": 1960,
+      "longest": [
+        {
+          "name": "browser_console",
+          "chars": 485
+        },
+        {
+          "name": "browser_network",
+          "chars": 438
+        },
+        {
+          "name": "browser_find",
+          "chars": 433
+        },
+        {
+          "name": "browser_snapshot",
+          "chars": 427
+        },
+        {
+          "name": "browser_wait_for",
+          "chars": 354
+        },
+        {
+          "name": "browser_box",
+          "chars": 269
+        }
+      ]
+    },
+    "byte_identical_across_runs": true
+  },
+  "pages": [
+    {
+      "name": "fixture-home",
+      "url": "http://127.0.0.1:38205/",
+      "loaded": true,
+      "snapshot": {
+        "bytes": 3929,
+        "lines": 96,
+        "tokens_est": 982,
+        "ms": 52
+      },
+      "snapshot_again": {
+        "bytes": 3929,
+        "lines": 96,
+        "tokens_est": 982,
+        "ms": 27
+      },
+      "snapshot_interactive": {
+        "bytes": 2700,
+        "lines": 63,
+        "tokens_est": 675,
+        "ms": 27
+      },
+      "snapshot_viewport": {
+        "error": "This Chrome extension is older than the server and does not say where elements are, so filter \"viewport\" cannot be applied. Reload Chrome Control MCP at chrome://extensions, or use filter \"interactive\".",
+        "ms": 26
+      },
+      "snapshot_30k": {
+        "bytes": 3951,
+        "lines": 97,
+        "tokens_est": 988,
+        "ms": 26
+      },
+      "find": {
+        "bytes": 320,
+        "lines": 9,
+        "tokens_est": 80,
+        "ms": 27
+      },
+      "read": {
+        "bytes": 1011,
+        "lines": 1,
+        "tokens_est": 253,
+        "ms": 26
+      },
+      "screenshot": {
+        "base64_bytes": 58180,
+        "width": 1280,
+        "height": 657,
+        "claude_tokens_est": 1104,
+        "ms": 77
+      }
+    },
+    {
+      "name": "fixture-find",
+      "url": "http://127.0.0.1:38205/find",
+      "loaded": true,
+      "snapshot": {
+        "bytes": 7294,
+        "lines": 208,
+        "tokens_est": 1824,
+        "ms": 54
+      },
+      "snapshot_again": {
+        "bytes": 7294,
+        "lines": 208,
+        "tokens_est": 1824,
+        "ms": 54
+      },
+      "snapshot_interactive": {
+        "bytes": 732,
+        "lines": 25,
+        "tokens_est": 183,
+        "ms": 53
+      },
+      "snapshot_viewport": {
+        "error": "This Chrome extension is older than the server and does not say where elements are, so filter \"viewport\" cannot be applied. Reload Chrome Control MCP at chrome://extensions, or use filter \"interactive\".",
+        "ms": 53
+      },
+      "snapshot_30k": {
+        "bytes": 7318,
+        "lines": 209,
+        "tokens_est": 1830,
+        "ms": 54
+      },
+      "find": {
+        "bytes": 296,
+        "lines": 9,
+        "tokens_est": 74,
+        "ms": 54
+      },
+      "read": {
+        "bytes": 30221,
+        "lines": 1,
+        "tokens_est": 7555,
+        "ms": 26
+      },
+      "screenshot": {
+        "base64_bytes": 241456,
+        "width": 1280,
+        "height": 657,
+        "claude_tokens_est": 1104,
+        "ms": 80
+      }
+    },
+    {
+      "name": "wikipedia",
+      "url": "https://en.wikipedia.org/wiki/Web_browser",
+      "loaded": true,
+      "snapshot": {
+        "bytes": 38110,
+        "lines": 775,
+        "tokens_est": 9528,
+        "ms": 311
+      },
+      "snapshot_again": {
+        "bytes": 38164,
+        "lines": 776,
+        "tokens_est": 9541,
+        "ms": 288
+      },
+      "snapshot_interactive": {
+        "bytes": 15479,
+        "lines": 361,
+        "tokens_est": 3870,
+        "ms": 311
+      },
+      "snapshot_viewport": {
+        "error": "This Chrome extension is older than the server and does not say where elements are, so filter \"viewport\" cannot be applied. Reload Chrome Control MCP at chrome://extensions, or use filter \"interactive\".",
+        "ms": 311
+      },
+      "snapshot_30k": {
+        "bytes": 27342,
+        "lines": 563,
+        "tokens_est": 6836,
+        "ms": 311
+      },
+      "find": {
+        "bytes": 1183,
+        "lines": 22,
+        "tokens_est": 296,
+        "ms": 285
+      },
+      "read": {
+        "bytes": 20918,
+        "lines": 1,
+        "tokens_est": 5230,
+        "ms": 27
+      },
+      "screenshot": {
+        "base64_bytes": 234512,
+        "width": 1280,
+        "height": 657,
+        "claude_tokens_est": 1104,
+        "ms": 129
+      }
+    },
+    {
+      "name": "hacker-news",
+      "url": "https://news.ycombinator.com/",
+      "loaded": true,
+      "snapshot": {
+        "bytes": 18580,
+        "lines": 499,
+        "tokens_est": 4645,
+        "ms": 107
+      },
+      "snapshot_again": {
+        "bytes": 18580,
+        "lines": 499,
+        "tokens_est": 4645,
+        "ms": 107
+      },
+      "snapshot_interactive": {
+        "bytes": 8919,
+        "lines": 238,
+        "tokens_est": 2230,
+        "ms": 109
+      },
+      "snapshot_viewport": {
+        "error": "This Chrome extension is older than the server and does not say where elements are, so filter \"viewport\" cannot be applied. Reload Chrome Control MCP at chrome://extensions, or use filter \"interactive\".",
+        "ms": 107
+      },
+      "snapshot_30k": {
+        "bytes": 18604,
+        "lines": 500,
+        "tokens_est": 4651,
+        "ms": 107
+      },
+      "find": {
+        "bytes": 676,
+        "lines": 24,
+        "tokens_est": 169,
+        "ms": 107
+      },
+      "read": {
+        "bytes": 4625,
+        "lines": 1,
+        "tokens_est": 1156,
+        "ms": 26
+      },
+      "screenshot": {
+        "base64_bytes": 175264,
+        "width": 1280,
+        "height": 657,
+        "claude_tokens_est": 1104,
+        "ms": 103
+      }
+    },
+    {
+      "name": "github",
+      "url": "https://github.com/microsoft/playwright-mcp",
+      "loaded": true,
+      "snapshot": {
+        "bytes": 43500,
+        "lines": 765,
+        "tokens_est": 10875,
+        "ms": 337
+      },
+      "snapshot_again": {
+        "bytes": 48036,
+        "lines": 801,
+        "tokens_est": 12009,
+        "ms": 260
+      },
+      "snapshot_interactive": {
+        "bytes": 13564,
+        "lines": 245,
+        "tokens_est": 3391,
+        "ms": 237
+      },
+      "snapshot_viewport": {
+        "error": "This Chrome extension is older than the server and does not say where elements are, so filter \"viewport\" cannot be applied. Reload Chrome Control MCP at chrome://extensions, or use filter \"interactive\".",
+        "ms": 263
+      },
+      "snapshot_30k": {
+        "bytes": 26827,
+        "lines": 474,
+        "tokens_est": 6707,
+        "ms": 261
+      },
+      "find": {
+        "bytes": 1333,
+        "lines": 26,
+        "tokens_est": 333,
+        "ms": 287
+      },
+      "read": {
+        "bytes": 18805,
+        "lines": 1,
+        "tokens_est": 4701,
+        "ms": 102
+      },
+      "screenshot": {
+        "base64_bytes": 166028,
+        "width": 1280,
+        "height": 657,
+        "claude_tokens_est": 1104,
+        "ms": 128
+      }
+    }
+  ],
+  "error": null,
+  "server": {
+    "name": "chrome-control-mcp",
+    "version": "1.12.0"
+  },
+  "refused_for_older_extension": [
+    "fixture-home.snapshot_viewport",
+    "fixture-find.snapshot_viewport"
+  ]
+}

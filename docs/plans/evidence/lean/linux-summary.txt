@@ -1,0 +1,35 @@
+== uname: Linux 6.18.54.1-microsoft-standard-WSL2
+== gcc: gcc (GCC) 16.2.1 20260810
+== clang: clang version 23.1.4
+== qt: 6.12.0
+== cppcheck: Cppcheck 2.22.0
+== node: v26.13.0
+== version: project(chrome_control_mcp VERSION 1.12.0
+== gcc build exit=0 warnings=0
+== ctest exit=0 100% tests passed out of 26
+== clang build exit=0
+== clang-tidy exit=0 errors=0
+== cppcheck exit=0
+== semgrep exit=0 Ran 221 rules on 55 files: 0 findings.
+== drill find-order: planted build=0 red=2 green=0
+== drill find-role-words: planted build=0 red=1 green=0
+== drill outline-ref: planted build=0 red=1 green=0
+== drill slim-repeats: planted build=0 red=4 green=0
+== drill elide-collapse: planted build=0 red=2 green=0
+== drill read-offset: planted build=0 red=2 green=0
+== drill catalog-tab-id: planted build=0 red=1 green=0
+== drill compat-scoped-read: planted build=0 red=1 green=0
+== live display-matrix exit=0 {"ok":true}
+== live full-browser exit=0 {"ok":true,"exercised_tool_count":49,"case_count":202}
+== live user-interference exit=0 {"ok":true,"checks":10,"passed":10}
+== live multi-agent exit=0 {"ok":true,"checks":25,"passed":25}
+== live clipboard exit=0 {"ok":true,"checks":24,"passed":24}
+== live large-upload exit=0 {"ok":true,"checks":7,"passed":7}
+== live extension-version-current exit=0 {"ok":true,"checks":6,"passed":6}
+== live extension-version-older exit=0 {"ok":true,"checks":12,"passed":12}
+== live extension-version-released exit=0 {"ok":true,"checks":12,"passed":12}
+== live profiles-two exit=0 {"ok":true,"checks":14,"passed":14}
+== live profiles-upgrade exit=0 {"ok":true,"checks":4,"passed":4}
+== meter exit=0
+== meter, 1.11.1 extension exit=0
+== done

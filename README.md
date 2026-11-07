@@ -11,7 +11,7 @@
   <a href="https://github.com/RandyNorthrup/chrome-control-mcp/stargazers"><img alt="GitHub stars" src="https://img.shields.io/github/stars/RandyNorthrup/chrome-control-mcp?style=flat&color=f59e0b&logo=github"></a>
   <a href="LICENSE"><img alt="MIT License" src="https://img.shields.io/badge/license-MIT-14b8a6.svg"></a>
   <img alt="Windows, Linux, macOS" src="https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20%7C%20macOS-2563eb.svg">
-  <img alt="53 MCP tools" src="https://img.shields.io/badge/MCP%20tools-53-ff2d95.svg">
+  <img alt="54 MCP tools" src="https://img.shields.io/badge/MCP%20tools-54-ff2d95.svg">
 </p>
 
 <p align="center">
@@ -38,9 +38,9 @@
 
 | Version                                                                            | Released   | What changed                                                                                                                                                                                                                                                                             |
 | ---------------------------------------------------------------------------------- | ---------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [1.12.0](https://github.com/RandyNorthrup/chrome-control-mcp/releases/tag/v1.12.0) | 2026-11-07 | **Find an element without reading the whole page.** `browser_find` returns just the matching elements, with refs, by text, phrase or pattern -- 1.3 KB where the page's snapshot is 38 KB -- and snapshots are a third the size, with options to scope, filter and cap them.             |
 | [1.11.1](https://github.com/RandyNorthrup/chrome-control-mcp/releases/tag/v1.11.1) | 2026-11-07 | **A managed install no longer reports a registration mismatch.** A browser tool called before the extension attached told agents to re-register a server that was already registered; the note compared two spellings of the same file. Also builds from source with GCC 16 and Qt 6.12. |
 | [1.11.0](https://github.com/RandyNorthrup/chrome-control-mcp/releases/tag/v1.11.0) | 2026-11-01 | **Large uploads.** `browser_upload` carries files up to 2 GiB -- a channel's long videos, not just documents -- straight from disk into the page a piece at a time. Set `CHROME_CONTROL_MCP_UPLOAD_MAX_MB` to change the bound.                                                          |
-| [1.10.0](https://github.com/RandyNorthrup/chrome-control-mcp/releases/tag/v1.10.0) | 2026-11-01 | **Chrome profiles, chosen per call.** One server serves every profile you load the extension in -- work, personal, each person's. An agent opens its tab in the one it names, or the one you used last, and every call follows its tab; listings say which profile each tab is in.       |
 
 Every release, with the day it shipped and what it changed, is in [CHANGELOG.md](CHANGELOG.md); each
 release page has its downloads. To hear about new ones, use **Watch → Custom → Releases** on this
@@ -200,11 +200,11 @@ runs the new build.
 
 ## Tools at a glance
 
-All **53 tools** have strict JSON Schemas; the [tool reference](docs/TOOLS.md) documents each one.
+All **54 tools** have strict JSON Schemas; the [tool reference](docs/TOOLS.md) documents each one.
 
 | Group                  | Tools                                                                                                                                                                                                                                                                                |
 | ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Look and read          | `browser_snapshot` `browser_read` `browser_screenshot` `browser_get_value` `browser_get_attribute` `browser_box` `browser_console` `browser_network` `browser_wait_for`                                                                                                              |
+| Look and read          | `browser_snapshot` `browser_find` `browser_read` `browser_screenshot` `browser_get_value` `browser_get_attribute` `browser_box` `browser_console` `browser_network` `browser_wait_for`                                                                                               |
 | Act on the page        | `browser_click` `browser_click_at` `browser_js_click` `browser_hover` `browser_drag` `browser_type` `browser_press_key` `browser_select` `browser_set_value` `browser_scroll` `browser_focus` `browser_reveal` `browser_media` `browser_dialog` `browser_upload` `browser_clipboard` |
 | Navigate               | `browser_navigate` `browser_back` `browser_forward` `browser_reload`                                                                                                                                                                                                                 |
 | Tabs and windows       | `browser_tabs` `browser_new_tab` `browser_select_tab` `browser_close_tab` `browser_group_tabs` `browser_ungroup_tabs` `browser_windows` `browser_window` `browser_release`                                                                                                           |
@@ -294,7 +294,7 @@ CHROME_CONTROL_MCP_SECURITY_PROFILE=read_only
 CHROME_CONTROL_MCP_REDACT_SENSITIVE_OUTPUT=true
 ```
 
-The read-only profile exposes 14 tools -- 11 that look at the browser plus extension status and the
+The read-only profile exposes 15 tools -- 12 that look at the browser plus extension status and the
 two update checks -- and independently refuses any hidden mutating call. The extension's
 permissions, and why each is needed, are in [docs/SECURITY.md](docs/SECURITY.md).
 

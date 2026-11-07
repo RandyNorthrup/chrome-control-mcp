@@ -114,6 +114,13 @@ const EXPORTED = [
   "startProgressBeat",
   "stopProgressBeat",
   "PROGRESS_BEAT_MS",
+  "readScope",
+  "readWindow",
+  "pageReadFn",
+  "DEFAULT_READ_CHARS",
+  "markOffscreen",
+  "mainDocumentBackends",
+  "visibleRect",
 ];
 
 function loadWorker(overrides = {}) {
@@ -2858,5 +2865,175 @@ test("a page that exposes no document fails the scan instead of reporting none",
   await assert.rejects(
     () => worker.collectFileInputs(1, []),
     /no document node/,
+  );
+});
+
+// -- lean observations: positions and paged, scoped reads -------------------------------------
+
+test("only main-document records wholly outside the visible rect are marked off-screen", () => {
+  const worker = loadWorker();
+  const main = worker.mainDocumentBackends({
+    documents: [
+      { nodes: { backendNodeId: [1, 2, 3, 4] } },
+      { nodes: { backendNodeId: [9] } },
+    ],
+  });
+  assert.deepEqual([...main].sort(), [1, 2, 3, 4]);
+  assert.equal(worker.mainDocumentBackends(null).size, 0);
+  const rect = worker.visibleRect({
+    scrollX: 0,
+    scrollY: 1000,
+    offsetX: 0,
+    offsetY: 0,
+    width: 1280,
+    height: 720,
+    scale: 1,
+  });
+  const box = (y) => ({ x: 10, y, width: 100, height: 20 });
+  const nodes = [
+    { backendNodeId: 1, bounds: box(1100) }, // on screen
+    { backendNodeId: 2, bounds: box(100) }, // above
+    { backendNodeId: 3, bounds: box(5000) }, // below
+    { backendNodeId: 4, bounds: box(990) }, // straddles the top edge
+    { backendNodeId: 9, bounds: box(5000) }, // a subframe's: its own coordinates
+    { backendNodeId: 1 }, // no box
+  ];
+  worker.markOffscreen(nodes, main, rect);
+  assert.deepEqual(
+    nodes.map((n) => n.offscreen === true),
+    [false, true, true, false, false, false],
+  );
+});
+
+test("a pinch narrows the visible rect to the part of the page magnified", () => {
+  const worker = loadWorker();
+  const rect = crossRealm(
+    worker.visibleRect({
+      scrollX: 100,
+      scrollY: 200,
+      offsetX: 50,
+      offsetY: 25,
+      width: 1000,
+      height: 800,
+      scale: 2,
+    }),
+  );
+  assert.deepEqual(rect, { x: 150, y: 225, width: 500, height: 400 });
+});
+
+test("a read's scope and window come from its arguments, bounded", () => {
+  const worker = loadWorker();
+  assert.equal(worker.readScope({ backendNodeId: 5 }), "ref");
+  assert.equal(worker.readScope({ selector: "#a" }), "selector");
+  assert.equal(worker.readScope({ selector: "  " }), "page");
+  assert.equal(worker.readScope({ mode: "main" }), "main");
+  assert.equal(worker.readScope({}), "page");
+  assert.deepEqual(crossRealm(worker.readWindow({})), {
+    offset: 0,
+    maxChars: worker.DEFAULT_READ_CHARS,
+  });
+  assert.deepEqual(
+    crossRealm(worker.readWindow({ offset: 40, max_chars: 10 ** 9 })),
+    { offset: 40, maxChars: 200000 },
+  );
+  assert.deepEqual(
+    crossRealm(worker.readWindow({ offset: -3, max_chars: 0 })),
+    {
+      offset: 0,
+      maxChars: worker.DEFAULT_READ_CHARS,
+    },
+  );
+});
+
+// The page function, rebuilt from its source in this realm -- exactly how it reaches a page -- and
+// run against a small fake document.
+function fakeElement(innerText, outerHTML) {
+  return { innerText, outerHTML };
+}
+function runPageRead(worker, document, thisArg, args) {
+  const fn = new Function(`return (${worker.pageReadFn.toString()});`)();
+  const saved = globalThis.document;
+  globalThis.document = document;
+  try {
+    return fn.apply(thisArg, args);
+  } finally {
+    globalThis.document = saved;
+  }
+}
+
+test("the page read returns the window asked for and the whole text's length", () => {
+  const worker = loadWorker();
+  const overlay = { parentNode: null };
+  const body = fakeElement("abcdefghijklmnopqrstuvwxyz", "<body>...</body>");
+  const article = fakeElement(
+    "the article text",
+    "<article>the article text</article>",
+  );
+  const short = fakeElement("nav", "<nav>nav</nav>");
+  const removed = [];
+  overlay.parentNode = {
+    removeChild: (node) => removed.push(node),
+    insertBefore: (node) => removed.splice(removed.indexOf(node), 1),
+  };
+  const document = {
+    body,
+    documentElement: fakeElement("", "<html>whole</html>"),
+    getElementById: (id) => (id === "presence" ? overlay : null),
+    querySelector: (selector) => (selector === "#story" ? article : null),
+    querySelectorAll: () => [short, article],
+  };
+  const page = runPageRead(worker, document, null, [
+    "text",
+    "page",
+    "",
+    5,
+    4,
+    ["presence"],
+  ]);
+  assert.deepEqual(page, { total: 26, content: "fghi" });
+  assert.deepEqual(removed, [], "the overlay is put back after the read");
+
+  assert.deepEqual(
+    runPageRead(worker, document, null, [
+      "text",
+      "selector",
+      "#story",
+      0,
+      100,
+      [],
+    ]),
+    { total: 16, content: "the article text" },
+  );
+  assert.deepEqual(
+    runPageRead(worker, document, null, [
+      "text",
+      "selector",
+      "#none",
+      0,
+      100,
+      [],
+    ]),
+    { missing: true },
+  );
+  assert.deepEqual(
+    runPageRead(worker, document, null, ["text", "main", "", 0, 100, []])
+      .content,
+    "the article text",
+  );
+  assert.deepEqual(
+    runPageRead(worker, document, fakeElement("just me", ""), [
+      "text",
+      "ref",
+      "",
+      0,
+      3,
+      [],
+    ]),
+    { total: 7, content: "jus" },
+  );
+  assert.deepEqual(
+    runPageRead(worker, document, null, ["html", "page", "", 0, 100, []])
+      .content,
+    "<html>whole</html>",
   );
 });

@@ -146,6 +146,31 @@ QString formatSnapshot(const SnapshotView &view, qint64 tab_id) {
            QString::number(view.element_count), body);
 }
 
+// A find's reply: the tab line, then the matches. One multi-argument arg() so
+// the page-controlled url and title are substituted in a single pass.
+QString formatFind(const SnapshotView &view, qint64 tab_id,
+                   const QString &found) {
+  return QStringLiteral("url: %1\ntitle: %2\ntab_id: %3\n%4")
+      .arg(view.url, view.title, QString::number(tab_id), found);
+}
+
+// A snapshot shown under options: the same head, and how many of the page's
+// lines these options show.
+QString formatOutline(const SnapshotView &view, qint64 tab_id,
+                      const Outline &outline) {
+  const QString body =
+      outline.shown == 0
+          ? QStringLiteral("(nothing on the page matches these options)\n") +
+                outline.text
+          : outline.text;
+  return QStringLiteral(
+             "url: %1\ntitle: %2\ntab_id: %3\nelements: %4\nshown: %5 of %6 "
+             "lines\n%7")
+      .arg(view.url, view.title, QString::number(tab_id),
+           QString::number(view.element_count), QString::number(outline.shown),
+           QString::number(outline.total), body);
+}
+
 // Commands that land a tab on a new document, after which any ref from that
 // tab's prior snapshot is meaningless. Programmatic navigation keeps CDP
 // attached (no onDetached fires), so the bridge must invalidate refs itself.
@@ -438,6 +463,11 @@ BrowserBridgeSession::beginCommand(const QString &tool,
   // under; state mutations on the reply are keyed to these, never to the
   // untrusted reply frame's own claim about what it was.
   outstanding_cmd_ = command.command.value(QStringLiteral("cmd")).toString();
+  const bool shaped = tool == QLatin1String("browser_find") ||
+                      tool == QLatin1String("browser_snapshot") ||
+                      tool == QLatin1String("browser_read");
+  outstanding_tool_ = shaped ? tool : QString();
+  outstanding_args_ = shaped ? arguments : QJsonObject{};
   outstanding_tab_id_ = 0;
   (void)tabIdFromJson(command.command.value(QStringLiteral("tab_id")),
                       &outstanding_tab_id_);
@@ -468,6 +498,8 @@ BrowserBridgeSession::beginInternalCommand(const QString &cmd,
   }
   outstanding_id_ = id;
   outstanding_cmd_ = cmd;
+  outstanding_tool_.clear();
+  outstanding_args_ = QJsonObject{};
   outstanding_tab_id_ = 0; // an upload chunk fills a buffer, not a tab
   outstanding_epoch_ = session_epoch_;
   return out;
@@ -475,6 +507,8 @@ BrowserBridgeSession::beginInternalCommand(const QString &cmd,
 
 qint64 BrowserBridgeSession::fillResult(const QString &sent_cmd,
                                         quint64 sent_epoch, qint64 sent_tab,
+                                        const QString &sent_tool,
+                                        const QJsonObject &sent_args,
                                         const QJsonObject &frame,
                                         Incoming &incoming) {
   const QJsonObject payload = frame.value(QStringLiteral("payload")).toObject();
@@ -486,7 +520,12 @@ qint64 BrowserBridgeSession::fillResult(const QString &sent_cmd,
     return 0;
   }
   if (sent_cmd == QLatin1String("snapshot")) {
-    return fillSnapshotResult(sent_epoch, frame, incoming);
+    return fillSnapshotResult(sent_epoch, sent_tool, sent_args, frame,
+                              incoming);
+  }
+  if (sent_cmd == QLatin1String("read")) {
+    fillReadResult(frame, sent_args, incoming);
+    return 0;
   }
   if (sent_cmd == QLatin1String("screenshot")) {
     fillScreenshotResult(payload, incoming);
@@ -502,6 +541,8 @@ qint64 BrowserBridgeSession::fillResult(const QString &sent_cmd,
 }
 
 qint64 BrowserBridgeSession::fillSnapshotResult(quint64 sent_epoch,
+                                                const QString &sent_tool,
+                                                const QJsonObject &sent_args,
                                                 const QJsonObject &frame,
                                                 Incoming &incoming) {
   // Only a reply to a snapshot WE issued may install refs -- and only if the
@@ -558,8 +599,45 @@ qint64 BrowserBridgeSession::fillSnapshotResult(quint64 sent_epoch,
   }
   ref_high_water_ = std::max(ref_high_water_, view.highest_ref);
   trackTab(tab).stale = false;
-  incoming.text = formatSnapshot(view, tab);
+  // The capture is installed whatever the tool shows of it: a find and a
+  // snapshot leave the tab's refs the same, so either serves every later call.
+  if (sent_tool == QLatin1String("browser_find")) {
+    FindQuery query;
+    (void)findQueryFrom(sent_args, &query); // checked when it was sent
+    incoming.text = formatFind(view, tab, renderFind(view, query));
+    return tab;
+  }
+  OutlineOptions options;
+  (void)outlineOptionsFrom(sent_args, &options); // checked when it was sent
+  if (!options.any()) {
+    incoming.text = formatSnapshot(view, tab);
+    return tab;
+  }
+  const Outline outline = renderOutline(view, options);
+  if (!outline.error.isEmpty()) {
+    incoming.is_error = true;
+    incoming.error = outline.error;
+    return tab;
+  }
+  incoming.text = formatOutline(view, tab, outline);
   return tab;
+}
+
+void BrowserBridgeSession::fillReadResult(const QJsonObject &frame,
+                                          const QJsonObject &sent_args,
+                                          Incoming &incoming) {
+  ReadRequest request;
+  (void)readRequestFrom(sent_args, &request); // checked when it was sent
+  QJsonObject payload = frame.value(QStringLiteral("payload")).toObject();
+  const QString error = pageRead(payload, request);
+  if (!error.isEmpty()) {
+    incoming.is_error = true;
+    incoming.error = error;
+    return;
+  }
+  QJsonObject paged = frame;
+  paged.insert(QStringLiteral("payload"), payload);
+  fillGenericResult(paged, incoming);
 }
 
 void BrowserBridgeSession::applyCommandEffect(const QString &sent_cmd,
@@ -824,19 +902,25 @@ BrowserBridgeSession::onReply(const QJsonObject &frame) {
   const QString sent_cmd = outstanding_cmd_;
   const quint64 sent_epoch = outstanding_epoch_;
   const qint64 sent_tab = outstanding_tab_id_;
+  const QString sent_tool = outstanding_tool_;
+  const QJsonObject sent_args = outstanding_args_;
   outstanding_id_.clear(); // single-winner retire
   outstanding_cmd_.clear();
   outstanding_tab_id_ = 0;
+  outstanding_tool_.clear();
+  outstanding_args_ = QJsonObject{};
   incoming.matched = true;
 
   const QString type = frame.value(QStringLiteral("type")).toString();
   if (type == QLatin1String("result")) {
-    const qint64 installed_tab =
-        fillResult(sent_cmd, sent_epoch, sent_tab, frame, incoming);
+    const qint64 installed_tab = fillResult(
+        sent_cmd, sent_epoch, sent_tab, sent_tool, sent_args, frame, incoming);
     // Only reconcile the DOM-generation baseline for a result we actually
     // accepted; an {ok:false}/failed result must not re-baseline the epoch off
-    // a DOM we never snapshotted.
-    if (!incoming.is_error) {
+    // a DOM we never snapshotted. A snapshot installed and then refused only
+    // for how it was asked to be shown (a ref no longer on the page) did
+    // capture that DOM, so its baseline is taken.
+    if (!incoming.is_error || installed_tab != 0) {
       reconcileDomEpoch(sent_cmd, installed_tab, frame);
     }
   } else {

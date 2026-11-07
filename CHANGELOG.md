@@ -8,6 +8,7 @@ entry's heading opens its GitHub release page and downloads. To hear about new r
 
 | Version                      | Released   | What it is                                                              |
 | ---------------------------- | ---------- | ----------------------------------------------------------------------- |
+| [1.12.0](#1120---2026-11-07) | 2026-11-07 | Find an element without reading the whole page                          |
 | [1.11.1](#1111---2026-11-07) | 2026-11-07 | A managed install no longer reports a registration mismatch             |
 | [1.11.0](#1110---2026-11-01) | 2026-11-01 | Large uploads                                                           |
 | [1.10.0](#1100---2026-11-01) | 2026-11-01 | Chrome profiles, chosen per call                                        |
@@ -35,6 +36,47 @@ entry's heading opens its GitHub release page and downloads. To hear about new r
 | [1.1.0](#110---2026-09-21)   | 2026-09-21 | The agent works in a tab of its own                                     |
 | [1.0.1](#101---2026-09-16)   | 2026-09-16 | The bridge recovers when another server takes or removes its record     |
 | [1.0.0](#100---2026-08-20)   | 2026-08-20 | First public release                                                    |
+
+## [1.12.0] - 2026-11-07
+
+Find an element without reading the whole page, and snapshots a third the size.
+
+### Added
+
+- **`browser_find`** returns only the elements that match -- by visible text or name (`text`), by a
+  phrase whose role words filter (`query`, such as "Send message button"), or by `regex`,
+  optionally within a `role` -- in the snapshot's own line format with the same refs, best match
+  first, each followed by the dialog or landmark it sits in, and with the closest names when
+  nothing matches. Agents had been calling a `browser_find` that did not exist: models arrive
+  expecting one. Its refs act on every element tool at once; a find and a snapshot install refs the
+  same way. Matching is code, not a model. Measured: 1.3 KB, where a snapshot of Wikipedia's "Web
+  browser" article is 38 KB.
+- `browser_snapshot` takes `ref` (one element's subtree -- landmarks, dialogs, forms, tables, lists
+  and articles now carry refs for this), `depth`, `filter` (`"interactive"`, `"viewport"`) and
+  `max_chars`, which collapses the largest off-screen regions to one line each, naming the ref that
+  reads them, instead of cutting the outline at its end.
+- `browser_read` pages a long page: `offset`, and `total` and `next_offset` in its JSON reply.
+  `ref`, `selector` and `mode: "main"` read one element or the page's main content.
+- A meter, `tests/e2e/meter_e2e.mjs`, records the bytes, lines and time of the tool catalog and of
+  every observation tool on the fixture pages and three public pages.
+
+### Changed
+
+- Snapshots leave out repetition: a text line that repeats its parent's name (a link's own label,
+  Chrome's inline text runs), wrappers around a single line, and indentation for nesting that is
+  not shown. The line format is unchanged. Measured whole snapshots: Wikipedia's "Web browser"
+  article 113 KB to 38 KB, Hacker News 71 KB to 18 KB, a GitHub repository page 138 KB to 48 KB --
+  all three now under the 50,000 characters past which Claude Code saves a reply to a file rather
+  than showing it.
+- `browser_read` returns 30,000 characters by default where it returned up to 200,000 (`max_chars`
+  goes up to 200,000), and says where to continue.
+- The tool catalog is 42,951 bytes for 54 tools, from 44,965 for 53: the `tab_id` description every
+  tab-scoped schema repeats is one short clause, and the longest descriptions are shorter. The
+  server's instructions tell agents to find an element before taking a whole snapshot.
+- The full profile has 54 tools and the read-only profile 15 (`browser_find` is read-only). A
+  client with an explicit tool allow-list sees `browser_find` once it is added there.
+- An extension older than 1.12.0 keeps working; `filter: "viewport"` and read's `ref`, `selector`
+  and `mode` ask to reload it.
 
 ## [1.11.1] - 2026-11-07
 
@@ -1194,6 +1236,7 @@ tried were broken.
 - Unused JSON-RPC client payload helpers and obsolete test-only native-host loop.
 - Redundant quality branch; development and delivery now happen directly on `main`.
 
+[1.12.0]: https://github.com/RandyNorthrup/chrome-control-mcp/releases/tag/v1.12.0
 [1.11.1]: https://github.com/RandyNorthrup/chrome-control-mcp/releases/tag/v1.11.1
 [1.11.0]: https://github.com/RandyNorthrup/chrome-control-mcp/releases/tag/v1.11.0
 [1.10.0]: https://github.com/RandyNorthrup/chrome-control-mcp/releases/tag/v1.10.0

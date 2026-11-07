@@ -15,7 +15,7 @@ CHROME_CONTROL_MCP_REDACT_SENSITIVE_OUTPUT=true
 ```
 
 Exact `read_only` enables the restricted profile ([TOOLS.md](TOOLS.md#read-only-profile) lists its
-14 tools). Any other non-empty profile token fails closed to read-only. Redaction accepts exact
+15 tools). Any other non-empty profile token fails closed to read-only. Redaction accepts exact
 `true` or `false`; other non-empty values fail closed to redaction.
 
 Redaction is best-effort text masking. Screenshots and unmodeled secret shapes remain outside its

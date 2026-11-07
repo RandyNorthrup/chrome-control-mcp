@@ -510,10 +510,10 @@ void BrowserContractTests::catalog_advertisesDomFirstToolsWithStrictSchemas() {
   // set unconditionally
   // (nav/action/pointer/form/tab/wait/inspection/window/infra/print/
   // permission/storage/cookies/download/record/upload/http-auth/
-  // advanced-input/observability/release/clipboard), 47 tools in all.
+  // advanced-input/observability/release/clipboard/find), 48 tools in all.
   // `>= 15` could not catch a tool silently dropped from or duplicated into the
   // catalog.
-  QCOMPARE(tools.size(), 47);
+  QCOMPARE(tools.size(), 48);
 
   QStringList names;
   for (const QJsonValue &value : tools) {
@@ -1619,6 +1619,7 @@ void BrowserContractTests::catalog_tabIdOnExactlyTheTabScopedTools() {
       QStringLiteral("browser_select_tab"),
       QStringLiteral("browser_release"),
       QStringLiteral("browser_clipboard"),
+      QStringLiteral("browser_find"),
   };
   QSet<QString> advertised;
   const QHash<QString, QJsonObject> properties = catalogProperties();
@@ -1634,13 +1635,15 @@ void BrowserContractTests::catalog_tabIdOnExactlyTheTabScopedTools() {
     QCOMPARE(tab_id.value(QStringLiteral("minimum")).toInt(), 1);
   }
   QCOMPARE(advertised, expected);
-  // The generic description says why it matters when agents share a server.
-  QVERIFY(properties.value(QStringLiteral("browser_click"))
-              .value(QStringLiteral("tab_id"))
-              .toObject()
-              .value(QStringLiteral("description"))
-              .toString()
-              .contains(QStringLiteral("several agents share this server")));
+  // One short clause, repeated in every tab-scoped schema: why tab_id
+  // matters when agents share a server is the instructions' to say, once.
+  const QString description = properties.value(QStringLiteral("browser_click"))
+                                  .value(QStringLiteral("tab_id"))
+                                  .toObject()
+                                  .value(QStringLiteral("description"))
+                                  .toString();
+  QVERIFY(description.contains(QStringLiteral("browser_new_tab")));
+  QVERIFY(description.size() <= 100);
 }
 
 void BrowserContractTests::buildCommand_tabIdIsValidatedAndCopied() {

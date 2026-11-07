@@ -1,0 +1,8 @@
+== drill repetition-kept: src/browser_contract.cpp (before sha256 1bc261eb0544cb64486f832baac89b69bdbc88afaaedf93848c459427ebde4cb)
+   mutation: 'if (!text || !line.ref.isEmpty()) {' -> 'if (!text || line.ref.isEmpty()) {'
+   mutated sha256 8c98cb0dc07908bddc0710994fdd75de69086056668db52ebf300242f32043e3
+   planted: build exit=0
+   planted: full_browser_e2e exit=1
+   report: ok=false error=AssertionError [ERR_ASSERTION]: the exact match comes first: url: http://127.0.0.1:43525/find title: Find fixture tab_id: 2141636012 Found 6 matches for text "Send message": - button "Send message" [ref=e63]     in: dialog "Messages" [ref=e62] > main [ref=e61] - statictext "Send message"     in: dia
+   restored byte for byte
+   restored: full_browser_e2e exit=0 ok=true tools=49 cases=202

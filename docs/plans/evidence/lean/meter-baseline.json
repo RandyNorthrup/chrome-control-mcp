@@ -1,0 +1,201 @@
+{
+  "ok": true,
+  "catalog": {
+    "full": {
+      "tools": 53,
+      "bytes": 44965,
+      "tokens_est": 11241,
+      "tab_id_copies": 38,
+      "tab_id_bytes": 7034,
+      "instructions_chars": 1740,
+      "longest": [
+        {
+          "name": "browser_upload",
+          "chars": 805
+        },
+        {
+          "name": "browser_update_apply",
+          "chars": 671
+        },
+        {
+          "name": "browser_clipboard",
+          "chars": 660
+        },
+        {
+          "name": "browser_extension_install",
+          "chars": 629
+        },
+        {
+          "name": "browser_record_start",
+          "chars": 574
+        },
+        {
+          "name": "browser_release",
+          "chars": 558
+        }
+      ]
+    },
+    "read_only": {
+      "tools": 14,
+      "bytes": 8945,
+      "tokens_est": 2236,
+      "tab_id_copies": 9,
+      "tab_id_bytes": 1719,
+      "instructions_chars": 1740,
+      "longest": [
+        {
+          "name": "browser_console",
+          "chars": 485
+        },
+        {
+          "name": "browser_network",
+          "chars": 438
+        },
+        {
+          "name": "browser_wait_for",
+          "chars": 354
+        },
+        {
+          "name": "browser_box",
+          "chars": 269
+        },
+        {
+          "name": "browser_extension_status",
+          "chars": 266
+        },
+        {
+          "name": "browser_update_status",
+          "chars": 229
+        }
+      ]
+    },
+    "byte_identical_across_runs": true
+  },
+  "pages": [
+    {
+      "name": "fixture-home",
+      "url": "http://127.0.0.1:33491/",
+      "loaded": true,
+      "snapshot": {
+        "bytes": 7449,
+        "lines": 166,
+        "tokens_est": 1862,
+        "ms": 52
+      },
+      "snapshot_again": {
+        "bytes": 7449,
+        "lines": 166,
+        "tokens_est": 1862,
+        "ms": 52
+      },
+      "read": {
+        "bytes": 988,
+        "lines": 1,
+        "tokens_est": 247,
+        "ms": 26
+      },
+      "screenshot": {
+        "base64_bytes": 58180,
+        "width": 1280,
+        "height": 657,
+        "claude_tokens_est": 1104,
+        "ms": 77
+      }
+    },
+    {
+      "name": "wikipedia",
+      "url": "https://en.wikipedia.org/wiki/Web_browser",
+      "loaded": true,
+      "snapshot": {
+        "bytes": 113134,
+        "lines": 1952,
+        "tokens_est": 28284,
+        "ms": 389
+      },
+      "snapshot_again": {
+        "bytes": 113157,
+        "lines": 1952,
+        "tokens_est": 28289,
+        "ms": 340
+      },
+      "read": {
+        "bytes": 20893,
+        "lines": 1,
+        "tokens_est": 5223,
+        "ms": 28
+      },
+      "screenshot": {
+        "base64_bytes": 234124,
+        "width": 1280,
+        "height": 657,
+        "claude_tokens_est": 1104,
+        "ms": 105
+      }
+    },
+    {
+      "name": "hacker-news",
+      "url": "https://news.ycombinator.com/",
+      "loaded": true,
+      "snapshot": {
+        "bytes": 70800,
+        "lines": 1396,
+        "tokens_est": 17700,
+        "ms": 107
+      },
+      "snapshot_again": {
+        "bytes": 70800,
+        "lines": 1396,
+        "tokens_est": 17700,
+        "ms": 108
+      },
+      "read": {
+        "bytes": 4478,
+        "lines": 1,
+        "tokens_est": 1120,
+        "ms": 26
+      },
+      "screenshot": {
+        "base64_bytes": 170936,
+        "width": 1280,
+        "height": 657,
+        "claude_tokens_est": 1104,
+        "ms": 104
+      }
+    },
+    {
+      "name": "github",
+      "url": "https://github.com/microsoft/playwright-mcp",
+      "loaded": true,
+      "snapshot": {
+        "bytes": 137582,
+        "lines": 1819,
+        "tokens_est": 34396,
+        "ms": 387
+      },
+      "snapshot_again": {
+        "bytes": 137582,
+        "lines": 1819,
+        "tokens_est": 34396,
+        "ms": 363
+      },
+      "read": {
+        "bytes": 18780,
+        "lines": 1,
+        "tokens_est": 4695,
+        "ms": 103
+      },
+      "screenshot": {
+        "base64_bytes": 165596,
+        "width": 1280,
+        "height": 657,
+        "claude_tokens_est": 1104,
+        "ms": 207
+      }
+    }
+  ],
+  "error": null,
+  "server": {
+    "name": "chrome-control-mcp",
+    "version": "1.11.1"
+  }
+}

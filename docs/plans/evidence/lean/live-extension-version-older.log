@@ -1,0 +1,13 @@
+case: older (extension 1.0.0, installed 1.12.0, server 1.12.0)
+PASS the relay reports the installed version, this build's
+PASS browser_extension_status names the running version and the fix
+PASS the first browser reply on the connection carries the notice, after its own content
+PASS and the reply itself is still the JSON it always was
+PASS a later reply on the same connection carries none
+PASS left idle, the extension reloads itself for the newer installed copy, never sooner than its quiet period
+PASS it comes back, still saying the older version: its folder was not updated
+PASS and remembers the version it reloaded for
+PASS the new connection is told again
+PASS it does not reload again for that version: no loop
+PASS after the reload the bridge works
+PASS releasing works

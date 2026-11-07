@@ -221,7 +221,11 @@ ID. There is no private key, package signing, browser-store dependency, or enter
 
 - `browser_snapshot` joins the accessibility tree and DOM geometry into filtered roles, names,
   values, and `[ref=eN]` handles. A ref is bound to its tab, and a ref name is never reused for the
-  life of the server.
+  life of the server. The server renders the capture once into lines, leaving out text that repeats
+  its parent and wrappers around one line, and shows them whole, scoped to a ref, filtered, capped by
+  collapsing regions, or -- for `browser_find` -- as the matching lines only; a find installs the
+  capture's refs exactly as a snapshot does. The extension marks main-document elements outside the
+  viewport so the viewport filter and the cap know what is on screen.
 - Ref actions use CDP `Input`; the user's operating-system mouse and keyboard remain free.
 - A call that names no tab acts on the session's current tab. Only the session's own actions move
   it: `browser_new_tab`, `browser_select_tab`, `browser_window new`/`focus`, and a foreground tab its

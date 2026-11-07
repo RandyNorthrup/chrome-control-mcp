@@ -1,8 +1,8 @@
 # Tool catalog
 
-The full profile advertises 53 tools: 47 browser tools, which reach Chrome through the extension,
+The full profile advertises 54 tools: 48 browser tools, which reach Chrome through the extension,
 and 6 native tools the server answers itself -- 3 to set up the extension's native-messaging host and
-3 to update the server. The [read-only profile](#read-only-profile) advertises 14.
+3 to update the server. The [read-only profile](#read-only-profile) advertises 15.
 
 Every tool advertises strict JSON Schema with `additionalProperties: false`. Exact descriptions,
 argument types, enums, bounds, and defaults come from live `tools/list`; this page explains how the
@@ -99,6 +99,7 @@ come from -- prefer `tab_id`.
 
 - `browser_navigate`
 - `browser_snapshot`
+- `browser_find`
 - `browser_back`
 - `browser_forward`
 - `browser_reload`
@@ -112,6 +113,44 @@ that should show the exact control presence visible in Chrome.
 `browser_navigate` and `browser_new_tab` open `http` and `https` URLs only; a bare host such as
 `example.com` is read as `https://example.com`. `javascript:`, `data:` and `file:` URLs are refused,
 so an agent cannot make a page out of its own text or open the user's files in a tab.
+
+### Finding an element without reading the whole page
+
+An element's ref comes from the page's outline. `browser_snapshot` gives the whole outline;
+`browser_find` gives only the lines that match, in the same format and with the same refs, so the
+usual step -- find the button, then click it -- costs a few hundred bytes instead of the page.
+Measured on public pages: a whole snapshot of Wikipedia's "Web browser" article is 38 KB, a find
+1.3 KB.
+
+- **`browser_find`** takes `text` (words in an element's name or value, any case), `query` (the
+  same as a phrase, where a role word such as "button", "link", "field", "checkbox", "tab", "menu"
+  or "heading" becomes a role filter: `"Send message button"`), or `regex`; optionally `role` and
+  `max_results` (1 to 20, default 10). Matches rank exact name first, then a name that starts with
+  the words, a whole word, the words anywhere, and for a phrase how many of its words a name has;
+  elements with refs and elements on screen come first among equals. Each result is followed by
+  the dialog, landmark or article it sits in, and `off-screen` when it is. With no match, the reply
+  names the three closest names on the page. Matching is code, not a model: the same query on the
+  same page always gives the same answer.
+- A find takes the same capture as a snapshot and installs its refs the same way, so the two are
+  interchangeable for every later call: a ref from either acts on any element tool, belongs to its
+  tab, and is refused after the page navigates.
+- **`browser_snapshot`** takes `ref` (one element's subtree: a dialog, form, region or list --
+  landmarks, dialogs, forms, tables, lists and articles carry refs for this), `depth` (levels below
+  the root), `filter` (`"interactive"`: elements with refs, plus headings; `"viewport"`: what is on
+  screen, with a count of the rest) and `max_chars`. Over `max_chars`, the outline is not cut at
+  its end: everything on screen and every landmark and heading line stays, and the largest regions
+  holding none of that collapse to one line each, naming the ref that reads them. With no options a
+  snapshot is the whole outline, as before, up to its 2,000-element capture.
+- Every outline leaves out repetition: a text line that repeats its parent's name (a link's own
+  label, Chrome's inline text runs), wrappers that hold a single line, and indentation for nesting
+  that is not shown. The line format -- `- role "name" [ref=eN] (flags)` -- is unchanged.
+- **`browser_read`** returns 30,000 characters at a time by default (`max_chars` up to 200,000);
+  a longer page's reply carries `next_offset`, which `offset` takes to continue, and `total`.
+  `ref` or `selector` reads one element; `mode: "main"` reads the page's main content. The reply
+  stays the JSON it has always been.
+- An extension older than 1.12.0 does not say where elements are: `filter: "viewport"`, and read's
+  `ref`, `selector` and `mode`, then say to reload the extension at chrome://extensions. Find,
+  the other options and paging work with it.
 
 ## Input and page interaction
 
@@ -474,11 +513,12 @@ shipped elsewhere. Windows 10 1803 and later include one.
 
 ## Read-only profile
 
-`CHROME_CONTROL_MCP_SECURITY_PROFILE=read_only` advertises 14 tools, 11 browser and 3 native:
+`CHROME_CONTROL_MCP_SECURITY_PROFILE=read_only` advertises 15 tools, 12 browser and 3 native:
 
 - `browser_box`
 - `browser_console`
 - `browser_extension_status`
+- `browser_find`
 - `browser_get_attribute`
 - `browser_get_value`
 - `browser_network`

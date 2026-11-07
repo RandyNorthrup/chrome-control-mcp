@@ -185,10 +185,17 @@ private:
   // Returns the tab a snapshot reply was installed under, or 0 when nothing
   // was installed (not a snapshot, failed, or refused).
   qint64 fillResult(const QString &sent_cmd, quint64 sent_epoch,
-                    qint64 sent_tab, const QJsonObject &frame,
+                    qint64 sent_tab, const QString &sent_tool,
+                    const QJsonObject &sent_args, const QJsonObject &frame,
                     Incoming &incoming);
-  qint64 fillSnapshotResult(quint64 sent_epoch, const QJsonObject &frame,
-                            Incoming &incoming);
+  // Install a snapshot's refs and show it as the tool that asked wanted it:
+  // whole, under browser_snapshot's options, or as a find's matches.
+  qint64 fillSnapshotResult(quint64 sent_epoch, const QString &sent_tool,
+                            const QJsonObject &sent_args,
+                            const QJsonObject &frame, Incoming &incoming);
+  // Page and check a read reply against what browser_read asked for.
+  static void fillReadResult(const QJsonObject &frame,
+                             const QJsonObject &sent_args, Incoming &incoming);
   static void fillGenericResult(const QJsonObject &frame, Incoming &incoming);
   static void fillScreenshotResult(const QJsonObject &payload,
                                    Incoming &incoming);
@@ -243,6 +250,10 @@ private:
   QString outstanding_cmd_;
   // The tab_id the outstanding command was sent with, 0 when it named none.
   qint64 outstanding_tab_id_{0};
+  // The tool and arguments of the outstanding call, kept for the tools whose
+  // reply is shaped by what they asked: find, snapshot and read.
+  QString outstanding_tool_;
+  QJsonObject outstanding_args_;
   QJsonObject ref_index_;
 };
 

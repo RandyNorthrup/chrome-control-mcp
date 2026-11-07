@@ -5,7 +5,87 @@ after [Earlier evidence](#earlier-evidence) is a dated record of the build it na
 suite counts and versions were true of that build and are not current. A result is recorded here
 only when a command actually produced it.
 
-## Current: 1.11.1 (2026-11-07)
+## Current: 1.12.0 (2026-11-07)
+
+1.12.0 adds `browser_find`, options to scope, filter and cap `browser_snapshot`, slimmer outlines,
+paged and scoped `browser_read`, a smaller catalog, and a meter of what each tool costs. The plan,
+criteria and ledger are [plans/lean-observations.md](plans/lean-observations.md), with the raw outputs
+in [plans/evidence/lean/](plans/evidence/lean/); the research behind it is
+[research/browser-mcp-speed-and-token-efficiency.md](research/browser-mcp-speed-and-token-efficiency.md).
+Every suite that existed before this work ran again against the 1.12.0 build (AC-LEAN-COMPAT).
+
+### 1.12.0: suites
+
+| Where                                                      | Result                                                                                     |
+| ---------------------------------------------------------- | ------------------------------------------------------------------------------------------ |
+| Windows 11, local (MSVC, Qt 6.10.3): ctest                 | 27/27, among them the new `test_browser_views`                                             |
+| Local: `npm run test:js`                                   | 231/231                                                                                    |
+| Windows, local: MCP smoke, full and read-only              | 54 and 15 tools                                                                            |
+| Linux, WSL Arch (GCC 16.2.1, Qt 6.12.0): build and ctest   | 0 warnings; 26/26                                                                          |
+| Linux, local: clang-tidy 23.1.4, cppcheck 2.22.0, Semgrep  | 0 findings each (221 rules, 55 files)                                                      |
+| Linux, Chrome for Testing 153: full browser                | ok: 49 tools, 202 live cases (find, options, reads)                                        |
+| Linux, Chrome for Testing 153: display matrix              | ok                                                                                         |
+| Linux, Chrome for Testing 153: interference, multi-agent   | 10/10, 25/25                                                                               |
+| Linux, Chrome for Testing 153: clipboard, large upload     | 24/24, 7/7                                                                                 |
+| Linux, Chrome for Testing 153: extension version           | current 6/6, older 12/12, released 1.11.1 12/12                                            |
+| Linux, Chrome for Testing 153: profiles, upgrade           | 14/14, 4/4                                                                                 |
+| Linux, Chrome for Testing 153: the meter, 1.11.1 extension | find, slimming, the cap and reads answer; viewport filter refused with a note to reload it |
+
+### 1.12.0: what the tools cost
+
+The meter (`tests/e2e/meter_e2e.mjs`), on the 1.11.1 build before any change and on the 1.12.0 build,
+with Chrome for Testing 153 at its default window, logged out. Bytes of each reply.
+
+| Page                             | Snapshot, 1.11.1 | Snapshot, 1.12.0 | `interactive` | `viewport` | `browser_find` |
+| -------------------------------- | ---------------: | ---------------: | ------------: | ---------: | -------------: |
+| Fixture home                     |            7,449 |            3,929 |         2,700 |      2,319 |            320 |
+| Wikipedia, "Web browser"         |          113,157 |           38,164 |        15,479 |      8,677 |          1,255 |
+| Hacker News                      |           70,800 |           18,580 |         8,919 |     10,563 |            676 |
+| GitHub, microsoft/playwright-mcp |          137,582 |           48,036 |        13,564 |      8,717 |          1,429 |
+
+The tool catalog: 44,965 bytes for 53 tools on 1.11.1, 42,951 for 54 on 1.12.0, the same bytes in
+every process (`meter-baseline.json`, `meter-after.json`).
+
+### 1.12.0: red drills
+
+Each check was red-drilled: the defect planted in a disposable copy, the check seen to fail for that
+reason, then the copy restored byte for byte and the check green again (`unit-red-drills.txt`,
+`extension-red-drills.txt`, `live-red-drills.txt`).
+
+- _Find lists matches worst first:_ `find_exactMatchFirstWithItsContainers` fails.
+- _A phrase's role words read as plain words:_ `find_queryRoleWordFiltersByRole` fails (two matches,
+  not one).
+- _A snapshot by ref shows the whole page:_ `outline_refShowsOneSubtreeWithTheSameRefs` fails.
+- _Repeated text kept:_ `slim_dropsTextThatRepeatsItsParent` fails, and live, find on the find page
+  returns six matches where two belong, the text lines beside the button.
+- _The cap collapses nothing:_ `outline_elidesRegionsNotTheTail` fails -- the footer past the feed is
+  cut.
+- _An older extension's read paged from its start:_ `read_pagesAnOlderExtensionsWholeReply` fails.
+- _The long tab_id description back:_ `catalog_tabIdOnExactlyTheTabScopedTools` fails.
+- _A scoped read an older extension ignored, passed on:_
+  `read_refusesAScopedReadAnOlderExtensionIgnored` fails.
+- _In the extension:_ a read from the start whatever the offset, the page read's window, and elements
+  below the viewport left unmarked each fail their test in `test_browser_extension_pure.mjs`.
+
+### 1.12.0: found on the way
+
+- **Chrome's inline text runs.** The first live run showed find returning `inlinetextbox` lines:
+  Chrome splits each text node into one run per laid-out line, each repeating part of it. Snapshots
+  had always carried them. The repetition rule now drops them, and compares the page's own names
+  rather than the capped ones the outline prints -- a 40,000-character paragraph had left about 400
+  runs, with no position, counting as on screen.
+- **The fixture template's `<main>`.** The shared page template wraps everything in one `<main>`, so
+  a footer inside it is not the page's contentinfo landmark; the find page is a document of its own.
+- **A harness race, measured.** One full-suite run in eight failed at its third case, "closed the
+  user's tab". With the failing check made to say which tab it had taken, the next occurrence named
+  it: the harness's own `chrome://extensions` tab, which turns on Developer mode and is closed
+  before the suite starts -- gone from DevTools' target list, still listed active to the extension.
+  The suite's baseline now waits it out; six runs in a row passed after.
+- **clang-tidy 23's container check.** Its new
+  `cppcoreguidelines-pro-bounds-avoid-unchecked-container-access` flagged 97 subscripts in the new
+  code; it uses checked access (`at`, `replace`) like the rest of the source.
+
+### 1.11.1 (2026-11-07)
 
 1.11.1 stops the false registration-mismatch note on managed installs (pull request #5, with the
 Windows junction resolved through the filesystem), builds with GCC 16 and Qt 6.12, passes the

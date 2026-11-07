@@ -1,0 +1,63 @@
+== drill find-order: src/browser_contract.cpp
+   mutation: 'return a.score > b.score;' -> 'return a.score < b.score;'
+   planted: build exit=0, test_browser_views exit=2
+   FAIL!  : BrowserViewsTests::find_exactMatchFirstWithItsContainers() 'found.startsWith(QStringLiteral( "Found 2 matches for text \"Send message\":\n- button \"Send " "message\" [ref="))' returned FALSE. (Found 2 matches for text "Send message":
+   FAIL!  : BrowserViewsTests::find_offscreenRanksBelowAndSaysSo() 'found.indexOf(QStringLiteral("[ref=e2]")) < found.indexOf(QStringLiteral("[ref=e1]"))' returned FALSE. ()
+   Totals: 25 passed, 2 failed, 0 skipped, 0 blacklisted, 10ms
+   restored byte for byte
+   restored: test_browser_views exit=0 Totals: 27 passed, 0 failed, 0 skipped, 0 blacklisted, 10ms
+== drill find-role-words: src/browser_contract.cpp
+   mutation: 'const QString key = roleWordKey(word);' -> 'const QString key;'
+   planted: build exit=0, test_browser_views exit=1
+   FAIL!  : BrowserViewsTests::find_queryRoleWordFiltersByRole() 'found.startsWith(QStringLiteral("Found 1 match for query"))' returned FALSE. (Found 2 matches for query "Send message button":
+   Totals: 26 passed, 1 failed, 0 skipped, 0 blacklisted, 10ms
+   restored byte for byte
+   restored: test_browser_views exit=0 Totals: 27 passed, 0 failed, 0 skipped, 0 blacklisted, 10ms
+== drill outline-ref: src/browser_contract.cpp
+   mutation: 'chosen.replace(i, i >= at && i < end);' -> 'chosen.replace(i, true);'
+   planted: build exit=0, test_browser_views exit=1
+   FAIL!  : BrowserViewsTests::outline_refShowsOneSubtreeWithTheSameRefs() 'outline.text.startsWith(QStringLiteral("- dialog \"Messages\" [ref=") + dialog + QStringLiteral("]\n"))' returned FALSE. ()
+   Totals: 26 passed, 1 failed, 0 skipped, 0 blacklisted, 9ms
+   restored byte for byte
+   restored: test_browser_views exit=0 Totals: 27 passed, 0 failed, 0 skipped, 0 blacklisted, 9ms
+== drill slim-repeats: src/browser_contract.cpp
+   mutation: 'if (!text || !line.ref.isEmpty()) {' -> 'if (!text || line.ref.isEmpty()) {'
+   planted: build exit=0, test_browser_views exit=4
+   FAIL!  : BrowserViewsTests::slim_dropsTextThatRepeatsItsParent() Compared values are not the same
+   FAIL!  : BrowserViewsTests::outline_refShowsOneSubtreeWithTheSameRefs() Compared values are not the same
+   FAIL!  : BrowserViewsTests::find_exactMatchFirstWithItsContainers() 'found.startsWith(QStringLiteral( "Found 2 matches for text \"Send message\":\n- button \"Send " "message\" [ref="))' returned FALSE. (Found 3 matches for text "Send message":
+   Totals: 23 passed, 4 failed, 0 skipped, 0 blacklisted, 9ms
+   restored byte for byte
+   restored: test_browser_views exit=0 Totals: 27 passed, 0 failed, 0 skipped, 0 blacklisted, 10ms
+== drill elide-collapse: src/browser_contract.cpp
+   mutation: '    if (total <= max_chars) {
+      break;' -> '    if (total >= 0) {
+      break;'
+   planted: build exit=0, test_browser_views exit=2
+   FAIL!  : BrowserViewsTests::outline_elidesRegionsNotTheTail() 'text.contains(QStringLiteral("- contentinfo"))' returned FALSE. ()
+   FAIL!  : BrowserViewsTests::outline_elisionWithoutPositionsKeepsTheTop() 'outline.text.contains(QStringLiteral("lines omitted"))' returned FALSE. ()
+   Totals: 25 passed, 2 failed, 0 skipped, 0 blacklisted, 14ms
+   restored byte for byte
+   restored: test_browser_views exit=0 Totals: 27 passed, 0 failed, 0 skipped, 0 blacklisted, 9ms
+== drill read-offset: src/browser_contract.cpp
+   mutation: 'content = content.mid(offset, request.max_chars);' -> 'content = content.left(request.max_chars);'
+   planted: build exit=0, test_browser_views exit=2
+   FAIL!  : BrowserViewsTests::read_pagesAnOlderExtensionsWholeReply() Compared values are not the same
+   FAIL!  : BrowserViewsTests::session_snapshotOptionsAndReadPaging() Compared values are not the same
+   Totals: 25 passed, 2 failed, 0 skipped, 0 blacklisted, 9ms
+   restored byte for byte
+   restored: test_browser_views exit=0 Totals: 27 passed, 0 failed, 0 skipped, 0 blacklisted, 10ms
+== drill catalog-tab-id: src/browser_contract.cpp
+   mutation: '"Your tab's id, from browser_new_tab or browser_tabs. Omit for this "' -> '"Chrome tab id to act on (from browser_new_tab or browser_tabs). Omit to use this session's current tab. When several agents share this server, each should pass its own tab's id on every call. Omit for this "'
+   planted: build exit=0, test_browser_contract exit=1
+   FAIL!  : BrowserContractTests::catalog_tabIdOnExactlyTheTabScopedTools() 'description.size() <= 100' returned FALSE. ()
+   Totals: 70 passed, 1 failed, 0 skipped, 0 blacklisted, 38ms
+   restored byte for byte
+   restored: test_browser_contract exit=0 Totals: 71 passed, 0 failed, 0 skipped, 0 blacklisted, 38ms
+== drill compat-scoped-read: src/browser_contract.cpp
+   mutation: 'if (request.scoped && !payload.contains(QStringLiteral("scope"))) {' -> 'if (request.scoped && payload.contains(QStringLiteral("scope"))) {'
+   planted: build exit=0, test_browser_views exit=1
+   FAIL!  : BrowserViewsTests::read_refusesAScopedReadAnOlderExtensionIgnored() 'pageRead(payload, request) .contains(QStringLiteral("chrome://extensions"))' returned FALSE. ()
+   Totals: 26 passed, 1 failed, 0 skipped, 0 blacklisted, 12ms
+   restored byte for byte
+   restored: test_browser_views exit=0 Totals: 27 passed, 0 failed, 0 skipped, 0 blacklisted, 9ms
