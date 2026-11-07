@@ -341,7 +341,7 @@ bool readBrowserReplyPastProgress(const BrowserReadFn &browser_read,
       return false;
     }
     if (!relayFrameIsProgress(frame)) {
-      *reply = frame;
+      *reply = std::move(frame);
       return true;
     }
     const std::lock_guard<std::mutex> lock(progress->m_mutex);

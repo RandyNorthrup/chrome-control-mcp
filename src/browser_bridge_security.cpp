@@ -118,6 +118,9 @@ bool ensurePrivateDirectory(const QString &path, QString *error) {
 
 } // namespace
 
+// Only the Windows branch writes through @p error; elsewhere it is unused, and
+// misc-const-correctness would have the pointee const on that platform alone.
+// NOLINTNEXTLINE(misc-const-correctness)
 QString currentUserSidString(QString *error) {
 #ifdef Q_OS_WIN
   HANDLE token = nullptr;

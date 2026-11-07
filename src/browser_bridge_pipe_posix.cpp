@@ -7,6 +7,7 @@
 #include "chrome_control_mcp/browser_extension_installer.h"
 #include "chrome_control_mcp/error_out.h"
 #include "chrome_control_mcp/native_messaging.h"
+#include "chrome_control_mcp/posix_poll.h"
 #include "chrome_control_mcp/posix_process_identity.h"
 
 #include <QFile>
@@ -98,7 +99,9 @@ void setCloseOnExec(int fd) {
   if (flags >= 0) {
     // POSIX fcntl is variadic.
     // NOLINTBEGIN(cppcoreguidelines-pro-type-vararg)
-    (void)fcntl(fd, F_SETFD, flags | FD_CLOEXEC);
+    (void)fcntl(fd, F_SETFD,
+                static_cast<int>(static_cast<unsigned int>(flags) |
+                                 static_cast<unsigned int>(FD_CLOEXEC)));
     // NOLINTEND(cppcoreguidelines-pro-type-vararg)
   }
 }
@@ -130,13 +133,13 @@ ReadEnd awaitIo(int fd, short events, const IoDeadline &deadline) {
     if (result < 0) {
       return ReadEnd::Closed;
     }
-    if (count == 2 && (descriptors[1].revents & POLLIN) != 0) {
+    if (count == 2 && pollReported(descriptors[1].revents, POLLIN)) {
       return ReadEnd::Cancelled;
     }
-    if ((descriptors[0].revents & events) != 0) {
+    if (pollReported(descriptors[0].revents, events)) {
       return ReadEnd::Complete;
     }
-    if ((descriptors[0].revents & (POLLERR | POLLHUP | POLLNVAL)) != 0) {
+    if (pollReportedEnd(descriptors[0].revents)) {
       return ReadEnd::Closed;
     }
   }
@@ -307,10 +310,10 @@ IdlePeer idlePeerState(int socket_fd) {
     // peer. The next check asks again.
     return IdlePeer::Present;
   }
-  if ((watched.revents & (POLLHUP | POLLERR | POLLNVAL)) != 0) {
+  if (pollReportedEnd(watched.revents)) {
     return IdlePeer::Gone;
   }
-  if ((watched.revents & POLLIN) == 0) {
+  if (!pollReported(watched.revents, POLLIN)) {
     return IdlePeer::Present;
   }
   // Readable is either bytes or end-of-stream, and the platforms disagree on
@@ -351,10 +354,10 @@ AcceptedConnection acceptConnection(int listener_fd, int shutdown_fd) {
     if (ready <= 0) {
       return {};
     }
-    if ((descriptors[1].revents & POLLIN) != 0) {
+    if (pollReported(descriptors[1].revents, POLLIN)) {
       return {.result = ConnectResult::Shutdown};
     }
-    if ((descriptors[0].revents & POLLIN) == 0) {
+    if (!pollReported(descriptors[0].revents, POLLIN)) {
       return {};
     }
     const int client = accept(listener_fd, nullptr, nullptr);

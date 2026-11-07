@@ -9,6 +9,7 @@
 
 #include <algorithm>
 #include <limits>
+#include <utility>
 
 namespace chrome_control_mcp::browser {
 
@@ -2576,8 +2577,8 @@ SnapshotView renderSnapshot(const QJsonObject &capture,
   // page.
   appendOmittedFramesNote(capture, outline);
 
-  view.outline = outline;
-  view.ref_index = ref_index;
+  view.outline = std::move(outline);
+  view.ref_index = std::move(ref_index);
   return view;
 }
 

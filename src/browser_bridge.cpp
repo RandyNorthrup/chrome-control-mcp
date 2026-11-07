@@ -109,8 +109,8 @@ bool pngDimensions(const QByteArray &png, int &width, int &height) {
     return static_cast<quint32>(static_cast<unsigned char>(png.at(at)));
   };
   const auto be32 = [&byte](int offset) {
-    return (byte(offset) << 24) | (byte(offset + 1) << 16) |
-           (byte(offset + 2) << 8) | byte(offset + 3);
+    return (byte(offset) << 24U) | (byte(offset + 1) << 16U) |
+           (byte(offset + 2) << 8U) | byte(offset + 3);
   };
   width = static_cast<int>(be32(kPngWidthOffset));
   height = static_cast<int>(be32(kPngHeightOffset));

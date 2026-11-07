@@ -6,6 +6,7 @@
 #include "chrome_control_mcp/browser_bridge_security.h"
 #include "chrome_control_mcp/error_out.h"
 #include "chrome_control_mcp/native_messaging.h"
+#include "chrome_control_mcp/posix_poll.h"
 #include "chrome_control_mcp/posix_process_identity.h"
 
 #include <QByteArray>
@@ -101,12 +102,11 @@ bool awaitBrowserReply(NativeIpcHandle pipe, const BrowserReadFn &browser_read,
     if (ready < 0 && errno == EINTR) {
       continue;
     }
-    if (ready < 0 ||
-        (descriptor.revents & (POLLERR | POLLHUP | POLLNVAL)) != 0) {
+    if (ready < 0 || pollReportedEnd(descriptor.revents)) {
       socketOk = false;
       break;
     }
-    if (ready == 0 || (descriptor.revents & POLLIN) == 0) {
+    if (ready == 0 || !pollReported(descriptor.revents, POLLIN)) {
       continue;
     }
     QJsonObject frame;
@@ -135,10 +135,10 @@ bool browserInputClosed(NativeIpcHandle input) {
   if (::poll(&watched, 1, 0) <= 0) {
     return false; // nothing to report: still there, or cannot tell
   }
-  if ((watched.revents & (POLLHUP | POLLERR | POLLNVAL)) != 0) {
+  if (pollReportedEnd(watched.revents)) {
     return true;
   }
-  if ((watched.revents & POLLIN) == 0) {
+  if (!pollReported(watched.revents, POLLIN)) {
     return false;
   }
   // Readable means either bytes waiting or end-of-file, and the two platforms

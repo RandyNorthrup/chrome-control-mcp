@@ -42,6 +42,6 @@ namespace chrome_control_mcp {
 
 // Run the MCP helper (MCP server or browser relay, auto-detected). Configures
 // platform-specific process state and runs synchronously with no Qt event loop.
-[[nodiscard]] int runMcpProcess(int argc, char **argv);
+[[nodiscard]] int runMcpProcess(int argc, char *const *argv);
 
 } // namespace chrome_control_mcp

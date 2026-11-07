@@ -8,6 +8,7 @@ entry's heading opens its GitHub release page and downloads. To hear about new r
 
 | Version                      | Released   | What it is                                                              |
 | ---------------------------- | ---------- | ----------------------------------------------------------------------- |
+| [1.11.1](#1111---2026-11-07) | 2026-11-07 | A managed install no longer reports a registration mismatch             |
 | [1.11.0](#1110---2026-11-01) | 2026-11-01 | Large uploads                                                           |
 | [1.10.0](#1100---2026-11-01) | 2026-11-01 | Chrome profiles, chosen per call                                        |
 | [1.9.0](#190---2026-10-31)   | 2026-10-31 | A clipboard for every agent                                             |
@@ -34,6 +35,31 @@ entry's heading opens its GitHub release page and downloads. To hear about new r
 | [1.1.0](#110---2026-09-21)   | 2026-09-21 | The agent works in a tab of its own                                     |
 | [1.0.1](#101---2026-09-16)   | 2026-09-16 | The bridge recovers when another server takes or removes its record     |
 | [1.0.0](#100---2026-08-20)   | 2026-08-20 | First public release                                                    |
+
+## [1.11.1] - 2026-11-07
+
+### Fixed
+
+- On a managed install -- the one `--install`, the VS Code extension or `browser_update_apply` puts
+  in place -- a browser tool called before the extension had attached said Chrome's
+  native-messaging host was registered to a different server, and told the agent to call
+  `browser_extension_install` to re-register. Reported from another machine right after
+  installing 1.11.0. The registration names the install's stable `current` link, the server
+  reported the version folder it runs from, and the note compared the two paths as text; they are
+  the same file. Re-registering wrote the same link again and cleared nothing. The note now
+  compares the files the paths lead to -- on Windows through the directory junction a managed
+  install uses, which Qt's own path resolution does not follow. A registration that names a
+  missing file, or a different copy of the server, is still reported.
+- The server did not build from source with GCC 16 and Qt 6.12. GCC suspected the PNG header
+  reader screenshots use of reading past an empty buffer, on a path its size check already rules
+  out, and `-Werror` stopped the build. The reader now goes through Qt's bounded operations.
+  Released binaries, built with Qt 6.10, were not affected.
+- Two test files contained an invisible bidirectional character, which newer GCC refuses
+  (`-Wbidi-chars`), so the tests did not build there. They now build the character from its code
+  point, and a pre-commit hook refuses those characters in any tracked text file.
+- The source passes the checks clang-tidy 23 adds: poll() results and descriptor flags are tested
+  as unsigned bits, and values that were copied where they could move are moved. CI analysis runs
+  an older clang-tidy and passed before as well.
 
 ## [1.11.0] - 2026-11-01
 
@@ -1168,6 +1194,7 @@ tried were broken.
 - Unused JSON-RPC client payload helpers and obsolete test-only native-host loop.
 - Redundant quality branch; development and delivery now happen directly on `main`.
 
+[1.11.1]: https://github.com/RandyNorthrup/chrome-control-mcp/releases/tag/v1.11.1
 [1.11.0]: https://github.com/RandyNorthrup/chrome-control-mcp/releases/tag/v1.11.0
 [1.10.0]: https://github.com/RandyNorthrup/chrome-control-mcp/releases/tag/v1.10.0
 [1.9.0]: https://github.com/RandyNorthrup/chrome-control-mcp/releases/tag/v1.9.0

@@ -133,7 +133,7 @@ bool serveRequests(BrowserControl *browser_ptr, const McpServerPolicy &policy) {
 // to the manifest's `path`, so OUR extension's origin is the signal to run as
 // the browser-control relay. The explicit --browser-relay flag is accepted too,
 // for local testing.
-bool wantsRelayMode(int argc, char **argv) {
+bool wantsRelayMode(int argc, char *const *argv) {
   for (int i = 1; i < argc; ++i) {
     if (std::strcmp(argv[i], "--browser-relay") == 0 ||
         isOurExtensionOrigin(argv[i])) {
@@ -143,7 +143,7 @@ bool wantsRelayMode(int argc, char **argv) {
   return false;
 }
 
-bool wantsFlag(int argc, char **argv, const char *flag) {
+bool wantsFlag(int argc, char *const *argv, const char *flag) {
   for (int i = 1; i < argc; ++i) {
     if (std::strcmp(argv[i], flag) == 0) {
       return true;
@@ -233,7 +233,7 @@ int runInstall() {
 
 } // namespace
 
-int runMcpProcess(int argc, char **argv) {
+int runMcpProcess(int argc, char *const *argv) {
   // Per-monitor-v2 DPI awareness BEFORE any window/monitor query or input
   // injection: without it the OS virtualizes coordinates on
   // scaled/multi-monitor hosts, so GetWindowRect bounds are wrong and any

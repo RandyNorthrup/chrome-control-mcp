@@ -5,7 +5,62 @@ after [Earlier evidence](#earlier-evidence) is a dated record of the build it na
 suite counts and versions were true of that build and are not current. A result is recorded here
 only when a command actually produced it.
 
-## Current: 1.11.0 (2026-11-01)
+## Current: 1.11.1 (2026-11-07)
+
+1.11.1 stops the false registration-mismatch note on managed installs (pull request #5, with the
+Windows junction resolved through the filesystem), builds with GCC 16 and Qt 6.12, passes the
+checks clang-tidy 23 adds, and refuses invisible bidirectional characters in tracked text. The
+extension is unchanged apart from its version. Everything else is 1.11.0, whose evidence follows
+and still stands. Every result below is from the release tree.
+
+### 1.11.1: suites
+
+| Where                                                       | Result                          |
+| ----------------------------------------------------------- | ------------------------------- |
+| Windows 11, local (MSVC, Qt 6.10.3): Release build          | 0 warnings                      |
+| Windows, local: ctest                                       | 26/26                           |
+| Local: `npm run test:js`                                    | 227/227                         |
+| Windows, local: MCP smoke, full and read-only               | 53 and 14 tools                 |
+| Linux, WSL Arch (GCC 16.2.1, Qt 6.12.0): Release build      | 0 warnings                      |
+| Linux, local: ctest                                         | 25/25                           |
+| Linux, local: clang-tidy 23.1.4, warnings as errors         | 0 findings                      |
+| Linux, local: cppcheck 2.22.0, exhaustive                   | 0 findings                      |
+| Linux, local: Semgrep, `--config auto`                      | 221 rules, 55 files, 0 findings |
+| Linux, Chrome for Testing 153: full browser                 | ok: 48 tools, 177 live cases    |
+| Linux, Chrome for Testing 153: user interference            | 10/10                           |
+| Linux, Chrome for Testing 153: multi-agent                  | 25/25                           |
+| Linux, Chrome for Testing 153: per-agent clipboard          | 24/24                           |
+| Linux, Chrome for Testing 153: large upload                 | 7/7                             |
+| Linux, Chrome for Testing 153: extension version, current   | 6/6                             |
+| Linux, Chrome for Testing 153: extension version, older     | 12/12                           |
+| Linux, Chrome for Testing 153: two profiles                 | 14/14                           |
+| Local: pre-commit `no-bidirectional-characters`, every file | passes                          |
+
+The first local clang-tidy 23 run found 21 errors in the tree as first prepared -- signed bitwise tests
+of `poll()` results, `fcntl()` flags and the PNG shifts, three copies that could be moves, and
+const-able pointees -- and a second pass found one more (`runMcpProcess`'s `argv`) once its
+callees took `char *const *`. CI's analysis job runs Ubuntu's older clang-tidy, which has none of
+these checks. The poll and relay paths those fixes touch ran again under every live suite above.
+
+### 1.11.1: red drills
+
+Each check was red-drilled: the fix reverted in a disposable copy, the check seen to fail for that
+reason, then the committed source restored byte for byte and the check green again.
+
+- _The registration note compared as text (Linux):_ `registrationNote_followsLinksToTheSameFile`
+  fails -- the `current` symbolic link and its version directory are reported as different
+  servers -- 10 of 11 pass; restored, 11 of 11.
+- _The note through Qt's `canonicalFilePath()` (Windows):_ the same test fails, because Qt does
+  not follow the directory junction a managed install uses -- the pull request as first filed;
+  restored, 11 of 11.
+- _The PNG header read with its low bytes swapped (Linux):_
+  `screenshotReply_populatesImageChannelWithDimsFromPngHeader` fails (no `1280x720`); restored,
+  42 of 42.
+- _The bidirectional-character hook:_ each of the 11 controls it refuses (U+200E, U+200F,
+  U+202A-U+202E, U+2066-U+2069), planted in a scratch file, fails the hook; ordinary non-ASCII
+  text (an em dash, accents, an emoji, a line separator, a no-break space) passes it.
+
+### 1.11.0 (2026-11-01)
 
 1.11.0 lets `browser_upload` carry files up to 2 GiB (or what `CHROME_CONTROL_MCP_UPLOAD_MAX_MB` sets),
 read a piece at a time and staged in the page that uses them; fixes the relay ending itself under

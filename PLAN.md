@@ -3,7 +3,7 @@
 ## Release target
 
 Ship standalone, MIT-licensed Chrome Control MCP from `main` with the same browser tool surface on
-Windows, Linux, and macOS. Current release: 1.11.0 (2026-11-01).
+Windows, Linux, and macOS. Current release: 1.11.1 (2026-11-07).
 
 ## Completed
 
