@@ -11,6 +11,7 @@
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QProcess>
 #include <QTemporaryDir>
 #include <QtTest/QtTest>
 
@@ -331,9 +332,6 @@ void BrowserExtensionInstallerTests::registrationNote_silentWhenNothingToSay() {
 
 void BrowserExtensionInstallerTests::
     registrationNote_followsLinksToTheSameFile() {
-#ifdef Q_OS_WIN
-  QSKIP("QFile::link makes a .lnk shortcut on Windows, not a reparse point.");
-#else
   // A managed install registers the stable `current` link, while a running
   // server reports the version directory the link resolves to. Those are one
   // file, and the relay compares resolved images, so calling them a mismatch
@@ -345,8 +343,22 @@ void BrowserExtensionInstallerTests::
   const QString versioned = makeFile(
       root.filePath(QStringLiteral("versions/1.0.0/host")), "the program");
   const QString current = root.filePath(QStringLiteral("current"));
+#ifdef Q_OS_WIN
+  // On Windows a managed install's `current` is a directory junction, which
+  // needs no privilege to make; QFile::link would make a .lnk shortcut, which
+  // nothing resolves through.
+  QProcess mklink;
+  mklink.start(QStringLiteral("cmd.exe"),
+               {QStringLiteral("/c"), QStringLiteral("mklink"),
+                QStringLiteral("/J"), QDir::toNativeSeparators(current),
+                QDir::toNativeSeparators(
+                    root.filePath(QStringLiteral("versions/1.0.0")))});
+  QVERIFY(mklink.waitForFinished(10000));
+  QCOMPARE(mklink.exitCode(), 0);
+#else
   QVERIFY(
       QFile::link(root.filePath(QStringLiteral("versions/1.0.0")), current));
+#endif
   const QString stable = QDir(current).filePath(QStringLiteral("host"));
 
   QVERIFY(nativeHostRegistrationNote(stable, versioned).isEmpty());
@@ -363,7 +375,6 @@ void BrowserExtensionInstallerTests::
   const QString missing = root.filePath(QStringLiteral("gone/host"));
   const QString note = nativeHostRegistrationNote(missing, versioned);
   QVERIFY(note.contains(QDir::toNativeSeparators(missing)));
-#endif
 }
 
 void BrowserExtensionInstallerTests::

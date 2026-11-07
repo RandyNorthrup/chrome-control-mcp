@@ -22,9 +22,12 @@ QString imageOfProcess(HANDLE process) {
   if (QueryFullProcessImageNameW(process, 0, buffer, &size) == FALSE) {
     return {};
   }
-  // canonicalFilePath() resolves the reparse point a managed install is
-  // reached through, and returns empty for a path that no longer names a file
-  // -- which callers already treat as "could not identify", the safe answer.
+  // QueryFullProcessImageNameW already answers with the path the filesystem
+  // resolved, past the junction a managed install is launched through (Qt's
+  // canonicalFilePath() does not follow junctions). canonicalFilePath() then
+  // evens out spelling, and returns empty for a path that no longer names a
+  // file -- which callers already treat as "could not identify", the safe
+  // answer.
   return QFileInfo(QString::fromWCharArray(buffer, static_cast<int>(size)))
       .canonicalFilePath();
 }
