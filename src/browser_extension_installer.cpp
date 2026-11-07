@@ -27,6 +27,42 @@
 namespace chrome_control_mcp {
 namespace {
 
+// The file @p path names after every link the filesystem follows, or an empty
+// string when it names nothing. Qt's canonicalFilePath() follows symbolic
+// links but not Windows directory junctions -- and a managed install's
+// `current` is one -- so on Windows the filesystem is asked directly.
+QString resolvedFilePath(const QString &path) {
+#ifdef Q_OS_WIN
+  const std::wstring native = QDir::toNativeSeparators(path).toStdWString();
+  const HANDLE file =
+      CreateFileW(native.c_str(), FILE_READ_ATTRIBUTES,
+                  FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+                  nullptr, OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS, nullptr);
+  if (file == INVALID_HANDLE_VALUE) {
+    return {};
+  }
+  std::vector<wchar_t> buffer(32768);
+  const DWORD length = GetFinalPathNameByHandleW(
+      file, buffer.data(), static_cast<DWORD>(buffer.size()),
+      FILE_NAME_NORMALIZED);
+  CloseHandle(file);
+  if (length == 0 || length >= static_cast<DWORD>(buffer.size())) {
+    return {};
+  }
+  QString resolved =
+      QString::fromWCharArray(buffer.data(), static_cast<qsizetype>(length));
+  // The answer comes in its extended-length form: \\?\C:\... or \\?\UNC\...
+  if (resolved.startsWith(QLatin1String("\\\\?\\UNC\\"))) {
+    resolved = QLatin1String("\\\\") + resolved.mid(8);
+  } else if (resolved.startsWith(QLatin1String("\\\\?\\"))) {
+    resolved = resolved.mid(4);
+  }
+  return QDir::cleanPath(QDir::fromNativeSeparators(resolved));
+#else
+  return QFileInfo(path).canonicalFilePath();
+#endif
+}
+
 QString currentExecutablePath() {
 #ifdef Q_OS_WIN
   std::vector<wchar_t> buffer(32768);
@@ -467,11 +503,20 @@ QString nativeHostRegistrationNote(const QString &registered_exe,
 #else
   constexpr Qt::CaseSensitivity pathCase = Qt::CaseSensitive;
 #endif
-  const QString registered = QDir::cleanPath(registered_exe);
-  const QString running = QDir::cleanPath(running_exe);
-  if (registered.compare(running, pathCase) == 0) {
+  // Compare the files, not their spellings: the relay this note explains
+  // compares resolved images, and a managed install registers the stable
+  // `current` link while the running server reports the version directory it
+  // resolves to. A path that no longer exists has nothing to resolve to, and
+  // is compared as written.
+  const auto resolved = [](const QString &path) {
+    const QString file = resolvedFilePath(path);
+    return file.isEmpty() ? QDir::cleanPath(path) : file;
+  };
+  if (resolved(registered_exe).compare(resolved(running_exe), pathCase) == 0) {
     return QString();
   }
+  const QString registered = QDir::cleanPath(registered_exe);
+  const QString running = QDir::cleanPath(running_exe);
   return QStringLiteral(
              "Chrome's native-messaging host is registered to %1, but this "
              "server is %2. Chrome starts the registered executable, and the "

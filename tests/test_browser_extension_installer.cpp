@@ -11,6 +11,7 @@
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QProcess>
 #include <QTemporaryDir>
 #include <QtTest/QtTest>
 
@@ -154,6 +155,7 @@ private slots:
   void uninstallRemovesOnlyOwnedRegistration();
   void registrationNote_namesBothExecutablesAndTheFix();
   void registrationNote_silentWhenNothingToSay();
+  void registrationNote_followsLinksToTheSameFile();
   void registeredHostExecutable_readsTheManifest();
 };
 
@@ -326,6 +328,53 @@ void BrowserExtensionInstallerTests::registrationNote_silentWhenNothingToSay() {
                                      QStringLiteral("c:/ccm/CCM.EXE"))
               .isEmpty());
 #endif
+}
+
+void BrowserExtensionInstallerTests::
+    registrationNote_followsLinksToTheSameFile() {
+  // A managed install registers the stable `current` link, while a running
+  // server reports the version directory the link resolves to. Those are one
+  // file, and the relay compares resolved images, so calling them a mismatch
+  // sends the operator to a re-registration that writes the same link again.
+  QTemporaryDir dir;
+  QVERIFY(dir.isValid());
+  const QDir root(dir.path());
+  QVERIFY(root.mkpath(QStringLiteral("versions/1.0.0")));
+  const QString versioned = makeFile(
+      root.filePath(QStringLiteral("versions/1.0.0/host")), "the program");
+  const QString current = root.filePath(QStringLiteral("current"));
+#ifdef Q_OS_WIN
+  // On Windows a managed install's `current` is a directory junction, which
+  // needs no privilege to make; QFile::link would make a .lnk shortcut, which
+  // nothing resolves through.
+  QProcess mklink;
+  mklink.start(QStringLiteral("cmd.exe"),
+               {QStringLiteral("/c"), QStringLiteral("mklink"),
+                QStringLiteral("/J"), QDir::toNativeSeparators(current),
+                QDir::toNativeSeparators(
+                    root.filePath(QStringLiteral("versions/1.0.0")))});
+  QVERIFY(mklink.waitForFinished(10000));
+  QCOMPARE(mklink.exitCode(), 0);
+#else
+  QVERIFY(
+      QFile::link(root.filePath(QStringLiteral("versions/1.0.0")), current));
+#endif
+  const QString stable = QDir(current).filePath(QStringLiteral("host"));
+
+  QVERIFY(nativeHostRegistrationNote(stable, versioned).isEmpty());
+  QVERIFY(nativeHostRegistrationNote(versioned, stable).isEmpty());
+
+  // Resolving links must not hide a real mismatch: a second copy with the same
+  // bytes is a different image, and the relay refuses it.
+  const QString copy =
+      makeFile(root.filePath(QStringLiteral("copy")), "the program");
+  QVERIFY(!nativeHostRegistrationNote(stable, copy).isEmpty());
+
+  // A registration naming a file that is gone cannot be resolved, and it is
+  // still a mismatch worth reporting, under the path the registration names.
+  const QString missing = root.filePath(QStringLiteral("gone/host"));
+  const QString note = nativeHostRegistrationNote(missing, versioned);
+  QVERIFY(note.contains(QDir::toNativeSeparators(missing)));
 }
 
 void BrowserExtensionInstallerTests::
