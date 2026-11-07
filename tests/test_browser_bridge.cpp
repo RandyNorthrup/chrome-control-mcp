@@ -1272,7 +1272,9 @@ void BrowserBridgeTests::clientName_isSanitizedOntoEveryFrame() {
   session.retireOutstanding();
 
   // Nothing printable left: unknown, so omitted rather than sent empty.
-  session.setClientName(QStringLiteral("\u0001\u0002‎"));
+  // Built from a code point, not typed: a raw left-to-right mark in source is
+  // what GCC's -Wbidi-chars rejects, and what a reviewer cannot see.
+  session.setClientName(QStringLiteral("\u0001\u0002") + QChar(0x200E));
   QVERIFY(session.clientName().isEmpty());
   const auto blank =
       session.beginCommand(QStringLiteral("browser_snapshot"), {});
