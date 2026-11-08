@@ -65,6 +65,10 @@ async function main() {
     );
   };
   const timings = {};
+  // What each scroll reported: how far the page moved and how long the extension waited for it to
+  // come to rest. A slow scroll that moved far and settled is the page's own animation; one that
+  // waited without moving is not.
+  const scrolls = {};
   let failure = null;
 
   try {
@@ -102,6 +106,15 @@ async function main() {
       (timings[label] ??= []).push(ms);
       if (reply.isError) {
         throw new Error(`${label} failed: ${reply.text}`);
+      }
+      if (name === "browser_scroll") {
+        const answer = JSON.parse(reply.text);
+        (scrolls[label] ??= []).push({
+          ms,
+          scrolled: answer.scrolled,
+          settled: answer.settled,
+          waited_ms: answer.waited_ms,
+        });
       }
       return ms;
     };
@@ -162,6 +175,7 @@ async function main() {
         { ms: values, median: median(values), worst: Math.max(...values) },
       ]),
     ),
+    scrolls,
     checks,
     error: failure ? String(failure.stack || failure) : null,
   };

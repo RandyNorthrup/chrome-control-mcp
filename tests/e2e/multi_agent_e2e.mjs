@@ -288,16 +288,32 @@ async function main() {
         tab_id: popupSource.tab_id,
       })
     ).text;
-    await two.client.json("browser_click", {
+    const popupClick = await two.client.json("browser_click", {
       ref: refFor(sourceSnap, "Open the popup"),
     });
     const afterPopup = await until(async () => {
       const now = await two.client.json("browser_tabs");
       return now.your_tabs.some((t) => /from=popup/.test(t.url)) ? now : null;
     }, 8000);
+    // What a miss looks like from both sides: the click's own reply (which names any tab it opened)
+    // and every tab in the browser, whoever holds it.
+    const tabRows = (tabsReply) =>
+      tabsReply.tabs.map((t) => ({
+        tab_id: t.tab_id,
+        url: t.url,
+        held: t.held,
+        group: t.group,
+        active: t.active,
+      }));
     check(
       Boolean(afterPopup),
       "a popup the agent's click opens is the agent's tab",
+      afterPopup
+        ? ""
+        : JSON.stringify({
+            click: popupClick,
+            tabs: tabRows(await two.client.json("browser_tabs")),
+          }),
     );
     const frontAfter = (await two.client.json("browser_tabs")).tabs.find(
       (t) => t.active,
@@ -351,13 +367,17 @@ async function main() {
       "a server that exits has the tabs it opened closed for it",
     );
 
-    await one.client.json("browser_release", {});
+    const releasedAll = await one.client.json("browser_release", {});
     const finalTabs = await one.client.json("browser_tabs");
     check(
       !finalTabs.tabs.some((t) => t.tab_id === alpha.tab_id) &&
         !finalTabs.tabs.some((t) => String(t.group || "").startsWith("AI")),
       "releasing everything leaves no AI tab or group behind",
-      JSON.stringify(finalTabs.tabs.map((t) => [t.tab_id, t.group])),
+      JSON.stringify({
+        alpha: alpha.tab_id,
+        release: releasedAll,
+        tabs: tabRows(finalTabs),
+      }),
     );
   } catch (error) {
     failure = error;
