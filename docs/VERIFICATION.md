@@ -5,7 +5,104 @@ after [Earlier evidence](#earlier-evidence) is a dated record of the build it na
 suite counts and versions were true of that build and are not current. A result is recorded here
 only when a command actually produced it.
 
-## Current: 1.12.0 (2026-11-07)
+## Current: 1.13.0 (2026-11-07)
+
+1.13.0 publishes the Chrome extension to the Chrome Web Store as `mbkacllnbffbadcajpkkpelifdkfgcbd`
+beside the unpacked build, makes the server answer to both builds and no other, builds and submits
+the store package from the release workflow, gives agents an order for looking at a page, adds a
+privacy policy, and fixes `browser_new_tab` and `browser_tabs` answering before a just-held tab was
+in its agent's group. The plan, criteria and ledger are
+[plans/chrome-web-store.md](plans/chrome-web-store.md), with the raw outputs in
+[plans/evidence/cws/](plans/evidence/cws/). Every suite that existed before this work ran again
+against the 1.13.0 build (AC-CWS-COMPAT). From this release the local Linux evidence runs on an
+Ubuntu laptop rather than the WSL mirror.
+
+### 1.13.0: suites
+
+| Where                                                       | Result                                                                                                                                   |
+| ----------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| Windows 11, local (MSVC, Qt 6.10.3): ctest                  | 28/28, among them `test_store_publish`                                                                                                   |
+| Local: `npm run test:js`                                    | 255/255                                                                                                                                  |
+| Windows, local: MCP smoke, full and read-only               | 54 and 15 tools                                                                                                                          |
+| Windows, local: `register_native_host.ps1` on a test key    | both origins written and read back; a bad ID refused; unregistered                                                                       |
+| Linux, Ubuntu 26.04.1 laptop (GCC 15.2.0, Qt 6.10.2): build | 0 warnings; ctest 27/27                                                                                                                  |
+| Linux, laptop: clang-tidy 21.1.8, cppcheck 2.19.0, Semgrep  | 0 findings each (221 rules, 58 files)                                                                                                    |
+| Linux, Chrome for Testing 153: extension version, store key | 9/9: ID `mbkacllnbffbadcajpkkpelifdkfgcbd`, a tab, a find and a click                                                                    |
+| Linux, Chrome for Testing 153: extension version, unpacked  | current 9/9, older 12/12, released 1.11.1 12/12                                                                                          |
+| Linux, Chrome for Testing 153: full browser, display matrix | ok: 49 tools, 202 live cases; ok                                                                                                         |
+| Linux, Chrome for Testing 153: interference, multi-agent    | 10/10; 25/25 three times in a row                                                                                                        |
+| Linux, Chrome for Testing 153: clipboard, large upload      | 24/24, 7/7                                                                                                                               |
+| Linux, Chrome for Testing 153: profiles, upgrade            | 14/14, 4/4                                                                                                                               |
+| Chrome Web Store API, the store check's dry run             | signed in; the item's key gives its ID ([run 42430683011](https://github.com/RandyNorthrup/chrome-control-mcp/actions/runs/42430683011)) |
+
+The laptop's live suites run the dedicated test browser with `--no-sandbox`, as CI's Linux runner
+does: Ubuntu 23.10 and later restrict unprivileged user namespaces with AppArmor, and Chrome finds no
+usable sandbox. The first attempt, without it, stopped every suite before a check ran
+(`linux-live-attempt-1.txt`).
+
+### 1.13.0: red drills
+
+Each check was red-drilled: the defect planted in a disposable copy, the check seen to fail for that
+reason, then restored byte for byte and green again (`unit-red-drills.txt`, `js-red-drills.txt`,
+`extension-red-drills.txt`, `live-red-drills.txt`).
+
+- _A registration with our two origins and one more counts as current:_
+  `foreignOriginRegistrationIsNotCurrent` fails.
+- _The server answers to the unpacked build only:_ five installer cases fail, among them
+  `extensionOriginAcceptsBothBuilds`; against real Chrome under the store's key, the extension never
+  attaches (the live drill).
+- _The unpacked build, every existing install, is no longer let in:_
+  `prepareRegistersValidatedNativeHost` and three more fail.
+- _An origin that only begins with one of our IDs selects the relay:_
+  `extensionOriginAcceptsBothBuilds` fails.
+- _A starting server rewrites another copy's registration:_
+  `refreshRewritesOnlyItsOwnStaleRegistration` fails.
+- _The instructions no longer keep a whole snapshot for last:_
+  `initializeCarriesClientAgnosticInstructions` fails.
+- _Status reports the unpacked ID as the store's:_ `installerStatusReturnsMcpContent` fails.
+- _The store package keeps the manifest's key, or lets a 133-character description through:_ the
+  package cases fail.
+- _The assertion names the wrong audience; a refused upload is not reported; Google's message is not
+  read; the publisher stops waiting while the store is still processing:_ the publish cases fail.
+- _`browser_new_tab` or `browser_tabs` stops waiting for the tab's group:_ its tab case fails.
+
+### 1.13.0: CI and the release
+
+The release commit, `97840fa`: its Quality run was cancelled by the next push, by design. `c5fbfcb`
+([Quality run 42430678558](https://github.com/RandyNorthrup/chrome-control-mcp/actions/runs/42430678558)) carries the whole release: builds, tests, analysis and
+both sanitizers passed on all three platforms. `77091b4`, the evidence and the closed plan
+([run 42433774509](https://github.com/RandyNorthrup/chrome-control-mcp/actions/runs/42433774509), documents only): passed.
+
+The first real dry run ([run 42430524883](https://github.com/RandyNorthrup/chrome-control-mcp/actions/runs/42430524883)) signed in and read the item, then refused
+it on a byte-for-byte comparison of the item's key with the repository's; `c5fbfcb` made it check
+the ID the key gives, and the second ([run 42430683011](https://github.com/RandyNorthrup/chrome-control-mcp/actions/runs/42430683011)) passed.
+
+The v1.13.0 tag ([release run 42433869110](https://github.com/RandyNorthrup/chrome-control-mcp/actions/runs/42433869110)): the four archives built and tested, and
+the live browser suites passed on Linux and macOS, the store-key case included. On Windows the
+display matrix failed one configuration, `1.75x-1097x617-zoom175-overlay` (pinch 3), on a
+screenshot: "the browser's relay closed the connection 328 ms into screenshot, before replying
+(connection reset); the browser did not answer DevTools (fetch failed); the page did not answer
+DevTools (fetch failed)" -- Chrome itself exiting, as in
+[the open item below](#open-a-chrome-stall-in-one-display-configuration), on a path 1.13.0 does not
+touch. Nothing was published. The failed job was run again and passed; the GitHub release published
+at 02:06:21 UTC, the VS Code Marketplace job published, and the Chrome Web Store job uploaded
+1.13.0 and submitted it. Google's API answered the submission without a state, and its status read
+still showed nothing submitted a minute later; the developer dashboard showed the item pending
+review. The store warned that the `<all_urls>` host permission may need an in-depth review.
+
+### 1.13.0: found on the way
+
+- **A grouping race, found by the live suites.** One multi-agent run in several listed a tab opened
+  for the agent "研究" with no group: `browser_new_tab` replied once the page loaded, which a local
+  page does in milliseconds, without waiting for the queued group sync, and `browser_tabs` did not
+  wait for it either. Both now wait, bounded at two seconds. The check now prints the row it saw.
+- **An update applied by a 1.12 server keeps the old registration.** That update runs 1.12's code,
+  which writes one origin. The server now rewrites a registration that names it and is not current
+  as it starts, and leaves another copy's alone.
+- **cppcheck's `useStlAlgorithm`** flagged the origin loop; it is `std::any_of`.
+- **The dry run's key check** compared bytes; see above.
+
+### 1.12.0 (2026-11-07)
 
 1.12.0 adds `browser_find`, options to scope, filter and cap `browser_snapshot`, slimmer outlines,
 paged and scoped `browser_read`, a smaller catalog, and a meter of what each tool costs. The plan,
@@ -722,6 +819,8 @@ device pixels, both with Chrome's DevTools endpoint gone. Linux and macOS passed
 configurations, and the job passed when run again. A capture of fewer device pixels is the likely
 way round it whatever Chrome's cause; screenshots scaled to CSS pixels and capped are planned for a
 coming release.
+
+The `v1.13.0` tag met it once, in `1.75x-1097x617-zoom175-overlay` (pinch 3): the same message, Chrome's DevTools endpoint gone, Linux and macOS passing the same configuration, and the job passing when run again. It is the first occurrence outside a 3840x2160 configuration.
 
 ### Chrome's file chooser, measured on Chrome 153
 
