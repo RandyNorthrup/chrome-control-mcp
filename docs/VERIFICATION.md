@@ -5,7 +5,114 @@ after [Earlier evidence](#earlier-evidence) is a dated record of the build it na
 suite counts and versions were true of that build and are not current. A result is recorded here
 only when a command actually produced it.
 
-## Current: 1.13.0 (2026-11-07)
+## Current: 1.14.0 (2026-11-08)
+
+1.14.0 keeps the agent's tab drawing while an action runs, so a click, hover or scroll in a tab
+behind the user's no longer waits for the frame Chrome draws a background tab about once a second;
+skips the scroll for an element already in view; wakes the relay when a reply arrives; returns
+screenshots as a view at one pixel per CSS pixel, with a zoom and a full-resolution presentation
+saved to a file; keeps recordings in the page's shape; and fixes a popup going to the wrong agent.
+The plan, criteria and ledger are [plans/speed-and-screenshots.md](plans/speed-and-screenshots.md),
+with the raw outputs in [plans/evidence/speed/](plans/evidence/speed/). Every suite that existed
+before this work ran again against the 1.14.0 build (AC-SPD-COMPAT).
+
+### 1.14.0: suites
+
+| Where                                                        | Result                                                                                                   |
+| ------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------- |
+| Windows 11, local (MSVC, Qt 6.10.3): ctest                   | 28/28                                                                                                    |
+| Local: `npm run test:js`                                     | 275/275                                                                                                  |
+| Windows, local: MCP smoke, full and read-only                | 54 and 15 tools                                                                                          |
+| Linux, Ubuntu 26.04.1 laptop (GCC 15.2.0, Qt 6.10.2): build  | 0 warnings; ctest 27/27                                                                                  |
+| Linux, laptop: clang-tidy 21.1.8, cppcheck 2.19.0, Semgrep   | 0 findings each (221 rules, 58 files)                                                                    |
+| Linux, Chrome for Testing 153: action latency (new)          | 6/6; worst click 34 ms, hover 50, scrolls 83, 82 and 51, `browser_tabs` 2                                |
+| Linux, Chrome for Testing 153: display matrix                | 35/35 configurations, 3,475/3,475 checks, each screenshot as a view and a presentation                   |
+| Linux, Chrome for Testing 153: full browser                  | ok: 49 tools, 207 live cases                                                                             |
+| Linux, Chrome for Testing 153: interference, multi-agent     | 10/10; 25/25                                                                                             |
+| Linux, Chrome for Testing 153: clipboard, large upload       | 24/24, 7/7                                                                                               |
+| Linux, Chrome for Testing 153: extension version             | current 9/9, store key 9/9, older 12/12, released 1.11.1 12/12                                           |
+| Linux, Chrome for Testing 153: profiles, upgrade             | 14/14, 4/4                                                                                               |
+| CI, release tag `923700b`: every live suite, three platforms | passed ([run 42499004055](https://github.com/RandyNorthrup/chrome-control-mcp/actions/runs/42499004055)) |
+
+Measured on the laptop in the agent's tab behind the browser's own, 1.13.0 took 2,036 to 3,092 ms
+for a scroll by ref and up to 1,057 ms for a click; with the frame-forcing cast removed (the live
+drill below), the same build's scrolls took 2,081 to 3,098 ms at worst and a click or hover 1.1 s.
+
+### 1.14.0: red drills
+
+Each check was red-drilled: the defect planted, the check seen to fail for that reason, then
+restored byte for byte and green again (`js-red-drills.txt`, `windows-unit-red-drills.txt`,
+`windows-red-drills-2.txt`, `unit-red-drills.txt`, `live-red-drills.txt`). Twenty-three in all:
+
+- _The cast that keeps the tab drawing never starts:_ three tab cases fail; in real Chrome every
+  latency check fails (the live drill).
+- _A recorded tab gets a forcing cast of its own:_ its tab case fails.
+- _An element in view is scrolled anyway:_ the in-view case fails. This drill first passed green,
+  which is how the case came to exist.
+- _The view keeps device pixels; the cap ignores a capture a CSS pixel past the viewport;
+  `click_at` converts a view pixel as a device pixel:_ the view and conversion cases fail; in real
+  Chrome at 2x, five `click_at` checks miss (the live drill).
+- _A zoom crops in device pixels; its reply drops which part it shows:_ the zoom and bridge cases
+  fail.
+- _A recording is sized at the device's pixels, its encoder fixed at 1280x800, a frame stretched,
+  an unknown resolution passed on:_ the recording, offscreen and contract cases fail.
+- _The relay's reader no longer wakes the loop, on Windows and on POSIX:_ the round-trip case fails
+  at 1,000 ms against its 500.
+- _A presentation is not saved; the read-only profile lets one write; the clipped note is dropped;
+  a coordinate outside 0 to 16,384 is passed on; the catalog grows past its budget; the manifest
+  stays at 1.13.0:_ each one's case fails.
+- _A new tab's own `openerTabId` is trusted again:_ the two-agent popup case fails.
+
+### 1.14.0: CI and the release
+
+The release commit, `03ea896` ([run 42454617409](https://github.com/RandyNorthrup/chrome-control-mcp/actions/runs/42454617409)): builds, tests, analysis and both sanitizers
+passed on all three platforms. The `v1.14.0` tag on it ([run 42455088134](https://github.com/RandyNorthrup/chrome-control-mcp/actions/runs/42455088134)): the four archives
+built, and the live suites failed on all three platforms, each differently; nothing was published.
+The failures, and the live runs dispatched to find them ([run 42457752748](https://github.com/RandyNorthrup/chrome-control-mcp/actions/runs/42457752748),
+[run 42459066632](https://github.com/RandyNorthrup/chrome-control-mcp/actions/runs/42459066632), [run 42459072853](https://github.com/RandyNorthrup/chrome-control-mcp/actions/runs/42459072853), [run 42459078744](https://github.com/RandyNorthrup/chrome-control-mcp/actions/runs/42459078744)), are under "found on the way"; one of them stopped on Windows while installing Chrome for Testing, before any suite ran. The
+fixes, `771eed8` ([run 42495751864](https://github.com/RandyNorthrup/chrome-control-mcp/actions/runs/42495751864)), passed Quality on all three platforms. The tag, moved onto
+it ([run 42496344366](https://github.com/RandyNorthrup/chrome-control-mcp/actions/runs/42496344366)), passed the live suites on all three platforms, but its archive jobs
+stopped at the release-page check: the changelog dated 1.14.0 2026-11-07 and the commit was
+2026-11-08, and nothing was published. `923700b` corrected the date ([run 42498860129](https://github.com/RandyNorthrup/chrome-control-mcp/actions/runs/42498860129), documents
+only), and the tag on it ([run 42499004055](https://github.com/RandyNorthrup/chrome-control-mcp/actions/runs/42499004055)) built and tested the four archives, passed every
+live suite on all three platforms, published the GitHub release at 16:33:29 UTC, and published the
+four VS Code packages.
+
+The Chrome Web Store job built the store package (11 files, 177,306 bytes, no `key`) and the store
+refused the upload: "FAILED_PRECONDITION: You may not edit or publish an item that is in review" --
+1.13.0, submitted the day before, was still in Google's review. 1.14.0 goes to the store once that
+review ends, by running the failed job again.
+
+### 1.14.0: found on the way
+
+- **A popup went to the wrong agent.** The multi-agent suite's popup check failed on the first tag;
+  diagnostics added to the suite then showed the popup held by the other agent, whose tab the user
+  had in front. For a link opened from a background tab, Chrome names the window's active tab as the
+  new tab's `openerTabId`, and the extension trusted it; the faster replies had put that agent's own
+  click a second before, inside its two-second window. The browser's record of which page opened a
+  tab is now the only one believed where it exists.
+- **The harness put an agent's tab in front.** It turned on Developer mode through a
+  `chrome://extensions` tab opened in front while the suite was already running; the suite now
+  opened its first tab beside it before it closed, and Chrome put that tab in front. Reproduced
+  locally once in two runs, and no longer once the harness opened its page in the background.
+- **macOS's elastic overscroll.** The latency suite's scroll back to the top took 751 to 791 ms on
+  the macOS runner: a wheel far past the top makes the page bounce, and the reply rightly waits.
+  The suite now scrolls back the 200 px it went down.
+- **The latency bound.** At 1,000 ms one frame-bound scroll passed at 999 ms; it is 500.
+- **A display-matrix screenshot one pixel too wide:** 1569 against the 1568 cap, where Chrome
+  captured a CSS pixel past the page's whole-pixel viewport. The cap allows for it.
+- **The full-page clipped note never reached the agent:** the extension reported it, and the bridge
+  dropped it.
+- **The relay's round-trip case failed under load:** its 15 ms bound against a 25 ms tick; with every
+  core busy the woken relay measured 23 ms once in six runs. The tick is a parameter, and the case
+  runs it at a second.
+- **Large uploads, once in four runs on the Linux runner:** the page's hash of the 300 MiB file was
+  still running after 120 s. Not reproduced locally (three runs on two cores, 75 s each); the page
+  now reports its progress, so a recurrence says whether it stalled or was slow.
+- **Windows' display matrix met the open Chrome stall** on the first tag, in
+  `1.5x-2560x1440-zoom150-overlay`; see the open item below.
+
+### 1.13.0 (2026-11-07)
 
 1.13.0 publishes the Chrome extension to the Chrome Web Store as `mbkacllnbffbadcajpkkpelifdkfgcbd`
 beside the unpacked build, makes the server answer to both builds and no other, builds and submits
@@ -821,6 +928,8 @@ way round it whatever Chrome's cause; screenshots scaled to CSS pixels and cappe
 coming release.
 
 The `v1.13.0` tag met it once, in `1.75x-1097x617-zoom175-overlay` (pinch 3): the same message, Chrome's DevTools endpoint gone, Linux and macOS passing the same configuration, and the job passing when run again. It is the first occurrence outside a 3840x2160 configuration.
+
+The first `v1.14.0` tag met it once, in `1.5x-2560x1440-zoom150-overlay` (pinch 2), a configuration that captures 3840 device pixels across: the relay closed 484 ms into a view screenshot, Chrome's DevTools endpoint gone and nothing in its own output; the other 34 configurations passed, and so did the same configuration in every run after that reached it. 1.14.0's views still capture device pixels and then resize them, so they do not avoid it.
 
 ### Chrome's file chooser, measured on Chrome 153
 
