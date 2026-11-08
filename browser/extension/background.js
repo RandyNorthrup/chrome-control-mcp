@@ -508,6 +508,9 @@ function isInlineRequestUrl(url) {
 }
 
 function recordConsole(tab, entry) {
+  if (entry && entry.level === "error") {
+    tab.consoleErrors += 1;
+  }
   tab.consoleDropped += pushBounded(
     tab.consoleEntries,
     entry,
@@ -769,6 +772,9 @@ function makeTabState(tabId, origin) {
     // are gone" and "there were none" are different answers.
     consoleEntries: [],
     consoleDropped: 0,
+    // How many error entries the page has logged since the session attached, whether or not the
+    // ring still holds them: an action's reply says how many it caused (see changesSince).
+    consoleErrors: 0,
 
     // Keyed by requestId so a response can be paired with the method and URL that asked for it;
     // CDP reports those on two different events. Bounded for the same reason, and pruned when a
@@ -811,6 +817,11 @@ function makeTabState(tabId, origin) {
     // The most recent dialog handled on this tab: {type, message, accepted}. Reported by
     // browser_dialog so the model can see what an auto-dismissed alert/confirm said.
     lastDialog: null,
+    // How many dialogs the page has opened since the session attached, and the last one as it
+    // opened -- an action's reply says when it caused one (see changesSince). lastDialog above is
+    // only written once the answer lands, after the reply may already have gone.
+    dialogsOpened: 0,
+    lastDialogOpened: null,
 
     // A file picker the page asked for during one of this session's commands, which was caught
     // instead of shown: {kind: "input"|"picker", backendNodeId?, multiple, directory, at}. Chrome
@@ -2212,6 +2223,7 @@ const OPENER_COMMANDS = new Set([
   "forward",
   "reload",
   "upload",
+  "fillForm",
 ]);
 
 function endCommand(session, cmd) {
@@ -2219,6 +2231,370 @@ function endCommand(session, cmd) {
     session.openerUntil = Date.now() + OPENER_GRACE_MS;
     scheduleFilePickerDisarm(session);
   }
+}
+
+// -- What an action changed ---------------------------------------------------------------------
+//
+// An agent that clicks and then cannot tell whether anything happened takes a whole snapshot to
+// find out -- the most expensive look there is, and most often for nothing: on Mind2Web 52.9% of
+// within-page steps changed nothing. So every action's reply says what it changed, as seen by the
+// time the reply goes: `changes` with `url` and `title` when they changed, `dialog` when one
+// opened, `console_errors` when the page logged new errors, `focus` when focus moved, and `dom` --
+// "none", "some", "many", or "new document". It costs two reads of the page, no waiting.
+
+// The commands whose replies say what they changed: everything that delivers input or loads a
+// document.
+const CHANGE_COMMANDS = new Set([
+  "click",
+  "clickAt",
+  "jsClick",
+  "type",
+  "pressKey",
+  "select",
+  "setValue",
+  "hover",
+  "drag",
+  "upload",
+  "scroll",
+  "navigate",
+  "back",
+  "forward",
+  "reload",
+  "fillForm",
+]);
+
+// "many" starts at this share of the page's elements, and never below this many changes.
+const DOM_MANY_SHARE = 0.05;
+const DOM_MANY_MIN = 20;
+// An opted-in snapshot waits until the page has made no change for this long, at most this long.
+const SNAPSHOT_QUIET_MS = 100;
+const SNAPSHOT_SETTLE_CAP_MS = 1500;
+const SNAPSHOT_SETTLE_POLL_MS = 25;
+// How much of the focused element's name a reply carries.
+const MAX_FOCUS_NAME_CHARS = 80;
+
+// The page's change counter, installed in every document the tab loads: a MutationObserver that
+// counts nodes added and removed, text changed and attributes changed, and remembers when it last
+// counted. It skips the extension's own frame, badge and cursor, and `style` attributes, which an
+// animation rewrites every frame without the page changing. It also gives each element that takes
+// focus a number, so a reply can tell focus moved without holding a reference to the element.
+// Counts only -- no mutation record is kept. It lives in the page's world, so a page can lie to it;
+// what it costs a lying page is an inaccurate hint about its own changes, nothing more.
+function domChangesFn() {
+  const KEY = "__chrome_control_mcp_changes__";
+  if (window[KEY]) {
+    return;
+  }
+  const OURS = "__chrome_control_mcp_";
+  const isOurs = (node) => {
+    for (let n = node; n; n = n.parentNode || n.host || null) {
+      if (n.id && String(n.id).startsWith(OURS)) {
+        return true;
+      }
+    }
+    return false;
+  };
+  const state = { count: 0, last: performance.now() };
+  const observer = new MutationObserver((records) => {
+    for (const record of records) {
+      if (record.type === "attributes" && record.attributeName === "style") {
+        continue;
+      }
+      if (isOurs(record.target)) {
+        continue;
+      }
+      let counted = 1;
+      if (record.type === "childList") {
+        counted = 0;
+        for (const node of record.addedNodes) {
+          counted += isOurs(node) ? 0 : 1;
+        }
+        for (const node of record.removedNodes) {
+          counted += node.id && String(node.id).startsWith(OURS) ? 0 : 1;
+        }
+      }
+      if (counted > 0) {
+        state.count += counted;
+        state.last = performance.now();
+      }
+    }
+  });
+  observer.observe(document, {
+    subtree: true,
+    childList: true,
+    attributes: true,
+    characterData: true,
+  });
+  const focusIds = new WeakMap();
+  let nextFocusId = 1;
+  const focused = () => {
+    let el = document.activeElement;
+    while (el && el.shadowRoot && el.shadowRoot.activeElement) {
+      el = el.shadowRoot.activeElement;
+    }
+    return el && el !== document.body && el !== document.documentElement
+      ? el
+      : null;
+  };
+  const roleOf = (el) => {
+    const explicit = el.getAttribute("role");
+    if (explicit) {
+      return explicit.split(/\s+/)[0];
+    }
+    const tag = el.tagName.toLowerCase();
+    const type = String(el.type || "").toLowerCase();
+    if (tag === "a" && el.hasAttribute("href")) {
+      return "link";
+    }
+    if (tag === "button") {
+      return "button";
+    }
+    if (tag === "select") {
+      return el.multiple ? "listbox" : "combobox";
+    }
+    if (tag === "textarea") {
+      return "textbox";
+    }
+    if (tag === "input") {
+      if (type === "checkbox" || type === "radio") {
+        return type;
+      }
+      if (["button", "submit", "reset", "image"].includes(type)) {
+        return "button";
+      }
+      if (type === "range") {
+        return "slider";
+      }
+      return type === "search" ? "searchbox" : "textbox";
+    }
+    if (el.isContentEditable) {
+      return "textbox";
+    }
+    return tag;
+  };
+  const nameOf = (el) => {
+    const byIds = (ids) =>
+      ids
+        .split(/\s+/)
+        .map((id) => document.getElementById(id))
+        .filter(Boolean)
+        .map((n) => n.textContent)
+        .join(" ");
+    const labelled = el.getAttribute("aria-labelledby");
+    const candidates = [
+      el.getAttribute("aria-label"),
+      labelled ? byIds(labelled) : "",
+      el.labels && el.labels.length ? el.labels[0].textContent : "",
+      el.getAttribute("placeholder"),
+      el.getAttribute("title"),
+      el.getAttribute("alt"),
+      ["button", "submit", "reset"].includes(String(el.type || ""))
+        ? el.value
+        : "",
+      el.tagName === "INPUT" ||
+      el.tagName === "TEXTAREA" ||
+      el.tagName === "SELECT"
+        ? ""
+        : el.textContent,
+    ];
+    for (const candidate of candidates) {
+      const text = String(candidate || "")
+        .replace(/\s+/g, " ")
+        .trim();
+      if (text) {
+        return text;
+      }
+    }
+    return "";
+  };
+  Object.defineProperty(window, KEY, {
+    value: Object.freeze({
+      read(describe) {
+        const el = focused();
+        let focusId = 0;
+        if (el) {
+          if (!focusIds.has(el)) {
+            focusIds.set(el, nextFocusId++);
+          }
+          focusId = focusIds.get(el);
+        }
+        return {
+          count: state.count,
+          quietMs: Math.round(performance.now() - state.last),
+          elements: document.getElementsByTagName("*").length,
+          focusId,
+          focus: describe && el ? { role: roleOf(el), name: nameOf(el) } : null,
+        };
+      },
+    }),
+    enumerable: false,
+  });
+}
+
+function domChangesScript() {
+  return "(" + domChangesFn.toString() + ")();";
+}
+
+// The page's counter, read: {count, quietMs, elements, focusId, focus}, or null for a page that
+// has none (one that was loaded before the session attached and refused the evaluate, or a page
+// the counter could not reach).
+async function readPageChanges(tabId, withFocus) {
+  const res = await sendCdp(tabId, "Runtime.evaluate", {
+    expression:
+      "(function(){var c=window.__chrome_control_mcp_changes__;" +
+      "return c?c.read(" +
+      (withFocus ? "true" : "false") +
+      "):null;})()",
+    returnByValue: true,
+  }).catch(() => null);
+  const value = res && res.result ? res.result.value : null;
+  return value && Number.isFinite(value.count) ? value : null;
+}
+
+async function changeBaseline(session, tabId) {
+  const tab = tabStateOf(session, tabId);
+  await ensureAttached(session, tabId);
+  const [info, page] = await Promise.all([
+    tabInfo(tabId).catch(() => null),
+    readPageChanges(tabId, false),
+  ]);
+  return {
+    epoch: tab.domEpoch,
+    url: info ? info.url : undefined,
+    title: info ? info.title : undefined,
+    errors: tab.consoleErrors,
+    dialogs: tab.dialogsOpened,
+    page,
+  };
+}
+
+async function changesSince(session, tabId, before) {
+  const tab = session.tabs.get(tabId);
+  if (!tab) {
+    return {}; // the action let the tab go; nothing about it is the agent's to report
+  }
+  const [info, page] = await Promise.all([
+    tabInfo(tabId).catch(() => null),
+    readPageChanges(tabId, true),
+  ]);
+  return summarizeChanges(before, {
+    epoch: tab.domEpoch,
+    url: info ? info.url : undefined,
+    title: info ? info.title : undefined,
+    errors: tab.consoleErrors,
+    dialogs: tab.dialogsOpened,
+    lastDialog: tab.lastDialogOpened,
+    page,
+  });
+}
+
+// How much a change of `delta` counted changes is, on a page of `elements` elements.
+function domChangeLevel(delta, elements) {
+  if (!(delta > 0)) {
+    return "none";
+  }
+  const many = Math.max(DOM_MANY_MIN, (Number(elements) || 0) * DOM_MANY_SHARE);
+  return delta >= many ? "many" : "some";
+}
+
+// The focused element as a reply line says it: its role, and its name in quotes when it has one.
+function describeFocus(focus) {
+  const role = String(focus.role || "").slice(0, 32) || "element";
+  const name = String(focus.name || "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, MAX_FOCUS_NAME_CHARS);
+  return name ? role + ' "' + name + '"' : role;
+}
+
+// The `changes` an action reports, from what was read before it and after it. Each key is there
+// only when its change happened, except `dom`, which says "none" too -- that is the answer an
+// agent most often needs. A tab whose document was replaced says "new document" and nothing about
+// focus, which belonged to the old one.
+function summarizeChanges(before, after) {
+  const changes = {};
+  if (
+    after.url !== undefined &&
+    before.url !== undefined &&
+    after.url !== before.url
+  ) {
+    changes.url = after.url;
+  }
+  if (
+    after.title !== undefined &&
+    before.title !== undefined &&
+    after.title !== before.title
+  ) {
+    changes.title = after.title;
+  }
+  if (after.dialogs > before.dialogs) {
+    changes.dialog = after.lastDialog
+      ? {
+          type: after.lastDialog.type,
+          message: after.lastDialog.message,
+          accepted: after.lastDialog.accepted,
+        }
+      : { opened: after.dialogs - before.dialogs };
+  }
+  if (after.errors > before.errors) {
+    changes.console_errors = after.errors - before.errors;
+  }
+  if (after.epoch !== before.epoch) {
+    changes.dom = "new document";
+    return changes;
+  }
+  if (before.page && after.page) {
+    changes.dom = domChangeLevel(
+      after.page.count - before.page.count,
+      after.page.elements,
+    );
+    if (after.page.focus && after.page.focusId !== before.page.focusId) {
+      changes.focus = describeFocus(after.page.focus);
+    }
+  }
+  return changes;
+}
+
+// The snapshot an action was asked to return: taken once the page has made no change for
+// SNAPSHOT_QUIET_MS, or after SNAPSHOT_SETTLE_CAP_MS whatever it is doing. The extension's own
+// clock does the waiting -- a page's timers in a tab behind the user's run once a second. The
+// document generation rides along, so the server can tell a snapshot of a page that has since
+// been replaced from one it can bind refs to.
+async function settledSnapshot(session, tabId) {
+  const tab = tabStateOf(session, tabId);
+  const giveUp = Date.now() + SNAPSHOT_SETTLE_CAP_MS;
+  for (;;) {
+    const page = await readPageChanges(tabId, false);
+    if (!page || page.quietMs >= SNAPSHOT_QUIET_MS || Date.now() >= giveUp) {
+      break;
+    }
+    await new Promise((resolve) => {
+      setTimeout(resolve, SNAPSHOT_SETTLE_POLL_MS);
+    });
+  }
+  const captured = await captureSnapshot(session, tabId);
+  return { ...captured, domEpoch: tab.domEpoch };
+}
+
+// Run an action and add what it changed to its reply, and the snapshot it was asked for. A
+// snapshot that cannot be taken does not undo an action that happened: the reply says why instead.
+async function withChanges(session, tabId, args, run) {
+  const before = await changeBaseline(session, tabId);
+  const result = await run();
+  if (!result || typeof result !== "object" || Array.isArray(result)) {
+    return result;
+  }
+  result.changes = await changesSince(session, tabId, before);
+  if (args && args.snapshot === true && session.tabs.has(tabId)) {
+    try {
+      result.snapshot = await settledSnapshot(session, tabId);
+    } catch (error) {
+      result.snapshot_error = String(
+        error && error.message ? error.message : error,
+      );
+    }
+  }
+  return result;
 }
 
 // Fold what the command caused into its answer, when the answer has room for it. A payload that
@@ -2330,6 +2706,7 @@ const COMMAND_TABLE = new Map([
   ["type", { fn: handleType, tab: true, args: true, frames: true }],
   ["select", { fn: handleSelect, tab: true, args: true, frames: true }],
   ["setValue", { fn: handleSetValue, tab: true, args: true }],
+  ["fillForm", { fn: handleFillForm, tab: true, args: true }],
   ["media", { fn: handleMedia, tab: true, args: true }],
   ["pressKey", { fn: handlePressKey, tab: true, args: true, frames: true }],
   ["scroll", { fn: handleScroll, tab: true, args: true, frames: true }],
@@ -2426,13 +2803,19 @@ async function dispatchCommand(session, cmd, args) {
     tab.inputUntil = Infinity;
   }
   try {
-    if (entry.frames && tabId !== null) {
-      // Attached first: the cast is a debugger command, and the handler's own attach would come
-      // after it.
-      await ensureAttached(session, tabId);
-      return await withFrames(tabId, () => entry.fn(...params));
+    const run =
+      entry.frames && tabId !== null
+        ? async () => {
+            // Attached first: the cast is a debugger command, and the handler's own attach would
+            // come after it.
+            await ensureAttached(session, tabId);
+            return withFrames(tabId, () => entry.fn(...params));
+          }
+        : () => entry.fn(...params);
+    if (tabId !== null && CHANGE_COMMANDS.has(cmd)) {
+      return await withChanges(session, tabId, args, run);
     }
-    return await entry.fn(...params);
+    return await run();
   } catch (error) {
     throw await explainUnreachablePage(tab, error);
   } finally {
@@ -5139,6 +5522,15 @@ async function enableSessionDomains(session, state) {
   await sendCdp(tabId, "Runtime.evaluate", {
     expression: clipboardStandInScript(),
   }).catch(() => {});
+  // The page's change counter (see domChangesFn), in this document and every one after it.
+  await sendCdp(tabId, "Page.addScriptToEvaluateOnNewDocument", {
+    source: domChangesScript(),
+  }).catch((e) => {
+    console.warn("[ChromeControlMCP] change counter unavailable:", e);
+  });
+  await sendCdp(tabId, "Runtime.evaluate", {
+    expression: domChangesScript(),
+  }).catch(() => {});
 }
 
 async function ensureAttached(session, tabId) {
@@ -5330,6 +5722,8 @@ function recordFetchError(tab, e) {
 // metadata we could not read, and an unreadable dialog must not be answered as an "alert" --
 // that default ACCEPTS. Anything unrecognized is normalized to a type that dismisses.
 const DIALOG_TYPES = new Set(["alert", "confirm", "prompt", "beforeunload"]);
+// How much of a dialog's page-written message an action's reply carries.
+const MAX_DIALOG_MESSAGE_CHARS = 200;
 
 chrome.debugger.onEvent.addListener((source, method, params) => {
   if (!source) {
@@ -5661,6 +6055,7 @@ chrome.debugger.onEvent.addListener((source, method, params) => {
   const frameUrl = params && typeof params.url === "string" ? params.url : "";
   let accept = defaultDialogAccept(type);
   let promptText;
+  tab.dialogsOpened += 1;
   // An arm belongs to the document it was armed against, and to the command it was armed for.
   // Page.javascriptDialogOpening reports the frame that opened the dialog, and a page can embed a
   // third-party iframe -- or simply wait for the gap between tool calls -- to fire a confirm()
@@ -5676,6 +6071,11 @@ chrome.debugger.onEvent.addListener((source, method, params) => {
     tab.pendingDialogPolicy = null; // one-shot: never carry an armed response to a later dialog
   }
   const answer = { accept };
+  tab.lastDialogOpened = {
+    type,
+    message: message.slice(0, MAX_DIALOG_MESSAGE_CHARS),
+    accepted: accept,
+  };
   if (accept && typeof promptText === "string") {
     answer.promptText = promptText;
   }
@@ -8769,6 +9169,160 @@ async function handleSetValue(session, tabId, args) {
     throw new Error((r && r.error) || "browser_set_value failed");
   }
   return { ok: true, value: r.value, checked: r.checked };
+}
+
+// browser_fill_form: a form's fields in one call, in order, stopping at the first that cannot take
+// its value. Each field is a ref and a string: a text field takes the text, a <select> the option's
+// visible text (or its value), a checkbox "true" or "false", a radio "true". The page sees what a
+// person filling it would produce -- input and change events, and a real click on a checkbox or
+// radio -- and a text field is set through the element's own value setter, so frameworks that
+// track the value (React's controlled inputs) see the change.
+async function handleFillForm(session, tabId, args) {
+  await ensureAttached(session, tabId);
+  requireSnapshotTab(session, tabId);
+  const fields = Array.isArray(args.fields) ? args.fields : [];
+  if (fields.length === 0) {
+    throw new Error("browser_fill_form needs at least one field.");
+  }
+  const filled = [];
+  for (let index = 0; index < fields.length; index += 1) {
+    const field = fields[index];
+    const label =
+      "field " + (index + 1) + (field.ref ? " (" + field.ref + ")" : "");
+    let objectId;
+    try {
+      objectId = await resolveNodeObjectId(tabId, field.backendNodeId);
+    } catch (error) {
+      throw new Error(
+        label +
+          ": the element is gone; take a fresh snapshot." +
+          filledSoFar(filled),
+        { cause: error },
+      );
+    }
+    const r = await callOnNode(tabId, objectId, fillFieldFn, [
+      String(field.value),
+    ]);
+    if (!r || !r.ok) {
+      throw new Error(
+        label +
+          ": " +
+          ((r && r.error) || "it could not be filled") +
+          "." +
+          filledSoFar(filled),
+      );
+    }
+    filled.push({ ref: field.ref, kind: r.kind });
+  }
+  return { ok: true, filled: filled.length, fields: filled };
+}
+
+function filledSoFar(filled) {
+  return filled.length === 0
+    ? " Nothing before it was filled."
+    : " The " +
+        filled.length +
+        " field" +
+        (filled.length === 1 ? "" : "s") +
+        " before it " +
+        (filled.length === 1 ? "was" : "were") +
+        " filled.";
+}
+
+// One field, in the page, with the element as `this`. Self-contained: it is stringified into the
+// page, so it can reach nothing outside itself.
+function fillFieldFn(value) {
+  const el = this;
+  if (!el || el.nodeType !== 1) {
+    return { ok: false, error: "the element is gone" };
+  }
+  if (el.disabled) {
+    return { ok: false, error: "it is disabled" };
+  }
+  const tag = el.tagName;
+  const type = String(el.type || "").toLowerCase();
+  const fire = (name) => el.dispatchEvent(new Event(name, { bubbles: true }));
+  const words = (text) => String(text).replace(/\s+/g, " ").trim();
+  if (tag === "SELECT") {
+    const wanted = words(value);
+    const options = Array.from(el.options);
+    const match =
+      options.find((o) => words(o.label || o.text) === wanted) ||
+      options.find((o) => o.value === value);
+    if (!match) {
+      return {
+        ok: false,
+        error: "it has no option " + JSON.stringify(wanted.slice(0, 80)),
+      };
+    }
+    if (match.disabled) {
+      return { ok: false, error: "that option is disabled" };
+    }
+    for (const option of options) {
+      option.selected = option === match;
+    }
+    fire("input");
+    fire("change");
+    return { ok: true, kind: "select" };
+  }
+  if (tag === "INPUT" && (type === "checkbox" || type === "radio")) {
+    const on = /^(true|on|yes|checked|1)$/i.test(value);
+    const off = /^(false|off|no|unchecked|0)$/i.test(value);
+    if (!on && !off) {
+      return { ok: false, error: "a " + type + ' takes "true" or "false"' };
+    }
+    if (type === "radio" && off) {
+      return {
+        ok: false,
+        error: "a radio is cleared by choosing another in its group",
+      };
+    }
+    if (el.checked !== on) {
+      el.click();
+    }
+    if (el.checked !== on) {
+      return {
+        ok: false,
+        error: "the page kept it " + (el.checked ? "checked" : "unchecked"),
+      };
+    }
+    return { ok: true, kind: type };
+  }
+  const notText = ["file", "button", "submit", "reset", "image", "hidden"];
+  if ((tag === "INPUT" && !notText.includes(type)) || tag === "TEXTAREA") {
+    if (el.readOnly) {
+      return { ok: false, error: "it is read-only" };
+    }
+    const proto =
+      tag === "TEXTAREA"
+        ? HTMLTextAreaElement.prototype
+        : HTMLInputElement.prototype;
+    Object.getOwnPropertyDescriptor(proto, "value").set.call(el, value);
+    fire("input");
+    fire("change");
+    if (el.value !== value) {
+      return {
+        ok: false,
+        error:
+          "it took " +
+          JSON.stringify(String(el.value).slice(0, 80)) +
+          " instead (its type is " +
+          (type || "text") +
+          ")",
+      };
+    }
+    return { ok: true, kind: "text" };
+  }
+  if (el.isContentEditable) {
+    el.focus();
+    el.textContent = value;
+    fire("input");
+    return { ok: true, kind: "text" };
+  }
+  return {
+    ok: false,
+    error: "it is not a text field, select, checkbox or radio",
+  };
 }
 
 // Control an <audio>/<video> element: play/pause/mute/unmute/seek/volume/rate. Returns the

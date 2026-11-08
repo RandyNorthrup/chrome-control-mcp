@@ -223,6 +223,101 @@ function pageTwo() {
   );
 }
 
+// What each kind of action changes, and a form to fill: the action-changes suite clicks each button
+// and reads the `changes` its reply reports, then fills the form in one call. The status line is the
+// page's own account of the form's values, so a check reads what the page saw.
+function actionsPage() {
+  return htmlPage(
+    "Fixture actions",
+    `<main>
+  <section>
+    <h2>Actions</h2>
+    <div class="grid">
+      <button id="nothing" type="button">Do nothing</button>
+      <button id="add-items" type="button">Add items</button>
+      <button id="add-many" type="button">Add many</button>
+      <button id="add-button" type="button">Add a button</button>
+      <button id="show-alert" type="button">Show alert</button>
+      <button id="log-error" type="button">Log an error</button>
+      <button id="focus-name" type="button">Focus the name</button>
+      <a id="next-page" href="/page2">Next page</a>
+    </div>
+    <ul id="items"></ul>
+    <div id="added"></div>
+  </section>
+  <section>
+    <h2>Form</h2>
+    <form id="form" class="grid" onsubmit="return false">
+      <label>Name <input id="name" name="name" type="text"></label>
+      <label>Size
+        <select id="size" name="size">
+          <option value="s">Small</option>
+          <option value="m">Medium</option>
+          <option value="l">Large</option>
+        </select>
+      </label>
+      <label><input id="subscribe" name="subscribe" type="checkbox"> Subscribe</label>
+      <fieldset><legend>Plan</legend>
+        <label><input id="plan-basic" name="plan" type="radio" value="basic" checked> Basic</label>
+        <label><input id="plan-pro" name="plan" type="radio" value="pro"> Pro</label>
+      </fieldset>
+      <label>Notes <textarea id="notes" name="notes"></textarea></label>
+      <label>Locked <input id="locked" name="locked" type="text" disabled></label>
+    </form>
+    <output id="form-status">form: none</output>
+  </section>
+</main>`,
+    `
+document.getElementById("nothing").addEventListener("click", () => {});
+document.getElementById("add-items").addEventListener("click", () => {
+  const list = document.getElementById("items");
+  for (let i = 0; i < 3; i += 1) {
+    const item = document.createElement("li");
+    item.textContent = "Item " + (list.children.length + 1);
+    list.appendChild(item);
+  }
+});
+document.getElementById("add-many").addEventListener("click", () => {
+  const list = document.getElementById("items");
+  for (let i = 0; i < 400; i += 1) {
+    const item = document.createElement("li");
+    item.textContent = "Row " + i;
+    list.appendChild(item);
+  }
+});
+let addedButtons = 0;
+document.getElementById("add-button").addEventListener("click", () => {
+  addedButtons += 1;
+  const button = document.createElement("button");
+  button.type = "button";
+  button.textContent = "Added button " + addedButtons;
+  document.getElementById("added").appendChild(button);
+});
+document.getElementById("show-alert").addEventListener("click", () => {
+  alert("Saved");
+});
+document.getElementById("log-error").addEventListener("click", () => {
+  console.error("Fixture error");
+});
+document.getElementById("focus-name").addEventListener("click", () => {
+  document.getElementById("name").focus();
+});
+const form = document.getElementById("form");
+const status = () => {
+  const data = new FormData(form);
+  document.getElementById("form-status").textContent =
+    "form: name=" + data.get("name") +
+    ";size=" + data.get("size") +
+    ";subscribe=" + (document.getElementById("subscribe").checked ? "yes" : "no") +
+    ";plan=" + data.get("plan") +
+    ";notes=" + data.get("notes");
+};
+form.addEventListener("input", status);
+form.addEventListener("change", status);
+`,
+  );
+}
+
 // The three ways a page asks for a file that no ref can reach through an ordinary input: a button
 // whose script creates an input on the fly and clicks it (the input is in no document), a drop
 // zone with no input at all, and the File System Access picker. Each writes what it received into
@@ -643,6 +738,10 @@ export async function startFixtureServer() {
     }
     if (url.pathname === "/find") {
       send(200, "text/html; charset=utf-8", findPage());
+      return;
+    }
+    if (url.pathname === "/actions") {
+      send(200, "text/html; charset=utf-8", actionsPage());
       return;
     }
     if (url.pathname === "/page2") {

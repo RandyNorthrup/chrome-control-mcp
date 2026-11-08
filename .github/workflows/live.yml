@@ -155,6 +155,17 @@ jobs:
           ${{ matrix.chrome-args }} tests/e2e/action_latency_e2e.mjs
           | tee action-latency-e2e.json
 
+      # What each action changed, in its own reply; a snapshot in the same call; a page that has not
+      # changed answered in one line; and a form filled in one call.
+      - name: Action changes E2E
+        if: ${{ !cancelled() && steps.chrome.outcome == 'success' }}
+        shell: bash
+        run: >-
+          node tests/e2e/isolated_run.mjs --chrome="${{ steps.chrome.outputs.path }}"
+          --executable="${{ matrix.executable }}"
+          ${{ matrix.chrome-args }} tests/e2e/action_changes_e2e.mjs
+          | tee action-changes-e2e.json
+
       # Two servers and two agents in one browser: separate tabs, refs and groups, no reaching
       # into another's tab, file pickers answered without a dialog, and cleanup on release and exit.
       - name: Multi-agent E2E

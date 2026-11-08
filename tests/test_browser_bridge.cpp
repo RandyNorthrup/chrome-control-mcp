@@ -175,6 +175,10 @@ private slots:
   void screenshotReply_presentationThatIsNotPngIsRefused();
   void screenshotReply_zoomSaysWhatItShows();
   void screenshotReply_clippedFullPageSaysSo();
+  void actionSnapshot_isShownAndItsRefsWork();
+  void actionSnapshot_ofAReplacedPageIsNotBound();
+  void ifChanged_saysUnchangedAndMarksOnlyNewRefs();
+  void fillForm_refusesAStaleFieldRef();
   void screenshotReply_nonPngFallsBackToPlainSummary();
   void screenshotReply_emptyDataIsHonestError();
   void screenshotReply_oversizeBase64IsRejected();
@@ -676,6 +680,160 @@ void BrowserBridgeTests::screenshotReply_clippedFullPageSaysSo() {
                   QStringLiteral("screenshot"),
                   screenshotPayload(pngHeaderBase64(1280, 3000))));
   QVERIFY(!in.text.contains(QStringLiteral("capture limit")));
+}
+
+// An action asked for a snapshot gets it in the same reply: the action's JSON,
+// then the snapshot, whose refs are installed for the tab at once -- no
+// browser_snapshot between the action and the next click.
+void BrowserBridgeTests::actionSnapshot_isShownAndItsRefsWork() {
+  BrowserBridgeSession session;
+  session.onHostConnected();
+  const auto click =
+      session.beginCommand(QStringLiteral("browser_click_at"),
+                           QJsonObject{{QStringLiteral("x"), 10},
+                                       {QStringLiteral("y"), 20},
+                                       {QStringLiteral("snapshot"), true}});
+  QVERIFY2(click.ok, qPrintable(click.error));
+  QCOMPARE(click.frame.value(QStringLiteral("snapshot")).toBool(), true);
+  QJsonObject capture = snapshotPayload(41, QStringLiteral("Next"));
+  capture.insert(QStringLiteral("domEpoch"), 3);
+  const auto in = session.onReply(tabFrame(
+      frameId(click), QStringLiteral("clickAt"),
+      QJsonObject{
+          {QStringLiteral("ok"), true},
+          {QStringLiteral("changes"),
+           QJsonObject{{QStringLiteral("dom"), QStringLiteral("some")}}},
+          {QStringLiteral("snapshot"), capture}},
+      kTab, 3));
+  QVERIFY2(!in.is_error, qPrintable(in.error));
+  const QString first = in.text.section(QLatin1Char('\n'), 0, 0);
+  const QJsonObject action = QJsonDocument::fromJson(first.toUtf8()).object();
+  QCOMPARE(action.value(QStringLiteral("changes"))
+               .toObject()
+               .value(QStringLiteral("dom"))
+               .toString(),
+           QStringLiteral("some"));
+  QVERIFY2(!action.contains(QStringLiteral("snapshot")), qPrintable(first));
+  QVERIFY2(in.text.contains(QStringLiteral("- button \"Next\" [ref=e1]")),
+           qPrintable(in.text));
+  QVERIFY(session.refIndex().contains(QStringLiteral("e1")));
+  QVERIFY(!session.tabStale(kTab));
+  // And the next action by that ref goes out.
+  const auto next = session.beginCommand(
+      QStringLiteral("browser_click"),
+      QJsonObject{{QStringLiteral("ref"), QStringLiteral("e1")}});
+  QVERIFY2(next.ok, qPrintable(next.error));
+}
+
+// A capture from a document the tab has since replaced would bind refs to nodes
+// it no longer has: the reply still carries the action's result, says why no
+// snapshot is shown, and installs nothing.
+void BrowserBridgeTests::actionSnapshot_ofAReplacedPageIsNotBound() {
+  BrowserBridgeSession session;
+  session.onHostConnected();
+  const auto click =
+      session.beginCommand(QStringLiteral("browser_click_at"),
+                           QJsonObject{{QStringLiteral("x"), 10},
+                                       {QStringLiteral("y"), 20},
+                                       {QStringLiteral("snapshot"), true}});
+  QJsonObject capture = snapshotPayload(41, QStringLiteral("Next"));
+  capture.insert(QStringLiteral("domEpoch"), 3);
+  const auto in = session.onReply(
+      tabFrame(frameId(click), QStringLiteral("clickAt"),
+               QJsonObject{{QStringLiteral("ok"), true},
+                           {QStringLiteral("snapshot"), capture}},
+               kTab, 4));
+  QVERIFY2(!in.is_error, qPrintable(in.error));
+  QVERIFY2(in.text.contains(QStringLiteral("none is shown")),
+           qPrintable(in.text));
+  QVERIFY(!in.text.contains(QStringLiteral("[ref=")));
+  QVERIFY(session.refIndex().isEmpty());
+}
+
+// if_changed: a snapshot equal to the tab's last is one line; a changed one is
+// whole, with only the refs it is the first to show marked; the first snapshot
+// of a page, or the first after it navigated, has nothing to compare with and
+// marks nothing.
+void BrowserBridgeTests::ifChanged_saysUnchangedAndMarksOnlyNewRefs() {
+  BrowserBridgeSession session;
+  session.onHostConnected();
+  const auto snap = [&session](const QJsonObject &capture, int epoch) {
+    const auto out =
+        session.beginCommand(QStringLiteral("browser_snapshot"),
+                             QJsonObject{{QStringLiteral("if_changed"), true}});
+    return session.onReply(tabFrame(frameId(out), QStringLiteral("snapshot"),
+                                    capture, kTab, epoch));
+  };
+  const auto first = snap(snapshotPayload(41, QStringLiteral("Save")), 1);
+  QVERIFY2(first.text.contains(QStringLiteral("- button \"Save\" [ref=e1]")),
+           qPrintable(first.text));
+  QVERIFY(!first.text.contains(QStringLiteral("*[ref=")));
+  const auto same = snap(snapshotPayload(41, QStringLiteral("Save")), 1);
+  QVERIFY2(same.text.contains(QStringLiteral(
+               "unchanged since snapshot 1 (1 elements); its refs still work")),
+           qPrintable(same.text));
+  QVERIFY(!same.text.contains(QStringLiteral("[ref=")));
+  QVERIFY(session.refIndex().contains(QStringLiteral("e1")));
+  const auto grown = snap(
+      twoButtonPayload(41, QStringLiteral("Save"), 42, QStringLiteral("Undo")),
+      1);
+  QVERIFY2(grown.text.contains(QStringLiteral("- button \"Save\" [ref=e1]")),
+           qPrintable(grown.text));
+  QVERIFY2(grown.text.contains(QStringLiteral("- button \"Undo\" *[ref=e2]")),
+           qPrintable(grown.text));
+  // Without if_changed the same page reads as it always did.
+  const auto plain =
+      session.beginCommand(QStringLiteral("browser_snapshot"), QJsonObject{});
+  const auto unmarked = session.onReply(tabFrame(
+      frameId(plain), QStringLiteral("snapshot"),
+      twoButtonPayload(41, QStringLiteral("Save"), 43, QStringLiteral("Redo")),
+      kTab, 1));
+  QVERIFY(!unmarked.text.contains(QStringLiteral("*[ref=")));
+  // A navigation leaves nothing to compare with: whole, and nothing marked.
+  const auto nav = session.beginCommand(
+      QStringLiteral("browser_navigate"),
+      QJsonObject{
+          {QStringLiteral("url"), QStringLiteral("https://other.example/")}});
+  (void)session.onReply(
+      tabFrame(frameId(nav), QStringLiteral("navigate"),
+               QJsonObject{{QStringLiteral("url"),
+                            QStringLiteral("https://other.example/")}},
+               kTab, 2));
+  const auto after = snap(snapshotPayload(9, QStringLiteral("Home")), 2);
+  QVERIFY2(after.text.contains(QStringLiteral("- button \"Home\" [ref=")),
+           qPrintable(after.text));
+  QVERIFY(!after.text.contains(QStringLiteral("*[ref=")));
+  QVERIFY(!after.text.contains(QStringLiteral("unchanged")));
+}
+
+// A form's fields are refs like any other: one on a tab whose page changed
+// since its snapshot is refused before anything is sent.
+void BrowserBridgeTests::fillForm_refusesAStaleFieldRef() {
+  BrowserBridgeSession session;
+  session.onHostConnected();
+  const auto snap =
+      session.beginCommand(QStringLiteral("browser_snapshot"), QJsonObject{});
+  (void)session.onReply(tabFrame(frameId(snap), QStringLiteral("snapshot"),
+                                 snapshotPayload(41, QStringLiteral("Name")),
+                                 kTab, 1));
+  const auto nav = session.beginCommand(
+      QStringLiteral("browser_navigate"),
+      QJsonObject{
+          {QStringLiteral("url"), QStringLiteral("https://other.example/")}});
+  (void)session.onReply(
+      tabFrame(frameId(nav), QStringLiteral("navigate"),
+               QJsonObject{{QStringLiteral("url"),
+                            QStringLiteral("https://other.example/")}},
+               kTab, 2));
+  const auto fill = session.beginCommand(
+      QStringLiteral("browser_fill_form"),
+      QJsonObject{{QStringLiteral("fields"),
+                   QJsonArray{QJsonObject{
+                       {QStringLiteral("ref"), QStringLiteral("e1")},
+                       {QStringLiteral("value"), QStringLiteral("Ada")}}}}});
+  QVERIFY(!fill.ok);
+  QVERIFY2(fill.error.contains(QStringLiteral("page changed")),
+           qPrintable(fill.error));
 }
 
 void BrowserBridgeTests::screenshotReply_nonPngFallsBackToPlainSummary() {

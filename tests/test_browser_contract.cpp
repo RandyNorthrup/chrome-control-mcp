@@ -147,6 +147,9 @@ private slots:
   void buildCommand_agentIsValidatedAndCopied();
   void buildCommand_screenshotPurposeAndZoom();
   void buildCommand_recordStartResolution();
+  void buildCommand_actionSnapshotOnEveryActionTool();
+  void buildCommand_fillFormResolvesEachField();
+  void buildCommand_fillFormRefusesMalformedFields();
 };
 
 void BrowserContractTests::
@@ -516,7 +519,7 @@ void BrowserContractTests::catalog_advertisesDomFirstToolsWithStrictSchemas() {
   // advanced-input/observability/release/clipboard/find), 48 tools in all.
   // `>= 15` could not catch a tool silently dropped from or duplicated into the
   // catalog.
-  QCOMPARE(tools.size(), 48);
+  QCOMPARE(tools.size(), 49);
 
   QStringList names;
   for (const QJsonValue &value : tools) {
@@ -639,6 +642,153 @@ void BrowserContractTests::buildCommand_recordStartResolution() {
       QStringLiteral("browser_record_start"),
       QJsonObject{{QStringLiteral("resolution"), 1080}}, {});
   QVERIFY(!typed.ok);
+}
+
+// Every tool whose command delivers input or loads a document takes snapshot
+// (a boolean, sent on), and nothing else does: it is the one place a reply can
+// end with the page.
+void BrowserContractTests::buildCommand_actionSnapshotOnEveryActionTool() {
+  const QSet<QString> actions{
+      QStringLiteral("browser_click"),     QStringLiteral("browser_click_at"),
+      QStringLiteral("browser_js_click"),  QStringLiteral("browser_type"),
+      QStringLiteral("browser_press_key"), QStringLiteral("browser_select"),
+      QStringLiteral("browser_set_value"), QStringLiteral("browser_hover"),
+      QStringLiteral("browser_drag"),      QStringLiteral("browser_upload"),
+      QStringLiteral("browser_scroll"),    QStringLiteral("browser_navigate"),
+      QStringLiteral("browser_back"),      QStringLiteral("browser_forward"),
+      QStringLiteral("browser_reload"),    QStringLiteral("browser_fill_form")};
+  QSet<QString> offered;
+  for (const QJsonValue &tool : browserToolCatalog()) {
+    const QJsonObject entry = tool.toObject();
+    const QJsonObject props = entry.value(QStringLiteral("inputSchema"))
+                                  .toObject()
+                                  .value(QStringLiteral("properties"))
+                                  .toObject();
+    if (props.contains(QStringLiteral("snapshot"))) {
+      offered.insert(entry.value(QStringLiteral("name")).toString());
+      QCOMPARE(props.value(QStringLiteral("snapshot"))
+                   .toObject()
+                   .value(QStringLiteral("type"))
+                   .toString(),
+               QStringLiteral("boolean"));
+    }
+  }
+  QCOMPARE(offered, actions);
+
+  const ExtensionCommand back = buildExtensionCommand(
+      QStringLiteral("browser_back"),
+      QJsonObject{{QStringLiteral("snapshot"), true}}, {});
+  QVERIFY2(back.ok, qPrintable(back.error));
+  QCOMPARE(back.command.value(QStringLiteral("snapshot")).toBool(), true);
+  const ExtensionCommand typed = buildExtensionCommand(
+      QStringLiteral("browser_back"),
+      QJsonObject{{QStringLiteral("snapshot"), QStringLiteral("yes")}}, {});
+  QVERIFY(!typed.ok);
+  const ExtensionCommand elsewhere = buildExtensionCommand(
+      QStringLiteral("browser_tabs"),
+      QJsonObject{{QStringLiteral("snapshot"), true}}, {});
+  QVERIFY(!elsewhere.ok);
+  QVERIFY2(elsewhere.error.contains(QStringLiteral("Unknown argument")),
+           qPrintable(elsewhere.error));
+  const ExtensionCommand changed = buildExtensionCommand(
+      QStringLiteral("browser_snapshot"),
+      QJsonObject{{QStringLiteral("if_changed"), true}}, {});
+  QVERIFY2(changed.ok, qPrintable(changed.error));
+  QCOMPARE(changed.command.value(QStringLiteral("if_changed")).toBool(), true);
+}
+
+namespace {
+QJsonObject formRefIndex() {
+  const auto entry = [](int backend, int tab) {
+    return QJsonObject{{QStringLiteral("backendNodeId"), backend},
+                       {QStringLiteral("tabId"), tab}};
+  };
+  return QJsonObject{{QStringLiteral("e1"), entry(11, 7)},
+                     {QStringLiteral("e2"), entry(12, 7)},
+                     {QStringLiteral("e3"), entry(13, 8)}};
+}
+
+QJsonObject formField(const QString &ref, const QJsonValue &value) {
+  return QJsonObject{{QStringLiteral("ref"), ref},
+                     {QStringLiteral("value"), value}};
+}
+} // namespace
+
+// Each field's ref resolves to its node on the one tab the form is on, in
+// order, with the ref kept beside it so a field the page refuses is named.
+void BrowserContractTests::buildCommand_fillFormResolvesEachField() {
+  const ExtensionCommand filled = buildExtensionCommand(
+      QStringLiteral("browser_fill_form"),
+      QJsonObject{
+          {QStringLiteral("fields"),
+           QJsonArray{
+               formField(QStringLiteral("e2"), QStringLiteral("Large")),
+               formField(QStringLiteral("e1"), QStringLiteral("true"))}}},
+      formRefIndex());
+  QVERIFY2(filled.ok, qPrintable(filled.error));
+  QCOMPARE(filled.command.value(QStringLiteral("cmd")).toString(),
+           QStringLiteral("fillForm"));
+  QCOMPARE(filled.command.value(QStringLiteral("tab_id")).toInt(), 7);
+  const QJsonArray fields =
+      filled.command.value(QStringLiteral("fields")).toArray();
+  QCOMPARE(fields.size(), 2);
+  QCOMPARE(
+      fields.at(0).toObject().value(QStringLiteral("backendNodeId")).toInt(),
+      12);
+  QCOMPARE(fields.at(0).toObject().value(QStringLiteral("ref")).toString(),
+           QStringLiteral("e2"));
+  QCOMPARE(fields.at(1).toObject().value(QStringLiteral("value")).toString(),
+           QStringLiteral("true"));
+}
+
+// What a form cannot be: refused before anything is sent, saying which field.
+void BrowserContractTests::buildCommand_fillFormRefusesMalformedFields() {
+  const auto refused = [](const QJsonObject &args, const QString &says) {
+    const ExtensionCommand command = buildExtensionCommand(
+        QStringLiteral("browser_fill_form"), args, formRefIndex());
+    QVERIFY2(!command.ok, qPrintable(says));
+    QVERIFY2(command.error.contains(says),
+             qPrintable(command.error + QStringLiteral(" / ") + says));
+  };
+  const auto with = [](const QJsonArray &fields) {
+    return QJsonObject{{QStringLiteral("fields"), fields}};
+  };
+  refused(QJsonObject{}, QStringLiteral("fields is required"));
+  refused(with(QJsonArray{}), QStringLiteral("1 to 50 entries"));
+  QJsonArray many;
+  for (int i = 0; i < 51; ++i) {
+    many.append(formField(QStringLiteral("e1"), QStringLiteral("x")));
+  }
+  refused(with(many), QStringLiteral("1 to 50 entries"));
+  refused(with(QJsonArray{QStringLiteral("e1")}),
+          QStringLiteral("fields[0] must be an object"));
+  QJsonObject extra = formField(QStringLiteral("e1"), QStringLiteral("x"));
+  extra.insert(QStringLiteral("checked"), true);
+  refused(with(QJsonArray{extra}),
+          QStringLiteral("fields[0] has an unknown key 'checked'"));
+  refused(with(QJsonArray{
+              QJsonObject{{QStringLiteral("value"), QStringLiteral("x")}}}),
+          QStringLiteral("fields[0].ref must be an element ref"));
+  refused(with(QJsonArray{formField(QStringLiteral("e1"), true)}),
+          QStringLiteral("fields[0].value must be a string"));
+  refused(
+      with(QJsonArray{formField(QStringLiteral("e1"), QStringLiteral("a")),
+                      formField(QStringLiteral("e1"), QStringLiteral("b"))}),
+      QStringLiteral("fields[1]: ref 'e1' is already in fields"));
+  refused(
+      with(QJsonArray{formField(QStringLiteral("e9"), QStringLiteral("x"))}),
+      QStringLiteral("Unknown element ref 'e9'"));
+  refused(
+      with(QJsonArray{formField(QStringLiteral("e1"), QStringLiteral("a")),
+                      formField(QStringLiteral("e3"), QStringLiteral("b"))}),
+      QStringLiteral("a form is filled on one tab"));
+  refused(with(QJsonArray{formField(QStringLiteral("e1"),
+                                    QString(32 * 1024 + 1, QLatin1Char('x')))}),
+          QStringLiteral("longer than 32768 characters"));
+  QJsonObject asked =
+      with(QJsonArray{formField(QStringLiteral("e1"), QStringLiteral("x"))});
+  asked.insert(QStringLiteral("tab_id"), 8);
+  refused(asked, QStringLiteral("belongs to tab 7, but tab_id 8 was passed"));
 }
 
 void BrowserContractTests::buildCommand_navigateRequiresUrl() {
@@ -1753,6 +1903,7 @@ void BrowserContractTests::catalog_tabIdOnExactlyTheTabScopedTools() {
       QStringLiteral("browser_release"),
       QStringLiteral("browser_clipboard"),
       QStringLiteral("browser_find"),
+      QStringLiteral("browser_fill_form"),
   };
   QSet<QString> advertised;
   const QHash<QString, QJsonObject> properties = catalogProperties();

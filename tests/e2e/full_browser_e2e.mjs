@@ -48,6 +48,7 @@ const EXPECTED_TOOLS = [
   "browser_drag",
   "browser_select",
   "browser_set_value",
+  "browser_fill_form",
   "browser_media",
   "browser_tabs",
   "browser_select_tab",
@@ -533,6 +534,22 @@ async function main() {
       ),
     );
     assert.equal(ranged.value, "73");
+    // The same two controls again, in one call, at the values they already hold: what the rest of
+    // the suite reads from them stays as it was.
+    const formFilled = jsonContent(
+      await runTool(
+        "browser_fill_form",
+        {
+          fields: [
+            { ref: selectRef, value: "Beta" },
+            { ref: checkboxRef, value: "true" },
+          ],
+        },
+        "fill a select and a checkbox in one call",
+      ),
+    );
+    assert.equal(formFilled.filled, 2);
+    assert.equal(typeof formFilled.changes.dom, "string");
 
     // A real file, from this machine's disk, into the page's own file input. The page reports
     // back what IT received, so the check is the page's view of the bytes rather than the

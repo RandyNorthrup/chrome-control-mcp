@@ -1,0 +1,56 @@
+== drill summary-dom-ignored: browser/extension/background.js
+   mutation: '    changes.dom = domChangeLevel(' -> '    changes.dom = "none" || domChangeLevel('
+   suite: node --test tests/test_browser_extension_pure.mjs
+   planted: exit=1 ℹ pass 124 ℹ fail 1
+   ✖ an action's reply names each change it caused, and only those
+   restored byte for byte
+   restored: exit=0 ℹ pass 125 ℹ fail 0
+== drill many-threshold: browser/extension/background.js
+   mutation: 'const DOM_MANY_SHARE = 0.05;' -> 'const DOM_MANY_SHARE = 0.5;'
+   suite: node --test tests/test_browser_extension_pure.mjs
+   planted: exit=1 ℹ pass 124 ℹ fail 1
+   ✖ many is a share of the page, and never fewer than twenty changes
+   restored byte for byte
+   restored: exit=0 ℹ pass 125 ℹ fail 0
+== drill focus-ignored: browser/extension/background.js
+   mutation: '    if (after.page.focus && after.page.focusId !== before.page.focusId) {' -> '    if (false) {'
+   suite: node --test tests/test_browser_extension_pure.mjs
+   planted: exit=1 ℹ pass 124 ℹ fail 1
+   ✖ an action's reply names each change it caused, and only those
+   restored byte for byte
+   restored: exit=0 ℹ pass 125 ℹ fail 0
+== drill changes-not-attached: browser/extension/background.js
+   mutation: '    if (tabId !== null && CHANGE_COMMANDS.has(cmd)) {' -> '    if (false) {'
+   suite: node --test tests/test_browser_extension_tabs.mjs
+   planted: exit=1 ℹ pass 36 ℹ fail 1
+   ✖ an action's reply says what it changed; a command that is not an action says nothing
+   restored byte for byte
+   restored: exit=0 ℹ pass 37 ℹ fail 0
+== drill fill-select-text: browser/extension/background.js
+   mutation: '      options.find((o) => words(o.label || o.text) === wanted) ||' -> '      options.find(() => false) ||'
+   suite: node --test tests/test_browser_extension_pure.mjs
+   planted: exit=1 ℹ pass 124 ℹ fail 1
+   ✖ a select takes the option's visible text, or its value, and refuses one it lacks
+   restored byte for byte
+   restored: exit=0 ℹ pass 125 ℹ fail 0
+== drill fill-no-stop: browser/extension/background.js
+   mutation: '    if (!r || !r.ok) {' -> '    if (false) {'
+   suite: node --test tests/test_browser_extension_pure.mjs
+   planted: exit=1 ℹ pass 124 ℹ fail 1
+   ✖ a form stops at the first field that cannot be filled, and says which and how far it got
+   restored byte for byte
+   restored: exit=0 ℹ pass 125 ℹ fail 0
+== drill fill-plain-setter: browser/extension/background.js
+   mutation: '    Object.getOwnPropertyDescriptor(proto, "value").set.call(el, value);' -> '    el.value = value;'
+   suite: node --test tests/test_browser_extension_pure.mjs
+   planted: exit=1 ℹ pass 124 ℹ fail 1
+   ✖ a text field is set past a framework's own value property, as React's controlled inputs need
+   restored byte for byte
+   restored: exit=0 ℹ pass 125 ℹ fail 0
+== drill release-version: browser/extension/manifest.json
+   mutation: '"version": "1.15.0",' -> '"version": "1.14.0",'
+   suite: node --test tests/test_release_versions.mjs
+   planted: exit=1 ℹ pass 6 ℹ fail 1
+   ✖ every file that states the version states the same one
+   restored byte for byte
+   restored: exit=0 ℹ pass 7 ℹ fail 0

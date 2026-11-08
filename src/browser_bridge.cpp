@@ -6,6 +6,7 @@
 #include "chrome_control_mcp/browser_contract.h"
 
 #include <QByteArray>
+#include <QCryptographicHash>
 #include <QDateTime>
 #include <QDir>
 #include <QFile>
@@ -412,16 +413,27 @@ void BrowserBridgeSession::setClientName(const QString &raw) {
 
 QString
 BrowserBridgeSession::staleRefError(const QJsonObject &arguments) const {
-  // Both ref endpoints are gated: browser_drag targets a second element via
-  // to_ref, so a stale tab must refuse an action carrying EITHER ref, not just
-  // the primary one. Only the ref's OWN tab matters -- another agent's tab
-  // navigating says nothing about this one's nodes.
+  // Every ref an action carries is gated: browser_drag targets a second
+  // element via to_ref and browser_fill_form one per field, so a stale tab
+  // must refuse an action carrying ANY of them, not just the primary one. Only
+  // the ref's OWN tab matters -- another agent's tab navigating says nothing
+  // about this one's nodes.
+  QStringList refs;
   for (const char *key : {"ref", "to_ref"}) {
     const QJsonValue value = arguments.value(QLatin1String(key));
-    if (!value.isString()) {
-      continue; // absent, or wrong-typed and refused by the contract
+    if (value.isString()) {
+      refs.append(value.toString());
     }
-    const qint64 tab = refTabId(ref_index_, value.toString());
+  }
+  const QJsonValue fields = arguments.value(QStringLiteral("fields"));
+  for (const QJsonValue field : fields.toArray()) {
+    const QJsonValue value = field.toObject().value(QStringLiteral("ref"));
+    if (value.isString()) {
+      refs.append(value.toString());
+    }
+  }
+  for (const QString &ref : refs) {
+    const qint64 tab = refTabId(ref_index_, ref);
     if (tab != 0 && tabStale(tab)) {
       return QStringLiteral(
                  "The page changed in tab %1 since its last snapshot; call "
@@ -500,7 +512,8 @@ BrowserBridgeSession::beginCommand(const QString &tool,
   const bool shaped = tool == QLatin1String("browser_find") ||
                       tool == QLatin1String("browser_snapshot") ||
                       tool == QLatin1String("browser_read") ||
-                      tool == QLatin1String("browser_screenshot");
+                      tool == QLatin1String("browser_screenshot") ||
+                      arguments.value(QStringLiteral("snapshot")).toBool();
   outstanding_tool_ = shaped ? tool : QString();
   outstanding_args_ = shaped ? arguments : QJsonObject{};
   outstanding_tab_id_ = 0;
@@ -571,8 +584,106 @@ qint64 BrowserBridgeSession::fillResult(const QString &sent_cmd,
     return 0;
   }
   applyCommandEffect(sent_cmd, sent_tab, frame);
+  // Decided by what this server asked for, as a screenshot's purpose is: a
+  // reply carrying a snapshot nobody asked for is shown as the JSON it is.
+  if (sent_args.value(QStringLiteral("snapshot")).toBool() &&
+      payload.value(QStringLiteral("snapshot")).isObject()) {
+    return fillActionSnapshotResult(sent_epoch, frame, incoming);
+  }
   fillGenericResult(frame, incoming);
   return 0;
+}
+
+qint64 BrowserBridgeSession::fillActionSnapshotResult(quint64 sent_epoch,
+                                                      const QJsonObject &frame,
+                                                      Incoming &incoming) {
+  QJsonObject payload = frame.value(QStringLiteral("payload")).toObject();
+  const QJsonObject capture =
+      payload.take(QStringLiteral("snapshot")).toObject();
+  QJsonObject action = frame;
+  action.insert(QStringLiteral("payload"), payload);
+  fillGenericResult(action, incoming);
+  if (incoming.is_error) {
+    return 0;
+  }
+  // The capture names the document generation it was taken in, and that must
+  // be the generation the reply reports: a page replaced between the two would
+  // bind these refs to nodes the tab no longer has. A browser session changed
+  // underneath the whole exchange is refused the same way.
+  const qint64 tab = replyTabId(frame);
+  const QJsonValue captured_epoch = capture.value(QStringLiteral("domEpoch"));
+  if (sent_epoch != session_epoch_ || tab == 0 || !captured_epoch.isDouble() ||
+      captured_epoch != frame.value(QStringLiteral("domEpoch"))) {
+    incoming.text += QStringLiteral(
+        "\nThe page changed after its snapshot was taken, so none is shown; "
+        "call browser_snapshot for its refs.");
+    return 0;
+  }
+  QSet<QString> known;
+  bool had_baseline = false;
+  const SnapshotView view =
+      installSnapshot(capture, tab, &known, &had_baseline);
+  (void)recordSnapshot(tab, view.outline, view.element_count);
+  incoming.text += QLatin1Char('\n') + formatSnapshot(view, tab);
+  return tab;
+}
+
+SnapshotView BrowserBridgeSession::installSnapshot(const QJsonObject &capture,
+                                                   qint64 tab,
+                                                   QSet<QString> *known,
+                                                   bool *had_baseline) {
+  // Carry THIS tab's previous refs so a node keeps the ref it was already
+  // issued: a model holding e29 from an earlier snapshot must not have it
+  // silently become a different element because something above it gained a
+  // ref. Only this tab's -- a backendNodeId is unique within one renderer, so
+  // another tab's node 42 is a different element. Never carried once the tab
+  // is stale -- set when its document may have changed (a navigation), where a
+  // backendNodeId from the old document does not name the same node in the
+  // new one.
+  const bool stale = tabStale(tab);
+  QJsonObject carried;
+  if (!stale) {
+    for (auto it = ref_index_.constBegin(); it != ref_index_.constEnd(); ++it) {
+      if (entryTabId(it.value()) == tab) {
+        carried.insert(it.key(), it.value());
+        known->insert(it.key());
+      }
+    }
+  }
+  const auto state = tabs_.constFind(tab);
+  *had_baseline =
+      !stale && state != tabs_.constEnd() && state->snapshot_seq > 0;
+  // New nodes are numbered above every ref this session has EVER issued, on
+  // any tab: a ref that left the index must answer "Unknown element ref", not
+  // come back naming a different node.
+  const SnapshotView view =
+      renderSnapshot(capture, carried, ref_high_water_ + 1);
+  // This tab's previous refs are replaced wholesale: a node that is gone takes
+  // its ref with it. Other tabs' refs are untouched.
+  eraseTabRefs(tab);
+  for (auto it = view.ref_index.constBegin(); it != view.ref_index.constEnd();
+       ++it) {
+    QJsonObject entry = it.value().toObject();
+    entry.insert(QStringLiteral("tabId"), tab);
+    ref_index_.insert(it.key(), entry);
+  }
+  ref_high_water_ = std::max(ref_high_water_, view.highest_ref);
+  trackTab(tab).stale = false;
+  return view;
+}
+
+int BrowserBridgeSession::recordSnapshot(qint64 tab, const QString &shown,
+                                         int element_count) {
+  TabRefState &state = trackTab(tab);
+  const QByteArray digest =
+      QCryptographicHash::hash(shown.toUtf8(), QCryptographicHash::Sha256);
+  const int repeats = state.snapshot_seq > 0 && digest == state.outline_digest
+                          ? state.snapshot_seq
+                          : 0;
+  state.snapshot_seq += 1;
+  state.outline_digest = digest;
+  state.element_count = element_count;
+  return repeats;
 }
 
 qint64 BrowserBridgeSession::fillSnapshotResult(quint64 sent_epoch,
@@ -601,39 +712,11 @@ qint64 BrowserBridgeSession::fillSnapshotResult(quint64 sent_epoch,
     }
     return 0;
   }
-  // Carry THIS tab's previous refs so a node keeps the ref it was already
-  // issued: a model holding e29 from an earlier snapshot must not have it
-  // silently become a different element because something above it gained a
-  // ref. Only this tab's -- a backendNodeId is unique within one renderer, so
-  // another tab's node 42 is a different element. Never carried once the tab
-  // is stale -- set when its document may have changed (a navigation), where a
-  // backendNodeId from the old document does not name the same node in the
-  // new one.
-  QJsonObject carried;
-  if (!tabStale(tab)) {
-    for (auto it = ref_index_.constBegin(); it != ref_index_.constEnd(); ++it) {
-      if (entryTabId(it.value()) == tab) {
-        carried.insert(it.key(), it.value());
-      }
-    }
-  }
-  // New nodes are numbered above every ref this session has EVER issued, on
-  // any tab: a ref that left the index must answer "Unknown element ref", not
-  // come back naming a different node.
-  const SnapshotView view =
-      renderSnapshot(frame.value(QStringLiteral("payload")).toObject(), carried,
-                     ref_high_water_ + 1);
-  // This tab's previous refs are replaced wholesale: a node that is gone takes
-  // its ref with it. Other tabs' refs are untouched.
-  eraseTabRefs(tab);
-  for (auto it = view.ref_index.constBegin(); it != view.ref_index.constEnd();
-       ++it) {
-    QJsonObject entry = it.value().toObject();
-    entry.insert(QStringLiteral("tabId"), tab);
-    ref_index_.insert(it.key(), entry);
-  }
-  ref_high_water_ = std::max(ref_high_water_, view.highest_ref);
-  trackTab(tab).stale = false;
+  QSet<QString> known;
+  bool had_baseline = false;
+  SnapshotView view =
+      installSnapshot(frame.value(QStringLiteral("payload")).toObject(), tab,
+                      &known, &had_baseline);
   // The capture is installed whatever the tool shows of it: a find and a
   // snapshot leave the tab's refs the same, so either serves every later call.
   if (sent_tool == QLatin1String("browser_find")) {
@@ -644,17 +727,46 @@ qint64 BrowserBridgeSession::fillSnapshotResult(quint64 sent_epoch,
   }
   OutlineOptions options;
   (void)outlineOptionsFrom(sent_args, &options); // checked when it was sent
-  if (!options.any()) {
-    incoming.text = formatSnapshot(view, tab);
+  Outline outline;
+  if (options.any()) {
+    outline = renderOutline(view, options);
+    if (!outline.error.isEmpty()) {
+      incoming.is_error = true;
+      incoming.error = outline.error;
+      return tab;
+    }
+  }
+  // What the next if_changed compares against: the outline as shown, under
+  // the options it was shown with -- the same page shown another way is not
+  // "unchanged". The url and title are left out: a clock in the title must
+  // not make a page look changed.
+  const QString shown =
+      options.any() ? QStringLiteral("ref=%1 depth=%2 filter=%3 max_chars=%4\n")
+                              .arg(options.ref)
+                              .arg(options.depth)
+                              .arg(options.filter)
+                              .arg(options.max_chars) +
+                          outline.text
+                    : view.outline;
+  const int repeats = recordSnapshot(tab, shown, view.element_count);
+  const bool if_changed =
+      sent_args.value(QStringLiteral("if_changed")).toBool();
+  if (if_changed && had_baseline && repeats > 0) {
+    incoming.text =
+        QStringLiteral("url: %1\ntitle: %2\ntab_id: %3\nunchanged since "
+                       "snapshot %4 (%5 elements); its refs still work\n")
+            .arg(view.url, view.title, QString::number(tab),
+                 QString::number(repeats), QString::number(view.element_count));
     return tab;
   }
-  const Outline outline = renderOutline(view, options);
-  if (!outline.error.isEmpty()) {
-    incoming.is_error = true;
-    incoming.error = outline.error;
-    return tab;
+  if (if_changed && had_baseline) {
+    markNewRefs(&view, known);
+    if (options.any()) {
+      outline = renderOutline(view, options);
+    }
   }
-  incoming.text = formatOutline(view, tab, outline);
+  incoming.text = options.any() ? formatOutline(view, tab, outline)
+                                : formatSnapshot(view, tab);
   return tab;
 }
 

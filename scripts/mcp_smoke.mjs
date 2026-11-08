@@ -76,7 +76,7 @@ const catalog = responses.find(({ id }) => id === 2);
 // of tools than the one that was reviewed is exactly what this check is here to stop. These two
 // numbers move with tests/test_browser_mcp_server.cpp, which asserts the same thing against the
 // library rather than against a packaged binary.
-assert.equal(catalog.result.tools.length, readOnly ? 15 : 54);
+assert.equal(catalog.result.tools.length, readOnly ? 15 : 55);
 const statusResponse = responses.find(({ id }) => id === 3);
 assert.equal(statusResponse.result.isError, false);
 const status = JSON.parse(statusResponse.result.content[0].text);

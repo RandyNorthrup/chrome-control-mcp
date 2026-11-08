@@ -34,6 +34,12 @@ import {
 // The names pulled out of the worker's scope. Anything not listed here stays private to the
 // worker, which keeps this file from quietly becoming a second copy of its API.
 const EXPORTED = [
+  "summarizeChanges",
+  "domChangeLevel",
+  "describeFocus",
+  "fillFieldFn",
+  "handleFillForm",
+  "CHANGE_COMMANDS",
   "whollyInViewFn",
   "viewFactor",
   "fullPageViewFactor",
@@ -3216,6 +3222,292 @@ test("an element a scrolling container clips is scrolled, even across a shadow r
     getRootNode: () => ({ host }),
   });
   assert.equal(inView(inShadow), false, "clipped by its shadow host");
+});
+
+// -- What an action changed ------------------------------------------------------------------
+//
+// Every action's reply says what it changed: dom ("none", "some", "many", "new document"), and
+// url, title, dialog, console_errors and focus only when they happened.
+
+const baseline = (extra = {}) => ({
+  epoch: 1,
+  url: "https://site.test/",
+  title: "Site",
+  errors: 2,
+  dialogs: 0,
+  page: { count: 10, quietMs: 500, elements: 1000, focusId: 3, focus: null },
+  ...extra,
+});
+
+test("an action that changed nothing says dom: none and nothing else", () => {
+  assert.deepEqual(crossRealm(w.summarizeChanges(baseline(), baseline())), {
+    dom: "none",
+  });
+});
+
+test("an action's reply names each change it caused, and only those", () => {
+  const after = baseline({
+    url: "https://site.test/next",
+    title: "Next",
+    errors: 4,
+    dialogs: 1,
+    lastDialog: { type: "confirm", message: "Sure?", accepted: false },
+    page: {
+      count: 14,
+      quietMs: 0,
+      elements: 1000,
+      focusId: 5,
+      focus: { role: "textbox", name: "Email" },
+    },
+  });
+  assert.deepEqual(crossRealm(w.summarizeChanges(baseline(), after)), {
+    url: "https://site.test/next",
+    title: "Next",
+    dialog: { type: "confirm", message: "Sure?", accepted: false },
+    console_errors: 2,
+    dom: "some",
+    focus: 'textbox "Email"',
+  });
+});
+
+test("a replaced document says new document, and nothing about the old one's focus", () => {
+  const after = baseline({
+    epoch: 2,
+    url: "https://site.test/other",
+    page: {
+      count: 0,
+      quietMs: 0,
+      elements: 40,
+      focusId: 1,
+      focus: { role: "link" },
+    },
+  });
+  assert.deepEqual(crossRealm(w.summarizeChanges(baseline(), after)), {
+    url: "https://site.test/other",
+    dom: "new document",
+  });
+});
+
+test("a page whose counter cannot be read says nothing about its DOM", () => {
+  const changes = crossRealm(
+    w.summarizeChanges(baseline({ page: null }), baseline({ page: null })),
+  );
+  assert.equal("dom" in changes, false);
+});
+
+test("many is a share of the page, and never fewer than twenty changes", () => {
+  assert.equal(w.domChangeLevel(0, 1000), "none");
+  assert.equal(w.domChangeLevel(49, 1000), "some", "under 5% of 1,000");
+  assert.equal(w.domChangeLevel(50, 1000), "many", "5% of 1,000");
+  assert.equal(w.domChangeLevel(19, 40), "some", "a small page still needs 20");
+  assert.equal(w.domChangeLevel(20, 40), "many");
+});
+
+test("the focused element reads as its role and its name, bounded", () => {
+  assert.equal(
+    w.describeFocus({ role: "button", name: " Send  now " }),
+    'button "Send now"',
+  );
+  assert.equal(w.describeFocus({ role: "textbox", name: "" }), "textbox");
+  assert.equal(
+    w.describeFocus({ role: "link", name: "x".repeat(200) }).length,
+    'link ""'.length + 80,
+  );
+});
+
+// -- A form in one call --------------------------------------------------------------------
+
+// fillFieldFn runs in the page with the element as `this`, so it is called here with stand-ins
+// for the page's element classes: a value setter on the prototype, as the real ones have.
+function fieldRunner() {
+  class Element {
+    constructor(props) {
+      Object.assign(this, { nodeType: 1, events: [] }, props);
+    }
+    dispatchEvent(event) {
+      this.events.push(event.type);
+    }
+  }
+  class HTMLInputElement extends Element {}
+  class HTMLTextAreaElement extends Element {}
+  for (const Kind of [HTMLInputElement, HTMLTextAreaElement]) {
+    Object.defineProperty(Kind.prototype, "value", {
+      get() {
+        return this._value ?? "";
+      },
+      set(v) {
+        // A number input keeps only what parses as a number, as Chrome's does.
+        this._value =
+          this.type === "number" && !/^-?\d*\.?\d*$/.test(v) ? "" : v;
+      },
+    });
+  }
+  const run = new Function(
+    "HTMLInputElement",
+    "HTMLTextAreaElement",
+    "Event",
+    `return (${w.fillFieldFn.toString()});`,
+  )(
+    HTMLInputElement,
+    HTMLTextAreaElement,
+    class {
+      constructor(type) {
+        this.type = type;
+      }
+    },
+  );
+  return {
+    input: (props) => new HTMLInputElement({ tagName: "INPUT", ...props }),
+    textarea: (props) =>
+      new HTMLTextAreaElement({ tagName: "TEXTAREA", ...props }),
+    other: (props) => new Element(props),
+    fill: (field, value) => crossRealm(run.call(field, value)),
+  };
+}
+
+test("a select takes the option's visible text, or its value, and refuses one it lacks", () => {
+  const { other, fill } = fieldRunner();
+  const options = [
+    { label: "Small", text: "Small", value: "s" },
+    { label: "Large", text: "Large", value: "l" },
+    { label: "Gone", text: "Gone", value: "g", disabled: true },
+  ];
+  const select = other({ tagName: "SELECT", options });
+  assert.deepEqual(fill(select, " Large "), { ok: true, kind: "select" });
+  assert.equal(options[1].selected, true);
+  assert.equal(options[0].selected, false);
+  assert.deepEqual(select.events, ["input", "change"]);
+  assert.equal(fill(select, "s").ok, true, "by value too");
+  assert.match(fill(select, "Huge").error, /has no option "Huge"/);
+  assert.match(fill(select, "Gone").error, /that option is disabled/);
+});
+
+test("a checkbox or radio is clicked to the state asked for, and a refusal is reported", () => {
+  const { input, fill } = fieldRunner();
+  const box = input({
+    type: "checkbox",
+    checked: false,
+    click() {
+      this.checked = !this.checked;
+    },
+  });
+  assert.deepEqual(fill(box, "true"), { ok: true, kind: "checkbox" });
+  assert.equal(box.checked, true);
+  assert.equal(fill(box, "true").ok, true, "already checked: no click");
+  assert.equal(box.checked, true);
+  const stuck = input({ type: "checkbox", checked: false, click() {} });
+  assert.match(fill(stuck, "true").error, /the page kept it unchecked/);
+  assert.match(fill(box, "maybe").error, /takes "true" or "false"/);
+  const radio = input({ type: "radio", checked: false, click() {} });
+  assert.match(fill(radio, "false").error, /choosing another/);
+});
+
+test("a text field is set through its own value setter, with input and change", () => {
+  const { input, textarea, fill } = fieldRunner();
+  const name = input({ type: "text" });
+  assert.deepEqual(fill(name, "Ada"), { ok: true, kind: "text" });
+  assert.equal(name.value, "Ada");
+  assert.deepEqual(name.events, ["input", "change"]);
+  assert.equal(fill(textarea({}), "notes").ok, true);
+  assert.match(
+    fill(input({ type: "number" }), "abc").error,
+    /took "" instead \(its type is number\)/,
+  );
+  assert.match(
+    fill(input({ type: "text", readOnly: true }), "x").error,
+    /read-only/,
+  );
+  assert.match(
+    fill(input({ type: "text", disabled: true }), "x").error,
+    /disabled/,
+  );
+  assert.match(fill(input({ type: "file" }), "x").error, /not a text field/);
+});
+
+test("a text field is set past a framework's own value property, as React's controlled inputs need", () => {
+  // React puts a value property on the element itself to track what it last rendered; a write
+  // through it is taken as React's own and the page's state never hears of it. Only the
+  // prototype's setter changes the field the way typing does.
+  const { input, fill } = fieldRunner();
+  const tracked = input({ type: "text" });
+  let trackerWrites = 0;
+  Object.defineProperty(tracked, "value", {
+    configurable: true,
+    get() {
+      return this._value ?? "";
+    },
+    set() {
+      trackerWrites += 1;
+    },
+  });
+  assert.deepEqual(fill(tracked, "Ada"), { ok: true, kind: "text" });
+  assert.equal(tracked._value, "Ada", "the field holds the text");
+  assert.equal(trackerWrites, 0, "and the framework's tracker was not written");
+});
+
+test("contenteditable takes the text; anything else is refused", () => {
+  const { other, fill } = fieldRunner();
+  const editor = other({ tagName: "DIV", isContentEditable: true, focus() {} });
+  assert.deepEqual(fill(editor, "hello"), { ok: true, kind: "text" });
+  assert.equal(editor.textContent, "hello");
+  assert.match(fill(other({ tagName: "DIV" }), "x").error, /not a text field/);
+});
+
+test("a form stops at the first field that cannot be filled, and says which and how far it got", async () => {
+  const answers = [
+    { ok: true, kind: "text" },
+    { ok: false, error: "it is disabled" },
+    { ok: true, kind: "select" },
+  ];
+  const worker = loadWorker({
+    "debugger.sendCommand": (_target, method) => {
+      if (method === "DOM.resolveNode") {
+        return Promise.resolve({ object: { objectId: "node" } });
+      }
+      if (method === "Runtime.callFunctionOn") {
+        return Promise.resolve({ result: { value: answers.shift() } });
+      }
+      return Promise.resolve({});
+    },
+  });
+  const session = worker.makeSession();
+  const tab = worker.makeTabState(1, "opened");
+  tab.attached = true;
+  tab.lastSnapshotEpoch = tab.domEpoch;
+  session.tabs.set(1, tab);
+  await assert.rejects(
+    () =>
+      worker.handleFillForm(session, 1, {
+        fields: [
+          { ref: "e1", backendNodeId: 11, value: "Ada" },
+          { ref: "e2", backendNodeId: 12, value: "x" },
+          { ref: "e3", backendNodeId: 13, value: "Large" },
+        ],
+      }),
+    /^Error: field 2 \(e2\): it is disabled\. The 1 field before it was filled\.$/,
+  );
+  assert.equal(answers.length, 1, "the third field was never tried");
+});
+
+test("every command that delivers input or loads a document reports its changes", () => {
+  assert.deepEqual([...w.CHANGE_COMMANDS].sort(), [
+    "back",
+    "click",
+    "clickAt",
+    "drag",
+    "fillForm",
+    "forward",
+    "hover",
+    "jsClick",
+    "navigate",
+    "pressKey",
+    "reload",
+    "scroll",
+    "select",
+    "setValue",
+    "type",
+    "upload",
+  ]);
 });
 
 // -- Screenshots shaped for what they are for --------------------------------------------------

@@ -1,0 +1,157 @@
+{
+  "ok": true,
+  "bound_ms": 500,
+  "timings": {
+    "click": {
+      "ms": [41, 31, 32],
+      "median": 32,
+      "worst": 41
+    },
+    "hover": {
+      "ms": [62, 49, 48],
+      "median": 49,
+      "worst": 62
+    },
+    "scroll a region by ref": {
+      "ms": [69, 81, 99],
+      "median": 81,
+      "worst": 99
+    },
+    "scroll the page by ref": {
+      "ms": [98, 83, 83],
+      "median": 83,
+      "worst": 98
+    },
+    "scroll the page": {
+      "ms": [65, 51, 48],
+      "median": 51,
+      "worst": 65
+    },
+    "list tabs": {
+      "ms": [2, 2, 2],
+      "median": 2,
+      "worst": 2
+    },
+    "read the dialog state": {
+      "ms": [4, 4, 3],
+      "median": 4,
+      "worst": 4
+    }
+  },
+  "scrolls": {
+    "scroll a region by ref": [
+      {
+        "ms": 69,
+        "scrolled": {
+          "x": 0,
+          "y": 180
+        },
+        "settled": true,
+        "waited_ms": 18
+      },
+      {
+        "ms": 81,
+        "scrolled": {
+          "x": 0,
+          "y": 180
+        },
+        "settled": true,
+        "waited_ms": 18
+      },
+      {
+        "ms": 99,
+        "scrolled": {
+          "x": 0,
+          "y": 180
+        },
+        "settled": true,
+        "waited_ms": 19
+      }
+    ],
+    "scroll the page by ref": [
+      {
+        "ms": 98,
+        "scrolled": {
+          "x": 0,
+          "y": 200
+        },
+        "settled": true,
+        "waited_ms": 16
+      },
+      {
+        "ms": 83,
+        "scrolled": {
+          "x": 0,
+          "y": 200
+        },
+        "settled": true,
+        "waited_ms": 18
+      },
+      {
+        "ms": 83,
+        "scrolled": {
+          "x": 0,
+          "y": 200
+        },
+        "settled": true,
+        "waited_ms": 18
+      }
+    ],
+    "scroll the page": [
+      {
+        "ms": 65,
+        "scrolled": {
+          "x": 0,
+          "y": -200
+        },
+        "settled": true,
+        "waited_ms": 17
+      },
+      {
+        "ms": 51,
+        "scrolled": {
+          "x": 0,
+          "y": -200
+        },
+        "settled": true,
+        "waited_ms": 18
+      },
+      {
+        "ms": 48,
+        "scrolled": {
+          "x": 0,
+          "y": -200
+        },
+        "settled": true,
+        "waited_ms": 16
+      }
+    ]
+  },
+  "checks": [
+    {
+      "check": "the agent's tab is behind the browser's own tab, as it is beside a user",
+      "status": "passed"
+    },
+    {
+      "check": "scroll a region by ref replies without waiting for a background frame (worst 99 ms)",
+      "status": "passed"
+    },
+    {
+      "check": "scroll the page by ref replies without waiting for a background frame (worst 98 ms)",
+      "status": "passed"
+    },
+    {
+      "check": "scroll the page replies without waiting for a background frame (worst 65 ms)",
+      "status": "passed"
+    },
+    {
+      "check": "click replies without waiting for a background frame (worst 41 ms)",
+      "status": "passed"
+    },
+    {
+      "check": "hover replies without waiting for a background frame (worst 62 ms)",
+      "status": "passed"
+    }
+  ],
+  "error": null
+}

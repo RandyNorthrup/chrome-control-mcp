@@ -213,6 +213,10 @@ buildExtensionCommand(const QString &tool, const QJsonObject &arguments,
 [[nodiscard]] Outline renderOutline(const SnapshotView &view,
                                     const OutlineOptions &options);
 
+/// Mark with a leading `*` every ref in @p view that is not in @p known -- the
+/// refs this snapshot is the first to show -- in its lines and its outline.
+void markNewRefs(SnapshotView *view, const QSet<QString> &known);
+
 /// Read browser_find's arguments into @p out. Empty on success, else why the
 /// call cannot be honoured: none or several of text, query and regex; a value
 /// too long; a pattern that does not compile; max_results out of range.

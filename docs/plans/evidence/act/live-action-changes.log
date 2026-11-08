@@ -1,0 +1,14 @@
+PASS a click that changes nothing says dom: none, and nothing else
+PASS a click that adds a few nodes says dom: some
+PASS a click that adds hundreds of nodes says dom: many
+PASS a click that opens a dialog says which, and what it said
+PASS a click that logs an error counts it
+PASS a click that moves focus names the element that has it
+PASS a click that navigates says new document, with the address and title
+PASS an action asked for a snapshot returns the page after it, refs and all
+PASS the refs in that snapshot work at once, with no browser_snapshot between
+PASS a snapshot of a page that has not changed is one line
+PASS a changed page comes back whole, with only the new ref marked
+PASS a text field, a select, a checkbox, a radio and a textarea fill in one call
+PASS a field that cannot be filled stops the form there, and says which and how far it got
+PASS a select asked for an option it does not have says so

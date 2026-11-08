@@ -843,6 +843,39 @@ const castCalls = (b) =>
     )
     .map((c) => c.method.replace("Page.", ""));
 
+test("an action's reply says what it changed; a command that is not an action says nothing", async () => {
+  const b = await attachedBrowser("100", {
+    exported: [...EXPORTED, ...FRAME_EXPORTS, "CHANGE_COMMANDS"],
+  });
+  const tab = b.addTab({ url: "https://before.test/", title: "Before" });
+  b.worker.holdTab(b.session, b.copy(tab), "opened");
+  const leads = async () => {
+    b.tabs.get(tab.id).url = "https://after.test/";
+    b.tabs.get(tab.id).title = "After";
+    return { ok: true };
+  };
+  b.worker.COMMAND_TABLE.set("probeAction", {
+    fn: leads,
+    tab: true,
+    args: true,
+  });
+  b.worker.CHANGE_COMMANDS.add("probeAction");
+  const acted = await b.worker.dispatchCommand(b.session, "probeAction", {
+    tab_id: tab.id,
+  });
+  assert.equal(acted.changes.url, "https://after.test/");
+  assert.equal(acted.changes.title, "After");
+  b.tabs.get(tab.id).url = "https://before.test/";
+  b.worker.COMMAND_TABLE.set("probeRead", { fn: leads, tab: true, args: true });
+  const read = await b.worker.dispatchCommand(b.session, "probeRead", {
+    tab_id: tab.id,
+  });
+  assert.equal("changes" in read, false, "a read does not report changes");
+  b.worker.COMMAND_TABLE.delete("probeAction");
+  b.worker.COMMAND_TABLE.delete("probeRead");
+  b.worker.CHANGE_COMMANDS.delete("probeAction");
+});
+
 test("an input-driven command runs with the tab compositing, and the cast ends with it", async () => {
   const b = await attachedBrowser("100", {
     exported: [...EXPORTED, ...FRAME_EXPORTS],

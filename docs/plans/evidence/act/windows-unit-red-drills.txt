@@ -1,0 +1,65 @@
+== drill action-snapshot-not-shown: src/browser_bridge.cpp
+   mutation: '  if (sent_args.value(QStringLiteral("snapshot")).toBool() &&' -> '  if (sent_args.value(QStringLiteral("snapshot_drill")).toBool() &&'
+   suite: test_browser_bridge
+   planted: build exit=0, test_browser_bridge exit=8
+   FAIL!  : BrowserBridgeTests::actionSnapshot_isShownAndItsRefsWork() '!action.contains(QStringLiteral("snapshot"))' returned FALSE. ({"changes":{"dom":"some"},"ok":true,"snapshot":{"domEpoch":3,"nodes":[{"backendNodeId":41,"bounds":{"height":20,"width":80,"x":0,"y":0},"depth":0,"interactable":true,"name":"Next","role":"button","visible":true}],"title":"Example","url":"https://example.com/"},"tab_id":7})
+   FAIL!  : BrowserBridgeTests::actionSnapshot_ofAReplacedPageIsNotBound() 'in.text.contains(QStringLiteral("none is shown"))' returned FALSE. ({"ok":true,"snapshot":{"domEpoch":3,"nodes":[{"backendNodeId":41,"bounds":{"height":20,"width":80,"x":0,"y":0},"depth":0,"interactable":true,"name":"Next","role":"button","visible":true}],"title":"Example","url":"https://example.com/"},"tab_id":7})
+   Totals: 48 passed, 2 failed, 0 skipped, 0 blacklisted, 805ms
+   restored byte for byte
+   restored: test_browser_bridge exit=0 Totals: 50 passed, 0 failed, 0 skipped, 0 blacklisted, 756ms
+== drill action-snapshot-epoch: src/browser_bridge.cpp
+   mutation: '      captured_epoch != frame.value(QStringLiteral("domEpoch"))) {' -> '      captured_epoch.isNull()) {'
+   suite: test_browser_bridge
+   planted: build exit=0, test_browser_bridge exit=8
+   FAIL!  : BrowserBridgeTests::actionSnapshot_ofAReplacedPageIsNotBound() 'in.text.contains(QStringLiteral("none is shown"))' returned FALSE. ({"ok":true,"tab_id":7}
+   Totals: 49 passed, 1 failed, 0 skipped, 0 blacklisted, 650ms
+   restored byte for byte
+   restored: test_browser_bridge exit=0 Totals: 50 passed, 0 failed, 0 skipped, 0 blacklisted, 525ms
+== drill if-changed-never: src/browser_bridge.cpp
+   mutation: '  if (if_changed && had_baseline && repeats > 0) {' -> '  if (if_changed && had_baseline && repeats < 0) {'
+   suite: test_browser_bridge
+   planted: build exit=0, test_browser_bridge exit=8
+   FAIL!  : BrowserBridgeTests::ifChanged_saysUnchangedAndMarksOnlyNewRefs() 'same.text.contains(QStringLiteral( "unchanged since snapshot 1 (1 elements); its refs still work"))' returned FALSE. (url: https://example.com/
+   Totals: 49 passed, 1 failed, 0 skipped, 0 blacklisted, 289ms
+   restored byte for byte
+   restored: test_browser_bridge exit=0 Totals: 50 passed, 0 failed, 0 skipped, 0 blacklisted, 559ms
+== drill if-changed-unmarked: src/browser_bridge.cpp
+   mutation: '    markNewRefs(&view, known);' -> '    (void)known;'
+   suite: test_browser_bridge
+   planted: build exit=0, test_browser_bridge exit=8
+   FAIL!  : BrowserBridgeTests::ifChanged_saysUnchangedAndMarksOnlyNewRefs() 'grown.text.contains(QStringLiteral("- button \"Undo\" *[ref=e2]"))' returned FALSE. (url: https://example.com/
+   Totals: 49 passed, 1 failed, 0 skipped, 0 blacklisted, 229ms
+   restored byte for byte
+   restored: test_browser_bridge exit=0 Totals: 50 passed, 0 failed, 0 skipped, 0 blacklisted, 247ms
+== drill fill-stale-field: src/browser_bridge.cpp
+   mutation: '  const QJsonValue fields = arguments.value(QStringLiteral("fields"));' -> '  const QJsonValue fields = arguments.value(QStringLiteral("fields_drill"));'
+   suite: test_browser_bridge
+   planted: build exit=0, test_browser_bridge exit=8
+   FAIL!  : BrowserBridgeTests::fillForm_refusesAStaleFieldRef() '!fill.ok' returned FALSE. ()
+   Totals: 49 passed, 1 failed, 0 skipped, 0 blacklisted, 238ms
+   restored byte for byte
+   restored: test_browser_bridge exit=0 Totals: 50 passed, 0 failed, 0 skipped, 0 blacklisted, 258ms
+== drill action-snapshot-offered: src/browser_contract.cpp
+   mutation: '      QStringLiteral("reload"),   QStringLiteral("fillForm")};' -> '      QStringLiteral("reload")};'
+   suite: test_browser_contract
+   planted: build exit=0, test_browser_contract exit=8
+   FAIL!  : BrowserContractTests::buildCommand_actionSnapshotOnEveryActionTool() Compared values are not the same
+   Totals: 76 passed, 1 failed, 0 skipped, 0 blacklisted, 327ms
+   restored byte for byte
+   restored: test_browser_contract exit=0 Totals: 77 passed, 0 failed, 0 skipped, 0 blacklisted, 99ms
+== drill fill-cross-tab: src/browser_contract.cpp
+   mutation: '    } else if (tab != first_tab) {' -> '    } else if (tab != first_tab && index < 0) {'
+   suite: test_browser_contract
+   planted: build exit=0, test_browser_contract exit=8
+   FAIL!  : BrowserContractTests::buildCommand_fillFormRefusesMalformedFields() 'command.error.contains(says)' returned FALSE. (Element ref 'e3' belongs to tab 8, but tab_id 7 was passed. A ref acts only on the tab its snapshot came from: drop tab_id, or call browser_snapshot with tab_id 7 for that tab's refs. / a form is filled on one tab)
+   Totals: 76 passed, 1 failed, 0 skipped, 0 blacklisted, 85ms
+   restored byte for byte
+   restored: test_browser_contract exit=0 Totals: 77 passed, 0 failed, 0 skipped, 0 blacklisted, 122ms
+== drill catalog-over-budget: src/browser_contract.cpp
+   mutation: '"path. Control overlay hidden unless included."' -> '"path. Control overlay hidden unless included. Padding planted by a red drill: padding padding padding padding padding padding padding padding padding padding padding padding padding padding padding padding padding padding padding padding padding padding padding padding padding padding padding padding padding padding padding padding padding padding padding padding padding padding padding padding padding padding padding padding padding padding padding padding padding padding padding padding padding padding padding padding padding padding padding padding "'
+   suite: test_browser_mcp_server
+   planted: build exit=0, test_browser_mcp_server exit=8
+   FAIL!  : BrowserMcpServerTests::catalogStaysWithinItsBudgetAndStable() 'listed.size() <= 46000' returned FALSE. (46137)
+   Totals: 17 passed, 1 failed, 0 skipped, 0 blacklisted, 23ms
+   restored byte for byte
+   restored: test_browser_mcp_server exit=0 Totals: 18 passed, 0 failed, 0 skipped, 0 blacklisted, 18ms

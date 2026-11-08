@@ -1,0 +1,21 @@
+== npm run format:check (every file it flags is listed; research_notes/ and reports/ are local research output, untracked and not committed)
+Checking formatting...
+[warn] reports/Browser MCP speed and token efficiency.md
+[warn] research_notes/Browser MCP speed and token efficiency/agent_frameworks_and_products.md
+[warn] research_notes/Browser MCP speed and token efficiency/cdp_extension_speed_and_standards.md
+[warn] research_notes/Browser MCP speed and token efficiency/competing_mcp_servers.md
+[warn] research_notes/Browser MCP speed and token efficiency/current_baseline_audit.md
+[warn] research_notes/Browser MCP speed and token efficiency/mcp_and_model_token_mechanics.md
+[warn] research_notes/Browser MCP speed and token efficiency/research_papers.md
+[warn] Code style issues found in 7 files. Run Prettier with --write to fix.
+exit=1
+flagged outside research_notes/ and reports/: 0
+== npm run lint
+> chrome-control-mcp-quality@1.15.0 lint
+> eslint --max-warnings=0 .
+exit=0
+== npm run lint:powershell
+
+WARNING: PSScriptAnalyzer failed internally; retrying (1/5).
+PSScriptAnalyzer passed for 8 tracked files.
+exit=0

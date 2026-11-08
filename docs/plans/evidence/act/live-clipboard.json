@@ -1,0 +1,102 @@
+{
+  "ok": true,
+  "checks": [
+    {
+      "check": "the user's clipboard holds the sentinel before any agent runs",
+      "status": "passed"
+    },
+    {
+      "check": "browser_clipboard writes text, HTML and an image to the agent's clipboard",
+      "status": "passed"
+    },
+    {
+      "check": "an editor that reads the paste event gets text, HTML and the image file",
+      "status": "passed"
+    },
+    {
+      "check": "an editor that reads beforeinput insertFromPaste gets the data transfer",
+      "status": "passed"
+    },
+    {
+      "check": "a bare editable region gets the text typed in, line by line",
+      "status": "passed"
+    },
+    {
+      "check": "an editor inside a same-origin frame gets the paste, files included",
+      "status": "passed"
+    },
+    {
+      "check": "a field inside a frame from another site gets the text typed in",
+      "status": "passed"
+    },
+    {
+      "check": "Control+C copies the field's selection to the agent's clipboard",
+      "status": "passed"
+    },
+    {
+      "check": "Control+X takes the selection out of the field",
+      "status": "passed"
+    },
+    {
+      "check": "Control+V pastes it back",
+      "status": "passed"
+    },
+    {
+      "check": "a copy button using execCommand copies to the agent's clipboard",
+      "status": "passed"
+    },
+    {
+      "check": "a copy button using navigator.clipboard copies to the agent's clipboard",
+      "status": "passed"
+    },
+    {
+      "check": "a paste button reading navigator.clipboard gets the agent's clipboard",
+      "status": "passed"
+    },
+    {
+      "check": "a page reading the clipboard on its own, outside any agent command, is refused",
+      "status": "passed"
+    },
+    {
+      "check": "a second agent's clipboard starts empty",
+      "status": "passed"
+    },
+    {
+      "check": "and its paste finds nothing of the first agent's",
+      "status": "passed"
+    },
+    {
+      "check": "each agent pastes its own, and neither changes the other's",
+      "status": "passed"
+    },
+    {
+      "check": "in a page loaded after the agent took the tab, a copy button copies to that agent's clipboard",
+      "status": "passed"
+    },
+    {
+      "check": "an agent on another server sees nothing of the first server's clipboards",
+      "status": "passed"
+    },
+    {
+      "check": "after all of it, the user's clipboard still holds the sentinel",
+      "status": "passed"
+    },
+    {
+      "check": "and no agent's page ever received it",
+      "status": "passed"
+    },
+    {
+      "check": "a tab handed back runs the browser's own clipboard functions again",
+      "status": "passed"
+    },
+    {
+      "check": "an agent that let go of its last tab let go of its clipboard; the other kept its own",
+      "status": "passed"
+    },
+    {
+      "check": "releasing everything leaves no AI tab or group behind",
+      "status": "passed"
+    }
+  ],
+  "error": null
+}

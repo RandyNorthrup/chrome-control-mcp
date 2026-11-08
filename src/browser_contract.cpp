@@ -335,7 +335,8 @@ QHash<QString, CmdSpec> interactionCommandSpecs() {
         QStringLiteral("optional"),
         {{QStringLiteral("depth"), QStringLiteral("int"), false},
          {QStringLiteral("filter"), QStringLiteral("string"), false},
-         {QStringLiteral("max_chars"), QStringLiteral("int"), false}}}},
+         {QStringLiteral("max_chars"), QStringLiteral("int"), false},
+         {QStringLiteral("if_changed"), QStringLiteral("bool"), false}}}},
       // A find takes the same capture as a snapshot; its arguments travel
       // with the command and are read back here when the reply arrives.
       {QStringLiteral("browser_find"),
@@ -586,6 +587,10 @@ QHash<QString, CmdSpec> renderingCommandSpecs() {
 // which is why several carry an explicit origin expectation.
 QHash<QString, CmdSpec> infraCommandSpecs() {
   return {
+      // Its fields, each a ref and a value, are checked and resolved by
+      // applyFillFormFields: the spec carries no scalar arguments.
+      {QStringLiteral("browser_fill_form"),
+       {QStringLiteral("fillForm"), QStringLiteral("none"), {}}},
       {QStringLiteral("browser_permission"),
        {QStringLiteral("permission"),
         QStringLiteral("none"),
@@ -682,25 +687,25 @@ const QHash<QString, CmdSpec> &commandSpecs() {
 // allowed-argument set and the frame field all follow from it together.
 const QSet<QString> &tabScopedCommands() {
   static const QSet<QString> kCommands{
-      QStringLiteral("snapshot"),     QStringLiteral("read"),
-      QStringLiteral("navigate"),     QStringLiteral("back"),
-      QStringLiteral("forward"),      QStringLiteral("reload"),
-      QStringLiteral("click"),        QStringLiteral("clickAt"),
-      QStringLiteral("hover"),        QStringLiteral("drag"),
-      QStringLiteral("dialog"),       QStringLiteral("type"),
-      QStringLiteral("select"),       QStringLiteral("setValue"),
-      QStringLiteral("media"),        QStringLiteral("pressKey"),
-      QStringLiteral("scroll"),       QStringLiteral("screenshot"),
-      QStringLiteral("waitFor"),      QStringLiteral("console"),
-      QStringLiteral("network"),      QStringLiteral("getValue"),
-      QStringLiteral("getAttribute"), QStringLiteral("box"),
-      QStringLiteral("focus"),        QStringLiteral("reveal"),
-      QStringLiteral("jsClick"),      QStringLiteral("emulate"),
-      QStringLiteral("print"),        QStringLiteral("storage"),
-      QStringLiteral("download"),     QStringLiteral("recordStart"),
-      QStringLiteral("httpAuth"),     QStringLiteral("upload"),
-      QStringLiteral("closeTab"),     QStringLiteral("selectTab"),
-      QStringLiteral("clipboard"),
+      QStringLiteral("snapshot"),    QStringLiteral("read"),
+      QStringLiteral("navigate"),    QStringLiteral("back"),
+      QStringLiteral("forward"),     QStringLiteral("reload"),
+      QStringLiteral("click"),       QStringLiteral("clickAt"),
+      QStringLiteral("hover"),       QStringLiteral("drag"),
+      QStringLiteral("dialog"),      QStringLiteral("type"),
+      QStringLiteral("select"),      QStringLiteral("setValue"),
+      QStringLiteral("media"),       QStringLiteral("pressKey"),
+      QStringLiteral("scroll"),      QStringLiteral("screenshot"),
+      QStringLiteral("waitFor"),     QStringLiteral("console"),
+      QStringLiteral("fillForm"),    QStringLiteral("network"),
+      QStringLiteral("getValue"),    QStringLiteral("getAttribute"),
+      QStringLiteral("box"),         QStringLiteral("focus"),
+      QStringLiteral("reveal"),      QStringLiteral("jsClick"),
+      QStringLiteral("emulate"),     QStringLiteral("print"),
+      QStringLiteral("storage"),     QStringLiteral("download"),
+      QStringLiteral("recordStart"), QStringLiteral("httpAuth"),
+      QStringLiteral("upload"),      QStringLiteral("closeTab"),
+      QStringLiteral("selectTab"),   QStringLiteral("clipboard"),
   };
   return kCommands;
 }
@@ -718,6 +723,35 @@ const ArgSpec &tabIdArgSpec() {
                              false};
   return kSpec;
 }
+
+// The commands whose reply can end with a snapshot of the page once it has
+// settled: everything that delivers input or loads a document. One call
+// instead of an action and then a look.
+bool takesActionSnapshot(const QString &cmd) {
+  static const QSet<QString> kCommands{
+      QStringLiteral("click"),    QStringLiteral("clickAt"),
+      QStringLiteral("jsClick"),  QStringLiteral("type"),
+      QStringLiteral("pressKey"), QStringLiteral("select"),
+      QStringLiteral("setValue"), QStringLiteral("hover"),
+      QStringLiteral("drag"),     QStringLiteral("upload"),
+      QStringLiteral("scroll"),   QStringLiteral("navigate"),
+      QStringLiteral("back"),     QStringLiteral("forward"),
+      QStringLiteral("reload"),   QStringLiteral("fillForm")};
+  return kCommands.contains(cmd);
+}
+
+const ArgSpec &actionSnapshotArgSpec() {
+  static const ArgSpec kSpec{QStringLiteral("snapshot"), QStringLiteral("bool"),
+                             false};
+  return kSpec;
+}
+
+// A form is filled in one command, so its fields are bounded the way one
+// native message is: at most this many, each value at most this long, and all
+// of them together at most this much.
+constexpr qsizetype kMaxFormFields = 50;
+constexpr qsizetype kMaxFormValueChars = qsizetype{32} * 1024;
+constexpr qsizetype kMaxFormTotalChars = qsizetype{256} * 1024;
 
 // Send the command to the tab @p ref's snapshot came from. A ref names a node
 // in ONE document; the same backendNodeId on another tab is another node, so a
@@ -1279,8 +1313,104 @@ QString applyClipboardArgs(const QJsonObject &arguments) {
 
 // Tool-specific extras the generic ref/scalar-arg copiers do not cover. Returns
 // an error string (empty on success).
+// browser_fill_form's fields: an array of {ref, value}, each ref resolved to
+// its node and all of them on one tab, sent on as {ref, backendNodeId, value}
+// -- the ref rides along so a field the page refuses can be named by it.
+QString applyFillFormFields(const QJsonObject &arguments,
+                            const QJsonObject &ref_index,
+                            QJsonObject &command) {
+  const QJsonValue fields_value = arguments.value(QStringLiteral("fields"));
+  if (!fields_value.isArray()) {
+    return QStringLiteral(
+        "fields is required: an array of {ref, value}, one per field");
+  }
+  const QJsonArray fields = fields_value.toArray();
+  if (fields.isEmpty() || fields.size() > kMaxFormFields) {
+    return QStringLiteral("fields must hold 1 to %1 entries")
+        .arg(kMaxFormFields);
+  }
+  QJsonArray resolved;
+  QSet<QString> seen;
+  qsizetype total_chars = 0;
+  QString first_ref;
+  qint64 first_tab = 0;
+  for (qsizetype index = 0; index < fields.size(); ++index) {
+    const QString where = QStringLiteral("fields[%1]").arg(index);
+    if (!fields.at(index).isObject()) {
+      return where + QStringLiteral(" must be an object: {ref, value}");
+    }
+    const QJsonObject field = fields.at(index).toObject();
+    for (auto it = field.constBegin(); it != field.constEnd(); ++it) {
+      if (it.key() != QLatin1String("ref") &&
+          it.key() != QLatin1String("value")) {
+        return QStringLiteral("%1 has an unknown key '%2'")
+            .arg(where, it.key());
+      }
+    }
+    const QJsonValue ref_value = field.value(QStringLiteral("ref"));
+    if (!ref_value.isString() || ref_value.toString().isEmpty()) {
+      return where + QStringLiteral(".ref must be an element ref");
+    }
+    const QJsonValue value = field.value(QStringLiteral("value"));
+    if (!value.isString()) {
+      return where + QStringLiteral(".value must be a string (\"true\" or "
+                                    "\"false\" for a checkbox)");
+    }
+    const QString ref = ref_value.toString();
+    const QString text = value.toString();
+    if (text.size() > kMaxFormValueChars) {
+      return QStringLiteral("%1.value is longer than %2 characters")
+          .arg(where)
+          .arg(kMaxFormValueChars);
+    }
+    total_chars += text.size();
+    if (total_chars > kMaxFormTotalChars) {
+      return QStringLiteral("the values together are longer than %1 "
+                            "characters; fill the form in more than one call")
+          .arg(kMaxFormTotalChars);
+    }
+    if (seen.contains(ref)) {
+      return QStringLiteral("%1: ref '%2' is already in fields")
+          .arg(where, ref);
+    }
+    seen.insert(ref);
+    if (!ref_index.contains(ref)) {
+      return QStringLiteral(
+                 "Unknown element ref '%1'; call browser_snapshot to refresh")
+          .arg(ref);
+    }
+    const QJsonObject entry = ref_index.value(ref).toObject();
+    qint64 tab = 0;
+    (void)tabIdFromJson(entry.value(QStringLiteral("tabId")), &tab);
+    if (index == 0) {
+      first_ref = ref;
+      first_tab = tab;
+    } else if (tab != first_tab) {
+      return QStringLiteral("ref '%1' is on tab %2 but ref '%3' is on tab %4; "
+                            "a form is filled on one tab")
+          .arg(ref)
+          .arg(tab)
+          .arg(first_ref)
+          .arg(first_tab);
+    }
+    const QString unbound = bindRefTab(ref, entry, command);
+    if (!unbound.isEmpty()) {
+      return unbound;
+    }
+    resolved.append(QJsonObject{{QStringLiteral("ref"), ref},
+                                {QStringLiteral("backendNodeId"),
+                                 entry.value(QStringLiteral("backendNodeId"))},
+                                {QStringLiteral("value"), text}});
+  }
+  command.insert(QStringLiteral("fields"), resolved);
+  return {};
+}
+
 QString applyToolExtras(const QString &tool, const QJsonObject &arguments,
                         const QJsonObject &ref_index, QJsonObject &command) {
+  if (tool == QLatin1String("browser_fill_form")) {
+    return applyFillFormFields(arguments, ref_index, command);
+  }
   if (takesProfile(tool)) {
     const QString profile = checkProfileArg(arguments);
     if (!profile.isEmpty()) {
@@ -1348,6 +1478,12 @@ QSet<QString> allowedArgKeys(const QString &tool, const CmdSpec &spec) {
   }
   for (const ArgSpec &arg : spec.m_args) {
     allowed.insert(arg.m_key);
+  }
+  if (takesActionSnapshot(spec.m_cmd)) {
+    allowed.insert(actionSnapshotArgSpec().m_key);
+  }
+  if (tool == QLatin1String("browser_fill_form")) {
+    allowed.insert(QStringLiteral("fields"));
   }
   if (tool == QLatin1String("browser_drag")) {
     allowed.insert(QStringLiteral("to_ref"));
@@ -1491,6 +1627,31 @@ QJsonArray withTabIdArguments(const QJsonArray &tools,
   return out;
 }
 
+// The snapshot an action can return, offered on every tool whose command
+// takes it (takesActionSnapshot), from one description.
+QJsonArray withActionSnapshotArguments(const QJsonArray &tools,
+                                       const QHash<QString, CmdSpec> &specs) {
+  QJsonArray out;
+  for (const QJsonValue value : tools) {
+    QJsonObject tool = value.toObject();
+    const auto spec =
+        specs.constFind(tool.value(QStringLiteral("name")).toString());
+    if (spec != specs.constEnd() && takesActionSnapshot(spec->m_cmd)) {
+      QJsonObject schema = tool.value(QStringLiteral("inputSchema")).toObject();
+      QJsonObject properties =
+          schema.value(QStringLiteral("properties")).toObject();
+      properties.insert(
+          actionSnapshotArgSpec().m_key,
+          typedProperty(QStringLiteral("boolean"),
+                        QStringLiteral("Return a snapshot once settled.")));
+      schema.insert(QStringLiteral("properties"), properties);
+      tool.insert(QStringLiteral("inputSchema"), schema);
+    }
+    out.append(tool);
+  }
+  return out;
+}
+
 QJsonObject toolSchema(const QJsonObject &properties,
                        const QJsonArray &required) {
   return QJsonObject{{QStringLiteral("type"), QStringLiteral("object")},
@@ -1549,7 +1710,13 @@ void appendNavTools(QJsonArray &tools) {
                        "Cap the outline at this many characters: the largest "
                        "off-screen regions collapse to one line each, with "
                        "the ref to read them by."),
-                   kMinOutlineChars, kMaxOutlineChars)}},
+                   kMinOutlineChars, kMaxOutlineChars)},
+              {QStringLiteral("if_changed"),
+               typedProperty(
+                   QStringLiteral("boolean"),
+                   QStringLiteral("Say so in one line if nothing changed since "
+                                  "this tab's last snapshot; otherwise mark "
+                                  "new refs with *."))}},
           {})));
   tools.append(toolEntry(
       QStringLiteral("browser_find"),
@@ -1793,7 +1960,7 @@ void appendPointerTools(QJsonArray &tools) {
       QStringLiteral("browser_hover"),
       QStringLiteral(
           "Move the pointer over the element with [ref] to reveal hover menus, "
-          "tooltips, or row actions, then take a fresh snapshot to read what "
+          "tooltips, or row actions; its changes say whether anything "
           "appeared. duration_ms lets hover-intent UI settle. An element with "
           "no accessibility role -- a link with no href, a div with only an "
           "onmouseenter handler -- gets no ref; hover it by x/y instead, which "
@@ -1859,7 +2026,36 @@ void appendPointerTools(QJsonArray &tools) {
           {})));
 }
 
+void appendFillFormTool(QJsonArray &tools) {
+  const QJsonObject field{
+      {QStringLiteral("type"), QStringLiteral("object")},
+      {QStringLiteral("properties"),
+       QJsonObject{{QStringLiteral("ref"),
+                    stringProperty(QStringLiteral("The field's ref."))},
+                   {QStringLiteral("value"),
+                    stringProperty(QStringLiteral(
+                        "Text; an option's text; \"true\" or \"false\" for a "
+                        "checkbox; \"true\" for a radio."))}}},
+      {QStringLiteral("required"),
+       QJsonArray{QStringLiteral("ref"), QStringLiteral("value")}},
+      {QStringLiteral("additionalProperties"), false}};
+  tools.append(toolEntry(
+      QStringLiteral("browser_fill_form"),
+      QStringLiteral("Fill a form in one call: text fields, selects (by option "
+                     "text), checkboxes and radios, in order, stopping at the "
+                     "first that cannot take its value."),
+      toolSchema(QJsonObject{{QStringLiteral("fields"),
+                              QJsonObject{{QStringLiteral("type"),
+                                           QStringLiteral("array")},
+                                          {QStringLiteral("items"), field},
+                                          {QStringLiteral("minItems"), 1},
+                                          {QStringLiteral("maxItems"),
+                                           static_cast<int>(kMaxFormFields)}}}},
+                 QJsonArray{QStringLiteral("fields")})));
+}
+
 void appendFormControlTools(QJsonArray &tools) {
+  appendFillFormTool(tools);
   tools.append(toolEntry(
       QStringLiteral("browser_select"),
       QStringLiteral("Select an option in a <select> dropdown with [ref] from "
@@ -3461,6 +3657,26 @@ SnapshotView renderSnapshot(const QJsonObject &capture,
   return view;
 }
 
+void markNewRefs(SnapshotView *view, const QSet<QString> &known) {
+  for (SnapshotLine &line : view->lines) {
+    if (line.ref.isEmpty() || known.contains(line.ref)) {
+      continue;
+    }
+    const QString tag = QStringLiteral(" [ref=") + line.ref + QLatin1Char(']');
+    const qsizetype at = line.text.indexOf(tag);
+    if (at >= 0) {
+      line.text.insert(at + 1, QLatin1Char('*'));
+    }
+  }
+  const QString outline =
+      std::accumulate(view->lines.cbegin(), view->lines.cend(), QString(),
+                      [](QString text, const SnapshotLine &line) {
+                        return std::move(text) + indentFor(line.depth) +
+                               line.text + QLatin1Char('\n');
+                      });
+  view->outline = outline + view->notes;
+}
+
 QString outlineOptionsFrom(const QJsonObject &arguments, OutlineOptions *out) {
   OutlineOptions options;
   options.ref = arguments.value(QStringLiteral("ref")).toString();
@@ -3821,7 +4037,8 @@ QJsonArray browserToolCatalog() {
   appendRecordTools(tools);
   appendHttpAuthTool(tools);
   appendAdvancedInputTools(tools);
-  return withTabIdArguments(tools, commandSpecs());
+  return withTabIdArguments(withActionSnapshotArguments(tools, commandSpecs()),
+                            commandSpecs());
 }
 
 ExtensionCommand buildExtensionCommand(const QString &tool,
@@ -3857,6 +4074,12 @@ ExtensionCommand buildExtensionCommand(const QString &tool,
   }
   for (const ArgSpec &arg : spec.m_args) {
     const QString error = copyArg(arguments, arg, command);
+    if (!error.isEmpty()) {
+      return fail(error);
+    }
+  }
+  if (takesActionSnapshot(spec.m_cmd)) {
+    const QString error = copyArg(arguments, actionSnapshotArgSpec(), command);
     if (!error.isEmpty()) {
       return fail(error);
     }

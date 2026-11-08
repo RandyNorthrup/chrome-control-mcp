@@ -1,0 +1,62 @@
+{
+  "ok": true,
+  "checks": [
+    {
+      "check": "a click that changes nothing says dom: none, and nothing else",
+      "status": "passed"
+    },
+    {
+      "check": "a click that adds a few nodes says dom: some",
+      "status": "passed"
+    },
+    {
+      "check": "a click that adds hundreds of nodes says dom: many",
+      "status": "passed"
+    },
+    {
+      "check": "a click that opens a dialog says which, and what it said",
+      "status": "passed"
+    },
+    {
+      "check": "a click that logs an error counts it",
+      "status": "passed"
+    },
+    {
+      "check": "a click that moves focus names the element that has it",
+      "status": "passed"
+    },
+    {
+      "check": "a click that navigates says new document, with the address and title",
+      "status": "passed"
+    },
+    {
+      "check": "an action asked for a snapshot returns the page after it, refs and all",
+      "status": "passed"
+    },
+    {
+      "check": "the refs in that snapshot work at once, with no browser_snapshot between",
+      "status": "passed"
+    },
+    {
+      "check": "a snapshot of a page that has not changed is one line",
+      "status": "passed"
+    },
+    {
+      "check": "a changed page comes back whole, with only the new ref marked",
+      "status": "passed"
+    },
+    {
+      "check": "a text field, a select, a checkbox, a radio and a textarea fill in one call",
+      "status": "passed"
+    },
+    {
+      "check": "a field that cannot be filled stops the form there, and says which and how far it got",
+      "status": "passed"
+    },
+    {
+      "check": "a select asked for an option it does not have says so",
+      "status": "passed"
+    }
+  ],
+  "error": null
+}

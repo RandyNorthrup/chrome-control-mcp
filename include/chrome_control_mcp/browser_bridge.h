@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include <QByteArray>
 #include <QHash>
 #include <QJsonObject>
 #include <QSet>
@@ -35,6 +36,8 @@
 /// navigated, closed, or was re-snapshotted without that node -- answers
 /// "Unknown element ref" instead of naming whatever took its number.
 namespace chrome_control_mcp::browser {
+
+struct SnapshotView; // browser_contract.h
 
 class BrowserBridgeSession {
 public:
@@ -179,6 +182,12 @@ private:
     bool stale{false};
     quint64 dom_epoch{0};
     bool have_dom_epoch{false};
+    // The tab's snapshots, numbered from 1, and a digest of the last one's
+    // outline as shown (with the options it was shown under): what
+    // browser_snapshot's if_changed compares against.
+    int snapshot_seq{0};
+    QByteArray outline_digest;
+    int element_count{0};
   };
 
   static Outgoing refuse(const QString &reason);
@@ -193,6 +202,18 @@ private:
   qint64 fillSnapshotResult(quint64 sent_epoch, const QString &sent_tool,
                             const QJsonObject &sent_args,
                             const QJsonObject &frame, Incoming &incoming);
+  // An action's reply that carries the snapshot it was asked to end with: the
+  // action's JSON, then the snapshot, whose refs are installed for the tab.
+  qint64 fillActionSnapshotResult(quint64 sent_epoch, const QJsonObject &frame,
+                                  Incoming &incoming);
+  // Install @p capture as @p tab's refs, carrying the refs its nodes already
+  // had. @p known receives the refs carried, @p had_baseline whether the tab
+  // had a snapshot of this same document to compare with.
+  SnapshotView installSnapshot(const QJsonObject &capture, qint64 tab,
+                               QSet<QString> *known, bool *had_baseline);
+  // Record @p shown as the tab's latest snapshot; returns the number of the
+  // snapshot it repeats exactly, or 0.
+  int recordSnapshot(qint64 tab, const QString &shown, int element_count);
   // Page and check a read reply against what browser_read asked for.
   static void fillReadResult(const QJsonObject &frame,
                              const QJsonObject &sent_args, Incoming &incoming);

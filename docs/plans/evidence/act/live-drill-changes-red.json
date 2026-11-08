@@ -1,0 +1,41 @@
+{
+  "ok": false,
+  "checks": [
+    {
+      "check": "a click that changes nothing says dom: none, and nothing else",
+      "status": "failed",
+      "detail": "{}"
+    },
+    {
+      "check": "a click that adds a few nodes says dom: some",
+      "status": "failed",
+      "detail": "{}"
+    },
+    {
+      "check": "a click that adds hundreds of nodes says dom: many",
+      "status": "failed",
+      "detail": "{}"
+    },
+    {
+      "check": "a click that opens a dialog says which, and what it said",
+      "status": "failed",
+      "detail": "{}"
+    },
+    {
+      "check": "a click that logs an error counts it",
+      "status": "failed",
+      "detail": "{}"
+    },
+    {
+      "check": "a click that moves focus names the element that has it",
+      "status": "failed",
+      "detail": "{}"
+    },
+    {
+      "check": "a click that navigates says new document, with the address and title",
+      "status": "failed",
+      "detail": "{}"
+    }
+  ],
+  "error": "TypeError: Cannot read properties of undefined (reading 'dom')\n    at main (file:///home/randy/ccm-evidence/ccmcp/tests/e2e/action_changes_e2e.mjs:141:37)\n    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)\n    at async file:///home/randy/ccm-evidence/ccmcp/tests/e2e/action_changes_e2e.mjs:259:1"
+}

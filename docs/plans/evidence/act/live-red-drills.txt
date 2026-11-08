@@ -1,0 +1,12 @@
+== drill changes-not-attached: browser/extension/background.js
+   mutation: '    if (tabId !== null && CHANGE_COMMANDS.has(cmd)) {' -> '    if (false) {'
+   planted: build exit=0
+   planted: suite exit=1
+   FAIL a click that changes nothing says dom: none, and nothing else -- {}
+   FAIL a click that adds a few nodes says dom: some -- {}
+   FAIL a click that adds hundreds of nodes says dom: many -- {}
+   FAIL a click that opens a dialog says which, and what it said -- {}
+   FAIL a click that logs an error counts it -- {}
+   FAIL a click that moves focus names the element that has it -- {}
+   restored byte for byte
+   restored: suite exit=0

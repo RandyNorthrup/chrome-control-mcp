@@ -3,7 +3,7 @@
 ## Release target
 
 Ship standalone, MIT-licensed Chrome Control MCP from `main` with the same browser tool surface on
-Windows, Linux, and macOS. Current release: 1.14.0 (2026-11-08).
+Windows, Linux, and macOS. Current release: 1.15.0 (2026-11-08).
 
 ## Completed
 
@@ -60,15 +60,18 @@ Windows, Linux, and macOS. Current release: 1.14.0 (2026-11-08).
       in. Since 1.9.0 a failed screenshot reports whether Chrome still answers DevTools
       ([VERIFICATION.md](docs/VERIFICATION.md#open-a-chrome-stall-in-one-display-configuration))
 - [ ] The rest of the token and speed research
-      ([docs/research](docs/research/browser-mcp-speed-and-token-efficiency.md)): action replies that
-      say what changed, `browser_fill_form`, opt-in unchanged snapshots, per-command DevTools work
-      if a measurement shows it matters now that actions take tens of milliseconds, and a default
-      snapshot cap once the meter shows it loses nothing. Screenshots at CSS scale with a zoom and
-      the scroll, frame and relay waits shipped in 1.14.0
+      ([docs/research](docs/research/browser-mcp-speed-and-token-efficiency.md)): per-command
+      DevTools work if a measurement shows it matters now that actions take tens of milliseconds,
+      a general batch tool behind a flag, and a default snapshot cap once the meter shows it loses
+      nothing. Screenshots, the scroll, frame and relay waits (1.14.0), action changes, the snapshot
+      in the same call, `browser_fill_form` and unchanged snapshots (1.15.0) shipped
 - [x] Restore the Semgrep gate: the job keeps its pinned Python 3.12, since `semgrep-core` crashes
       under the 3.15 the Qt install step switched it to (1.8.1)
 - [x] Run `test_browser_extension_tabs.mjs` and `test_release_versions.mjs` in ctest, and so in CI
       (1.8.1)
+- [x] Action replies that say what changed, an opt-in snapshot in the same call, `browser_fill_form`
+      and opt-in unchanged snapshots (1.15.0;
+      [docs/plans/action-changes.md](docs/plans/action-changes.md))
 - [x] Actions in a background tab without waiting for its frame, replies without the relay's poll,
       screenshots at one pixel per CSS pixel with zoom and a saved presentation, and recordings in
       the page's shape (1.14.0; [docs/plans/speed-and-screenshots.md](docs/plans/speed-and-screenshots.md))

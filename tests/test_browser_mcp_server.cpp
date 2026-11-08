@@ -197,7 +197,9 @@ void BrowserMcpServerTests::releaseIsAdvertisedAndNotReadOnly() {
 
 // A client keeps the catalog as part of every prompt and caches it as a
 // prefix, so it is held to a byte budget -- 1.11.1's was 44,965 bytes for 53
-// tools -- and must be the same bytes every time it is listed.
+// tools; 1.12.0 cut it to 43,500; 1.15.0 raised it to 46,000 for
+// browser_fill_form, if_changed and the snapshot an action can return -- and
+// must be the same bytes every time it is listed.
 void BrowserMcpServerTests::catalogStaysWithinItsBudgetAndStable() {
   BrowserControl browser;
   const auto first =
@@ -216,7 +218,7 @@ void BrowserMcpServerTests::catalogStaysWithinItsBudgetAndStable() {
                                              .toArray())
                                .toJson(QJsonDocument::Compact);
   QCOMPARE(listed, again);
-  QVERIFY2(listed.size() <= 43500, qPrintable(QString::number(listed.size())));
+  QVERIFY2(listed.size() <= 46000, qPrintable(QString::number(listed.size())));
 }
 
 void BrowserMcpServerTests::fullCatalogContainsEveryBrowserAndInstallerTool() {
@@ -225,7 +227,7 @@ void BrowserMcpServerTests::fullCatalogContainsEveryBrowserAndInstallerTool() {
       handleRequest(request(QStringLiteral("tools/list"), 2), &browser);
   QVERIFY(response.has_value());
   const QSet<QString> names = catalogNames(*response);
-  QCOMPARE(names.size(), 54);
+  QCOMPARE(names.size(), 55);
   for (const QString &expected : {
            QStringLiteral("browser_navigate"),
            QStringLiteral("browser_snapshot"),

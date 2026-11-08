@@ -8,6 +8,7 @@ entry's heading opens its GitHub release page and downloads. To hear about new r
 
 | Version                      | Released   | What it is                                                              |
 | ---------------------------- | ---------- | ----------------------------------------------------------------------- |
+| [1.15.0](#1150---2026-11-08) | 2026-11-08 | Actions say what they changed, and forms fill in one call               |
 | [1.14.0](#1140---2026-11-08) | 2026-11-08 | Faster actions, and screenshots the size a model uses                   |
 | [1.13.0](#1130---2026-11-07) | 2026-11-07 | The extension goes to the Chrome Web Store                              |
 | [1.12.0](#1120---2026-11-07) | 2026-11-07 | Find an element without reading the whole page                          |
@@ -38,6 +39,40 @@ entry's heading opens its GitHub release page and downloads. To hear about new r
 | [1.1.0](#110---2026-09-21)   | 2026-09-21 | The agent works in a tab of its own                                     |
 | [1.0.1](#101---2026-09-16)   | 2026-09-16 | The bridge recovers when another server takes or removes its record     |
 | [1.0.0](#100---2026-08-20)   | 2026-08-20 | First public release                                                    |
+
+## [1.15.0] - 2026-11-08
+
+Actions say what they changed, a form fills in one call, and a page that has not changed answers
+in one line.
+
+### Added
+
+- **Every action says what it changed.** The replies of `browser_click`, `browser_click_at`,
+  `browser_js_click`, `browser_type`, `browser_press_key`, `browser_select`, `browser_set_value`,
+  `browser_fill_form`, `browser_hover`, `browser_drag`, `browser_upload`, `browser_scroll`,
+  `browser_navigate`, `browser_back`, `browser_forward` and `browser_reload` carry `changes`: `dom`
+  (`"none"`, `"some"`, `"many"` or `"new document"`), and `url`, `title`, `dialog`,
+  `console_errors` and `focus` when they happened. An agent that sees `dom: "none"` has nothing new
+  to read, where it used to take a whole snapshot to find out. No waiting is added.
+- **`snapshot: true`** on each of those tools returns the page in the same call, once it has made
+  no change for 100 ms (at most 1.5 s), and its refs work at once: one call and one turn instead of
+  two.
+- **`browser_fill_form`** fills text fields, selects (by option text), checkboxes and radios in one
+  call, in order, and stops at the first field that cannot take its value, naming it and saying how
+  many before it were filled. A text field is set through the element's own value setter, so React's
+  controlled inputs see the change.
+- **`if_changed: true`** on `browser_snapshot` answers in one line when the tab's outline is the same
+  as its last snapshot's, and otherwise marks the refs that are new with a `*`.
+- A live suite, `tests/e2e/action_changes_e2e.mjs`, for each kind of change, the snapshot in the same
+  call, the unchanged page and the form, run by the release's live job.
+
+### Changed
+
+- The server's instructions tell agents that actions report what they changed and that
+  `snapshot: true` returns the page; `browser_hover`'s description no longer tells them to take a
+  fresh snapshot.
+- The tool catalog's byte budget rose from 43,500 to 46,000 bytes for the new tool and arguments;
+  it is 45,624 bytes for 55 tools.
 
 ## [1.14.0] - 2026-11-08
 
@@ -1332,6 +1367,7 @@ tried were broken.
 - Unused JSON-RPC client payload helpers and obsolete test-only native-host loop.
 - Redundant quality branch; development and delivery now happen directly on `main`.
 
+[1.15.0]: https://github.com/RandyNorthrup/chrome-control-mcp/releases/tag/v1.15.0
 [1.14.0]: https://github.com/RandyNorthrup/chrome-control-mcp/releases/tag/v1.14.0
 [1.13.0]: https://github.com/RandyNorthrup/chrome-control-mcp/releases/tag/v1.13.0
 [1.12.0]: https://github.com/RandyNorthrup/chrome-control-mcp/releases/tag/v1.12.0

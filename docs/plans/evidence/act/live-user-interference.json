@@ -1,0 +1,46 @@
+{
+  "ok": true,
+  "checks": [
+    {
+      "check": "session tab shows the fixture home page",
+      "status": "passed"
+    },
+    {
+      "check": "snapshot reads the session tab after the user opened a tab",
+      "status": "passed"
+    },
+    {
+      "check": "the tab the user opened is the one in front",
+      "status": "passed"
+    },
+    {
+      "check": "typing lands in the session tab, not the user's",
+      "status": "passed"
+    },
+    {
+      "check": "screenshot of the session tab while the user's tab is in front",
+      "status": "passed"
+    },
+    {
+      "check": "the user's tab is still in front after the session typed, scrolled, and clicked",
+      "status": "passed"
+    },
+    {
+      "check": "snapshot reads the session tab after the user opened a window",
+      "status": "passed"
+    },
+    {
+      "check": "typing still lands in the session tab",
+      "status": "passed"
+    },
+    {
+      "check": "browser_tabs lists the session's window",
+      "status": "passed"
+    },
+    {
+      "check": "the session opened and closed no windows of its own",
+      "status": "passed"
+    }
+  ],
+  "error": null
+}

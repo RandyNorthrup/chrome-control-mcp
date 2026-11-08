@@ -1,0 +1,54 @@
+Running clang-tidy for 18 files out of 18 in compilation database ...
+[ 1/18][66.5s] clang-tidy-21 -p=build-analysis -quiet /home/randy/ccm-evidence/ccmcp/src/native_messaging.cpp
+133127 warnings generated.
+
+[ 2/18][71.5s] clang-tidy-21 -p=build-analysis -quiet /home/randy/ccm-evidence/ccmcp/src/browser_bridge_relay_posix.cpp
+141109 warnings generated.
+
+[ 3/18][72.2s] clang-tidy-21 -p=build-analysis -quiet /home/randy/ccm-evidence/ccmcp/src/browser_extension_installer.cpp
+137833 warnings generated.
+
+[ 4/18][80.2s] clang-tidy-21 -p=build-analysis -quiet /home/randy/ccm-evidence/ccmcp/src/browser_mcp_tools.cpp
+135503 warnings generated.
+
+[ 5/18][82.9s] clang-tidy-21 -p=build-analysis -quiet /home/randy/ccm-evidence/ccmcp/src/mcp_dispatch.cpp
+135660 warnings generated.
+
+[ 6/18][90.5s] clang-tidy-21 -p=build-analysis -quiet /home/randy/ccm-evidence/ccmcp/src/browser_bridge_pipe_posix.cpp
+142058 warnings generated.
+
+[ 7/18][97.6s] clang-tidy-21 -p=build-analysis -quiet /home/randy/ccm-evidence/ccmcp/src/browser_control.cpp
+138048 warnings generated.
+
+[ 8/18][99.2s] clang-tidy-21 -p=build-analysis -quiet /home/randy/ccm-evidence/ccmcp/src/updater.cpp
+138019 warnings generated.
+
+[ 9/18][73.8s] clang-tidy-21 -p=build-analysis -quiet /home/randy/ccm-evidence/ccmcp/src/browser_bridge_security.cpp
+146001 warnings generated.
+
+[10/18][80.4s] clang-tidy-21 -p=build-analysis -quiet /home/randy/ccm-evidence/ccmcp/src/mcp_entry.cpp
+140276 warnings generated.
+
+[11/18][57.7s] clang-tidy-21 -p=build-analysis -quiet /home/randy/ccm-evidence/ccmcp/src/main.cpp
+133014 warnings generated.
+
+[12/18][80.5s] clang-tidy-21 -p=build-analysis -quiet /home/randy/ccm-evidence/ccmcp/src/browser_uploads.cpp
+135348 warnings generated.
+
+[13/18][81.7s] clang-tidy-21 -p=build-analysis -quiet /home/randy/ccm-evidence/ccmcp/src/install_layout.cpp
+139941 warnings generated.
+
+[14/18][67.2s] clang-tidy-21 -p=build-analysis -quiet /home/randy/ccm-evidence/ccmcp/src/posix_process_identity.cpp
+138170 warnings generated.
+
+[15/18][82.6s] clang-tidy-21 -p=build-analysis -quiet /home/randy/ccm-evidence/ccmcp/src/browser_bridge_pipe_common.cpp
+140262 warnings generated.
+
+[16/18][119.2s] clang-tidy-21 -p=build-analysis -quiet /home/randy/ccm-evidence/ccmcp/src/browser_contract.cpp
+133443 warnings generated.
+
+[17/18][51.2s] clang-tidy-21 -p=build-analysis -quiet /home/randy/ccm-evidence/ccmcp/src/browser_bridge_relay_common.cpp
+138030 warnings generated.
+
+[18/18][52.6s] clang-tidy-21 -p=build-analysis -quiet /home/randy/ccm-evidence/ccmcp/src/browser_bridge.cpp
+135538 warnings generated.

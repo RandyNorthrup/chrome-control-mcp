@@ -244,6 +244,15 @@ ID. There is no private key, package signing, browser-store dependency, or enter
   device pixels. `purpose: "presentation"` returns the device-pixel PNG to the server, which writes
   it to the output folder and replies with the path only. Control presence is hidden by default and
   can be included for user-facing documentation.
+- Every action's reply carries `changes`: the extension reads the tab's URL, title, console-error and
+  dialog counts, and a page-side mutation counter before and after the action. The counter is a
+  MutationObserver registered with the other new-document scripts; it counts nodes, text and
+  attributes (not `style`, not the extension's own overlay) and numbers focused elements, and keeps
+  no records. With `snapshot: true` the extension waits for the counter to go quiet, captures a
+  snapshot and returns it with the document generation it was taken in; the bridge installs its refs
+  through the same path as `browser_snapshot`, and only when that generation is the reply's.
+- `browser_snapshot`'s `if_changed` is answered by the bridge: it keeps a digest of each tab's last
+  outline as shown, with the options it was shown under, and marks refs new since that snapshot.
 - `browser_click_at`, `browser_hover` and `browser_drag`'s x/y are pixels of the latest view, bound
   to its tab, URL, DPR, pinch scale and offset, scroll, view factor, and viewport fingerprint; stale
   geometry fails closed. One view pixel is one CSS px × DPR × pinch scale × the view's factor,

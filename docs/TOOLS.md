@@ -1,6 +1,6 @@
 # Tool catalog
 
-The full profile advertises 54 tools: 48 browser tools, which reach Chrome through the extension,
+The full profile advertises 55 tools: 49 browser tools, which reach Chrome through the extension,
 and 6 native tools the server answers itself -- 3 to set up the extension's native-messaging host and
 3 to update the server. The [read-only profile](#read-only-profile) advertises 15.
 
@@ -141,6 +141,17 @@ that should show the exact control presence visible in Chrome.
 `example.com` is read as `https://example.com`. `javascript:`, `data:` and `file:` URLs are refused,
 so an agent cannot make a page out of its own text or open the user's files in a tab.
 
+### A page that has not changed
+
+`browser_snapshot` with `if_changed: true` answers in one line when the tab's outline, under the
+same options, is the same as its last snapshot's: `unchanged since snapshot 3 (41 elements); its
+refs still work`. When it has changed, the whole outline comes back with a `*` before each ref the
+earlier snapshot did not have, such as `- button "Undo" *[ref=e57]`. The comparison is per tab and
+leaves the url and title out, so a clock in the title does not count as a change. The first snapshot
+of a page, or the first after it navigated, has nothing to compare with and is shown whole and
+unmarked. It is opt-in: an agent whose earlier snapshot has been dropped from its context has
+nothing an "unchanged" reply could point to.
+
 ### Finding an element without reading the whole page
 
 An element's ref comes from the page's outline. `browser_snapshot` gives the whole outline;
@@ -191,10 +202,52 @@ Measured on public pages: a whole snapshot of Wikipedia's "Web browser" article 
 - `browser_drag`
 - `browser_select`
 - `browser_set_value`
+- `browser_fill_form`
 - `browser_upload`
 - `browser_clipboard`
 - `browser_media`
 - `browser_js_click`
+
+### What an action changed
+
+Every action -- `browser_click`, `browser_click_at`, `browser_js_click`, `browser_type`,
+`browser_press_key`, `browser_select`, `browser_set_value`, `browser_fill_form`, `browser_hover`,
+`browser_drag`, `browser_upload`, `browser_scroll`, `browser_navigate`, `browser_back`,
+`browser_forward` and `browser_reload` -- says in its reply what it changed, as seen by the time the
+reply went: an object `changes` with
+
+- `dom`: `"none"`, `"some"`, `"many"` (5% of the page's elements or more, and at least 20 changes),
+  or `"new document"` when the tab loaded a different page;
+- `url` and `title`, when they changed;
+- `dialog`: `{type, message, accepted}` when the page opened one (answered as usual; see
+  `browser_dialog`);
+- `console_errors`: how many errors the page logged;
+- `focus`: the role and name of the element that took focus, such as `textbox "Email"`.
+
+Each key is there only when its change happened, except `dom`. `"none"` is the useful answer: the
+page shows nothing new, so there is nothing to read again. The count comes from a mutation counter
+in each document that skips the extension's own frame, badge and cursor and `style` changes (an
+animation rewrites those every frame). It runs in the page, so a page can make its own count
+wrong; it is a hint about the page, not a guarantee. A change the page makes after the reply -- a
+response that arrives later -- is not in it.
+
+**`snapshot: true`** on any of those tools returns the page in the same call: the action's JSON,
+then a snapshot taken once the page has made no change for 100 ms (at most 1.5 s), whose refs work
+at once, as a `browser_snapshot`'s would. If the tab's document was replaced between the snapshot
+and the reply, no snapshot is shown and the reply says to take one. A snapshot that could not be
+taken is reported as `snapshot_error`; the action still happened.
+
+### Filling a form
+
+`browser_fill_form` takes `fields`, an array of `{ref, value}` -- at most 50, every value a string --
+and fills them in order: a text field or textarea takes the text, a `<select>` the option's
+visible text (or its value), a checkbox `"true"` or `"false"`, a radio `"true"`. The page sees
+what a person would produce: `input` and `change` events, and a real click on a checkbox or radio.
+A text field is set through the element's own value setter, so frameworks that track it (React's
+controlled inputs) see the change. All the fields must be on one tab. It stops at the first field
+that cannot take its value -- disabled, read-only, an option the select does not have, a number
+field given text -- and the error names the field by position and ref, and says how many before it
+were filled.
 
 ### Clipboards
 
