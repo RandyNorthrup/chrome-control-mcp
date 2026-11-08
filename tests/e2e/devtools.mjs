@@ -34,9 +34,12 @@ export async function targets(endpoint) {
   return response.json();
 }
 
-// This extension's pinned ID (the manifest key fixes it): Chrome lists its own component
-// extensions' workers beside it.
-const EXTENSION_ID = "iojehhmnaigcejfcpmilpclmeljhlkaa";
+// The ID the dedicated browser gave this extension (isolated_run.mjs derives it from the key the
+// loaded manifest names: the unpacked build's, or the store build's under --store-key). Chrome
+// lists its own component extensions' workers beside it.
+export const EXTENSION_ID =
+  process.env.CHROME_CONTROL_MCP_E2E_EXTENSION_ID ||
+  "iojehhmnaigcejfcpmilpclmeljhlkaa";
 
 // The extension's service worker target, or null while it is not running (a reload is under way).
 export async function extensionWorker(endpoint) {

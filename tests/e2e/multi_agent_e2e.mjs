@@ -167,7 +167,9 @@ async function main() {
         namedRow?.group_id !== alphaRow?.group_id &&
         namedRow?.group_id !== betaRow?.group_id,
       "an agent named in any script gets its own group under its whole name",
-      JSON.stringify(namedRow?.group),
+      // The whole row: a tab listed before its group was made has no group at all, and
+      // JSON.stringify(undefined) used to print nothing.
+      JSON.stringify(namedRow ?? null),
     );
 
     // -- A second server --------------------------------------------------------------

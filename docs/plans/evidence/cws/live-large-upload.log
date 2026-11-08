@@ -1,0 +1,7 @@
+PASS a 300 MiB file reaches a file input by ref, byte for byte
+PASS a 40 MiB file fills the input picker the page opened
+PASS a 40 MiB file drops onto a drop zone by ref
+PASS a showOpenFilePicker answer gives the same 40 MiB
+PASS a page that reloads mid-delivery is given nothing and says why; the next upload works
+PASS a file over the operator's cap is refused before any of it is sent
+PASS the worker is left holding no upload

@@ -289,6 +289,20 @@ int runMcpProcess(int argc, char *const *argv) {
   // instant), the browser tools stay listed and each call tries the start
   // again -- the owner may have been a short-lived listing that has since
   // exited -- so a session never has to be restarted to get its browser back.
+  // A registration that names this executable but was written by an older
+  // release is brought up to date before Chrome next reads it. An update
+  // applied by a 1.12 server ran 1.12's code, which lists only the unpacked
+  // extension's origin, and Chrome would refuse the Chrome Web Store build
+  // until something rewrote it. One file read when it is current; a
+  // registration naming another copy is left alone.
+  {
+    chrome_control_mcp::BrowserExtensionInstaller installer;
+    if (installer.refreshOwnRegistration()) {
+      std::cerr << "chrome-control-mcp: brought this server's native-host "
+                   "registration up to date\n";
+    }
+  }
+
   chrome_control_mcp::BrowserControl browser;
   QString browser_error;
   if (!browser.start(&browser_error)) {

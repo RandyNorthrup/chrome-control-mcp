@@ -1,0 +1,15 @@
+== baseline: test_browser_extension_tabs exit=0 ℹ pass 30 ℹ fail 0
+== drill group-settle-new-tab: browser/extension/background.js
+   mutation: the new-tab reply no longer waits for the queued group sync
+   planted: test_browser_extension_tabs exit=1
+   ✖ a new tab is in its agent's named group when browser_new_tab replies (357.0882ms)
+   ✖ failing tests:
+   restored byte for byte
+   restored: test_browser_extension_tabs exit=0 ℹ pass 30 ℹ fail 0
+== drill group-settle-list-tabs: browser/extension/background.js
+   mutation: the list-tabs reply no longer waits for the queued group sync
+   planted: test_browser_extension_tabs exit=1
+   ✖ browser_tabs lists a just-held tab in its named group (352.0937ms)
+   ✖ failing tests:
+   restored byte for byte
+   restored: test_browser_extension_tabs exit=0 ℹ pass 30 ℹ fail 0

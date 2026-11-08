@@ -379,6 +379,66 @@ test("an agent named in any script keeps its own group and its whole name", asyn
   assert.equal(b.worker.presenceLook(tabB.id).label, "AI · 研究");
 });
 
+// A browser whose tabGroups.update lands a while after it is called, as Chrome's does: long enough
+// that a reply which does not wait for it goes out first.
+const LABEL_DELAY_MS = 100;
+async function slowLabellingBrowser() {
+  let groups = null;
+  const b = await attachedBrowser("100", {
+    overrides: {
+      "tabGroups.update": (id, props) =>
+        new Promise((resolve) => {
+          setTimeout(() => {
+            Object.assign(groups.get(id), props);
+            resolve({ ...groups.get(id) });
+          }, LABEL_DELAY_MS);
+        }),
+    },
+  });
+  groups = b.groups;
+  return b;
+}
+
+test("a new tab is in its agent's named group when browser_new_tab replies", async () => {
+  // browser_new_tab used to reply once the page loaded, which a local page does in milliseconds,
+  // and an immediate browser_tabs then listed the tab outside its group or under no name (a live
+  // multi-agent run, 2026-11-07). What the strip shows is read the moment the reply is posted.
+  const b = await slowLabellingBrowser();
+  let atReply = null;
+  const push = b.port.posted.push.bind(b.port.posted);
+  b.port.posted.push = (frame) => {
+    if (frame && frame.cmd === "newTab" && frame.payload) {
+      const tab = b.tabs.get(frame.payload.tab_id);
+      const group = tab ? b.groups.get(tab.groupId) : undefined;
+      atReply = group ? group.title : null;
+    }
+    return push(frame);
+  };
+
+  const opened = await command(b.port, "newTab", { agent: "研究" });
+  assert.equal(opened.payload.ok, true, JSON.stringify(opened));
+  assert.equal(
+    atReply,
+    "AI · 研究",
+    "grouped and named before the reply went out",
+  );
+});
+
+test("browser_tabs lists a just-held tab in its named group", async () => {
+  // Any path that holds a tab queues its grouping; a listing asked for at once waits for it.
+  const b = await slowLabellingBrowser();
+  const tab = b.addTab({});
+  b.worker.holdTab(
+    b.session,
+    b.copy(tab),
+    "opened",
+    b.worker.agentArg({ agent: "研究" }),
+  );
+  const listing = await command(b.port, "listTabs");
+  const row = listing.payload.tabs.find((t) => t.tab_id === tab.id);
+  assert.equal(row.group, "AI · 研究", JSON.stringify(row));
+});
+
 test("a name is still bounded for the tab strip: no control characters, 24 characters at most", async () => {
   const { worker } = await attachedBrowser();
   assert.equal(worker.agentArg({ agent: "a\u202Eb\u0007c\u2028d" }), "abcd");

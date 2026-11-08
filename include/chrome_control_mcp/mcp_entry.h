@@ -2,15 +2,17 @@
 // SPDX-License-Identifier: MIT
 #pragma once
 
-#include "chrome_control_mcp/browser_extension_installer.h" // kBrowserExtensionId
+#include "chrome_control_mcp/browser_extension_installer.h" // kAcceptedExtensionIds
 
+#include <algorithm>
 #include <cstring>
 #include <string>
 
 namespace chrome_control_mcp {
 
-// True only when @p arg is the native-messaging origin of OUR pinned extension
-// (chrome-extension://<our-id>[/...]), not merely any chrome-extension://
+// True only when @p arg is the native-messaging origin of one of OUR extension
+// builds -- the unpacked one or the Chrome Web Store one
+// (chrome-extension://<id>[/...]) -- not merely any chrome-extension://
 // origin. Chrome's allowed_origins already restricts which extension can launch
 // the host, but validating the id here is defense in depth so a stray/spoofed
 // chrome-extension:// argument from another extension cannot drive this process
@@ -20,14 +22,17 @@ namespace chrome_control_mcp {
   if (arg == nullptr) {
     return false;
   }
-  static const std::string prefix =
-      std::string("chrome-extension://") + kBrowserExtensionId;
-  if (std::strncmp(arg, prefix.c_str(), prefix.size()) != 0) {
-    return false;
-  }
-  const char after = arg[prefix.size()];
-  return after == '\0' ||
-         after == '/'; // the exact 32-char id, then end-of-arg or a path
+  return std::any_of(
+      kAcceptedExtensionIds.begin(), kAcceptedExtensionIds.end(),
+      [arg](const char *id) {
+        const std::string prefix = std::string("chrome-extension://") + id;
+        if (std::strncmp(arg, prefix.c_str(), prefix.size()) != 0) {
+          return false;
+        }
+        // The exact 32-char id, then end-of-arg or a path.
+        const char after = arg[prefix.size()];
+        return after == '\0' || after == '/';
+      });
 }
 
 // The MCP server and Chrome browser-control host share one executable. main()

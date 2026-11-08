@@ -16,6 +16,7 @@
 // runtime directory alone keeps the two browsers on their own servers.
 
 import { execFileSync, spawn } from "node:child_process";
+import crypto from "node:crypto";
 import fs from "node:fs";
 import {
   cp,
@@ -29,9 +30,32 @@ import {
 import os from "node:os";
 import path from "node:path";
 import readline from "node:readline";
+import { fileURLToPath } from "node:url";
 
 const sleep = (milliseconds) =>
   new Promise((resolve) => setTimeout(resolve, milliseconds));
+
+// The Chrome Web Store's public key for this extension: the store signs its build with the
+// matching private key, so an unpacked copy whose manifest carries this key has the store build's
+// ID (mbkacllnbffbadcajpkkpelifdkfgcbd) -- which is how a live run meets the store build.
+const STORE_PUBLIC_KEY_FILE = path.resolve(
+  path.dirname(fileURLToPath(import.meta.url)),
+  "../../browser/store-public-key.txt",
+);
+
+// The ID Chrome gives an extension whose manifest names @p key (base64 DER): the first 128 bits
+// of the key's SHA-256, as the letters a to p.
+export function extensionIdForKey(key) {
+  const digest = crypto
+    .createHash("sha256")
+    .update(Buffer.from(key, "base64"))
+    .digest();
+  let id = "";
+  for (const byte of digest.subarray(0, 16)) {
+    id += String.fromCharCode(97 + (byte >> 4), 97 + (byte & 0x0f));
+  }
+  return id;
+}
 
 // Chrome stores a zoom level, not a factor: level = log(factor) / log(1.2), the step its zoom
 // controls take (components/zoom: blink::ZoomFactorToZoomLevel).
@@ -126,7 +150,8 @@ function assertWindowsHostRegistration(executable) {
 // manifest said another version (to meet one older or newer than the installed copy without
 // building one); `stripPermissions` leaves those permissions out of the copy (to meet an
 // extension older than a release that added them). A copy keeps the manifest's key, so it keeps the
-// ID the native host allows. `headed` runs a real window -- under Xvfb on Linux -- which a second
+// ID the native host allows -- unless `storeKey` gives it the Chrome Web Store's key, so the
+// browser runs it under the store build's ID, the other one the native host allows. `headed` runs a real window -- under Xvfb on Linux -- which a second
 // profile needs: `secondProfile` opens that profile in the same Chrome once it has started, and
 // headless Chrome does not open one at all.
 // Returns the environment the MCP server must run with to pair with it, and launch():
@@ -143,6 +168,7 @@ export async function prepareIsolatedChrome({
   extension: extensionDir = null,
   extensionVersion = null,
   stripPermissions = [],
+  storeKey = false,
   headed = false,
   secondProfile = null,
 }) {
@@ -213,7 +239,7 @@ export async function prepareIsolatedChrome({
   let extension = extensionDir
     ? path.resolve(extensionDir)
     : path.join(path.dirname(executable), "extension");
-  if (extensionVersion || stripPermissions.length > 0) {
+  if (extensionVersion || stripPermissions.length > 0 || storeKey) {
     const staged = path.join(root, "extension");
     await cp(extension, staged, { recursive: true });
     const manifestPath = path.join(staged, "manifest.json");
@@ -224,9 +250,17 @@ export async function prepareIsolatedChrome({
     manifest.permissions = (manifest.permissions || []).filter(
       (permission) => !stripPermissions.includes(permission),
     );
+    if (storeKey) {
+      manifest.key = (await readFile(STORE_PUBLIC_KEY_FILE, "utf8")).trim();
+    }
     await writeFile(manifestPath, JSON.stringify(manifest, null, 2));
     extension = staged;
   }
+  // The ID this browser will give the extension, from the key its manifest names.
+  const extensionId = extensionIdForKey(
+    JSON.parse(await readFile(path.join(extension, "manifest.json"), "utf8"))
+      .key,
+  );
   let browser = null;
   let stderr = "";
   let exited = false;
@@ -331,6 +365,7 @@ export async function prepareIsolatedChrome({
         chrome,
         profile,
         extension,
+        extensionId,
         env,
         name: secondProfile,
         extraArgs,
@@ -338,7 +373,15 @@ export async function prepareIsolatedChrome({
     }
     return devtools;
   };
-  return { env, profile, extension, launch, close, stderr: () => stderr };
+  return {
+    env,
+    profile,
+    extension,
+    extensionId,
+    launch,
+    close,
+    stderr: () => stderr,
+  };
 }
 
 // Open profile @p name in the running Chrome: a second launch with the same user data directory
@@ -347,7 +390,7 @@ export async function prepareIsolatedChrome({
 // extension's ID per profile -- and its relay reaches the same server.
 async function openSecondProfile(
   devtools,
-  { chrome, profile, extension, env, name, extraArgs },
+  { chrome, profile, extension, extensionId, env, name, extraArgs },
 ) {
   const workers = async () => {
     const list = await (
@@ -356,8 +399,7 @@ async function openSecondProfile(
     return list.filter(
       (entry) =>
         entry.type === "service_worker" &&
-        entry.url ===
-          "chrome-extension://iojehhmnaigcejfcpmilpclmeljhlkaa/background.js",
+        entry.url === `chrome-extension://${extensionId}/background.js`,
     ).length;
   };
   const launcher = spawn(

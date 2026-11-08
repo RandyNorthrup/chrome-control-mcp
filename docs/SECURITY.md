@@ -229,19 +229,29 @@ Build:
 
 ## Browser identity
 
-- Extension ID: `iojehhmnaigcejfcpmilpclmeljhlkaa`
+- Extension IDs: `iojehhmnaigcejfcpmilpclmeljhlkaa` (unpacked) and
+  `mbkacllnbffbadcajpkkpelifdkfgcbd` (Chrome Web Store)
 - Native host: `com.chromecontrolmcp.browser`
 - Windows pipe prefix: `ChromeControlMCP_BrowserBridge`
 - Unix runtime namespace: `chrome-control-mcp-<uid>`
 
 The manifest's public identity field pins the unpacked extension ID. It is not secret and cannot
-sign a package. The project creates, stores, and requires no private extension key.
+sign a package. The project creates, stores, and requires no private extension key: the Chrome Web
+Store signs its build with a key of its own, which fixes that build's ID, and the public half is in
+`browser/store-public-key.txt`. The native-host registration's `allowed_origins` lists exactly these
+two IDs, and the relay checks the origin Chrome passes against the same two before it does
+anything; a registration that lists anything else is rewritten.
+
+Publishing to the store uses a Google Cloud service account whose key is only the repository
+secret `CWS_SERVICE_ACCOUNT_JSON`, read by the release workflow's store job and nowhere else
+([CHROME_WEB_STORE.md](CHROME_WEB_STORE.md)). The extension sends nothing to the developer; see
+[PRIVACY.md](PRIVACY.md).
 
 ## What setup writes
 
 Preparation writes only the current-user native-host registration and the generated host manifest.
-Uninstall removes only this project's registration and manifest. Loading and removing the unpacked
-extension remain explicit user actions in `chrome://extensions`.
+Uninstall removes only this project's registration and manifest. Adding the extension -- unpacked,
+or from the Chrome Web Store -- and removing it remain explicit user actions in Chrome.
 
 ## Reporting vulnerabilities
 

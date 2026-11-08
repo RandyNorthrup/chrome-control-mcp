@@ -19,6 +19,7 @@
 #include <windows.h>
 #endif
 
+#include <algorithm>
 #include <memory>
 #include <string>
 #include <type_traits>
@@ -141,6 +142,17 @@ QString hostManifestPath(const ExtensionInstallConfig &config) {
 #endif
 }
 
+// The native-messaging origins Chrome may launch the host for: the unpacked
+// build and the Chrome Web Store build, and no other extension.
+QJsonArray acceptedOrigins() {
+  QJsonArray origins;
+  for (const char *id : kAcceptedExtensionIds) {
+    origins.append(QStringLiteral("chrome-extension://") +
+                   QString::fromLatin1(id) + QStringLiteral("/"));
+  }
+  return origins;
+}
+
 QByteArray hostManifestBytes(const ExtensionInstallConfig &config) {
   const QJsonObject manifest{
       {QStringLiteral("name"), QString::fromLatin1(kNativeHostName)},
@@ -149,10 +161,7 @@ QByteArray hostManifestBytes(const ExtensionInstallConfig &config) {
            "Chrome Control MCP browser-control native messaging host")},
       {QStringLiteral("path"), QDir::toNativeSeparators(config.host_exe_path)},
       {QStringLiteral("type"), QStringLiteral("stdio")},
-      {QStringLiteral("allowed_origins"),
-       QJsonArray{QStringLiteral("chrome-extension://") +
-                  QString::fromLatin1(kBrowserExtensionId) +
-                  QStringLiteral("/")}},
+      {QStringLiteral("allowed_origins"), acceptedOrigins()},
   };
   return QJsonDocument(manifest).toJson(QJsonDocument::Indented);
 }
@@ -184,6 +193,16 @@ bool writeFileAtomic(const QString &path, const QByteArray &bytes,
   return true;
 }
 
+// Whether two origin lists hold the same origins, in any order.
+bool sameOrigins(const QJsonArray &listed, const QJsonArray &expected) {
+  if (listed.size() != expected.size()) {
+    return false;
+  }
+  return std::all_of(
+      expected.begin(), expected.end(),
+      [&listed](const QJsonValue &origin) { return listed.contains(origin); });
+}
+
 bool manifestMatches(const QString &path,
                      const ExtensionInstallConfig &config) {
   QFile file(path);
@@ -197,9 +216,6 @@ bool manifestMatches(const QString &path,
     return false;
   }
   const QJsonObject object = document.object();
-  const QString expectedOrigin = QStringLiteral("chrome-extension://") +
-                                 QString::fromLatin1(kBrowserExtensionId) +
-                                 QStringLiteral("/");
   const QString manifestExe =
       QDir::cleanPath(object.value(QStringLiteral("path")).toString());
   const QString expectedExe = QDir::cleanPath(config.host_exe_path);
@@ -213,9 +229,11 @@ bool manifestMatches(const QString &path,
          object.value(QStringLiteral("type")).toString() ==
              QStringLiteral("stdio") &&
          manifestExe.compare(expectedExe, pathCase) == 0 &&
-         object.value(QStringLiteral("allowed_origins"))
-             .toArray()
-             .contains(expectedOrigin);
+         // Exactly the accepted origins: a registration from before the store
+         // build (one origin), or one naming another extension, is not
+         // current, so the next install rewrites it.
+         sameOrigins(object.value(QStringLiteral("allowed_origins")).toArray(),
+                     acceptedOrigins());
 }
 
 #ifdef Q_OS_WIN
@@ -422,10 +440,10 @@ ExtensionInstallResult BrowserExtensionInstaller::install() {
   // The load itself is the user's to do, and saying so plainly here is
   // load-bearing: an assistant that reads "load unpacked" as a task of its own
   // goes looking for a way to automate it, and there is none to find. Chrome
-  // removed --load-extension from branded builds in 137, policy installation
-  // wants a Web Store listing this project does not have, and clicking the
-  // browser's windows is not an install path. The honest answer is the folder
-  // and the clicks.
+  // removed --load-extension from branded builds in 137, an install from the
+  // Chrome Web Store is the user's own click too, and clicking the browser's
+  // windows is not an install path. The honest answer is the folder and the
+  // clicks, or the store listing.
   return {true, QStringLiteral("Browser extension bridge prepared"),
           QStringLiteral(
               "Native host registered. If the extension is NOT yet loaded in "
@@ -433,7 +451,11 @@ ExtensionInstallResult BrowserExtensionInstaller::install() {
               "keyboard: open chrome://extensions, turn on Developer mode, "
               "choose Load unpacked, and select %1. Chrome offers no "
               "programmatic way to load an unpacked extension, so do not try "
-              "to automate this step -- ask the user to do it. If it is "
+              "to automate this step -- ask the user to do it. The user can "
+              "instead add it from the Chrome Web Store, "
+              "https://chromewebstore.google.com/detail/"
+              "mbkacllnbffbadcajpkkpelifdkfgcbd (Google reviews each "
+              "version first), but not both in one profile. If it is "
               "already loaded (browser_extension_status reports the bridge "
               "attached), nothing further is needed here; reload it at "
               "chrome://extensions only to pick up a new version.")
@@ -493,26 +515,31 @@ ExtensionInstallState BrowserExtensionInstaller::state() const {
   return ExtensionInstallState::Partial;
 }
 
-QString nativeHostRegistrationNote(const QString &registered_exe,
-                                   const QString &running_exe) {
-  if (registered_exe.isEmpty()) {
-    return QString();
-  }
+namespace {
+
+// Whether two executable paths name the same file. Compare the files, not
+// their spellings: the relay compares resolved images, and a managed install
+// registers the stable `current` link while the running server reports the
+// version directory it resolves to. A path that no longer exists has nothing
+// to resolve to, and is compared as written.
+bool sameExecutable(const QString &first, const QString &second) {
 #ifdef Q_OS_WIN
   constexpr Qt::CaseSensitivity pathCase = Qt::CaseInsensitive;
 #else
   constexpr Qt::CaseSensitivity pathCase = Qt::CaseSensitive;
 #endif
-  // Compare the files, not their spellings: the relay this note explains
-  // compares resolved images, and a managed install registers the stable
-  // `current` link while the running server reports the version directory it
-  // resolves to. A path that no longer exists has nothing to resolve to, and
-  // is compared as written.
   const auto resolved = [](const QString &path) {
     const QString file = resolvedFilePath(path);
     return file.isEmpty() ? QDir::cleanPath(path) : file;
   };
-  if (resolved(registered_exe).compare(resolved(running_exe), pathCase) == 0) {
+  return resolved(first).compare(resolved(second), pathCase) == 0;
+}
+
+} // namespace
+
+QString nativeHostRegistrationNote(const QString &registered_exe,
+                                   const QString &running_exe) {
+  if (registered_exe.isEmpty() || sameExecutable(registered_exe, running_exe)) {
     return QString();
   }
   const QString registered = QDir::cleanPath(registered_exe);
@@ -526,6 +553,24 @@ QString nativeHostRegistrationNote(const QString &registered_exe,
              "re-register it.")
       .arg(QDir::toNativeSeparators(registered),
            QDir::toNativeSeparators(running));
+}
+
+bool BrowserExtensionInstaller::refreshOwnRegistration() {
+  // Only a registration that is there and is not current (2): nothing to do
+  // for a current one, nothing to create for a missing one, and an unreadable
+  // one is not this call's to judge.
+  if (nativeHostPresence(config_) != 2) {
+    return false;
+  }
+  // Another copy's registration is that copy's: rewriting it would point
+  // Chrome at this one, which is browser_extension_install's decision to
+  // make, not a side effect of starting.
+  const QString registered = registeredHostExecutable();
+  if (registered.isEmpty() ||
+      !sameExecutable(registered, config_.host_exe_path)) {
+    return false;
+  }
+  return install().ok;
 }
 
 QString BrowserExtensionInstaller::registeredHostExecutable() const {

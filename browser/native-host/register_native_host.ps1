@@ -22,6 +22,11 @@ param(
     [Parameter(ParameterSetName = "Register")]
     [string]$ExtensionId = "iojehhmnaigcejfcpmilpclmeljhlkaa",
 
+    # The same extension installed from the Chrome Web Store has an id of its own,
+    # fixed by the store; both may launch the host.
+    [Parameter(ParameterSetName = "Register")]
+    [string]$StoreExtensionId = "mbkacllnbffbadcajpkkpelifdkfgcbd",
+
     # Validation runs only at binding time, so an omitted -ExePath still takes the
     # documented Debug default below while an explicitly-passed empty value fails
     # closed instead of being silently redirected to that default.
@@ -107,9 +112,12 @@ $id = $id.TrimEnd("/")
 # -cnotmatch, not -notmatch: PowerShell's default matching is case-insensitive, which
 # would admit an upper-case id and write a non-canonical origin into the manifest. The
 # value that is validated has to be the exact value that is written.
-if ($id -cnotmatch "^[a-p]{32}$") {
-    throw "Extension id '$id' does not look like a 32-char lower-case Chrome extension id."
+foreach ($candidate in @($id, $StoreExtensionId)) {
+    if ($candidate -cnotmatch "^[a-p]{32}$") {
+        throw "Extension id '$candidate' does not look like a 32-char lower-case Chrome extension id."
+    }
 }
+$origins = @(@("chrome-extension://$id/", "chrome-extension://$StoreExtensionId/") | Select-Object -Unique)
 
 # Write the manifest with the concrete path + allowed origin. Native messaging
 # manifests require forward or escaped-backslash paths; ConvertTo-Json escapes them.
@@ -118,7 +126,7 @@ $manifest = [ordered]@{
     description = "Chrome Control MCP browser-control native messaging host"
     path = $ExePath
     type = "stdio"
-    allowed_origins = @("chrome-extension://$id/")
+    allowed_origins = $origins
 }
 # Stage to a sibling and rename over the target only after the staged bytes parse:
 # an interrupted or failed write must leave the previous good manifest intact rather
@@ -154,7 +162,7 @@ Set-ItemProperty -Path $RegKey -Name "(Default)" -Value $ManifestPath
 # resolved "(Default)" to the key's default value rather than a literally-named one.
 $written = Get-Content -Raw -LiteralPath $ManifestPath | ConvertFrom-Json
 $writtenOrigins = @($written.allowed_origins) -join ","
-if ($written.path -ne $ExePath -or $writtenOrigins -ne "chrome-extension://$id/") {
+if ($written.path -ne $ExePath -or $writtenOrigins -ne ($origins -join ",")) {
     throw "Host manifest read-back mismatch in ${ManifestPath}: path='$($written.path)' allowed_origins='$writtenOrigins'"
 }
 if ((Get-ItemProperty -LiteralPath $RegKey).'(default)' -ne $ManifestPath) {

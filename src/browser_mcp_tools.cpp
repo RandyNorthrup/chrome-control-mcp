@@ -78,7 +78,11 @@ ToolResult browserExtensionStatus(const QJsonObject &running) {
       {QStringLiteral("extension_present"), installer.extensionPresent()},
       {QStringLiteral("extension_path"), installer.config().extension_path},
       {QStringLiteral("extension_id"),
-       QString::fromLatin1(kBrowserExtensionId)}};
+       QString::fromLatin1(kBrowserExtensionId)},
+      // The same extension installed from the Chrome Web Store has an id of
+      // its own; the server answers to both.
+      {QStringLiteral("store_extension_id"),
+       QString::fromLatin1(kStoreExtensionId)}};
   // What is on disk says nothing about what Chrome is running: Chrome keeps
   // the copy it loaded until the extension is reloaded.
   if (!running.isEmpty()) {

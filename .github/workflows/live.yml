@@ -182,6 +182,18 @@ jobs:
           ${{ matrix.chrome-args }} tests/e2e/extension_version_e2e.mjs
           | tee extension-version-current.json
 
+      # The same case with the extension under the Chrome Web Store's public key: it runs with the
+      # store build's ID (mbkacllnbffbadcajpkkpelifdkfgcbd), the native host's registration lets it
+      # in beside the unpacked build, and a tab, a find and a click work end to end through it.
+      - name: Extension version E2E (Chrome Web Store build)
+        if: ${{ !cancelled() && steps.chrome.outcome == 'success' }}
+        shell: bash
+        run: >-
+          node tests/e2e/isolated_run.mjs --chrome="${{ steps.chrome.outputs.path }}"
+          --executable="${{ matrix.executable }}" --store-key
+          ${{ matrix.chrome-args }} tests/e2e/extension_version_e2e.mjs
+          | tee extension-version-store.json
+
       - name: Extension version E2E (older extension reloads itself)
         if: ${{ !cancelled() && steps.chrome.outcome == 'success' }}
         shell: bash

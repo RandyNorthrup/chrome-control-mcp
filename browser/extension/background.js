@@ -2517,6 +2517,27 @@ function movingWindows(tabId) {
 // create one each, leaving the first on the user's tab strip with nothing tracking it.
 let markingQueue = Promise.resolve();
 
+// How long a reply waits for the queued markings to land. Grouping and labelling a tab are a few
+// Chrome calls that take milliseconds; the bound only keeps a call Chrome never answers from
+// holding a reply.
+const GROUPS_SETTLE_MS = 2000;
+
+// Resolves once every marking queued so far has run, or after GROUPS_SETTLE_MS. A reply that
+// reports or lists tabs waits for it: holding a tab queues its grouping, and without the wait
+// browser_new_tab could reply, and an immediate browser_tabs list the tab, before Chrome had put it
+// in its agent's group or named the group -- on a page that loads fast, as a local one does.
+async function groupsSettled() {
+  let timer = null;
+  const bound = new Promise((resolve) => {
+    timer = setTimeout(resolve, GROUPS_SETTLE_MS);
+  });
+  try {
+    await Promise.race([markingQueue, bound]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 function queueGroupSync(session) {
   if (session.groupSyncQueued) {
     return markingQueue;
@@ -10594,6 +10615,8 @@ function capField(entry, key, raw, cap) {
 }
 
 async function handleListTabs(session) {
+  // Groups a just-held tab is still being put in would list it ungrouped or under no name.
+  await groupsSettled();
   const tabs = (
     await chrome.tabs.query({ windowId: await sessionWindow(session) })
   ).sort((a, b) => a.index - b.index);
@@ -10906,6 +10929,9 @@ async function handleNewTab(session, args) {
     // of sitting out the navigation timeout and then denying it loaded.
     loaded = await waitForComplete(tab.id, null);
   }
+  // The tab is in its agent's group, under its name, before the reply says it is open: grouping
+  // can also move it, so its index is read after.
+  await groupsSettled();
   const now = await chrome.tabs.get(tab.id);
   return {
     ok: true,

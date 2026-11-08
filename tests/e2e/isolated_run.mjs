@@ -8,8 +8,10 @@
 // Usage: node tests/e2e/isolated_run.mjs --chrome=<Chrome for Testing binary>
 //          [--executable=<chrome_control_mcp>] [--scale=1] [--window=1280x800] [--zoom=100]
 //          [--chrome-arg=<flag>]... [--extension=<folder>] [--extension-version=<x.y.z>]
-//          [--extension-strip-permissions=<a,b>] [--headed] [--second-profile=<name>]
-//          <suite.mjs>
+//          [--extension-strip-permissions=<a,b>] [--store-key] [--headed]
+//          [--second-profile=<name>] <suite.mjs>
+// --store-key loads the extension under the Chrome Web Store's public key, so it runs with the
+// store build's ID.
 // --headed needs a display: on Linux, run it under xvfb-run.
 // The suite's own report is passed through on stdout, and its exit code is this runner's.
 
@@ -55,6 +57,7 @@ const browser = await prepareIsolatedChrome({
   stripPermissions: (option("extension-strip-permissions") || "")
     .split(",")
     .filter(Boolean),
+  storeKey: process.argv.includes("--store-key"),
   headed: process.argv.includes("--headed"),
   secondProfile: option("second-profile") || null,
 });
@@ -69,6 +72,8 @@ try {
       CHROME_USER_DATA_DIR: browser.profile,
       // The extension folder this browser loads, for a suite that changes its files on disk.
       CHROME_CONTROL_MCP_E2E_EXTENSION: browser.extension,
+      // And the ID Chrome gives it: the unpacked build's, or the store build's under --store-key.
+      CHROME_CONTROL_MCP_E2E_EXTENSION_ID: browser.extensionId,
       CHROME_CONTROL_MCP_E2E_SECOND_PROFILE: option("second-profile") || "",
     },
     stdio: ["ignore", "inherit", "inherit"],

@@ -310,3 +310,32 @@ jobs:
           # rest on the previous one -- and the version could not be republished to
           # fix it.
           npx vsce publish --pat "$VSCE_PAT" --packagePath ../release-assets/*.vsix
+
+  # The extension on the Chrome Web Store: the archives' extension folder without the manifest's
+  # key, uploaded to the item and submitted for review (docs/CHROME_WEB_STORE.md). It runs after
+  # the GitHub release, so a store refusal never holds back the archives; Google's own message is
+  # the job's error. Review can take days, and the store updates installed copies when it passes.
+  chrome-web-store:
+    name: Publish to Chrome Web Store
+    if: github.ref_type == 'tag'
+    needs: publish
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Build, upload and submit
+        env:
+          CWS_SERVICE_ACCOUNT_JSON: ${{ secrets.CWS_SERVICE_ACCOUNT_JSON }}
+        run: |
+          if [ -z "$CWS_SERVICE_ACCOUNT_JSON" ]; then
+            echo "::notice::CWS_SERVICE_ACCOUNT_JSON is not configured, so the Chrome Web
+              Store step was skipped. The GitHub release is published either way."
+            exit 0
+          fi
+          node scripts/store_package.mjs --version "${GITHUB_REF_NAME#v}" \
+            --out "$RUNNER_TEMP/chrome-control-mcp-store.zip"
+          node scripts/cws_publish.mjs --package "$RUNNER_TEMP/chrome-control-mcp-store.zip"

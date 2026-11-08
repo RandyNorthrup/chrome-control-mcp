@@ -4,13 +4,22 @@
 
 #include <QString>
 
+#include <array>
+
 namespace chrome_control_mcp {
 
 // The public manifest key in browser/extension/manifest.json deterministically
 // pins this id. It is public identity material, not a private signing key.
 inline constexpr char kBrowserExtensionId[] =
     "iojehhmnaigcejfcpmilpclmeljhlkaa";
-inline constexpr char kBrowserExtensionVersion[] = "1.12.0";
+// The Chrome Web Store build's id, fixed by the store at the item's first
+// upload (2026-11-07). The store signs that build with its own key, whose
+// public half (browser/store-public-key.txt) derives this id.
+inline constexpr char kStoreExtensionId[] = "mbkacllnbffbadcajpkkpelifdkfgcbd";
+// Every extension this server answers to: the unpacked build and the store's.
+inline constexpr std::array<const char *, 2> kAcceptedExtensionIds{
+    kBrowserExtensionId, kStoreExtensionId};
+inline constexpr char kBrowserExtensionVersion[] = "1.13.0";
 inline constexpr char kBrowserExtensionDirectoryName[] = "extension";
 inline constexpr char kNativeHostName[] = "com.chromecontrolmcp.browser";
 
@@ -75,6 +84,14 @@ public:
   /// starts refuses the bridge and no browser tool can work -- a state worth
   /// being able to report rather than leaving as "not attached".
   [[nodiscard]] QString registeredHostExecutable() const;
+
+  /// Rewrites a registration that names this executable but is not current --
+  /// one written before the Chrome Web Store build lists only the unpacked
+  /// build's origin -- and leaves alone a current one, a missing one, and one
+  /// naming another copy of the program. True when it rewrote one. A server
+  /// calls it as it starts: an update applied by an older server runs that
+  /// server's code, which writes the older registration.
+  bool refreshOwnRegistration();
 
   const ExtensionInstallConfig &config() const { return config_; }
 

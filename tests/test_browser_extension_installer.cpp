@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "chrome_control_mcp/browser_extension_installer.h"
+#include "chrome_control_mcp/mcp_entry.h"
 
 #include <QCoreApplication>
 #include <QCryptographicHash>
@@ -140,6 +141,31 @@ QString extensionIdFromPublicKey(const QByteArray &der) {
   return id;
 }
 
+// The two origins a current registration lists, in the order it lists them.
+QJsonArray expectedOrigins() {
+  return QJsonArray{
+      QStringLiteral("chrome-extension://") +
+          QString::fromLatin1(kBrowserExtensionId) + QStringLiteral("/"),
+      QStringLiteral("chrome-extension://") +
+          QString::fromLatin1(kStoreExtensionId) + QStringLiteral("/")};
+}
+
+// Overwrites a registered host manifest with @p origins, keeping every other
+// field as the installer writes it.
+bool writeRegistration(const QString &path, const QString &executable,
+                       const QJsonArray &origins) {
+  const QJsonObject manifest{
+      {QStringLiteral("name"), QString::fromLatin1(kNativeHostName)},
+      {QStringLiteral("description"),
+       QStringLiteral(
+           "Chrome Control MCP browser-control native messaging host")},
+      {QStringLiteral("path"), QDir::toNativeSeparators(executable)},
+      {QStringLiteral("type"), QStringLiteral("stdio")},
+      {QStringLiteral("allowed_origins"), origins},
+  };
+  return !makeFile(path, QJsonDocument(manifest).toJson()).isEmpty();
+}
+
 } // namespace
 
 class BrowserExtensionInstallerTests : public QObject {
@@ -151,6 +177,11 @@ private slots:
   void publicManifestIdentityIsPinned();
   void presenceRequiresBothExtensionFiles();
   void prepareRegistersValidatedNativeHost();
+  void storePublicKeyDerivesStoreId();
+  void singleOriginRegistrationIsRewritten();
+  void foreignOriginRegistrationIsNotCurrent();
+  void refreshRewritesOnlyItsOwnStaleRegistration();
+  void extensionOriginAcceptsBothBuilds();
   void missingExtensionFailsClosed();
   void uninstallRemovesOnlyOwnedRegistration();
   void registrationNote_namesBothExecutablesAndTheFix();
@@ -223,6 +254,11 @@ void BrowserExtensionInstallerTests::prepareRegistersValidatedNativeHost() {
   QCOMPARE(static_cast<int>(installer.state()),
            static_cast<int>(ExtensionInstallState::Prepared));
   QVERIFY(result.detail.contains(QDir::toNativeSeparators(extension)));
+  // The other way to add the extension: the user's own install from the
+  // Chrome Web Store, named by its listing.
+  QVERIFY(result.detail.contains(
+      QStringLiteral("https://chromewebstore.google.com/detail/")));
+  QVERIFY(result.detail.contains(QString::fromLatin1(kStoreExtensionId)));
 
   const QString registeredManifest = registeredManifestPath(installer);
   QVERIFY(QFileInfo(registeredManifest).isFile());
@@ -233,12 +269,175 @@ void BrowserExtensionInstallerTests::prepareRegistersValidatedNativeHost() {
            QString::fromLatin1(kNativeHostName));
   QCOMPARE(QDir::cleanPath(manifest.value(QStringLiteral("path")).toString()),
            QDir::cleanPath(executable));
-  QCOMPARE(manifest.value(QStringLiteral("allowed_origins"))
-               .toArray()
-               .first()
-               .toString(),
-           QStringLiteral("chrome-extension://") +
-               QString::fromLatin1(kBrowserExtensionId) + QStringLiteral("/"));
+  // Both builds of the extension may launch the host -- the unpacked one and
+  // the Chrome Web Store one -- and no other extension.
+  QCOMPARE(manifest.value(QStringLiteral("allowed_origins")).toArray(),
+           expectedOrigins());
+}
+
+void BrowserExtensionInstallerTests::storePublicKeyDerivesStoreId() {
+  // The store build's id is fixed by the key the store signs it with; the
+  // public half is kept in the repository so this pin can be checked.
+  const QString keyPath =
+      QDir(QStringLiteral(CHROME_CONTROL_MCP_REPO_ROOT))
+          .filePath(QStringLiteral("browser/store-public-key.txt"));
+  QFile file(keyPath);
+  QVERIFY2(file.open(QIODevice::ReadOnly), qPrintable(keyPath));
+  const QByteArray publicKey = QByteArray::fromBase64(file.readAll().trimmed());
+  QVERIFY(!publicKey.isEmpty());
+  QCOMPARE(extensionIdFromPublicKey(publicKey),
+           QString::fromLatin1(kStoreExtensionId));
+  QVERIFY(QString::fromLatin1(kStoreExtensionId) !=
+          QString::fromLatin1(kBrowserExtensionId));
+}
+
+void BrowserExtensionInstallerTests::singleOriginRegistrationIsRewritten() {
+  // A registration written before the store build names one origin. Chrome
+  // would refuse the store build's connection under it, so it must not count
+  // as current, and the next install must replace it with both.
+  QTemporaryDir dir;
+  QVERIFY(dir.isValid());
+  const QString extension = makeExtension(dir.path());
+  const QString executable =
+      makeFile(QDir(dir.path()).filePath(QStringLiteral("host.exe")), "exe");
+  BrowserExtensionInstaller installer(
+      configFor(dir.path(), extension, executable));
+  QVERIFY(installer.install().ok);
+  const QString registered = registeredManifestPath(installer);
+
+  QVERIFY(
+      writeRegistration(registered, executable,
+                        QJsonArray{QStringLiteral("chrome-extension://") +
+                                   QString::fromLatin1(kBrowserExtensionId) +
+                                   QStringLiteral("/")}));
+  QCOMPARE(static_cast<int>(installer.state()),
+           static_cast<int>(ExtensionInstallState::Partial));
+
+  const ExtensionInstallResult result = installer.install();
+  QVERIFY2(result.ok, qPrintable(result.detail));
+  QCOMPARE(static_cast<int>(installer.state()),
+           static_cast<int>(ExtensionInstallState::Prepared));
+  QFile file(registeredManifestPath(installer));
+  QVERIFY(file.open(QIODevice::ReadOnly));
+  QCOMPARE(QJsonDocument::fromJson(file.readAll())
+               .object()
+               .value(QStringLiteral("allowed_origins"))
+               .toArray(),
+           expectedOrigins());
+}
+
+void BrowserExtensionInstallerTests::foreignOriginRegistrationIsNotCurrent() {
+  // Exactly our two origins: one more, or one of ours swapped for another
+  // extension's, is a registration this server did not write.
+  QTemporaryDir dir;
+  QVERIFY(dir.isValid());
+  const QString extension = makeExtension(dir.path());
+  const QString executable =
+      makeFile(QDir(dir.path()).filePath(QStringLiteral("host.exe")), "exe");
+  BrowserExtensionInstaller installer(
+      configFor(dir.path(), extension, executable));
+  QVERIFY(installer.install().ok);
+  const QString registered = registeredManifestPath(installer);
+  const QString foreign =
+      QStringLiteral("chrome-extension://abcdefghijklmnopabcdefghijklmnop/");
+
+  QJsonArray extra = expectedOrigins();
+  extra.append(foreign);
+  QVERIFY(writeRegistration(registered, executable, extra));
+  QCOMPARE(static_cast<int>(installer.state()),
+           static_cast<int>(ExtensionInstallState::Partial));
+
+  QJsonArray swapped{expectedOrigins().first(), foreign};
+  QVERIFY(writeRegistration(registered, executable, swapped));
+  QCOMPARE(static_cast<int>(installer.state()),
+           static_cast<int>(ExtensionInstallState::Partial));
+
+  // The same two origins in the other order are still ours.
+  QJsonArray reversed{expectedOrigins().last(), expectedOrigins().first()};
+  QVERIFY(writeRegistration(registered, executable, reversed));
+  QCOMPARE(static_cast<int>(installer.state()),
+           static_cast<int>(ExtensionInstallState::Prepared));
+}
+
+void BrowserExtensionInstallerTests::
+    refreshRewritesOnlyItsOwnStaleRegistration() {
+  // What a server does as it starts. An update applied by a 1.12 server runs
+  // 1.12's code and leaves a one-origin registration naming the updated
+  // executable; the new server rewrites that -- and nothing else.
+  QTemporaryDir dir;
+  QVERIFY(dir.isValid());
+  const QString extension = makeExtension(dir.path());
+  const QString executable =
+      makeFile(QDir(dir.path()).filePath(QStringLiteral("host.exe")), "exe");
+  const QString other =
+      makeFile(QDir(dir.path()).filePath(QStringLiteral("other.exe")), "exe");
+  BrowserExtensionInstaller installer(
+      configFor(dir.path(), extension, executable));
+  const QJsonArray oneOrigin{expectedOrigins().first()};
+
+  // Nothing registered: nothing is created.
+  QVERIFY(!installer.refreshOwnRegistration());
+  QVERIFY(installer.registeredHostExecutable().isEmpty());
+
+  // A current registration is left as it is.
+  QVERIFY(installer.install().ok);
+  const QString registered = registeredManifestPath(installer);
+  QVERIFY(!installer.refreshOwnRegistration());
+
+  // Its own, from before the store build: rewritten with both origins.
+  QVERIFY(writeRegistration(registered, executable, oneOrigin));
+  QCOMPARE(static_cast<int>(installer.state()),
+           static_cast<int>(ExtensionInstallState::Partial));
+  QVERIFY(installer.refreshOwnRegistration());
+  QCOMPARE(static_cast<int>(installer.state()),
+           static_cast<int>(ExtensionInstallState::Prepared));
+  QFile rewritten(registeredManifestPath(installer));
+  QVERIFY(rewritten.open(QIODevice::ReadOnly));
+  QCOMPARE(QJsonDocument::fromJson(rewritten.readAll())
+               .object()
+               .value(QStringLiteral("allowed_origins"))
+               .toArray(),
+           expectedOrigins());
+  rewritten.close();
+
+  // Another copy's, however out of date: not this server's to change.
+  QVERIFY(writeRegistration(registered, other, oneOrigin));
+  QFile before(registered);
+  QVERIFY(before.open(QIODevice::ReadOnly));
+  const QByteArray foreignBytes = before.readAll();
+  before.close();
+  QVERIFY(!installer.refreshOwnRegistration());
+  QFile after(registered);
+  QVERIFY(after.open(QIODevice::ReadOnly));
+  QCOMPARE(after.readAll(), foreignBytes);
+  QCOMPARE(QDir::cleanPath(installer.registeredHostExecutable()),
+           QDir::cleanPath(other));
+}
+
+void BrowserExtensionInstallerTests::extensionOriginAcceptsBothBuilds() {
+  // The relay's own check on the origin Chrome passes the host: either build
+  // of this extension, exactly, and nothing that only starts like one.
+  for (const char *id : {kBrowserExtensionId, kStoreExtensionId}) {
+    const std::string origin = std::string("chrome-extension://") + id;
+    QVERIFY2(isOurExtensionOrigin(origin.c_str()), id);
+    QVERIFY2(isOurExtensionOrigin((origin + "/").c_str()), id);
+    QVERIFY2(isOurExtensionOrigin((origin + "/background.js").c_str()), id);
+    // A longer id that begins with ours is another extension.
+    QVERIFY2(!isOurExtensionOrigin((origin + "a").c_str()), id);
+    QVERIFY2(!isOurExtensionOrigin((origin + "a/").c_str()), id);
+  }
+  QVERIFY(!isOurExtensionOrigin(nullptr));
+  QVERIFY(!isOurExtensionOrigin(""));
+  QVERIFY(!isOurExtensionOrigin("chrome-extension://"));
+  QVERIFY(!isOurExtensionOrigin(
+      "chrome-extension://abcdefghijklmnopabcdefghijklmnop/"));
+  // Ours with its last letter cut is not ours.
+  const std::string truncated = std::string("chrome-extension://") +
+                                std::string(kStoreExtensionId).substr(0, 31) +
+                                "/";
+  QVERIFY(!isOurExtensionOrigin(truncated.c_str()));
+  QVERIFY(!isOurExtensionOrigin(
+      (std::string("https://") + kStoreExtensionId + "/").c_str()));
 }
 
 void BrowserExtensionInstallerTests::missingExtensionFailsClosed() {

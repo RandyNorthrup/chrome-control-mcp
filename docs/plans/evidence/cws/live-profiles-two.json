@@ -1,0 +1,63 @@
+{
+  "ok": true,
+  "case": "two-profiles",
+  "checks": [
+    {
+      "check": "one server serves both profiles' extensions at once",
+      "status": "passed"
+    },
+    {
+      "check": "signed out and unnamed, each profile has its own generated name",
+      "status": "passed"
+    },
+    {
+      "check": "each profile renamed on its options page is called so at once, with nothing reloaded",
+      "status": "passed"
+    },
+    {
+      "check": "a new tab opens in the profile named, matched without regard to case",
+      "status": "passed"
+    },
+    {
+      "check": "a profile that is not connected is refused, naming those that are",
+      "status": "passed"
+    },
+    {
+      "check": "with no profile named, a new tab opens in the profile whose window was last focused",
+      "status": "passed"
+    },
+    {
+      "check": "a call naming a tab goes to the profile holding it",
+      "status": "passed"
+    },
+    {
+      "check": "a tab the server has never seen is found in its profile",
+      "status": "passed"
+    },
+    {
+      "check": "browser_tabs lists every profile's tabs, each naming its profile",
+      "status": "passed"
+    },
+    {
+      "check": "browser_windows lists every profile's windows, each naming its profile",
+      "status": "passed"
+    },
+    {
+      "check": "browser_release without a tab lets go in every profile",
+      "status": "passed"
+    },
+    {
+      "check": "a profile leaving takes nothing of the other's: its refs still work",
+      "status": "passed"
+    },
+    {
+      "check": "browser_extension_status lists the profiles still connected, with their versions",
+      "status": "passed"
+    },
+    {
+      "check": "releasing at the end leaves nothing held",
+      "status": "passed"
+    }
+  ],
+  "error": null
+}

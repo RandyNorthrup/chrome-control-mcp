@@ -1,0 +1,45 @@
+name: Chrome Web Store check
+
+# Run by hand, never on a push. The service account's key exists only as the repository secret, so
+# this is where it is checked before a release relies on it: a dry run signs in and reads the
+# item's status (and that the item's public key is browser/store-public-key.txt); upload-only puts
+# this commit's store package on the item's draft without submitting it, so the listing in the
+# dashboard can be completed against the version about to ship.
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "dry-run reads the item's status; upload-only refreshes the draft's package"
+        type: choice
+        options:
+          - dry-run
+          - upload-only
+        default: dry-run
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: Chrome Web Store ${{ inputs.mode }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Sign in and check
+        env:
+          CWS_SERVICE_ACCOUNT_JSON: ${{ secrets.CWS_SERVICE_ACCOUNT_JSON }}
+          MODE: ${{ inputs.mode }}
+        run: |
+          if [ "$MODE" = "upload-only" ]; then
+            version="$(node -p "require('./browser/extension/manifest.json').version")"
+            node scripts/store_package.mjs --version "$version" --out "$RUNNER_TEMP/store.zip"
+            node scripts/cws_publish.mjs --package "$RUNNER_TEMP/store.zip" --upload-only
+          else
+            node scripts/cws_publish.mjs --dry-run
+          fi

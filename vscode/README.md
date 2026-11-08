@@ -44,10 +44,13 @@ Installing this extension does the first two steps for you:
    and opens it. Then in Chrome open `chrome://extensions`, turn on **Developer mode**, choose
    **Load unpacked**, and pick that folder.
 
+Or, instead of the folder, install [Chrome Control MCP from the Chrome Web Store](https://chromewebstore.google.com/detail/mbkacllnbffbadcajpkkpelifdkfgcbd):
+one click, and the store keeps it up to date. Google reviews every version first, so the store
+can trail a release by a few days. Use one or the other in a Chrome profile, not both.
+
 **That third step cannot be automated, and this extension does not pretend otherwise.** Branded
-Chrome ignores `--load-extension`, and installing by enterprise policy needs a Web Store listing
-and a signed package, which this project deliberately does not have. It is a one-time step:
-updates reuse the same folder.
+Chrome ignores `--load-extension`, and a store install is your own click too. It is a one-time
+step: updates reuse the same folder, and the store updates its copy itself.
 
 ## Using it with several agents
 

@@ -3,7 +3,7 @@
 ## Release target
 
 Ship standalone, MIT-licensed Chrome Control MCP from `main` with the same browser tool surface on
-Windows, Linux, and macOS. Current release: 1.12.0 (2026-11-07).
+Windows, Linux, and macOS. Current release: 1.13.0 (2026-11-07).
 
 ## Completed
 
@@ -69,6 +69,9 @@ Windows, Linux, and macOS. Current release: 1.12.0 (2026-11-07).
       under the 3.15 the Qt install step switched it to (1.8.1)
 - [x] Run `test_browser_extension_tabs.mjs` and `test_release_versions.mjs` in ctest, and so in CI
       (1.8.1)
+- [x] Publish the extension to the Chrome Web Store: the server answers to the store build's ID
+      and the unpacked one, each release uploads and submits the store package, and a privacy
+      policy (1.13.0; [docs/plans/chrome-web-store.md](docs/plans/chrome-web-store.md))
 - [x] Find elements without a whole snapshot (`browser_find`), scope, filter and cap snapshots,
       page reads, a smaller catalog, and a meter of what each tool costs (1.12.0;
       [docs/plans/lean-observations.md](docs/plans/lean-observations.md))

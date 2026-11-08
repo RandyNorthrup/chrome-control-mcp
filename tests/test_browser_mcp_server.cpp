@@ -115,6 +115,16 @@ void BrowserMcpServerTests::initializeCarriesClientAgnosticInstructions() {
        }) {
     QVERIFY2(instructions.contains(needed), qPrintable(needed));
   }
+  // The cheapest look first: find an element by name, see the layout in a
+  // screenshot, and take a whole snapshot only when the structure is needed.
+  const qsizetype find = instructions.indexOf(QStringLiteral("browser_find"));
+  const qsizetype screenshot =
+      instructions.indexOf(QStringLiteral("browser_screenshot"));
+  const qsizetype snapshot = instructions.indexOf(
+      QStringLiteral("a whole browser_snapshot only when"));
+  QVERIFY(find >= 0);
+  QVERIFY(screenshot > find);
+  QVERIFY(snapshot > screenshot);
   for (const QString &client : {
            QStringLiteral("Claude"),
            QStringLiteral("Codex"),
@@ -342,6 +352,10 @@ void BrowserMcpServerTests::installerStatusReturnsMcpContent() {
           .object();
   QCOMPARE(payload.value(QStringLiteral("extension_id")).toString(),
            QString::fromLatin1(kBrowserExtensionId));
+  // The Chrome Web Store build has an id of its own; both are reported so a
+  // user can tell which one is installed.
+  QCOMPARE(payload.value(QStringLiteral("store_extension_id")).toString(),
+           QString::fromLatin1(kStoreExtensionId));
   QVERIFY(payload.contains(QStringLiteral("state")));
 }
 

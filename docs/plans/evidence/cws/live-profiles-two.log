@@ -1,0 +1,14 @@
+PASS one server serves both profiles' extensions at once
+PASS signed out and unnamed, each profile has its own generated name
+PASS each profile renamed on its options page is called so at once, with nothing reloaded
+PASS a new tab opens in the profile named, matched without regard to case
+PASS a profile that is not connected is refused, naming those that are
+PASS with no profile named, a new tab opens in the profile whose window was last focused
+PASS a call naming a tab goes to the profile holding it
+PASS a tab the server has never seen is found in its profile
+PASS browser_tabs lists every profile's tabs, each naming its profile
+PASS browser_windows lists every profile's windows, each naming its profile
+PASS browser_release without a tab lets go in every profile
+PASS a profile leaving takes nothing of the other's: its refs still work
+PASS browser_extension_status lists the profiles still connected, with their versions
+PASS releasing at the end leaves nothing held

@@ -15,6 +15,9 @@
 //   --extension=<released folder>  an extension from before 1.9.0, which says no version: the agent
 //                                  is told it is older than 1.9.0, browser_clipboard says why it
 //                                  fails, and everything else works as it did
+//   --store-key                    the current case, with the extension under the Chrome Web
+//                                  Store's key: it runs with the store build's ID, and the
+//                                  native host lets it in exactly as it does the unpacked build
 //
 // The suite reads which from browser_extension_status, a native tool that never sends the extension
 // a command -- so it can watch the extension go quiet without disturbing that quiet.
@@ -27,7 +30,12 @@ import { existsSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { devtoolsEndpoint, evaluateIn, extensionWorker } from "./devtools.mjs";
+import {
+  EXTENSION_ID,
+  devtoolsEndpoint,
+  evaluateIn,
+  extensionWorker,
+} from "./devtools.mjs";
 import { startFixtureServer } from "./fixture_server.mjs";
 import { McpClient } from "./mcp_client.mjs";
 
@@ -41,6 +49,11 @@ const RELOAD_WITHIN_MS = 60000;
 // Long enough to see a second reload if there were going to be one: past a quiet period and a
 // reconnect-alarm tick.
 const NO_LOOP_WATCH_MS = 40000;
+// The two builds' IDs: the unpacked one the manifest key pins, and the Chrome Web Store's.
+const BUILD_IDS = {
+  iojehhmnaigcejfcpmilpclmeljhlkaa: "unpacked",
+  mbkacllnbffbadcajpkkpelifdkfgcbd: "store",
+};
 
 async function until(probe, deadlineMs, stepMs = 250) {
   const started = Date.now();
@@ -108,6 +121,8 @@ async function main() {
     const endpoint = await devtoolsEndpoint();
     const worker = await until(() => extensionWorker(endpoint), 15000);
     assert.ok(worker, "no extension service worker in the browser's targets");
+    const build = BUILD_IDS[EXTENSION_ID] ?? `unknown ID ${EXTENSION_ID}`;
+    process.stderr.write(`build: ${build} (${EXTENSION_ID})\n`);
 
     const serverVersion = attached.server_version;
     which =
@@ -139,7 +154,12 @@ async function main() {
     };
 
     if (which === "current") {
-      expected = 6;
+      expected = 9;
+      check(
+        build === "unpacked" || build === "store",
+        `the extension runs under the ${build} build's ID, and the native host let it in`,
+        EXTENSION_ID,
+      );
       check(
         attached.notice === "",
         "an extension of the server's own version is not mentioned",
@@ -156,6 +176,37 @@ async function main() {
       const tab = JSON.parse(first.text).tab_id;
       const snapshot = await server.tool("browser_snapshot", { tab_id: tab });
       check(!snapshot.isError, "and the bridge works", snapshot.text);
+      // Find an element and click it, end to end through this build.
+      await server.tool("browser_navigate", {
+        tab_id: tab,
+        url: `${fixture.origin}/find`,
+      });
+      await server.tool("browser_wait_for", { tab_id: tab, text: "sent: no" });
+      const found = await server.tool("browser_find", {
+        tab_id: tab,
+        text: "Send message",
+      });
+      const ref = /button "Send message" \[ref=(e\d+)\]/.exec(found.text)?.[1];
+      check(
+        !found.isError && Boolean(ref),
+        "browser_find finds the button",
+        found.text.slice(0, 400),
+      );
+      const clicked = ref
+        ? await server.tool("browser_click", { tab_id: tab, ref })
+        : null;
+      const sent =
+        clicked && !clicked.isError
+          ? await server.tool("browser_wait_for", {
+              tab_id: tab,
+              text: "sent: yes",
+            })
+          : null;
+      check(
+        Boolean(sent && !sent.isError),
+        "and clicking it reaches the page",
+        JSON.stringify({ click: clicked?.text, wait: sent?.text }),
+      );
       check(
         await stillSameWorker(15000),
         "the extension does not reload itself for its own version",

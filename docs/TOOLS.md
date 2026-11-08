@@ -437,16 +437,17 @@ the page's own compositor and dispatched back to it.
 - `browser_extension_uninstall`
 - `browser_extension_status`
 
-`browser_extension_install` registers the per-user native messaging host and returns the folder to
-load unpacked from `chrome://extensions`. Loading it is a one-time manual step for the person at
-the keyboard, and no tool here can do it: branded Chrome 137 and later ignore `--load-extension`,
-and policy installation requires a Web Store listing. An assistant should report the folder and the
-clicks rather than search for a way around it. `browser_extension_uninstall` removes that host
+`browser_extension_install` registers the per-user native messaging host -- for both builds of the
+extension, the unpacked one and the Chrome Web Store one -- and returns the folder to load unpacked
+from `chrome://extensions`. Adding the extension is a one-time manual step for the person at the
+keyboard, and no tool here can do it: branded Chrome 137 and later ignore `--load-extension`, and an
+install from the [Chrome Web Store](https://chromewebstore.google.com/detail/mbkacllnbffbadcajpkkpelifdkfgcbd) is the user's own click too. An assistant should
+report the folder and the clicks, or the store listing, rather than search for a way around it. `browser_extension_uninstall` removes that host
 registration; Chrome extension removal remains manual. No private key or packaged extension is
 used.
 
 `browser_extension_status` reports what is on disk -- the folder, the native-host registration, the
-pinned ID -- and, under `running`, what Chrome is actually running beside this server: `connected`,
+pinned ID (`extension_id`) and the Chrome Web Store build's (`store_extension_id`) -- and, under `running`, what Chrome is actually running beside this server: `connected`,
 `connections` (how many times a browser has attached), `server_version`, `extension_version` and
 `installed_version` (null when not said: older than 1.9.0), and `notice`, the same advice the first
 reply on a connection carries, empty when everything agrees -- all of the newest connection -- and

@@ -38,9 +38,9 @@
 
 | Version                                                                            | Released   | What changed                                                                                                                                                                                                                                                                             |
 | ---------------------------------------------------------------------------------- | ---------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [1.13.0](https://github.com/RandyNorthrup/chrome-control-mcp/releases/tag/v1.13.0) | 2026-11-07 | **The extension goes to the Chrome Web Store.** Add it to Chrome in one click, and the store keeps it up to date; the unpacked folder still works. The server answers to both builds, and an older registration is rewritten on its own.                                                 |
 | [1.12.0](https://github.com/RandyNorthrup/chrome-control-mcp/releases/tag/v1.12.0) | 2026-11-07 | **Find an element without reading the whole page.** `browser_find` returns just the matching elements, with refs, by text, phrase or pattern -- 1.3 KB where the page's snapshot is 38 KB -- and snapshots are a third the size, with options to scope, filter and cap them.             |
 | [1.11.1](https://github.com/RandyNorthrup/chrome-control-mcp/releases/tag/v1.11.1) | 2026-11-07 | **A managed install no longer reports a registration mismatch.** A browser tool called before the extension attached told agents to re-register a server that was already registered; the note compared two spellings of the same file. Also builds from source with GCC 16 and Qt 6.12. |
-| [1.11.0](https://github.com/RandyNorthrup/chrome-control-mcp/releases/tag/v1.11.0) | 2026-11-01 | **Large uploads.** `browser_upload` carries files up to 2 GiB -- a channel's long videos, not just documents -- straight from disk into the page a piece at a time. Set `CHROME_CONTROL_MCP_UPLOAD_MAX_MB` to change the bound.                                                          |
 
 Every release, with the day it shipped and what it changed, is in [CHANGELOG.md](CHANGELOG.md); each
 release page has its downloads. To hear about new ones, use **Watch → Custom → Releases** on this
@@ -146,18 +146,23 @@ registers it with VS Code's own MCP support, so there is no `mcp.json` to edit. 
 and the server's own updater land in the same install, and from 1.8.0 on an older copy never rolls a
 newer one back.
 
-### Load the extension into Chrome (once)
+### Add the extension to Chrome (once)
 
-Open `chrome://extensions`, turn on **Developer mode**, choose **Load unpacked**, and pick the
-extension folder -- the path `--install` printed, or run **Chrome Control MCP: Show the Chrome
-extension folder to load** in VS Code, which copies it for you.
+**From the Chrome Web Store:** install [Chrome Control MCP](https://chromewebstore.google.com/detail/mbkacllnbffbadcajpkkpelifdkfgcbd) in one click, and the
+store keeps it up to date. It needs the server at 1.13.0 or later. Google reviews every version
+before the store offers it, so the store can trail a release by a few days -- and the listing
+opens once its first review passes.
 
-This one step is manual by Chrome's design, not by omission: branded Chrome ignores
-`--load-extension`, and policy installs need a Web Store listing this project deliberately does not
-have. Updates reuse the same folder, so it is a one-time step, and from 1.9.0 on the extension
-reloads itself after an update once no agent is using it. Coming from an older version, press reload
-on it once (or restart Chrome). To let agents into another Chrome profile, load the same folder in
-that profile too.
+**Or load the folder unpacked:** open `chrome://extensions`, turn on **Developer mode**, choose
+**Load unpacked**, and pick the extension folder -- the path `--install` printed, or run **Chrome
+Control MCP: Show the Chrome extension folder to load** in VS Code, which copies it for you. This
+is manual by Chrome's design: branded Chrome ignores `--load-extension`. Updates reuse the same
+folder, so it is a one-time step, and from 1.9.0 on the extension reloads itself after an update
+once no agent is using it. Coming from an older version, press reload on it once (or restart
+Chrome).
+
+Use one or the other in a Chrome profile, not both: they are two extensions with two IDs, and the
+server answers to each. To let agents into another profile, add the extension there too.
 
 ## Connect any MCP client
 
@@ -340,13 +345,14 @@ update.
 
 ## Project identity
 
-| Item         | Value                              |
-| ------------ | ---------------------------------- |
-| MCP server   | `chrome-control-mcp`               |
-| Executable   | `chrome_control_mcp[.exe]`         |
-| Extension    | `Chrome Control MCP`               |
-| Extension ID | `iojehhmnaigcejfcpmilpclmeljhlkaa` |
-| Native host  | `com.chromecontrolmcp.browser`     |
+| Item                           | Value                              |
+| ------------------------------ | ---------------------------------- |
+| MCP server                     | `chrome-control-mcp`               |
+| Executable                     | `chrome_control_mcp[.exe]`         |
+| Extension                      | `Chrome Control MCP`               |
+| Extension ID, unpacked         | `iojehhmnaigcejfcpmilpclmeljhlkaa` |
+| Extension ID, Chrome Web Store | `mbkacllnbffbadcajpkkpelifdkfgcbd` |
+| Native host                    | `com.chromecontrolmcp.browser`     |
 
 To retire it, run `npm run extension -- uninstall` (or `browser_extension_uninstall`), then remove
 the extension at `chrome://extensions`.

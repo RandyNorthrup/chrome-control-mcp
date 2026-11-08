@@ -1,0 +1,106 @@
+{
+  "ok": true,
+  "checks": [
+    {
+      "check": "the server tells every client how to share the browser (MCP instructions)",
+      "status": "passed"
+    },
+    {
+      "check": "browser_new_tab answers with the tab_id to act on",
+      "status": "passed"
+    },
+    {
+      "check": "each snapshot names the tab it was taken of",
+      "status": "passed"
+    },
+    {
+      "check": "two tabs' refs never share a name",
+      "status": "passed"
+    },
+    {
+      "check": "a ref acts on the tab it came from, whatever tab is current",
+      "status": "passed"
+    },
+    {
+      "check": "each agent's tab sits in a group named for it",
+      "status": "passed"
+    },
+    {
+      "check": "and the two agents' groups are different groups",
+      "status": "passed"
+    },
+    {
+      "check": "an agent named in any script gets its own group under its whole name",
+      "status": "passed"
+    },
+    {
+      "check": "a server started later is attached in seconds",
+      "status": "passed"
+    },
+    {
+      "check": "one server cannot act on another server's tab",
+      "status": "passed"
+    },
+    {
+      "check": "and the first server's tab and refs are untouched by the second",
+      "status": "passed"
+    },
+    {
+      "check": "a file input the page created and clicked is filled without a ref",
+      "status": "passed"
+    },
+    {
+      "check": "the reply names the file, and says the page emptied its input",
+      "status": "passed"
+    },
+    {
+      "check": "the page received the file it asked for",
+      "status": "passed"
+    },
+    {
+      "check": "a drop zone with no input is given the file by drag and drop",
+      "status": "passed"
+    },
+    {
+      "check": "the drop zone received the file",
+      "status": "passed"
+    },
+    {
+      "check": "a File System Access picker is answered with the agent's file",
+      "status": "passed"
+    },
+    {
+      "check": "the page read the picked file's contents",
+      "status": "passed"
+    },
+    {
+      "check": "a popup the agent's click opens is the agent's tab",
+      "status": "passed"
+    },
+    {
+      "check": "and the user's tab stays in front",
+      "status": "passed"
+    },
+    {
+      "check": "releasing a tab closes the popup its click opened too",
+      "status": "passed"
+    },
+    {
+      "check": "releasing one agent's tab closes it",
+      "status": "passed"
+    },
+    {
+      "check": "and leaves the other agent's tab alone",
+      "status": "passed"
+    },
+    {
+      "check": "a server that exits has the tabs it opened closed for it",
+      "status": "passed"
+    },
+    {
+      "check": "releasing everything leaves no AI tab or group behind",
+      "status": "passed"
+    }
+  ],
+  "error": null
+}

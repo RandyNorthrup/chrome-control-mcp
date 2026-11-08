@@ -8,6 +8,7 @@ entry's heading opens its GitHub release page and downloads. To hear about new r
 
 | Version                      | Released   | What it is                                                              |
 | ---------------------------- | ---------- | ----------------------------------------------------------------------- |
+| [1.13.0](#1130---2026-11-07) | 2026-11-07 | The extension goes to the Chrome Web Store                              |
 | [1.12.0](#1120---2026-11-07) | 2026-11-07 | Find an element without reading the whole page                          |
 | [1.11.1](#1111---2026-11-07) | 2026-11-07 | A managed install no longer reports a registration mismatch             |
 | [1.11.0](#1110---2026-11-01) | 2026-11-01 | Large uploads                                                           |
@@ -36,6 +37,47 @@ entry's heading opens its GitHub release page and downloads. To hear about new r
 | [1.1.0](#110---2026-09-21)   | 2026-09-21 | The agent works in a tab of its own                                     |
 | [1.0.1](#101---2026-09-16)   | 2026-09-16 | The bridge recovers when another server takes or removes its record     |
 | [1.0.0](#100---2026-08-20)   | 2026-08-20 | First public release                                                    |
+
+## [1.13.0] - 2026-11-07
+
+The extension goes to the Chrome Web Store.
+
+### Added
+
+- The Chrome extension is published to the Chrome Web Store as `mbkacllnbffbadcajpkkpelifdkfgcbd`
+  ([listing](https://chromewebstore.google.com/detail/mbkacllnbffbadcajpkkpelifdkfgcbd)): one-click
+  install and automatic updates, beside the unpacked folder every archive still carries. Google
+  reviews each version before the store offers it. Use one or the other in a profile, not both.
+- `browser_extension_status` reports the store build's ID as `store_extension_id`, and
+  `browser_extension_install` names the store listing beside the folder.
+- The extension has an icon (16, 32, 48 and 128 px).
+- Each release builds the store package (`scripts/store_package.mjs`: the extension folder without
+  the manifest's `key`, refusing a manifest the store would refuse) and uploads and submits it
+  through the Chrome Web Store API (`scripts/cws_publish.mjs`); the Chrome Web Store check
+  workflow, run by hand, checks the credentials.
+- A privacy policy, [docs/PRIVACY.md](docs/PRIVACY.md), and the store listing's record,
+  [docs/CHROME_WEB_STORE.md](docs/CHROME_WEB_STORE.md).
+
+### Changed
+
+- The server answers to both builds of the extension and to no other: the native-messaging
+  registration lists both origins, and the relay accepts a launch from either. A registration that
+  lists anything else is not current; `--install`, `browser_extension_install` and the server's
+  own start rewrite it (the start only when the registration names that same executable), so an
+  update applied by a 1.12 server is repaired when the new server starts.
+- The server's instructions give agents an order for looking at a page: `browser_find` for an
+  element they can name, `browser_screenshot` to see the layout, and a whole `browser_snapshot`
+  only for the full structure.
+- The extension's description is 127 characters, within the store's 132.
+- The live suites can load the extension under the store's key (`isolated_run.mjs --store-key`),
+  and run the version suite that way on every platform, with a find and a click.
+
+### Fixed
+
+- `browser_new_tab` replies, and `browser_tabs` lists, only once a just-held tab is in its agent's
+  group under the group's name. On a page that loads in milliseconds, as a local one does, the reply
+  could go out first, and a `browser_tabs` straight after listed the new tab with no group. Found by
+  the multi-agent live suite while this release was verified.
 
 ## [1.12.0] - 2026-11-07
 
@@ -1236,6 +1278,7 @@ tried were broken.
 - Unused JSON-RPC client payload helpers and obsolete test-only native-host loop.
 - Redundant quality branch; development and delivery now happen directly on `main`.
 
+[1.13.0]: https://github.com/RandyNorthrup/chrome-control-mcp/releases/tag/v1.13.0
 [1.12.0]: https://github.com/RandyNorthrup/chrome-control-mcp/releases/tag/v1.12.0
 [1.11.1]: https://github.com/RandyNorthrup/chrome-control-mcp/releases/tag/v1.11.1
 [1.11.0]: https://github.com/RandyNorthrup/chrome-control-mcp/releases/tag/v1.11.0

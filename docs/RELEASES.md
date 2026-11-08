@@ -138,7 +138,8 @@ show an unknown-publisher warning. Inspect the public source and checksum, build
 your operating system's explicit approval flow when you trust the downloaded artifact.
 
 The unpacked Chrome extension is also unsigned. Its public manifest `key` gives it a stable
-extension ID; that field is not a private signing key.
+extension ID; that field is not a private signing key. The Chrome Web Store signs its own build of
+the same files, which has an ID of its own (`mbkacllnbffbadcajpkkpelifdkfgcbd`).
 
 ## Reproducibility boundary
 
@@ -150,8 +151,10 @@ checked with `ldd` and without the runner's Qt on the library path; on macOS it 
 linkage with `otool -L`. It refuses a VS Code package whose version differs from the archive's.
 Beside the archives it runs the live browser suites on Windows, Linux and macOS against the tagged
 commit (`.github/workflows/live.yml`). Only when both have passed does it publish the GitHub release, titled and written from `docs/releases/<tag>.md` and
-CHANGELOG.md as described above, and -- when the Marketplace token is configured -- the VS Code
-packages to the Marketplace.
+CHANGELOG.md as described above; then -- when the Marketplace token is configured -- the VS Code
+packages to the Marketplace, and -- when the Chrome Web Store key is configured -- the extension to
+the Chrome Web Store, uploaded and submitted for Google's review
+([CHROME_WEB_STORE.md](CHROME_WEB_STORE.md)).
 
 `SHA256SUMS.txt` lists every published asset, VS Code packages included. Builds are not
 bit-for-bit reproducible across runner image updates.

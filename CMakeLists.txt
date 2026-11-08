@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.25)
 
-project(chrome_control_mcp VERSION 1.12.0 LANGUAGES CXX)
+project(chrome_control_mcp VERSION 1.13.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -475,6 +475,13 @@ if(BUILD_TESTING)
                 "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_release_versions.mjs"
     )
     set_tests_properties(test_release_versions PROPERTIES TIMEOUT 120)
+
+    # The Chrome Web Store package and its publishing, against a recorded API.
+    add_test(NAME test_store_publish
+        COMMAND "${NODE_EXECUTABLE}" --test
+                "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_store_publish.mjs"
+    )
+    set_tests_properties(test_store_publish PROPERTIES TIMEOUT 120)
 
     add_test(NAME test_vscode_payload
         COMMAND "${NODE_EXECUTABLE}" --test
