@@ -1,0 +1,15 @@
+== drill release-version: browser/extension/manifest.json
+   mutation: '"version": "1.14.0",' -> '"version": "1.13.0",'
+   suite: node --test tests/test_release_versions.mjs
+   planted: exit=1 ℹ pass 6 ℹ fail 1
+   ✖ every file that states the version states the same one
+   restored byte for byte
+   restored: exit=0 ℹ pass 7 ℹ fail 0
+== drill catalog-over-budget: src/browser_contract.cpp
+   mutation: '"path. Control overlay hidden unless included."' -> '"path. Control overlay hidden unless included. This sentence is padding planted by a red drill to push the catalog past its byte budget, which the server suite must notice and refuse."'
+   suite: test_browser_mcp_server
+   planted: build exit=0, test_browser_mcp_server exit=8
+   FAIL!  : BrowserMcpServerTests::catalogStaysWithinItsBudgetAndStable() 'listed.size() <= 43500' returned FALSE. (43601)
+   Totals: 17 passed, 1 failed, 0 skipped, 0 blacklisted, 13ms
+   restored byte for byte
+   restored: test_browser_mcp_server exit=0 Totals: 18 passed, 0 failed, 0 skipped, 0 blacklisted, 16ms

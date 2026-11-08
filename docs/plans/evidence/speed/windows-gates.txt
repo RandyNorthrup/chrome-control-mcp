@@ -15,7 +15,7 @@ flagged outside research_notes/ and reports/: 0
 > eslint --max-warnings=0 .
 exit=0
 == npm run lint:powershell
-> pwsh -NoProfile -File scripts/run_psscriptanalyzer.ps1
 
+WARNING: PSScriptAnalyzer failed internally; retrying (1/5).
 PSScriptAnalyzer passed for 8 tracked files.
 exit=0

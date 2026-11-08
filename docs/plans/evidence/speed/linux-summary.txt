@@ -14,9 +14,6 @@
 == clang-tidy exit=0 errors=0 warnings=0
 == cppcheck exit=0
 == semgrep exit=0 Ran 221 rules on 58 files: 0 findings.
-== drill relay-wake-posix: planted build=0 red=1 green=0
-== live action-latency exit=0 {"ok":true,"checks":6,"passed":6,"worst":{"click":34,"hover":50,"scroll a region by ref":83,"scroll the page by ref":82,"scroll the page":51,"list tabs":2,"read the dialog state":4}}
-== live display-matrix exit=0 {"ok":true,"checks":3475,"passed":3475,"configurations":35,"configurations_passed":35}
 == live full-browser exit=0 {"ok":true,"exercised_tool_count":49,"case_count":207}
 == live user-interference exit=0 {"ok":true,"checks":10,"passed":10}
 == live multi-agent exit=0 {"ok":true,"checks":25,"passed":25}
@@ -28,6 +25,4 @@
 == live extension-version-released exit=0 {"ok":true,"checks":12,"passed":12,"case":"older"}
 == live profiles-two exit=0 {"ok":true,"checks":14,"passed":14,"case":"two-profiles"}
 == live profiles-upgrade exit=0 {"ok":true,"checks":4,"passed":4,"case":"upgrade"}
-== live drill latency-frames-never-start: red=1 green=0
-== live drill matrix-point-factor-ignored: red=1 green=0
 == done

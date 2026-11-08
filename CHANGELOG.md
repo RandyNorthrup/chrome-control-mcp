@@ -8,7 +8,7 @@ entry's heading opens its GitHub release page and downloads. To hear about new r
 
 | Version                      | Released   | What it is                                                              |
 | ---------------------------- | ---------- | ----------------------------------------------------------------------- |
-| [1.14.0](#1140---2026-11-07) | 2026-11-07 | Faster actions, and screenshots the size a model uses                   |
+| [1.14.0](#1140---2026-11-08) | 2026-11-08 | Faster actions, and screenshots the size a model uses                   |
 | [1.13.0](#1130---2026-11-07) | 2026-11-07 | The extension goes to the Chrome Web Store                              |
 | [1.12.0](#1120---2026-11-07) | 2026-11-07 | Find an element without reading the whole page                          |
 | [1.11.1](#1111---2026-11-07) | 2026-11-07 | A managed install no longer reports a registration mismatch             |
@@ -39,7 +39,7 @@ entry's heading opens its GitHub release page and downloads. To hear about new r
 | [1.0.1](#101---2026-09-16)   | 2026-09-16 | The bridge recovers when another server takes or removes its record     |
 | [1.0.0](#100---2026-08-20)   | 2026-08-20 | First public release                                                    |
 
-## [1.14.0] - 2026-11-07
+## [1.14.0] - 2026-11-08
 
 Actions in a background tab take milliseconds, not seconds, and screenshots are the size a model
 can use.
