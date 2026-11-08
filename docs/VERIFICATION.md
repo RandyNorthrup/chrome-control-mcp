@@ -5,7 +5,91 @@ after [Earlier evidence](#earlier-evidence) is a dated record of the build it na
 suite counts and versions were true of that build and are not current. A result is recorded here
 only when a command actually produced it.
 
-## Current: 1.14.0 (2026-11-08)
+## Current: 1.15.0 (2026-11-08)
+
+1.15.0 makes every action say what it changed on the page, lets an action return the page in the
+same call (`snapshot: true`), fills a form in one call with `browser_fill_form`, and answers a
+snapshot of an unchanged page in one line (`if_changed: true`). The plan, criteria and ledger are
+[plans/action-changes.md](plans/action-changes.md), with the raw outputs in
+[plans/evidence/act/](plans/evidence/act/). Every suite that existed before this work ran again
+against the 1.15.0 build (AC-ACT-COMPAT).
+
+### 1.15.0: suites
+
+| Where                                                        | Result                                                                                                   |
+| ------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------- |
+| Windows 11, local (MSVC, Qt 6.10.3): ctest                   | 28/28                                                                                                    |
+| Local: `npm run test:js`                                     | 289/289                                                                                                  |
+| Windows, local: MCP smoke, full and read-only                | 55 and 15 tools                                                                                          |
+| Linux, Ubuntu 26.04.1 laptop (GCC 15.2.0, Qt 6.10.2): build  | 0 warnings; ctest 27/27                                                                                  |
+| Linux, laptop: clang-tidy 21.1.8, cppcheck 2.19.0, Semgrep   | 0 findings each (221 rules, 58 files)                                                                    |
+| Linux, Chrome for Testing 153: action changes (new)          | 14/14                                                                                                    |
+| Linux, Chrome for Testing 153: action latency                | 6/6; worst click 41 ms, hover 62, scrolls 99, 98 and 65, `browser_tabs` 2                                |
+| Linux, Chrome for Testing 153: display matrix                | 35/35 configurations, 3,475/3,475 checks                                                                 |
+| Linux, Chrome for Testing 153: full browser                  | ok: 50 tools, 208 live cases, `browser_fill_form` among them                                             |
+| Linux, Chrome for Testing 153: interference, multi-agent     | 10/10; 25/25                                                                                             |
+| Linux, Chrome for Testing 153: clipboard, large upload       | 24/24, 7/7                                                                                               |
+| Linux, Chrome for Testing 153: extension version             | current 9/9, store key 9/9, older 12/12, released 1.11.1 12/12                                           |
+| Linux, Chrome for Testing 153: profiles, upgrade             | 14/14, 4/4                                                                                               |
+| CI, release tag `9edbae3`: every live suite, three platforms | passed ([run 42511051078](https://github.com/RandyNorthrup/chrome-control-mcp/actions/runs/42511051078)) |
+
+Every action now reads the page before and after itself. On the release run's latency suite the
+slowest click and hover were 38 and 62 ms on Windows (1.14.0's release run: 27 and 49), 38 and
+49 ms on Linux (30 and 50), and 98 and 496 ms on macOS (419 and 174); see "found on the way" for
+macOS.
+
+### 1.15.0: red drills
+
+Each check was red-drilled: the defect planted, the check seen to fail for that reason, then
+restored byte for byte and green again (`js-red-drills.txt`, `windows-unit-red-drills.txt`,
+`live-red-drills.txt`). Seventeen in all:
+
+- _`dom` always "none"; focus never reported; "many" at half the page rather than a twentieth:_ the
+  summary and level cases fail.
+- _The dispatcher adds no `changes` to an action's reply:_ its tab case fails; in real Chrome the
+  check that a click changing nothing says `dom: "none"` fails (the live drill).
+- _A select ignores an option's visible text; a form carries on past a field it could not fill; a
+  text field is set through its own `value`, which React's controlled inputs never see:_ each
+  one's form case fails.
+- _An action's snapshot is not shown; one from a replaced document binds its refs:_ the two bridge
+  cases fail.
+- _`if_changed` never answers "unchanged"; a changed outline marks no new ref:_ the `if_changed`
+  case fails.
+- _A form field's stale ref goes out; fields on two tabs are accepted; `browser_fill_form` is not
+  offered `snapshot`:_ the stale-field and contract cases fail.
+- _The catalog grows past its 46,000-byte budget (46,137); the manifest stays at 1.14.0:_ each
+  one's case fails.
+
+### 1.15.0: CI and the release
+
+The release commit, `9edbae3` ([run 42510576001](https://github.com/RandyNorthrup/chrome-control-mcp/actions/runs/42510576001)): builds, tests, analysis and both sanitizers
+passed on all three platforms. The `v1.15.0` tag on it ([run 42511051078](https://github.com/RandyNorthrup/chrome-control-mcp/actions/runs/42511051078)) built and tested
+the four archives, passed every live suite on all three platforms, the new action-changes suite
+among them, published the GitHub release at 18:58:36 UTC, and published the four VS Code packages.
+
+The Chrome Web Store job built the store package (11 files, 182,604 bytes, no `key`) and the store
+refused the upload with the same "FAILED_PRECONDITION: You may not edit or publish an item that is
+in review": 1.13.0 is still in Google's review. Once it is out, running this release's failed job
+again submits 1.15.0, which takes 1.14.0's place in the queue.
+
+### 1.15.0: found on the way
+
+- **clang-tidy on the form bounds:** the 32 KiB and 256 KiB limits were multiplied in `int` and
+  widened. They are built as `qsizetype`.
+- **The smoke script still expected 54 tools,** and earlier releases' evidence had run it in the
+  full profile only (corrected in `eb72f9f`). It expects 55, and the evidence runs both profiles.
+- **The full-browser suite's tool list lacked `browser_fill_form`;** it now lists and exercises it.
+- **The new suite's first `if_changed` check** expected a whole outline, but an earlier snapshot of
+  the same tab had already set the tab's baseline, so the page rightly answered "unchanged". The
+  suite now uses that earlier snapshot's refs.
+- **macOS's latency margin is thin.** The release run's macOS hover took 250, 496 and 82 ms against
+  the suite's 500 ms bound. The macOS runner was already slow on some rounds: across the seven
+  earlier macOS runs of this suite, leaving out the scroll back to the top that elastic overscroll
+  slowed in the first two, the slowest values were 443, 419, 337 and 271 ms, and hover's second
+  round took 76 to 162 ms. On Linux and Windows the slowest times rose by 17 ms at most. One run
+  cannot tell whether macOS pays more for reading the page or 496 was the runner.
+
+### 1.14.0 (2026-11-08)
 
 1.14.0 keeps the agent's tab drawing while an action runs, so a click, hover or scroll in a tab
 behind the user's no longer waits for the frame Chrome draws a background tab about once a second;
@@ -80,8 +164,8 @@ four VS Code packages.
 
 The Chrome Web Store job built the store package (11 files, 177,306 bytes, no `key`) and the store
 refused the upload: "FAILED_PRECONDITION: You may not edit or publish an item that is in review" --
-1.13.0, submitted the day before, was still in Google's review. 1.14.0 goes to the store once that
-review ends, by running the failed job again.
+1.13.0, submitted the day before, was still in Google's review. 1.15.0, released the same day,
+goes to the store in its place once that review ends.
 
 ### 1.14.0: found on the way
 
