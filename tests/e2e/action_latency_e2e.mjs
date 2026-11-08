@@ -133,10 +133,14 @@ async function main() {
         direction: "down",
         amount: 200,
       });
+      // Back up the 200 the page went down, not past its top: on macOS a wheel far past an edge
+      // makes the page bounce (elastic overscroll), and the reply rightly waits for the bounce --
+      // measured on the macOS runner, 751 to 791 ms to move the same 200 that took 16 to 32 going
+      // down. That is the page's own animation, not the frame this suite is about.
       await timed("scroll the page", "browser_scroll", {
         tab_id: tab,
         direction: "up",
-        amount: 100000,
+        amount: 200,
       });
       await timed("list tabs", "browser_tabs", {});
       await timed("read the dialog state", "browser_dialog", { tab_id: tab });
