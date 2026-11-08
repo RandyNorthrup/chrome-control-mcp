@@ -1,12 +1,12 @@
 PASS the agent's tab is behind the browser's own tab, as it is beside a user
-FAIL scroll a region by ref replies without waiting for a background frame (worst 3090 ms): [67,3090,3083] ms, bound 500
-FAIL scroll the page by ref replies without waiting for a background frame (worst 3092 ms): [3083,3092,2083] ms, bound 500
-FAIL scroll the page replies without waiting for a background frame (worst 1068 ms): [266,1068,1067] ms, bound 500
-PASS click replies without waiting for a background frame (worst 29 ms)
-PASS hover replies without waiting for a background frame (worst 49 ms)
+FAIL scroll a region by ref replies without waiting for a background frame (worst 2098 ms): [1329,2084,2098] ms, bound 500
+FAIL scroll the page by ref replies without waiting for a background frame (worst 3098 ms): [3098,2086,471] ms, bound 500
+FAIL scroll the page replies without waiting for a background frame (worst 2081 ms): [2081,69,163] ms, bound 500
+FAIL click replies without waiting for a background frame (worst 1100 ms): [1087,1100,108] ms, bound 500
+FAIL hover replies without waiting for a background frame (worst 1105 ms): [1079,1076,1105] ms, bound 500
 --- dedicated browser stderr (tail) ---
 
-DevTools listening on ws://127.0.0.1:35631/devtools/browser/4cd5db65-1f37-41f3-b6e7-09cb43c05b30
-[2568168:2568183:1107/221632.706484:ERROR:google_apis/gcm/engine/registration_request.cc:291] Registration response error message: PHONE_REGISTRATION_ERROR
-[2568168:2568183:1107/221632.706827:ERROR:google_apis/gcm/engine/registration_request.cc:291] Registration response error message: PHONE_REGISTRATION_ERROR
-[2568168:2568183:1107/221632.707005:ERROR:google_apis/gcm/engine/registration_request.cc:291] Registration response error message: PHONE_REGISTRATION_ERROR
+DevTools listening on ws://127.0.0.1:46819/devtools/browser/8828c7a5-e770-44cc-8b55-c3a296b6ba24
+[2660786:2660803:1108/003508.376104:ERROR:google_apis/gcm/engine/registration_request.cc:291] Registration response error message: PHONE_REGISTRATION_ERROR
+[2660786:2660803:1108/003508.383454:ERROR:google_apis/gcm/engine/registration_request.cc:291] Registration response error message: PHONE_REGISTRATION_ERROR
+[2660786:2660803:1108/003508.386259:ERROR:google_apis/gcm/engine/registration_request.cc:291] Registration response error message: PHONE_REGISTRATION_ERROR

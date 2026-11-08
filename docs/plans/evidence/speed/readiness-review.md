@@ -78,20 +78,21 @@ by checks and red drills run on the finished tree, not by this review.
 
 Every acceptance criterion maps to at least one task and to behaviour and red checks:
 
-| Criterion           | Task(s)           | Behaviour proof                              | Red drill                                            |
-| ------------------- | ----------------- | -------------------------------------------- | ---------------------------------------------------- |
-| AC-SPD-FRAMES       | EXTENSION         | tabs suite's frame cases; latency suite      | cast never starts                                    |
-| AC-SPD-INVIEW       | EXTENSION         | pure suite's in-view cases                   | in-view check ignored                                |
-| AC-SPD-RELAY        | SERVER            | relay suite's round-trip case                | reader no longer signals (Windows, POSIX)            |
-| AC-SPD-LATENCY      | LIVE              | latency suite, Windows and Linux             | live: cast never starts                              |
-| AC-SPD-VIEW         | EXTENSION, SERVER | pure suite; contract suite; display matrix   | factor drops 1/dpr; coordinate check off             |
-| AC-SPD-ZOOM         | EXTENSION, SERVER | pure suite's zoom cases; bridge; matrix      | crop ignores the view factor; zoom note dropped      |
-| AC-SPD-PRESENTATION | SERVER, LIVE      | bridge; server; full browser; display matrix | not saved; read-only refusal off                     |
-| AC-SPD-CLIPPED      | SERVER            | bridge's clipped case; display matrix        | note dropped                                         |
-| AC-SPD-MATRIX       | LIVE              | display matrix, Windows and Linux            | live: click_at ignores the view factor               |
-| AC-SPD-RECORD       | EXTENSION, SERVER | pure, recording and offscreen suites         | stretched frame; letterbox off; resolution unchecked |
-| AC-SPD-COMPAT       | LIVE, RELEASE     | ctest, test:js, static analysis, every suite | catalog over its budget                              |
-| AC-SPD-RELEASE      | RELEASE           | release-versions suite                       | manifest left at 1.13.0                              |
+| Criterion           | Task(s)           | Behaviour proof                                      | Red drill                                            |
+| ------------------- | ----------------- | ---------------------------------------------------- | ---------------------------------------------------- |
+| AC-SPD-FRAMES       | EXTENSION         | tabs suite's frame cases; latency suite              | cast never starts                                    |
+| AC-SPD-INVIEW       | EXTENSION         | pure suite's in-view cases                           | in-view check ignored                                |
+| AC-SPD-RELAY        | SERVER            | relay suite's round-trip case                        | reader no longer signals (Windows, POSIX)            |
+| AC-SPD-LATENCY      | LIVE              | latency suite, Windows and Linux                     | live: cast never starts                              |
+| AC-SPD-VIEW         | EXTENSION, SERVER | pure suite; contract suite; display matrix           | factor drops 1/dpr; coordinate check off             |
+| AC-SPD-ZOOM         | EXTENSION, SERVER | pure suite's zoom cases; bridge; matrix              | crop ignores the view factor; zoom note dropped      |
+| AC-SPD-PRESENTATION | SERVER, LIVE      | bridge; server; full browser; display matrix         | not saved; read-only refusal off                     |
+| AC-SPD-CLIPPED      | SERVER            | bridge's clipped case; display matrix                | note dropped                                         |
+| AC-SPD-MATRIX       | LIVE              | display matrix, Windows and Linux                    | live: click_at ignores the view factor               |
+| AC-SPD-RECORD       | EXTENSION, SERVER | pure, recording and offscreen suites                 | stretched frame; letterbox off; resolution unchecked |
+| AC-SPD-COMPAT       | LIVE, RELEASE     | ctest, test:js, static analysis, every suite         | catalog over its budget                              |
+| AC-SPD-POPUP        | EXTENSION, LIVE   | tabs suite's two-agent popup case; multi-agent suite | the tab's own opener trusted again                   |
+| AC-SPD-RELEASE      | RELEASE           | release-versions suite                               | manifest left at 1.13.0                              |
 
 No conflicts with earlier plans: the closed ledgers are not re-recorded; AC-SPD-COMPAT re-runs
 their suites as this work's regression proof. `docs/VERIFICATION.md` is not a change path.
@@ -124,3 +125,13 @@ unchanged in the product, and the case runs it at a second: a woken exchange tak
 one that waits out the tick a full second, so the bound of 500 ms holds under load (six of six with
 every core busy) and the drill still fails it (1,000 ms). `browser_bridge_relay.h` and
 `browser_bridge_relay_common.cpp` join TASK-SPD-SERVER's paths, and AC-SPD-RELAY says so.
+
+## Addendum: scope revision 5
+
+The release's live job stopped the 1.14.0 tag, and the plan's section "Found by the release's live
+run" records each finding. Two change the product or its proof: a popup is now matched only by the
+browser's record of which page opened it (AC-SPD-POPUP, new, with a unit test of the two-agent case
+and a red drill), and the live harness opens its Developer-mode page behind the user's tab. The
+latency suite scrolls back without overscrolling, and the multi-agent and large-upload suites say
+more when they fail; their paths join TASK-SPD-LIVE, and docs/MULTI_SESSION.md joins
+TASK-SPD-RELEASE. Every check is run again.

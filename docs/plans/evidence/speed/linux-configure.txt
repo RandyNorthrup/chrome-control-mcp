@@ -15,6 +15,6 @@ CMake Warning at CMakeLists.txt:177 (message):
   browser_update_apply will not be able to reach the release host.
 
 
--- Configuring done (0.5s)
--- Generating done (0.0s)
+-- Configuring done (0.7s)
+-- Generating done (0.1s)
 -- Build files have been written to: /home/randy/ccm-evidence/ccmcp/build

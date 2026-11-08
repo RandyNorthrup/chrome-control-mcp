@@ -429,6 +429,55 @@ async function openSecondProfile(
   throw new Error(`The second profile (${name}) did not start its extension`);
 }
 
+// Open @p url in a tab behind the one in front. /json/new opens it IN front, and the suite is already
+// running while this happens: a tab the suite opened in the meantime sat beside it, and Chrome put
+// THAT tab in front when this one closed -- an agent's tab, as though the user were looking at it
+// (measured on the Linux runner, and locally once in two runs: browser_release then kept the
+// agent's tab open, the way it keeps whatever the user is looking at). Returns {id,
+// webSocketDebuggerUrl} as /json/new does.
+async function openInBackground(base, url) {
+  const version = await (await fetch(`${base}/json/version`)).json();
+  const socket = new WebSocket(version.webSocketDebuggerUrl);
+  try {
+    await new Promise((resolve, reject) => {
+      socket.onopen = resolve;
+      socket.onerror = () =>
+        reject(new Error("the browser's DevTools socket failed"));
+    });
+    const targetId = await new Promise((resolve, reject) => {
+      const timer = setTimeout(
+        () => reject(new Error(`the browser did not open ${url}`)),
+        15000,
+      );
+      socket.onmessage = (event) => {
+        const message = JSON.parse(event.data);
+        if (message.id === 1) {
+          clearTimeout(timer);
+          if (message.error) {
+            reject(new Error(message.error.message));
+          } else {
+            resolve(message.result.targetId);
+          }
+        }
+      };
+      socket.send(
+        JSON.stringify({
+          id: 1,
+          method: "Target.createTarget",
+          params: { url, background: true },
+        }),
+      );
+    });
+    const { host } = new URL(base);
+    return {
+      id: targetId,
+      webSocketDebuggerUrl: `ws://${host}/devtools/page/${targetId}`,
+    };
+  } finally {
+    socket.close();
+  }
+}
+
 // Developer mode on, as in every Chrome this extension runs in: Load unpacked needs it.
 // --load-extension skips that check at launch but not on a reload, so without it the extension's
 // own chrome.runtime.reload() left it disabled as an "unsupported developer extension" (measured on
@@ -438,9 +487,7 @@ async function openSecondProfile(
 // reset an edited one at startup.
 async function enableDeveloperMode(devtools) {
   const base = `http://127.0.0.1:${devtools.port}`;
-  const page = await (
-    await fetch(`${base}/json/new?chrome://extensions`, { method: "PUT" })
-  ).json();
+  const page = await openInBackground(base, "chrome://extensions");
   try {
     const socket = new WebSocket(page.webSocketDebuggerUrl);
     await new Promise((resolve, reject) => {

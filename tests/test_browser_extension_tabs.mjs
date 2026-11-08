@@ -109,7 +109,8 @@ test("a tab the agent's own click opens is the agent's, follows it, and is repor
   b.worker.setCurrentTab(b.session, b.copy(aiTab));
   await settle();
 
-  // The click's page opens a foreground tab while the command is running.
+  // The click's page opens a foreground tab while the command is running, and the browser says
+  // which tab it came from.
   b.session.openerUntil = Infinity;
   const popup = b.addTab({
     active: true,
@@ -117,6 +118,11 @@ test("a tab the agent's own click opens is the agent's, follows it, and is repor
     url: "https://popup.test/",
   });
   b.fire("tabs.onCreated", b.copy(popup));
+  b.fire("webNavigation.onCreatedNavigationTarget", {
+    sourceTabId: aiTab.id,
+    tabId: popup.id,
+    url: "https://popup.test/",
+  });
   await settle();
   b.session.openerUntil = 0;
 
@@ -221,6 +227,53 @@ test("a popup with no opener is claimed through the page's window request", asyn
     true,
     "the user's tab is put back in front",
   );
+});
+
+test("a popup goes to the agent whose page opened it, not to the agent whose tab is in front", async () => {
+  // Chrome names the window's active tab as the opener of a link opened from a tab in the
+  // background. Measured on the Linux runner: the tab in front was one agent's -- the user was
+  // watching it -- and the popup another agent's click opened was taken by the first, whose own
+  // click had finished a second before and so still counted as opening things.
+  const b = await attachedBrowser("100", {
+    exported: [...EXPORTED, "makeSession"],
+  });
+  const front = b.addTab({ active: true });
+  b.worker.holdTab(b.session, b.copy(front), "opened", "alpha");
+  b.fire("tabs.onActivated", { tabId: front.id, windowId: 1 });
+  b.session.openerUntil = Date.now() + 2000; // its click has just finished
+  // Another server's session, its click running in its own background tab.
+  const other = b.worker.makeSession();
+  other.port = { postMessage() {}, disconnect() {} };
+  b.worker.sessions.add(other);
+  const source = b.addTab({});
+  b.worker.holdTab(other, b.copy(source), "opened", "beta");
+  other.openerUntil = Infinity;
+  await settle();
+
+  const popup = b.addTab({
+    active: false,
+    openerTabId: front.id, // what Chrome reports: the tab in front
+    url: "",
+    pendingUrl: "https://popup.test/",
+  });
+  b.fire("tabs.onCreated", b.copy(popup));
+  b.fire("webNavigation.onCreatedNavigationTarget", {
+    sourceTabId: source.id, // what actually opened it
+    tabId: popup.id,
+    url: "https://popup.test/",
+  });
+  await settle();
+  assert.equal(
+    b.session.tabs.has(popup.id),
+    false,
+    "not the agent whose tab the user has in front",
+  );
+  assert.equal(
+    other.tabs.get(popup.id)?.origin,
+    "opened",
+    "but the agent whose page opened it",
+  );
+  assert.equal(other.tabs.get(popup.id)?.openedFrom, source.id);
 });
 
 test("a popup is claimed even when its tab arrives before the window request", async () => {

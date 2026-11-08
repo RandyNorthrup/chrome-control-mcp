@@ -3,40 +3,129 @@
   "bound_ms": 500,
   "timings": {
     "click": {
-      "ms": [28, 29, 24],
-      "median": 28,
-      "worst": 29
+      "ms": [1087, 1100, 108],
+      "median": 1087,
+      "worst": 1100
     },
     "hover": {
-      "ms": [44, 47, 49],
-      "median": 47,
-      "worst": 49
+      "ms": [1079, 1076, 1105],
+      "median": 1079,
+      "worst": 1105
     },
     "scroll a region by ref": {
-      "ms": [67, 3090, 3083],
-      "median": 3083,
-      "worst": 3090
+      "ms": [1329, 2084, 2098],
+      "median": 2084,
+      "worst": 2098
     },
     "scroll the page by ref": {
-      "ms": [3083, 3092, 2083],
-      "median": 3083,
-      "worst": 3092
+      "ms": [3098, 2086, 471],
+      "median": 2086,
+      "worst": 3098
     },
     "scroll the page": {
-      "ms": [266, 1068, 1067],
-      "median": 1067,
-      "worst": 1068
+      "ms": [2081, 69, 163],
+      "median": 163,
+      "worst": 2081
     },
     "list tabs": {
-      "ms": [3, 2, 2],
-      "median": 2,
-      "worst": 3
+      "ms": [8, 13, 13],
+      "median": 13,
+      "worst": 13
     },
     "read the dialog state": {
-      "ms": [4, 8, 5],
-      "median": 5,
-      "worst": 8
+      "ms": [18, 23, 21],
+      "median": 21,
+      "worst": 23
     }
+  },
+  "scrolls": {
+    "scroll a region by ref": [
+      {
+        "ms": 1329,
+        "scrolled": {
+          "x": 0,
+          "y": 180
+        },
+        "settled": true,
+        "waited_ms": 1016
+      },
+      {
+        "ms": 2084,
+        "scrolled": {
+          "x": 0,
+          "y": 180
+        },
+        "settled": true,
+        "waited_ms": 1017
+      },
+      {
+        "ms": 2098,
+        "scrolled": {
+          "x": 0,
+          "y": 180
+        },
+        "settled": true,
+        "waited_ms": 1016
+      }
+    ],
+    "scroll the page by ref": [
+      {
+        "ms": 3098,
+        "scrolled": {
+          "x": 0,
+          "y": 200
+        },
+        "settled": true,
+        "waited_ms": 1018
+      },
+      {
+        "ms": 2086,
+        "scrolled": {
+          "x": 0,
+          "y": 200
+        },
+        "settled": true,
+        "waited_ms": 1016
+      },
+      {
+        "ms": 471,
+        "scrolled": {
+          "x": 0,
+          "y": 200
+        },
+        "settled": true,
+        "waited_ms": 42
+      }
+    ],
+    "scroll the page": [
+      {
+        "ms": 2081,
+        "scrolled": {
+          "x": 0,
+          "y": -200
+        },
+        "settled": true,
+        "waited_ms": 1009
+      },
+      {
+        "ms": 69,
+        "scrolled": {
+          "x": 0,
+          "y": -200
+        },
+        "settled": true,
+        "waited_ms": 14
+      },
+      {
+        "ms": 163,
+        "scrolled": {
+          "x": 0,
+          "y": -200
+        },
+        "settled": true,
+        "waited_ms": 29
+      }
+    ]
   },
   "checks": [
     {
@@ -44,27 +133,29 @@
       "status": "passed"
     },
     {
-      "check": "scroll a region by ref replies without waiting for a background frame (worst 3090 ms)",
+      "check": "scroll a region by ref replies without waiting for a background frame (worst 2098 ms)",
       "status": "failed",
-      "detail": "[67,3090,3083] ms, bound 500"
+      "detail": "[1329,2084,2098] ms, bound 500"
     },
     {
-      "check": "scroll the page by ref replies without waiting for a background frame (worst 3092 ms)",
+      "check": "scroll the page by ref replies without waiting for a background frame (worst 3098 ms)",
       "status": "failed",
-      "detail": "[3083,3092,2083] ms, bound 500"
+      "detail": "[3098,2086,471] ms, bound 500"
     },
     {
-      "check": "scroll the page replies without waiting for a background frame (worst 1068 ms)",
+      "check": "scroll the page replies without waiting for a background frame (worst 2081 ms)",
       "status": "failed",
-      "detail": "[266,1068,1067] ms, bound 500"
+      "detail": "[2081,69,163] ms, bound 500"
     },
     {
-      "check": "click replies without waiting for a background frame (worst 29 ms)",
-      "status": "passed"
+      "check": "click replies without waiting for a background frame (worst 1100 ms)",
+      "status": "failed",
+      "detail": "[1087,1100,108] ms, bound 500"
     },
     {
-      "check": "hover replies without waiting for a background frame (worst 49 ms)",
-      "status": "passed"
+      "check": "hover replies without waiting for a background frame (worst 1105 ms)",
+      "status": "failed",
+      "detail": "[1079,1076,1105] ms, bound 500"
     }
   ],
   "error": null

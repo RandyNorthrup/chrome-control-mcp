@@ -84,16 +84,21 @@ stays there, and a pinned tab, which Chrome cannot group, is marked on the page 
 
 ### Popups
 
-A tab the agent's page opens is matched to the session in one of three ways, whichever applies
-first:
+A tab the agent's page opens is matched to the session in one of two ways, whichever applies
+first, both inside the command window above:
 
-- Chrome names a held tab as the new tab's opener, inside the command window above.
 - The browser's own navigation record (`webNavigation.onCreatedNavigationTarget`) names a held tab
-  as the source. This is what catches a `target=_blank` link, which opens with no opener Chrome
-  reports to an extension.
+  as the source. It names the page that opened the tab for every kind of opening, a `target=_blank`
+  link included.
 - The driven page's `Page.windowOpen` request and the new tab's address match within 5 s, in either
   order. A tab Chrome has only just created often has no address yet, so a blank tab matches any
   request made during the command.
+
+The tab's own `openerTabId` is used only in a browser without that navigation record. It is not the
+page that opened the tab: for a link opened from a tab in the background, Chrome names the window's
+active tab. Until 1.14.0 it was trusted first, and a popup one agent's click opened could go to
+another agent whose tab the user had in front, while that agent's own click still counted as
+opening things.
 
 The claimed tab is held as opened, in the group of the agent whose page opened it, and listed on
 that command's reply as `opened_tabs`. If Chrome opened it in front, it becomes the session's current

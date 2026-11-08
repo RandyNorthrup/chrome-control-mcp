@@ -1,7 +1,7 @@
 {
   "ok": true,
   "executable": "/home/randy/ccm-evidence/ccmcp/build/chrome_control_mcp",
-  "fixture_origin": "http://127.0.0.1:41515",
+  "fixture_origin": "http://127.0.0.1:33687",
   "advertised_tool_count": 49,
   "exercised_tool_count": 49,
   "exercised_tools": [
@@ -60,7 +60,7 @@
     {
       "tool": "browser_extension_status",
       "case": "extension status prepared",
-      "milliseconds": 0,
+      "milliseconds": 1,
       "status": "passed"
     },
     {
@@ -72,25 +72,25 @@
     {
       "tool": "browser_tabs",
       "case": "capture baseline tabs",
-      "milliseconds": 1,
+      "milliseconds": 2,
       "status": "passed"
     },
     {
       "tool": "browser_windows",
       "case": "capture baseline windows",
-      "milliseconds": 2,
+      "milliseconds": 4,
       "status": "passed"
     },
     {
       "tool": "browser_new_tab",
       "case": "open fixture tab",
-      "milliseconds": 71,
+      "milliseconds": 70,
       "status": "passed"
     },
     {
       "tool": "browser_snapshot",
       "case": "snapshot fixture home",
-      "milliseconds": 97,
+      "milliseconds": 133,
       "status": "passed"
     },
     {
@@ -102,85 +102,85 @@
     {
       "tool": "browser_read",
       "case": "read page HTML",
-      "milliseconds": 12,
+      "milliseconds": 16,
       "status": "passed"
     },
     {
       "tool": "browser_get_attribute",
       "case": "read element attribute",
-      "milliseconds": 8,
+      "milliseconds": 6,
       "status": "passed"
     },
     {
       "tool": "browser_box",
       "case": "measure input box",
-      "milliseconds": 9,
+      "milliseconds": 8,
       "status": "passed"
     },
     {
       "tool": "browser_focus",
       "case": "focus input",
-      "milliseconds": 8,
+      "milliseconds": 6,
       "status": "passed"
     },
     {
       "tool": "browser_type",
       "case": "type initial value",
-      "milliseconds": 23,
+      "milliseconds": 22,
       "status": "passed"
     },
     {
       "tool": "browser_get_value",
       "case": "read typed value",
-      "milliseconds": 8,
+      "milliseconds": 7,
       "status": "passed"
     },
     {
       "tool": "browser_press_key",
       "case": "select input text with keyboard",
-      "milliseconds": 17,
+      "milliseconds": 11,
       "status": "passed"
     },
     {
       "tool": "browser_type",
       "case": "replace selected value",
-      "milliseconds": 18,
+      "milliseconds": 17,
       "status": "passed"
     },
     {
       "tool": "browser_get_value",
       "case": "verify replacement value",
-      "milliseconds": 7,
+      "milliseconds": 8,
       "status": "passed"
     },
     {
       "tool": "browser_select",
       "case": "select single option",
-      "milliseconds": 20,
+      "milliseconds": 19,
       "status": "passed"
     },
     {
       "tool": "browser_select",
       "case": "select multiple options",
-      "milliseconds": 17,
+      "milliseconds": 13,
       "status": "passed"
     },
     {
       "tool": "browser_set_value",
       "case": "check checkbox",
-      "milliseconds": 14,
+      "milliseconds": 9,
       "status": "passed"
     },
     {
       "tool": "browser_set_value",
       "case": "set range value",
-      "milliseconds": 14,
+      "milliseconds": 13,
       "status": "passed"
     },
     {
       "tool": "browser_upload",
       "case": "upload a file to the file input",
-      "milliseconds": 27,
+      "milliseconds": 18,
       "status": "passed"
     },
     {
@@ -192,7 +192,7 @@
     {
       "tool": "browser_upload",
       "case": "upload through the control that opens a hidden input",
-      "milliseconds": 25,
+      "milliseconds": 20,
       "status": "passed"
     },
     {
@@ -204,73 +204,73 @@
     {
       "tool": "browser_snapshot",
       "case": "snapshot names hidden inputs",
-      "milliseconds": 43,
+      "milliseconds": 35,
       "status": "passed"
     },
     {
       "tool": "browser_upload",
       "case": "upload to a hidden input named directly",
-      "milliseconds": 49,
+      "milliseconds": 47,
       "status": "passed"
     },
     {
       "tool": "browser_wait_for",
       "case": "the page read the file put straight into its hidden input",
-      "milliseconds": 10,
+      "milliseconds": 7,
       "status": "passed"
     },
     {
       "tool": "browser_click",
       "case": "click normal button",
-      "milliseconds": 37,
+      "milliseconds": 29,
       "status": "passed"
     },
     {
       "tool": "browser_wait_for",
       "case": "wait for click result",
-      "milliseconds": 10,
+      "milliseconds": 6,
       "status": "passed"
     },
     {
       "tool": "browser_reveal",
       "case": "reveal hover target",
-      "milliseconds": 10,
+      "milliseconds": 13,
       "status": "passed"
     },
     {
       "tool": "browser_hover",
       "case": "hover target",
-      "milliseconds": 125,
+      "milliseconds": 130,
       "status": "passed"
     },
     {
       "tool": "browser_wait_for",
       "case": "wait for hover result",
-      "milliseconds": 8,
+      "milliseconds": 6,
       "status": "passed"
     },
     {
       "tool": "browser_reveal",
       "case": "reveal drag targets",
-      "milliseconds": 10,
+      "milliseconds": 9,
       "status": "passed"
     },
     {
       "tool": "browser_drag",
       "case": "drag source to target",
-      "milliseconds": 81,
+      "milliseconds": 76,
       "status": "passed"
     },
     {
       "tool": "browser_wait_for",
       "case": "wait for drag result",
-      "milliseconds": 8,
+      "milliseconds": 7,
       "status": "passed"
     },
     {
       "tool": "browser_reveal",
       "case": "reveal media control",
-      "milliseconds": 11,
+      "milliseconds": 9,
       "status": "passed"
     },
     {
@@ -282,25 +282,25 @@
     {
       "tool": "browser_reveal",
       "case": "reveal diagnostics",
-      "milliseconds": 10,
+      "milliseconds": 8,
       "status": "passed"
     },
     {
       "tool": "browser_click",
       "case": "click diagnostics",
-      "milliseconds": 32,
+      "milliseconds": 27,
       "status": "passed"
     },
     {
       "tool": "browser_console",
       "case": "read the page's console",
-      "milliseconds": 7,
+      "milliseconds": 6,
       "status": "passed"
     },
     {
       "tool": "browser_console",
       "case": "read only console errors",
-      "milliseconds": 5,
+      "milliseconds": 6,
       "status": "passed"
     },
     {
@@ -312,37 +312,37 @@
     {
       "tool": "browser_network",
       "case": "read only failed requests",
-      "milliseconds": 5,
+      "milliseconds": 6,
       "status": "passed"
     },
     {
       "tool": "browser_record_start",
       "case": "start recording",
-      "milliseconds": 28,
+      "milliseconds": 54,
       "status": "passed"
     },
     {
       "tool": "browser_reveal",
       "case": "move while recording",
-      "milliseconds": 8,
+      "milliseconds": 11,
       "status": "passed"
     },
     {
       "tool": "browser_record_stop",
       "case": "stop recording",
-      "milliseconds": 125,
+      "milliseconds": 114,
       "status": "passed"
     },
     {
       "tool": "browser_box",
       "case": "box of the nested scroll region",
-      "milliseconds": 12,
+      "milliseconds": 7,
       "status": "passed"
     },
     {
       "tool": "browser_scroll",
       "case": "scroll nested region",
-      "milliseconds": 76,
+      "milliseconds": 73,
       "status": "passed"
     },
     {
@@ -354,13 +354,13 @@
     {
       "tool": "browser_scroll",
       "case": "scroll nested region again",
-      "milliseconds": 58,
+      "milliseconds": 59,
       "status": "passed"
     },
     {
       "tool": "browser_box",
       "case": "box inside the nested scroller, after",
-      "milliseconds": 9,
+      "milliseconds": 8,
       "status": "passed"
     },
     {
@@ -372,49 +372,49 @@
     {
       "tool": "browser_box",
       "case": "box before page scroll",
-      "milliseconds": 10,
+      "milliseconds": 7,
       "status": "passed"
     },
     {
       "tool": "browser_scroll",
       "case": "scroll the page",
-      "milliseconds": 54,
+      "milliseconds": 60,
       "status": "passed"
     },
     {
       "tool": "browser_box",
       "case": "box after page scroll",
-      "milliseconds": 9,
+      "milliseconds": 7,
       "status": "passed"
     },
     {
       "tool": "browser_scroll",
       "case": "scroll back to the top",
-      "milliseconds": 57,
+      "milliseconds": 59,
       "status": "passed"
     },
     {
       "tool": "browser_click",
       "case": "click the div the page wired to a click",
-      "milliseconds": 52,
+      "milliseconds": 54,
       "status": "passed"
     },
     {
       "tool": "browser_read",
       "case": "read after wired click",
-      "milliseconds": 9,
+      "milliseconds": 14,
       "status": "passed"
     },
     {
       "tool": "browser_hover",
       "case": "hover the div the page wired to a hover",
-      "milliseconds": 23,
+      "milliseconds": 14,
       "status": "passed"
     },
     {
       "tool": "browser_read",
       "case": "read after wired hover",
-      "milliseconds": 7,
+      "milliseconds": 9,
       "status": "passed"
     },
     {
@@ -432,19 +432,19 @@
     {
       "tool": "browser_reveal",
       "case": "reveal deep target",
-      "milliseconds": 11,
+      "milliseconds": 12,
       "status": "passed"
     },
     {
       "tool": "browser_snapshot",
       "case": "refresh refs before dialog and JavaScript click",
-      "milliseconds": 34,
+      "milliseconds": 37,
       "status": "passed"
     },
     {
       "tool": "browser_reveal",
       "case": "reveal prompt button",
-      "milliseconds": 12,
+      "milliseconds": 10,
       "status": "passed"
     },
     {
@@ -456,31 +456,31 @@
     {
       "tool": "browser_dialog",
       "case": "arm prompt acceptance",
-      "milliseconds": 5,
+      "milliseconds": 4,
       "status": "passed"
     },
     {
       "tool": "browser_click",
       "case": "open and accept prompt",
-      "milliseconds": 28,
+      "milliseconds": 27,
       "status": "passed"
     },
     {
       "tool": "browser_dialog",
       "case": "read last dialog",
-      "milliseconds": 6,
+      "milliseconds": 5,
       "status": "passed"
     },
     {
       "tool": "browser_wait_for",
       "case": "wait for prompt result",
-      "milliseconds": 7,
+      "milliseconds": 9,
       "status": "passed"
     },
     {
       "tool": "browser_reveal",
       "case": "reveal JavaScript-click target",
-      "milliseconds": 11,
+      "milliseconds": 10,
       "status": "passed"
     },
     {
@@ -492,55 +492,55 @@
     {
       "tool": "browser_wait_for",
       "case": "wait for JavaScript click result",
-      "milliseconds": 7,
+      "milliseconds": 11,
       "status": "passed"
     },
     {
       "tool": "browser_reveal",
       "case": "reveal coordinate-click target",
-      "milliseconds": 13,
+      "milliseconds": 10,
       "status": "passed"
     },
     {
       "tool": "browser_screenshot",
       "case": "capture viewport screenshot",
-      "milliseconds": 82,
+      "milliseconds": 80,
       "status": "passed"
     },
     {
       "tool": "browser_box",
       "case": "measure coordinate target",
-      "milliseconds": 10,
+      "milliseconds": 11,
       "status": "passed"
     },
     {
       "tool": "browser_click_at",
       "case": "coordinate click from screenshot geometry",
-      "milliseconds": 27,
+      "milliseconds": 29,
       "status": "passed"
     },
     {
       "tool": "browser_wait_for",
       "case": "wait for coordinate click result",
-      "milliseconds": 9,
+      "milliseconds": 7,
       "status": "passed"
     },
     {
       "tool": "browser_emulate",
       "case": "emulate 1x 1280x800",
-      "milliseconds": 8,
+      "milliseconds": 9,
       "status": "passed"
     },
     {
       "tool": "browser_snapshot",
       "case": "refresh refs at 1x 1280x800",
-      "milliseconds": 40,
+      "milliseconds": 36,
       "status": "passed"
     },
     {
       "tool": "browser_js_click",
       "case": "reset at 1x 1280x800",
-      "milliseconds": 21,
+      "milliseconds": 14,
       "status": "passed"
     },
     {
@@ -552,55 +552,55 @@
     {
       "tool": "browser_reveal",
       "case": "reveal at 1x 1280x800",
-      "milliseconds": 14,
+      "milliseconds": 10,
       "status": "passed"
     },
     {
       "tool": "browser_screenshot",
       "case": "screenshot at 1x 1280x800",
-      "milliseconds": 114,
+      "milliseconds": 86,
       "status": "passed"
     },
     {
       "tool": "browser_screenshot",
       "case": "presentation screenshot at 1x 1280x800",
-      "milliseconds": 106,
+      "milliseconds": 71,
       "status": "passed"
     },
     {
       "tool": "browser_box",
       "case": "measure at 1x 1280x800",
-      "milliseconds": 12,
+      "milliseconds": 11,
       "status": "passed"
     },
     {
       "tool": "browser_click_at",
       "case": "coordinate click at 1x 1280x800",
-      "milliseconds": 37,
+      "milliseconds": 28,
       "status": "passed"
     },
     {
       "tool": "browser_wait_for",
       "case": "coordinate click landed at 1x 1280x800",
-      "milliseconds": 16,
+      "milliseconds": 7,
       "status": "passed"
     },
     {
       "tool": "browser_emulate",
       "case": "emulate 1.25x 1024x768",
-      "milliseconds": 10,
+      "milliseconds": 12,
       "status": "passed"
     },
     {
       "tool": "browser_snapshot",
       "case": "refresh refs at 1.25x 1024x768",
-      "milliseconds": 46,
+      "milliseconds": 35,
       "status": "passed"
     },
     {
       "tool": "browser_js_click",
       "case": "reset at 1.25x 1024x768",
-      "milliseconds": 15,
+      "milliseconds": 12,
       "status": "passed"
     },
     {
@@ -612,31 +612,31 @@
     {
       "tool": "browser_reveal",
       "case": "reveal at 1.25x 1024x768",
-      "milliseconds": 11,
+      "milliseconds": 14,
       "status": "passed"
     },
     {
       "tool": "browser_screenshot",
       "case": "screenshot at 1.25x 1024x768",
-      "milliseconds": 124,
+      "milliseconds": 117,
       "status": "passed"
     },
     {
       "tool": "browser_screenshot",
       "case": "presentation screenshot at 1.25x 1024x768",
-      "milliseconds": 90,
+      "milliseconds": 86,
       "status": "passed"
     },
     {
       "tool": "browser_box",
       "case": "measure at 1.25x 1024x768",
-      "milliseconds": 10,
+      "milliseconds": 8,
       "status": "passed"
     },
     {
       "tool": "browser_click_at",
       "case": "coordinate click at 1.25x 1024x768",
-      "milliseconds": 17,
+      "milliseconds": 18,
       "status": "passed"
     },
     {
@@ -654,31 +654,31 @@
     {
       "tool": "browser_snapshot",
       "case": "refresh refs at 1.5x 800x600",
-      "milliseconds": 36,
+      "milliseconds": 35,
       "status": "passed"
     },
     {
       "tool": "browser_js_click",
       "case": "reset at 1.5x 800x600",
-      "milliseconds": 12,
+      "milliseconds": 16,
       "status": "passed"
     },
     {
       "tool": "browser_wait_for",
       "case": "reset observed at 1.5x 800x600",
-      "milliseconds": 8,
+      "milliseconds": 7,
       "status": "passed"
     },
     {
       "tool": "browser_reveal",
       "case": "reveal at 1.5x 800x600",
-      "milliseconds": 11,
+      "milliseconds": 9,
       "status": "passed"
     },
     {
       "tool": "browser_screenshot",
       "case": "screenshot at 1.5x 800x600",
-      "milliseconds": 130,
+      "milliseconds": 126,
       "status": "passed"
     },
     {
@@ -690,13 +690,13 @@
     {
       "tool": "browser_box",
       "case": "measure at 1.5x 800x600",
-      "milliseconds": 11,
+      "milliseconds": 9,
       "status": "passed"
     },
     {
       "tool": "browser_click_at",
       "case": "coordinate click at 1.5x 800x600",
-      "milliseconds": 19,
+      "milliseconds": 24,
       "status": "passed"
     },
     {
@@ -708,13 +708,13 @@
     {
       "tool": "browser_emulate",
       "case": "emulate 2x 390x844",
-      "milliseconds": 20,
+      "milliseconds": 10,
       "status": "passed"
     },
     {
       "tool": "browser_snapshot",
       "case": "refresh refs at 2x 390x844",
-      "milliseconds": 44,
+      "milliseconds": 36,
       "status": "passed"
     },
     {
@@ -726,13 +726,13 @@
     {
       "tool": "browser_wait_for",
       "case": "reset observed at 2x 390x844",
-      "milliseconds": 9,
+      "milliseconds": 8,
       "status": "passed"
     },
     {
       "tool": "browser_reveal",
       "case": "reveal at 2x 390x844",
-      "milliseconds": 12,
+      "milliseconds": 9,
       "status": "passed"
     },
     {
@@ -744,19 +744,19 @@
     {
       "tool": "browser_screenshot",
       "case": "presentation screenshot at 2x 390x844",
-      "milliseconds": 98,
+      "milliseconds": 102,
       "status": "passed"
     },
     {
       "tool": "browser_box",
       "case": "measure at 2x 390x844",
-      "milliseconds": 10,
+      "milliseconds": 8,
       "status": "passed"
     },
     {
       "tool": "browser_click_at",
       "case": "coordinate click at 2x 390x844",
-      "milliseconds": 31,
+      "milliseconds": 33,
       "status": "passed"
     },
     {
@@ -768,55 +768,55 @@
     {
       "tool": "browser_emulate",
       "case": "emulate 3x 360x640",
-      "milliseconds": 9,
+      "milliseconds": 10,
       "status": "passed"
     },
     {
       "tool": "browser_snapshot",
       "case": "refresh refs at 3x 360x640",
-      "milliseconds": 33,
+      "milliseconds": 38,
       "status": "passed"
     },
     {
       "tool": "browser_js_click",
       "case": "reset at 3x 360x640",
-      "milliseconds": 12,
+      "milliseconds": 11,
       "status": "passed"
     },
     {
       "tool": "browser_wait_for",
       "case": "reset observed at 3x 360x640",
-      "milliseconds": 7,
+      "milliseconds": 8,
       "status": "passed"
     },
     {
       "tool": "browser_reveal",
       "case": "reveal at 3x 360x640",
-      "milliseconds": 10,
+      "milliseconds": 12,
       "status": "passed"
     },
     {
       "tool": "browser_screenshot",
       "case": "screenshot at 3x 360x640",
-      "milliseconds": 142,
+      "milliseconds": 136,
       "status": "passed"
     },
     {
       "tool": "browser_screenshot",
       "case": "presentation screenshot at 3x 360x640",
-      "milliseconds": 86,
+      "milliseconds": 101,
       "status": "passed"
     },
     {
       "tool": "browser_box",
       "case": "measure at 3x 360x640",
-      "milliseconds": 9,
+      "milliseconds": 12,
       "status": "passed"
     },
     {
       "tool": "browser_click_at",
       "case": "coordinate click at 3x 360x640",
-      "milliseconds": 18,
+      "milliseconds": 30,
       "status": "passed"
     },
     {
@@ -828,13 +828,13 @@
     {
       "tool": "browser_emulate",
       "case": "reset scale matrix",
-      "milliseconds": 13,
+      "milliseconds": 15,
       "status": "passed"
     },
     {
       "tool": "browser_wait_for",
       "case": "wait for shadow selector",
-      "milliseconds": 9,
+      "milliseconds": 8,
       "status": "passed"
     },
     {
@@ -846,7 +846,7 @@
     {
       "tool": "browser_emulate",
       "case": "apply mobile emulation",
-      "milliseconds": 14,
+      "milliseconds": 12,
       "status": "passed"
     },
     {
@@ -858,61 +858,61 @@
     {
       "tool": "browser_storage",
       "case": "set local storage",
-      "milliseconds": 12,
+      "milliseconds": 45,
       "status": "passed"
     },
     {
       "tool": "browser_storage",
       "case": "get local storage",
-      "milliseconds": 10,
+      "milliseconds": 8,
       "status": "passed"
     },
     {
       "tool": "browser_storage",
       "case": "list local storage keys",
-      "milliseconds": 10,
+      "milliseconds": 8,
       "status": "passed"
     },
     {
       "tool": "browser_storage",
       "case": "remove local storage key",
-      "milliseconds": 8,
+      "milliseconds": 7,
       "status": "passed"
     },
     {
       "tool": "browser_storage",
       "case": "set session storage",
-      "milliseconds": 6,
+      "milliseconds": 8,
       "status": "passed"
     },
     {
       "tool": "browser_storage",
       "case": "clear session storage",
-      "milliseconds": 8,
-      "status": "passed"
-    },
-    {
-      "tool": "browser_cookies",
-      "case": "set fixture cookie",
       "milliseconds": 6,
       "status": "passed"
     },
     {
       "tool": "browser_cookies",
-      "case": "read fixture cookies",
+      "case": "set fixture cookie",
       "milliseconds": 4,
       "status": "passed"
     },
     {
       "tool": "browser_cookies",
-      "case": "remove fixture cookie",
+      "case": "read fixture cookies",
       "milliseconds": 5,
+      "status": "passed"
+    },
+    {
+      "tool": "browser_cookies",
+      "case": "remove fixture cookie",
+      "milliseconds": 4,
       "status": "passed"
     },
     {
       "tool": "browser_permission",
       "case": "block fixture geolocation",
-      "milliseconds": 5,
+      "milliseconds": 4,
       "status": "passed"
     },
     {
@@ -924,127 +924,127 @@
     {
       "tool": "browser_download",
       "case": "download fixture file",
-      "milliseconds": 261,
+      "milliseconds": 259,
       "status": "passed"
     },
     {
       "tool": "browser_print",
       "case": "print fixture PDF",
-      "milliseconds": 165,
+      "milliseconds": 189,
       "status": "passed"
     },
     {
       "tool": "browser_navigate",
       "case": "navigate to page two",
-      "milliseconds": 35,
+      "milliseconds": 40,
       "status": "passed"
     },
     {
       "tool": "browser_wait_for",
       "case": "wait for page-two URL",
-      "milliseconds": 5,
+      "milliseconds": 4,
       "status": "passed"
     },
     {
       "tool": "browser_snapshot",
       "case": "snapshot page two",
-      "milliseconds": 13,
+      "milliseconds": 11,
       "status": "passed"
     },
     {
       "tool": "browser_back",
       "case": "history back",
-      "milliseconds": 41,
+      "milliseconds": 43,
       "status": "passed"
     },
     {
       "tool": "browser_forward",
       "case": "history forward",
-      "milliseconds": 37,
+      "milliseconds": 38,
       "status": "passed"
     },
     {
       "tool": "browser_reload",
       "case": "reload page two",
-      "milliseconds": 28,
+      "milliseconds": 33,
       "status": "passed"
     },
     {
       "tool": "browser_navigate",
       "case": "return to fixture home",
-      "milliseconds": 40,
+      "milliseconds": 41,
       "status": "passed"
     },
     {
       "tool": "browser_http_auth",
       "case": "arm HTTP authentication",
-      "milliseconds": 6,
+      "milliseconds": 7,
       "status": "passed"
     },
     {
       "tool": "browser_navigate",
       "case": "navigate through HTTP authentication",
-      "milliseconds": 49,
+      "milliseconds": 42,
       "status": "passed"
     },
     {
       "tool": "browser_snapshot",
       "case": "snapshot authenticated page",
-      "milliseconds": 13,
+      "milliseconds": 18,
       "status": "passed"
     },
     {
       "tool": "browser_http_auth",
       "case": "clear HTTP authentication",
-      "milliseconds": 5,
+      "milliseconds": 7,
       "status": "passed"
     },
     {
       "tool": "browser_new_tab",
       "case": "open first group tab",
-      "milliseconds": 28,
+      "milliseconds": 26,
       "status": "passed"
     },
     {
       "tool": "browser_new_tab",
       "case": "open second group tab",
-      "milliseconds": 38,
+      "milliseconds": 45,
       "status": "passed"
     },
     {
       "tool": "browser_tabs",
       "case": "list tabs before grouping",
-      "milliseconds": 8,
+      "milliseconds": 15,
       "status": "passed"
     },
     {
       "tool": "browser_group_tabs",
       "case": "group fixture tabs",
-      "milliseconds": 24,
+      "milliseconds": 16,
       "status": "passed"
     },
     {
       "tool": "browser_tabs",
       "case": "refresh tabs after grouping",
-      "milliseconds": 8,
+      "milliseconds": 7,
       "status": "passed"
     },
     {
       "tool": "browser_ungroup_tabs",
       "case": "ungroup fixture tabs",
-      "milliseconds": 6,
+      "milliseconds": 10,
       "status": "passed"
     },
     {
       "tool": "browser_tabs",
       "case": "list tabs before selection",
-      "milliseconds": 6,
+      "milliseconds": 5,
       "status": "passed"
     },
     {
       "tool": "browser_select_tab",
       "case": "select primary fixture tab",
-      "milliseconds": 7,
+      "milliseconds": 9,
       "status": "passed"
     },
     {
@@ -1056,19 +1056,19 @@
     {
       "tool": "browser_tabs",
       "case": "list tabs before closing group=one",
-      "milliseconds": 5,
+      "milliseconds": 4,
       "status": "passed"
     },
     {
       "tool": "browser_close_tab",
       "case": "close group=one tab",
-      "milliseconds": 10,
+      "milliseconds": 11,
       "status": "passed"
     },
     {
       "tool": "browser_tabs",
       "case": "list tabs before closing group=two",
-      "milliseconds": 4,
+      "milliseconds": 5,
       "status": "passed"
     },
     {
@@ -1080,91 +1080,91 @@
     {
       "tool": "browser_windows",
       "case": "list windows before create",
-      "milliseconds": 3,
+      "milliseconds": 2,
       "status": "passed"
     },
     {
       "tool": "browser_window",
       "case": "create fixture window",
-      "milliseconds": 931,
+      "milliseconds": 927,
       "status": "passed"
     },
     {
       "tool": "browser_windows",
       "case": "list windows after create",
-      "milliseconds": 4,
+      "milliseconds": 11,
       "status": "passed"
     },
     {
       "tool": "browser_windows",
       "case": "OS focus after opening a window",
-      "milliseconds": 4,
+      "milliseconds": 5,
       "status": "passed"
     },
     {
       "tool": "browser_window",
       "case": "retarget session to original window",
-      "milliseconds": 8,
+      "milliseconds": 17,
       "status": "passed"
     },
     {
       "tool": "browser_tabs",
       "case": "list tabs after window retarget",
-      "milliseconds": 4,
+      "milliseconds": 5,
       "status": "passed"
     },
     {
       "tool": "browser_windows",
       "case": "OS focus after window retarget",
-      "milliseconds": 4,
+      "milliseconds": 6,
       "status": "passed"
     },
     {
       "tool": "browser_window",
       "case": "close fixture window",
-      "milliseconds": 28,
+      "milliseconds": 37,
       "status": "passed"
     },
     {
       "tool": "browser_new_tab",
       "case": "open the find page",
-      "milliseconds": 34,
+      "milliseconds": 38,
       "status": "passed"
     },
     {
       "tool": "browser_wait_for",
       "case": "the find page loaded",
-      "milliseconds": 29,
+      "milliseconds": 31,
       "status": "passed"
     },
     {
       "tool": "browser_find",
       "case": "find by visible text",
-      "milliseconds": 81,
+      "milliseconds": 83,
       "status": "passed"
     },
     {
       "tool": "browser_click",
       "case": "click a find result with no snapshot between",
-      "milliseconds": 32,
+      "milliseconds": 33,
       "status": "passed"
     },
     {
       "tool": "browser_wait_for",
       "case": "the click on a find result reached its button",
-      "milliseconds": 9,
+      "milliseconds": 16,
       "status": "passed"
     },
     {
       "tool": "browser_find",
       "case": "find a name with brackets and a count",
-      "milliseconds": 69,
+      "milliseconds": 74,
       "status": "passed"
     },
     {
       "tool": "browser_find",
       "case": "find by a phrase whose role word filters",
-      "milliseconds": 83,
+      "milliseconds": 68,
       "status": "passed"
     },
     {
@@ -1176,7 +1176,7 @@
     {
       "tool": "browser_find",
       "case": "find with no match names the closest",
-      "milliseconds": 62,
+      "milliseconds": 68,
       "status": "passed"
     },
     {
@@ -1194,73 +1194,73 @@
     {
       "tool": "browser_snapshot",
       "case": "snapshot one region by ref",
-      "milliseconds": 65,
+      "milliseconds": 72,
       "status": "passed"
     },
     {
       "tool": "browser_snapshot",
       "case": "snapshot the interactive elements",
-      "milliseconds": 61,
+      "milliseconds": 90,
       "status": "passed"
     },
     {
       "tool": "browser_snapshot",
       "case": "snapshot what is on screen",
-      "milliseconds": 62,
+      "milliseconds": 71,
       "status": "passed"
     },
     {
       "tool": "browser_snapshot",
       "case": "snapshot within a character cap",
-      "milliseconds": 61,
+      "milliseconds": 76,
       "status": "passed"
     },
     {
       "tool": "browser_read",
       "case": "read the first page of a long page",
-      "milliseconds": 10,
+      "milliseconds": 18,
       "status": "passed"
     },
     {
       "tool": "browser_read",
       "case": "read the next page",
-      "milliseconds": 11,
+      "milliseconds": 10,
       "status": "passed"
     },
     {
       "tool": "browser_read",
       "case": "read one element by selector",
-      "milliseconds": 10,
-      "status": "passed"
-    },
-    {
-      "tool": "browser_read",
-      "case": "read the main content",
       "milliseconds": 13,
       "status": "passed"
     },
     {
       "tool": "browser_read",
+      "case": "read the main content",
+      "milliseconds": 14,
+      "status": "passed"
+    },
+    {
+      "tool": "browser_read",
       "case": "read one element by ref",
-      "milliseconds": 10,
+      "milliseconds": 9,
       "status": "passed"
     },
     {
       "tool": "browser_read",
       "case": "a read past the end is refused",
-      "milliseconds": 4,
+      "milliseconds": 9,
       "status": "passed"
     },
     {
       "tool": "browser_read",
       "case": "a selector that matches nothing is refused",
-      "milliseconds": 4,
+      "milliseconds": 5,
       "status": "passed"
     },
     {
       "tool": "browser_navigate",
       "case": "load the find page again",
-      "milliseconds": 56,
+      "milliseconds": 54,
       "status": "passed"
     },
     {
@@ -1272,7 +1272,7 @@
     {
       "tool": "browser_close_tab",
       "case": "close the find page",
-      "milliseconds": 8,
+      "milliseconds": 13,
       "status": "passed"
     },
     {
@@ -1284,13 +1284,13 @@
     {
       "tool": "browser_extension_install",
       "case": "restore extension bridge",
-      "milliseconds": 2,
+      "milliseconds": 3,
       "status": "passed"
     },
     {
       "tool": "browser_extension_status",
       "case": "verify restored extension state",
-      "milliseconds": 4,
+      "milliseconds": 6,
       "status": "passed"
     },
     {
@@ -1301,16 +1301,16 @@
     }
   ],
   "generated_files_cleaned": [
-    "/tmp/ccm-Q4VQfu/output/screenshot-20261107-221050-395.png",
-    "/tmp/ccm-Q4VQfu/output/screenshot-20261107-221050-765.png",
-    "/tmp/ccm-Q4VQfu/output/screenshot-20261107-221051-095.png",
-    "/tmp/ccm-Q4VQfu/output/screenshot-20261107-221051-483.png",
-    "/tmp/ccm-Q4VQfu/output/screenshot-20261107-221051-831.png",
-    "/home/randy/Downloads/ChromeControlMCP/chrome-control-mcp-e2e-2560880.txt",
-    "/tmp/ccm-Q4VQfu/output/page-20261107-221052-425.pdf"
+    "/tmp/ccm-c3zMVK/output/screenshot-20261108-002939-735.png",
+    "/tmp/ccm-c3zMVK/output/screenshot-20261108-002940-067.png",
+    "/tmp/ccm-c3zMVK/output/screenshot-20261108-002940-395.png",
+    "/tmp/ccm-c3zMVK/output/screenshot-20261108-002940-768.png",
+    "/tmp/ccm-c3zMVK/output/screenshot-20261108-002941-132.png",
+    "/home/randy/Downloads/ChromeControlMCP/chrome-control-mcp-e2e-2654130.txt",
+    "/tmp/ccm-c3zMVK/output/page-20261108-002941-789.pdf"
   ],
   "chrome_state_restored": true,
   "platform_notes": [],
-  "extension_attach_milliseconds": 813,
+  "extension_attach_milliseconds": 708,
   "error": null
 }

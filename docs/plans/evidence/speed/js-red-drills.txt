@@ -1,22 +1,22 @@
 == drill frames-never-start: browser/extension/background.js
    mutation: '        sendCdp(tabId, "Page.startScreencast", FRAME_FORCING_SCREENCAST),' -> '        Promise.reject(new Error("drill: no cast")),'
    suite: node --test tests/test_browser_extension_tabs.mjs
-   planted: exit=1 ℹ pass 32 ℹ fail 3
+   planted: exit=1 ℹ pass 33 ℹ fail 3
    ✖ a browser that refuses the cast still runs the command, at the slower pace
    ✖ an input-driven command runs with the tab compositing, and the cast ends with it
    ✖ overlapping work on one tab shares one cast, stopped after the last of it
    restored byte for byte
-   restored: exit=0 ℹ pass 35 ℹ fail 0
+   restored: exit=0 ℹ pass 36 ℹ fail 0
 == drill recorded-tab-cast: browser/extension/background.js
    mutation: '  if (tabIsRecorded(tabId)) {
     return fn();
   }
   let entry' -> '  let entry'
    suite: node --test tests/test_browser_extension_tabs.mjs
-   planted: exit=1 ℹ pass 34 ℹ fail 1
+   planted: exit=1 ℹ pass 35 ℹ fail 1
    ✖ a tab a recording is filming keeps the recording's cast: none started, none stopped
    restored byte for byte
-   restored: exit=0 ℹ pass 35 ℹ fail 0
+   restored: exit=0 ℹ pass 36 ℹ fail 0
 == drill in-view-ignored: browser/extension/background.js
    mutation: '  if (!(await whollyInView(tabId, backendNodeId))) {' -> '  if (true) {'
    suite: node --test tests/test_browser_extension_pure.mjs
@@ -77,6 +77,13 @@
    ✖ a frame of another shape keeps its own, on black, rather than being stretched
    restored byte for byte
    restored: exit=0 ℹ pass 16 ℹ fail 0
+== drill popup-opener-trusted: browser/extension/background.js
+   mutation: '  const opener = NAVIGATION_TARGETS_REPORTED ? null : holderOf(tab.openerTabId);' -> '  const opener = holderOf(tab.openerTabId);'
+   suite: node --test tests/test_browser_extension_tabs.mjs
+   planted: exit=1 ℹ pass 35 ℹ fail 1
+   ✖ a popup goes to the agent whose page opened it, not to the agent whose tab is in front
+   restored byte for byte
+   restored: exit=0 ℹ pass 36 ℹ fail 0
 == drill release-version: browser/extension/manifest.json
    mutation: '"version": "1.14.0",' -> '"version": "1.13.0",'
    suite: node --test tests/test_release_versions.mjs

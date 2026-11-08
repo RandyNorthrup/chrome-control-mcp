@@ -48,11 +48,13 @@ const sleep = (milliseconds) =>
 // zone takes files only when no file input is in scope -- the tool gives an input the files when
 // there is one -- so the drop zone and the picker have a page of their own.
 const SCRIPT = `
-async function digest(file) {
+async function digest(file, progress) {
   const parts = [];
+  const total = Math.ceil(file.size / ${SLICE});
   for (let at = 0; at < file.size; at += ${SLICE}) {
     const slice = await file.slice(at, at + ${SLICE}).arrayBuffer();
     parts.push(new Uint8Array(await crypto.subtle.digest("SHA-256", slice)));
+    progress(parts.length + "/" + total);
   }
   const joined = new Uint8Array(parts.length * 32);
   parts.forEach((part, i) => joined.set(part, i * 32));
@@ -60,9 +62,13 @@ async function digest(file) {
   return [...whole].map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 async function report(id, label, file) {
-  document.getElementById(id).textContent = label + ": working";
+  // How far the hash has got, so a check that times out says whether it stalled or was slow.
+  const progress = (done) => {
+    document.getElementById(id).textContent = label + ": working " + done;
+  };
+  progress("0");
   document.getElementById(id).textContent =
-    label + ": " + file.name + ":" + file.size + ":" + file.type + ":" + (await digest(file));
+    label + ": " + file.name + ":" + file.size + ":" + file.type + ":" + (await digest(file, progress));
 }
 for (const [id, wire] of Object.entries({
   video: (el) => el.addEventListener("change", (e) => void report("video-status", "video", e.target.files[0])),
@@ -196,7 +202,7 @@ async function main() {
     const settled = async (id) => {
       for (let i = 0; i < 240; i += 1) {
         const line = await status(id);
-        if (line && !line.endsWith(": none") && !line.endsWith(": working")) {
+        if (line && !line.endsWith(": none") && !/: working( |$)/.test(line)) {
           return line;
         }
         await sleep(500);

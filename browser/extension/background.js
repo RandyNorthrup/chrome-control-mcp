@@ -3109,12 +3109,19 @@ function popupUrlsMatch(requested, tab) {
 // for every kind of opening -- a no-opener target=_blank link included -- so it is the first way a
 // popup is matched to the session whose page opened it; Page.windowOpen above is the fallback for
 // a browser without it.
-if (
+//
+// Where it exists it is also the only opener believed. A tab's openerTabId is not the page that
+// opened it: for a link opened from a tab in the background, Chrome names the window's ACTIVE tab.
+// Measured on the Linux runner: the user had one agent's tab in front, a second agent's click in
+// its own background tab opened a popup, and the popup -- its openerTabId the tab in front -- was
+// taken by the first agent, whose own click had finished a second before.
+const NAVIGATION_TARGETS_REPORTED = Boolean(
   chrome.webNavigation &&
   chrome.webNavigation.onCreatedNavigationTarget &&
   typeof chrome.webNavigation.onCreatedNavigationTarget.addListener ===
-    "function"
-) {
+    "function",
+);
+if (NAVIGATION_TARGETS_REPORTED) {
   chrome.webNavigation.onCreatedNavigationTarget.addListener((details) => {
     const opener = holderOf(details && details.sourceTabId);
     if (!opener || !opener.session.port) {
@@ -3262,7 +3269,9 @@ chrome.tabs.onCreated.addListener((tab) => {
   }
   const now = Date.now();
   tabCreatedAt.set(tab.id, now);
-  const opener = holderOf(tab.openerTabId);
+  // Only without the browser's record of the source: openerTabId can name the tab in front rather
+  // than the page that opened this one (see NAVIGATION_TARGETS_REPORTED).
+  const opener = NAVIGATION_TARGETS_REPORTED ? null : holderOf(tab.openerTabId);
   if (opener && opener.session.port && openedBySession(opener.session, tab)) {
     claimPopup(opener.session, opener.tab, tab);
     return;

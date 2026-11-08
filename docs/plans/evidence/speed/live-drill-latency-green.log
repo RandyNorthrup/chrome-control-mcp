@@ -1,6 +1,6 @@
 PASS the agent's tab is behind the browser's own tab, as it is beside a user
-PASS scroll a region by ref replies without waiting for a background frame (worst 83 ms)
-PASS scroll the page by ref replies without waiting for a background frame (worst 85 ms)
-PASS scroll the page replies without waiting for a background frame (worst 51 ms)
-PASS click replies without waiting for a background frame (worst 31 ms)
-PASS hover replies without waiting for a background frame (worst 50 ms)
+PASS scroll a region by ref replies without waiting for a background frame (worst 150 ms)
+PASS scroll the page by ref replies without waiting for a background frame (worst 168 ms)
+PASS scroll the page replies without waiting for a background frame (worst 111 ms)
+PASS click replies without waiting for a background frame (worst 143 ms)
+PASS hover replies without waiting for a background frame (worst 158 ms)

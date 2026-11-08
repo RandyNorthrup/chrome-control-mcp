@@ -2,9 +2,11 @@
    mutation: '        sendCdp(tabId, "Page.startScreencast", FRAME_FORCING_SCREENCAST),' -> '        Promise.reject(new Error("drill: no cast")),'
    planted: build exit=0
    planted: suite exit=1
-   FAIL scroll a region by ref replies without waiting for a background frame (worst 3090 ms): [67,3090,3083] ms, bound 500
-   FAIL scroll the page by ref replies without waiting for a background frame (worst 3092 ms): [3083,3092,2083] ms, bound 500
-   FAIL scroll the page replies without waiting for a background frame (worst 1068 ms): [266,1068,1067] ms, bound 500
+   FAIL scroll a region by ref replies without waiting for a background frame (worst 2098 ms): [1329,2084,2098] ms, bound 500
+   FAIL scroll the page by ref replies without waiting for a background frame (worst 3098 ms): [3098,2086,471] ms, bound 500
+   FAIL scroll the page replies without waiting for a background frame (worst 2081 ms): [2081,69,163] ms, bound 500
+   FAIL click replies without waiting for a background frame (worst 1100 ms): [1087,1100,108] ms, bound 500
+   FAIL hover replies without waiting for a background frame (worst 1105 ms): [1079,1076,1105] ms, bound 500
    restored byte for byte
    restored: suite exit=0
 == drill matrix-point-factor-ignored: browser/extension/background.js

@@ -86,6 +86,11 @@ can use.
   gives the document's size and the slice's.
 - A recording whose page changed shape part-way through stretched the later frames; they are
   fitted on black instead.
+- A popup one agent's click opened could be taken by another agent, the one whose tab the user had
+  in front, if that agent had clicked within the last two seconds. Chrome names the tab in front as
+  the opener of a link opened from a background tab. The browser's record of which page opened a
+  tab is now the only one believed. Found by the multi-agent live suite on this release's run,
+  where the faster replies brought two agents' clicks within two seconds of each other.
 
 ## [1.13.0] - 2026-11-07
 

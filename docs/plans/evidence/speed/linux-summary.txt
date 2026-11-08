@@ -15,7 +15,7 @@
 == cppcheck exit=0
 == semgrep exit=0 Ran 221 rules on 58 files: 0 findings.
 == drill relay-wake-posix: planted build=0 red=1 green=0
-== live action-latency exit=0 {"ok":true,"checks":6,"passed":6,"worst":{"click":42,"hover":63,"scroll a region by ref":97,"scroll the page by ref":97,"scroll the page":51,"list tabs":3,"read the dialog state":4}}
+== live action-latency exit=0 {"ok":true,"checks":6,"passed":6,"worst":{"click":34,"hover":50,"scroll a region by ref":83,"scroll the page by ref":82,"scroll the page":51,"list tabs":2,"read the dialog state":4}}
 == live display-matrix exit=0 {"ok":true,"checks":3475,"passed":3475,"configurations":35,"configurations_passed":35}
 == live full-browser exit=0 {"ok":true,"exercised_tool_count":49,"case_count":207}
 == live user-interference exit=0 {"ok":true,"checks":10,"passed":10}

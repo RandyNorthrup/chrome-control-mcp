@@ -63,7 +63,7 @@
           "page_moved": 200
         },
         "pinch": {
-          "scale": 2,
+          "scale": 2.000000238418579,
           "offset": [356.5, 189.5],
           "visible_targets": ["mid", "tiny", "turned"]
         },
