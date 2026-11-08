@@ -1,13 +1,13 @@
-Wrote host manifest: C:\Users\Randy\AppData\Local\Temp\ccm-ps1-e24459f3\com.chromecontrolmcp.browser.json
-Registered com.chromecontrolmcp.browser -> C:\Users\Randy\AppData\Local\Temp\ccm-ps1-e24459f3\com.chromecontrolmcp.browser.json
+Wrote host manifest: C:\Users\Randy\AppData\Local\Temp\ccm-ps1-ceec9b1b\com.chromecontrolmcp.browser.json
+Registered com.chromecontrolmcp.browser -> C:\Users\Randy\AppData\Local\Temp\ccm-ps1-ceec9b1b\com.chromecontrolmcp.browser.json
 Reload the extension (or restart Chrome), then click the toolbar button to ping the host.
 allowed_origins: chrome-extension://iojehhmnaigcejfcpmilpclmeljhlkaa/, chrome-extension://mbkacllnbffbadcajpkkpelifdkfgcbd/
-path: C:\Users\Randy\AppData\Local\Temp\ccm-ps1-e24459f3\host.exe
+path: C:\Users\Randy\AppData\Local\Temp\ccm-ps1-ceec9b1b\host.exe
 PASS both origins written and read back
 refused: Extension id 'NOT-AN-ID' does not look like a 32-char lower-case Chrome extension id.
 PASS a malformed store id is refused
-Wrote host manifest: C:\Users\Randy\AppData\Local\Temp\ccm-ps1-e24459f3\com.chromecontrolmcp.browser.json
-Registered com.chromecontrolmcp.browser -> C:\Users\Randy\AppData\Local\Temp\ccm-ps1-e24459f3\com.chromecontrolmcp.browser.json
+Wrote host manifest: C:\Users\Randy\AppData\Local\Temp\ccm-ps1-ceec9b1b\com.chromecontrolmcp.browser.json
+Registered com.chromecontrolmcp.browser -> C:\Users\Randy\AppData\Local\Temp\ccm-ps1-ceec9b1b\com.chromecontrolmcp.browser.json
 Reload the extension (or restart Chrome), then click the toolbar button to ping the host.
 PASS the same id given twice is written once: chrome-extension://mbkacllnbffbadcajpkkpelifdkfgcbd/
 Removed registry key HKCU:\Software\ChromeControlMCP_Test\Ps1Check\com.chromecontrolmcp.browser

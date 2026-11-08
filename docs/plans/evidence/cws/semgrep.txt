@@ -1,6 +1,12 @@
 
 A new version of Semgrep is available. See https://semgrep.dev/docs/upgrading
 1.174.0
+METRICS: Using configs from the Registry (like --config=p/ci) reports pseudonymous rule metrics to semgrep.dev.
+To disable Registry rule metrics, use "--metrics=off".
+When using configs only from local files (like --config=xyz.yml) metrics are sent only when the user is logged in.
+
+More information: https://semgrep.dev/docs/metrics
+
 
 
 ┌─────────────┐
@@ -16,8 +22,6 @@ A new version of Semgrep is available. See https://semgrep.dev/docs/upgrading
   html              1       2
   json              4       1
 
-Warning: 1 timeout error(s) in browser/extension/background.js when running the following rules:
-[javascript.express.security.audit.xss.direct-response-write.direct-response-write]
 
 
 ┌──────────────┐

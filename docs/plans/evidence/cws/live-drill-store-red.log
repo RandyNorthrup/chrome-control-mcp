@@ -1,15 +1,12 @@
 --- dedicated browser stderr (tail) ---
 
-DevTools listening on ws://127.0.0.1:40199/devtools/browser/e453aa22-7437-42fe-ba36-96f7c5d5b0aa
-[22252:22252:1107/162543.400742:ERROR:dbus/object_proxy.cc:572] Failed to call method: org.freedesktop.NetworkManager.GetDevices: object_path= /org/freedesktop/NetworkManager: org.freedesktop.DBus.Error.ServiceUnknown: The name is not activatable
-[22252:22271:1107/162549.714504:ERROR:google_apis/gcm/engine/registration_request.cc:291] Registration response error message: PHONE_REGISTRATION_ERROR
-[22252:22271:1107/162549.714719:ERROR:google_apis/gcm/engine/registration_request.cc:291] Registration response error message: PHONE_REGISTRATION_ERROR
-[22252:22271:1107/162549.715310:ERROR:google_apis/gcm/engine/registration_request.cc:291] Registration response error message: PHONE_REGISTRATION_ERROR
-[22252:22271:1107/162613.022286:ERROR:google_apis/gcm/engine/registration_request.cc:291] Registration response error message: DEPRECATED_ENDPOINT
-[22252:22271:1107/162712.240076:ERROR:google_apis/gcm/engine/registration_request.cc:291] Registration response error message: DEPRECATED_ENDPOINT
-Warning: vkCreateInstance: Found no drivers!
-Warning: vkCreateInstance failed with VK_ERROR_INCOMPATIBLE_DRIVER
-    at CheckVkSuccessImpl (../../third_party/dawn/src/dawn/native/vulkan/VulkanError.cpp:106)
-
+DevTools listening on ws://127.0.0.1:44815/devtools/browser/5e295a7c-d748-41b7-9127-8f982ea176d4
+[2393708:2393723:1107/171318.597490:ERROR:google_apis/gcm/engine/registration_request.cc:291] Registration response error message: PHONE_REGISTRATION_ERROR
+[2393708:2393723:1107/171318.598241:ERROR:google_apis/gcm/engine/registration_request.cc:291] Registration response error message: PHONE_REGISTRATION_ERROR
+[2393708:2393723:1107/171318.598916:ERROR:google_apis/gcm/engine/registration_request.cc:291] Registration response error message: PHONE_REGISTRATION_ERROR
+[2393708:2393723:1107/171343.804088:ERROR:google_apis/gcm/engine/registration_request.cc:291] Registration response error message: DEPRECATED_ENDPOINT
+[2393708:2393723:1107/171428.642832:ERROR:google_apis/gcm/engine/registration_request.cc:291] Registration response error message: DEPRECATED_ENDPOINT
+Warning: maxDynamicUniformBuffersPerPipelineLayout artificially reduced from 500000 to 16 to fit dynamic offset allocation limit.
+Warning: maxDynamicStorageBuffersPerPipelineLayout artificially reduced from 500000 to 16 to fit dynamic offset allocation limit.
 Warning: maxDynamicUniformBuffersPerPipelineLayout artificially reduced from 72 to 16 to fit dynamic offset allocation limit.
 Warning: maxDynamicStorageBuffersPerPipelineLayout artificially reduced from 64 to 16 to fit dynamic offset allocation limit.

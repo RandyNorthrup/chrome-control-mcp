@@ -94,3 +94,24 @@ working covers it (REQ-CWS-COMPAT): new criterion AC-CWS-GROUPS, new task TASK-C
 taken after this change.
 
 No finding is left open. Scope revision 3.
+
+## Addendum, 2026-11-08: scope revision 4
+
+1. **The first real dry run.** After the push, the Chrome Web Store check workflow's dry run (run 42430524883) signed in and read the item, then refused it: the key the store returned and
+   `browser/store-public-key.txt` differed byte for byte, though the repository's key gives the
+   item's ID. The comparison was the defect. The dry run now derives the ID from the key the store
+   sends (PEM armour and whitespace removed), requires it to be the item's, and compares key bodies
+   the same way; a unit case covers a PEM-wrapped key and a key that is not the recorded one. The
+   second dry run (run 42430683011) passed. Both runs are evidence; the first is recorded as a
+   failure.
+2. **Where the Linux evidence runs.** At the owner's direction the Linux checks move from the WSL
+   mirror to the owner's Ubuntu 26.04 laptop (GCC 15.2, Clang 21.1.8, Qt 6.10.2, Chrome for Testing
+   153), with Node and Semgrep installed in the user's home and nothing installed system-wide. The
+   live harness keeps every browser in a profile and native-messaging directory of its own, so the
+   laptop's own Chrome and its registration are not touched. The declared environment changes
+   accordingly, and `docs/QUALITY.md` (the rules file) now says local evidence runs on a Linux
+   machine that mirrors the Linux jobs.
+3. **Receipts.** Every earlier behaviour, red and manual receipt is kept as stale history: the
+   publisher script, the environment and the rules revision all changed. Every check runs again.
+
+No finding is left open. Scope revision 4.

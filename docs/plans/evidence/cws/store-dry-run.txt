@@ -1,0 +1,13 @@
+Chrome Web Store check, dry-run, run 42430683011 on c5fbfcb (https://github.com/RandyNorthrup/chrome-control-mcp/actions/runs/42430683011): exit 0.
+2026-11-08T00:38:46.6131620Z   version="$(node -p "require('./browser/extension/manifest.json').version")"
+2026-11-08T00:38:46.6134794Z   node scripts/store_package.mjs --version "$version" --out "$RUNNER_TEMP/store.zip"
+2026-11-08T00:38:46.6137795Z   node scripts/cws_publish.mjs --package "$RUNNER_TEMP/store.zip" --upload-only
+2026-11-08T00:38:46.6140007Z else
+2026-11-08T00:38:46.6141371Z   node scripts/cws_publish.mjs --dry-run
+2026-11-08T00:38:46.6143006Z fi
+2026-11-08T00:38:46.6206684Z shell: /usr/bin/bash -e ***0***
+2026-11-08T00:38:46.6208147Z env:
+2026-11-08T00:38:46.6253547Z   CWS_SERVICE_ACCOUNT_JSON: ***
+2026-11-08T00:38:46.6255177Z   MODE: dry-run
+2026-11-08T00:38:46.6256387Z ##[endgroup]
+2026-11-08T00:38:47.0620833Z Signed in as chrome-web-store-publisher@chrome-control-mcp.iam.gserviceaccount.com; item mbkacllnbffbadcajpkkpelifdkfgcbd; published: none; submitted: none; last upload: none in 24 h; its key gives mbkacllnbffbadcajpkkpelifdkfgcbd

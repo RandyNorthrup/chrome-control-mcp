@@ -1,6 +1,6 @@
 {
   "ok": true,
-  "chrome": "/home/randy/ccmcp/.chrome-for-testing/chrome/linux-153.0.8010.52/chrome-linux64/chrome",
+  "chrome": "/home/randy/ccm-tools/cft/chrome/linux-153.0.8010.52/chrome-linux64/chrome",
   "coverage": {
     "zooms": [
       25, 33, 50, 67, 75, 80, 90, 100, 110, 125, 150, 175, 200, 250, 300, 400,
@@ -59,7 +59,7 @@
           "page_moved": 200
         },
         "pinch": {
-          "scale": 1.4999998807907104,
+          "scale": 1.5,
           "offset": [131, 76],
           "visible_targets": ["mid", "tiny", "zoomed", "turned"]
         },
@@ -509,7 +509,7 @@
           "page_moved": 200
         },
         "pinch": {
-          "scale": 2.0000007152557373,
+          "scale": 2.000000476837158,
           "offset": [338, 156],
           "visible_targets": ["mid", "tiny", "turned"]
         },
@@ -1361,7 +1361,7 @@
           "page_moved": 200
         },
         "pinch": {
-          "scale": 1.5000001192092896,
+          "scale": 1.4999998807907104,
           "offset": [637, 336],
           "visible_targets": ["mid", "tiny", "turned"]
         },
@@ -2237,7 +2237,7 @@
           "page_moved": 200
         },
         "pinch": {
-          "scale": 2.9999990463256836,
+          "scale": 3.000002861022949,
           "offset": [508, 240.8000030517578],
           "visible_targets": ["mid"]
         },
@@ -2651,7 +2651,7 @@
           "page_moved": 200
         },
         "pinch": {
-          "scale": 1.499999761581421,
+          "scale": 1.500000238418579,
           "offset": [339.20001220703125, 168.8000030517578],
           "visible_targets": ["mid", "tiny", "turned"]
         },
@@ -3089,7 +3089,7 @@
           "page_moved": 200
         },
         "pinch": {
-          "scale": 2.000000238418579,
+          "scale": 2,
           "offset": [316.6666564941406, 144.6666717529297],
           "visible_targets": ["mid", "tiny", "turned"]
         },
@@ -3527,7 +3527,7 @@
           "page_moved": 199.99993896484375
         },
         "pinch": {
-          "scale": 3.0000014305114746,
+          "scale": 2.9999990463256836,
           "offset": [564, 272.6666564941406],
           "visible_targets": ["mid"]
         },
@@ -3941,7 +3941,7 @@
           "page_moved": 200
         },
         "pinch": {
-          "scale": 1.5000001192092896,
+          "scale": 1.5,
           "offset": [424, 216],
           "visible_targets": ["mid", "tiny", "turned"]
         },
@@ -4379,7 +4379,7 @@
           "page_moved": 200
         },
         "pinch": {
-          "scale": 1.9999998807907104,
+          "scale": 1.999999761581421,
           "offset": [270.8571472167969, 118.85713958740234],
           "visible_targets": ["mid", "tiny", "turned"]
         },
@@ -4817,7 +4817,7 @@
           "page_moved": 200
         },
         "pinch": {
-          "scale": 2.999999761581421,
+          "scale": 3.000000476837158,
           "offset": [726.8571166992188, 364],
           "visible_targets": ["mid"]
         },
@@ -5231,7 +5231,7 @@
           "page_moved": 200
         },
         "pinch": {
-          "scale": 1.5,
+          "scale": 1.499999761581421,
           "offset": [81, 117],
           "visible_targets": ["mid", "tiny", "zoomed", "turned"]
         },
@@ -5681,7 +5681,7 @@
           "page_moved": 200
         },
         "pinch": {
-          "scale": 2,
+          "scale": 2.000000476837158,
           "offset": [356.5, 189.5],
           "visible_targets": ["mid", "tiny", "turned"]
         },
@@ -6119,7 +6119,7 @@
           "page_moved": 200
         },
         "pinch": {
-          "scale": 2.99999737739563,
+          "scale": 3,
           "offset": [635, 312.5],
           "visible_targets": ["mid"]
         },
@@ -6533,7 +6533,7 @@
           "page_moved": 200
         },
         "pinch": {
-          "scale": 1.4999996423721313,
+          "scale": 1.499999761581421,
           "offset": [424, 216],
           "visible_targets": ["mid", "tiny", "turned"]
         },
@@ -6971,8 +6971,8 @@
           "page_moved": 200
         },
         "pinch": {
-          "scale": 1.9999996423721313,
-          "offset": [380, 180],
+          "scale": 2,
+          "offset": [380.3999938964844, 180.39999389648438],
           "visible_targets": ["mid", "tiny", "turned"]
         },
         "pinched_screenshot": [3840, 1803]
@@ -7409,7 +7409,7 @@
           "page_moved": 200
         },
         "pinch": {
-          "scale": 2.9999985694885254,
+          "scale": 3.0000011920928955,
           "offset": [161.6666717529297, 233.6666717529297],
           "visible_targets": ["mid"]
         },
@@ -7823,7 +7823,7 @@
           "page_moved": 200
         },
         "pinch": {
-          "scale": 1.5,
+          "scale": 1.500000238418579,
           "offset": [210.6666717529297, 96],
           "visible_targets": ["mid", "tiny", "turned"]
         },
@@ -8261,7 +8261,7 @@
           "page_moved": 800
         },
         "pinch": {
-          "scale": 2,
+          "scale": 1.9999998807907104,
           "offset": [796, 456],
           "visible_targets": ["mid", "tiny", "turned"]
         },
@@ -8699,7 +8699,7 @@
           "page_moved": 606.060791015625
         },
         "pinch": {
-          "scale": 2.999999761581421,
+          "scale": 3.000001907348633,
           "offset": [1363.6363525390625, 630.302978515625],
           "visible_targets": ["mid"]
         },
@@ -9113,7 +9113,7 @@
           "page_moved": 400
         },
         "pinch": {
-          "scale": 1.500000238418579,
+          "scale": 1.5000001192092896,
           "offset": [634, 312],
           "visible_targets": ["mid", "tiny", "turned"]
         },
@@ -9551,7 +9551,7 @@
           "page_moved": 298.507568359375
         },
         "pinch": {
-          "scale": 2.000000238418579,
+          "scale": 2.0000007152557373,
           "offset": [1429.8507080078125, 752.23876953125],
           "visible_targets": ["mid", "tiny", "turned"]
         },
@@ -9989,7 +9989,7 @@
           "page_moved": 266.66668701171875
         },
         "pinch": {
-          "scale": 3.000000238418579,
+          "scale": 2.9999992847442627,
           "offset": [451.20001220703125, 278.3999938964844],
           "visible_targets": ["mid"]
         },
@@ -10403,7 +10403,7 @@
           "page_moved": 250
         },
         "pinch": {
-          "scale": 1.5000003576278687,
+          "scale": 1.4999992847442627,
           "offset": [317, 151],
           "visible_targets": ["mid", "tiny", "turned"]
         },
@@ -10841,8 +10841,8 @@
           "page_moved": 222.22216796875
         },
         "pinch": {
-          "scale": 2,
-          "offset": [565.3333129882812, 280.8888854980469],
+          "scale": 1.9999995231628418,
+          "offset": [564.4444580078125, 280.8888854980469],
           "visible_targets": ["mid", "tiny", "turned"]
         },
         "pinched_screenshot": [2563, 1264]
@@ -11279,7 +11279,7 @@
           "page_moved": 181.81817626953125
         },
         "pinch": {
-          "scale": 3.0000014305114746,
+          "scale": 3.0000009536743164,
           "offset": [382.4242248535156, 175.15150451660156],
           "visible_targets": ["mid"]
         },
@@ -11693,7 +11693,7 @@
           "page_moved": 160
         },
         "pinch": {
-          "scale": 1.5000001192092896,
+          "scale": 1.5,
           "offset": [225.06666564941406, 108.80000305175781],
           "visible_targets": ["mid", "tiny", "turned"]
         },
@@ -12131,7 +12131,7 @@
           "page_moved": 133.3333740234375
         },
         "pinch": {
-          "scale": 1.9999998807907104,
+          "scale": 1.9999995231628418,
           "offset": [424, 216],
           "visible_targets": ["mid", "tiny", "turned"]
         },
@@ -12569,7 +12569,7 @@
           "page_moved": 114.28570556640625
         },
         "pinch": {
-          "scale": 2.9999990463256836,
+          "scale": 3.000000238418579,
           "offset": [206.69387817382812, 90.44898223876953],
           "visible_targets": ["mid"]
         },
@@ -12983,7 +12983,7 @@
           "page_moved": 100
         },
         "pinch": {
-          "scale": 1.4999994039535522,
+          "scale": 1.499999761581421,
           "offset": [180.57142639160156, 90.85713958740234],
           "visible_targets": ["mid", "tiny", "turned"]
         },
@@ -13421,7 +13421,7 @@
           "page_moved": 80
         },
         "pinch": {
-          "scale": 2.000000476837158,
+          "scale": 2,
           "offset": [140.1999969482422, 75.80000305175781],
           "visible_targets": ["mid", "tiny"]
         },
@@ -13847,7 +13847,7 @@
           "page_moved": 66.66665649414062
         },
         "pinch": {
-          "scale": 2.9999990463256836,
+          "scale": 3.000002861022949,
           "offset": [211.6666717529297, 104.16666412353516],
           "visible_targets": ["mid"]
         },
@@ -14261,7 +14261,7 @@
           "page_moved": 50
         },
         "pinch": {
-          "scale": 1.5000001192092896,
+          "scale": 1.5000003576278687,
           "offset": [106, 54],
           "visible_targets": ["mid", "tiny", "zoomed", "turned"]
         },
@@ -14711,7 +14711,7 @@
           "page_moved": 40
         },
         "pinch": {
-          "scale": 1.999999761581421,
+          "scale": 2,
           "offset": [188.1999969482422, 100.80000305175781],
           "visible_targets": ["mid", "tiny", "turned"]
         },

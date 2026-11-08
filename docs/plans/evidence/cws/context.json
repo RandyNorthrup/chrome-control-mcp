@@ -5,9 +5,14 @@
     "cmake": "4.4.5",
     "python": "3.14.10",
     "chrome-for-testing": "153.0.8010.52",
-    "wsl2-arch-node": "v26.13.0",
-    "wsl2-arch-cmake": "4.4.5",
-    "wsl2-arch-python": "3.12.16",
-    "wsl2-arch-semgrep": "1.174.0"
+    "ubuntu-laptop-os": "Ubuntu 26.04.1 LTS",
+    "ubuntu-laptop-gcc": "15.2.0",
+    "ubuntu-laptop-clang": "21.1.8",
+    "ubuntu-laptop-qt": "6.10.2",
+    "ubuntu-laptop-cmake": "4.2.3",
+    "ubuntu-laptop-cppcheck": "2.19.0",
+    "ubuntu-laptop-node": "v24.20.0",
+    "ubuntu-laptop-python": "3.14.4",
+    "ubuntu-laptop-semgrep": "1.174.0"
   }
 }

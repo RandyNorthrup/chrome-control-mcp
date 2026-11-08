@@ -31,8 +31,8 @@
     }
   ],
   "measured": {
-    "large_upload_seconds": 57.837,
-    "large_upload_mib_per_second": 5.2,
+    "large_upload_seconds": 45.945,
+    "large_upload_mib_per_second": 6.5,
     "cap_refusal_ms": 0
   },
   "error": null

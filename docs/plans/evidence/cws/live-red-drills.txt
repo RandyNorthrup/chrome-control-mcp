@@ -1,6 +1,6 @@
 == live drill store-origin-dropped: include/chrome_control_mcp/browser_extension_installer.h
    mutation: '    kBrowserExtensionId, kStoreExtensionId};' -> '    kBrowserExtensionId, kBrowserExtensionId};'
    planted: build exit=0
-   planted: store-key run exit=1 {   "ok": false,   "case": "unknown",   "checks": [],   "error": "AssertionError [ERR_ASSERTION]: the extension did not attach within 180 s\n    at main (file:///home/randy/ccmcp/tests/e2e/extension_version_e2e.mjs:120:12)\n    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)\n    at async file:///home/randy/ccmcp/tests/e2e/extension_version_e2e.mjs:387:1" }
+   planted: store-key run exit=1 {   "ok": false,   "case": "unknown",   "checks": [],   "error": "AssertionError [ERR_ASSERTION]: the extension did not attach within 180 s\n    at main (file:///home/randy/ccm-evidence/ccmcp/tests/e2e/extension_version_e2e.mjs:120:12)\n    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)\n    at async file:///home/randy/ccm-evidence/ccmcp/tests/e2e/extension_version_
    restored byte for byte
    restored: store-key run exit=0 build: store (mbkacllnbffbadcajpkkpelifdkfgcbd)

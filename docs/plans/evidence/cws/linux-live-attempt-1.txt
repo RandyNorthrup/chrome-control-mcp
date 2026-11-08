@@ -1,0 +1,22 @@
+The first live attempt on the Ubuntu laptop, kept as history: every suite stopped before a check ran, because Chrome for Testing found no usable sandbox (Ubuntu 23.10 and later restrict unprivileged user namespaces with AppArmor). The live suites were then run with --chrome-arg=--no-sandbox, as CI's Linux runner runs them; see linux-summary.txt.
+== live extension-version-store exit=1 (no JSON report)
+== live extension-version-current exit=1 (no JSON report)
+== live extension-version-older exit=1 (no JSON report)
+== live extension-version-released exit=1 (no JSON report)
+== live full-browser exit=1 (no JSON report)
+== live user-interference exit=1 (no JSON report)
+== live multi-agent exit=1 (no JSON report)
+== live multi-agent-2 exit=1 (no JSON report)
+== live multi-agent-3 exit=1 (no JSON report)
+== live clipboard exit=1 (no JSON report)
+== live large-upload exit=1 (no JSON report)
+== live profiles-two exit=1 (no JSON report)
+== live profiles-upgrade exit=1 (no JSON report)
+== live display-matrix exit=1 {"ok":false}
+FAIL 1x-1366x768-zoom100-overlay pinch 2: 0/1
+FAIL 1x-800x600-zoom100-overlay pinch 1.5: 0/1
+FAIL 1x-3840x2160-zoom100-classic pinch 1.5: 0/1
+FAIL 1x-1920x1080-zoom100-classic pinch 3: 0/1
+FAIL 1.25x-1536x864-zoom100-overlay pinch 3: 0/1
+== live drill store-origin-dropped:    planted: store-key run exit=1     restored: store-key run exit=1
+== done

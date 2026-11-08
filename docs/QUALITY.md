@@ -36,7 +36,8 @@ The gates run in three tiers (2026-11-01):
   Marketplace and the Chrome Web Store. The live suites can also be started by hand from the Actions
   tab.
 - **Every feature, locally**: the live suites, red drills and the evidence ledger in
-  [plans/](plans/), on Windows and in the WSL mirror of the Linux jobs, before the work is committed.
+  [plans/](plans/), on Windows and on a Linux machine that mirrors the Linux jobs (an Ubuntu laptop
+  from 1.13.0; a WSL mirror before it), before the work is committed.
   macOS is covered only by CI, per push for builds and tests and per release for the live suites.
 
 The live suites drive a real Chrome and take ten to twenty minutes a platform, most of it the

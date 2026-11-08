@@ -68,13 +68,13 @@ developer.
   "work": {
     "id": "WORK-CWS",
     "title": "Chrome Web Store distribution",
-    "scope_revision": 3,
+    "scope_revision": 4,
     "brief": null,
     "brief_reason": "Scoped change in an existing product; README.md, docs/SECURITY.md and the owner's decision of 2026-11-07 to publish in the Chrome Web Store carry the context",
     "rules": [
       {
         "path": "docs/QUALITY.md",
-        "revision": "498359aded9a"
+        "revision": "2341ef05e7b3"
       }
     ],
     "inputs": [],
@@ -85,10 +85,15 @@ developer.
         "cmake": "4.4.5",
         "python": "3.14.10",
         "chrome-for-testing": "153.0.8010.52",
-        "wsl2-arch-node": "v26.13.0",
-        "wsl2-arch-cmake": "4.4.5",
-        "wsl2-arch-python": "3.12.16",
-        "wsl2-arch-semgrep": "1.174.0"
+        "ubuntu-laptop-os": "Ubuntu 26.04.1 LTS",
+        "ubuntu-laptop-gcc": "15.2.0",
+        "ubuntu-laptop-clang": "21.1.8",
+        "ubuntu-laptop-qt": "6.10.2",
+        "ubuntu-laptop-cmake": "4.2.3",
+        "ubuntu-laptop-cppcheck": "2.19.0",
+        "ubuntu-laptop-node": "v24.20.0",
+        "ubuntu-laptop-python": "3.14.4",
+        "ubuntu-laptop-semgrep": "1.174.0"
       }
     }
   },
@@ -303,18 +308,18 @@ developer.
       ],
       "status": "verified",
       "evidence": [
-        "EV-CWS-CTEST",
-        "EV-CWS-LINUX",
-        "EV-CWS-REGISTER-SCRIPT",
-        "EV-CWS-SMOKE",
-        "EV-CWS-LIVE-REGRESSION",
-        "EV-CWS-RED-EXACT",
-        "EV-CWS-RED-REFRESH",
-        "EV-CWS-RED-STORE-DROPPED",
-        "EV-CWS-RED-LOOKALIKE",
-        "EV-CWS-RED-INSTRUCTIONS",
-        "EV-CWS-RED-STATUS",
-        "EV-CWS-RED-UNPACKED"
+        "EV-CWS-CTEST-2",
+        "EV-CWS-LINUX-2",
+        "EV-CWS-REGISTER-SCRIPT-2",
+        "EV-CWS-SMOKE-2",
+        "EV-CWS-LIVE-REGRESSION-2",
+        "EV-CWS-RED-EXACT-2",
+        "EV-CWS-RED-REFRESH-2",
+        "EV-CWS-RED-STORE-DROPPED-2",
+        "EV-CWS-RED-LOOKALIKE-2",
+        "EV-CWS-RED-INSTRUCTIONS-2",
+        "EV-CWS-RED-STATUS-2",
+        "EV-CWS-RED-UNPACKED-2"
       ],
       "blocker": null,
       "superseded_by": null
@@ -355,13 +360,13 @@ developer.
       ],
       "status": "verified",
       "evidence": [
-        "EV-CWS-UNIT-JS",
-        "EV-CWS-CTEST",
-        "EV-CWS-LIVE-UNPACKED",
-        "EV-CWS-LIVE-REGRESSION",
-        "EV-CWS-RED-PACKAGE-KEY",
-        "EV-CWS-RED-PACKAGE-DESC",
-        "EV-CWS-RED-UNPACKED"
+        "EV-CWS-UNIT-JS-2",
+        "EV-CWS-CTEST-2",
+        "EV-CWS-LIVE-UNPACKED-2",
+        "EV-CWS-LIVE-REGRESSION-2",
+        "EV-CWS-RED-PACKAGE-KEY-2",
+        "EV-CWS-RED-PACKAGE-DESC-2",
+        "EV-CWS-RED-UNPACKED-2"
       ],
       "blocker": null,
       "superseded_by": null
@@ -402,16 +407,18 @@ developer.
           "action": "create"
         }
       ],
-      "status": "implemented",
+      "status": "verified",
       "evidence": [
-        "EV-CWS-UNIT-JS",
-        "EV-CWS-CTEST",
-        "EV-CWS-RED-PACKAGE-KEY",
-        "EV-CWS-RED-PACKAGE-DESC",
-        "EV-CWS-RED-AUDIENCE",
-        "EV-CWS-RED-FAILED-UPLOAD",
-        "EV-CWS-RED-WORDS",
-        "EV-CWS-RED-POLL"
+        "EV-CWS-DRY-RUN",
+        "EV-CWS-DRY-RUN-1",
+        "EV-CWS-UNIT-JS-2",
+        "EV-CWS-CTEST-2",
+        "EV-CWS-RED-PACKAGE-KEY-2",
+        "EV-CWS-RED-PACKAGE-DESC-2",
+        "EV-CWS-RED-AUDIENCE-2",
+        "EV-CWS-RED-FAILED-UPLOAD-2",
+        "EV-CWS-RED-WORDS-2",
+        "EV-CWS-RED-POLL-2"
       ],
       "blocker": null,
       "superseded_by": null
@@ -451,11 +458,11 @@ developer.
       ],
       "status": "verified",
       "evidence": [
-        "EV-CWS-LIVE-STORE",
-        "EV-CWS-LIVE-UNPACKED",
-        "EV-CWS-LIVE-REGRESSION",
-        "EV-CWS-RED-LIVE-STORE",
-        "EV-CWS-RED-UNPACKED"
+        "EV-CWS-LIVE-STORE-2",
+        "EV-CWS-LIVE-UNPACKED-2",
+        "EV-CWS-LIVE-REGRESSION-2",
+        "EV-CWS-RED-LIVE-STORE-2",
+        "EV-CWS-RED-UNPACKED-2"
       ],
       "blocker": null,
       "superseded_by": null
@@ -535,8 +542,14 @@ developer.
           "action": "modify"
         }
       ],
-      "status": "planned",
-      "evidence": [],
+      "status": "verified",
+      "evidence": [
+        "EV-CWS-PRIVACY-2",
+        "EV-CWS-GATES-2",
+        "EV-CWS-CTEST-2",
+        "EV-CWS-LIVE-REGRESSION-2",
+        "EV-CWS-RED-UNPACKED-2"
+      ],
       "blocker": null,
       "superseded_by": null
     },
@@ -564,13 +577,13 @@ developer.
       ],
       "status": "verified",
       "evidence": [
-        "EV-CWS-GROUPS-UNIT",
-        "EV-CWS-GROUPS-LIVE",
-        "EV-CWS-UNIT-JS",
-        "EV-CWS-RED-GROUPS-NEWTAB",
-        "EV-CWS-RED-GROUPS-LIST",
-        "EV-CWS-LIVE-REGRESSION",
-        "EV-CWS-RED-UNPACKED"
+        "EV-CWS-GROUPS-UNIT-2",
+        "EV-CWS-GROUPS-LIVE-2",
+        "EV-CWS-UNIT-JS-2",
+        "EV-CWS-RED-GROUPS-NEWTAB-2",
+        "EV-CWS-RED-GROUPS-LIST-2",
+        "EV-CWS-LIVE-REGRESSION-2",
+        "EV-CWS-RED-UNPACKED-2"
       ],
       "blocker": null,
       "superseded_by": null
@@ -679,7 +692,7 @@ developer.
         "AC-CWS-COMPAT"
       ],
       "kind": "readiness",
-      "status": "pass",
+      "status": "stale",
       "command": [],
       "method": "Scope revision 3 reviewed: the grouping race the multi-agent live suite found, read as a race rather than retried, traced to browser_new_tab and browser_tabs not waiting for the queued group sync, and covered by a new criterion (AC-CWS-GROUPS) and task (TASK-CWS-GROUPS) under the compatibility requirement; recorded in the readiness review's addendum",
       "exit_code": null,
@@ -688,7 +701,7 @@ developer.
         "sha256": "abec7ad2692364410ff73e865015585f6bbd8ef48d6534a3958d69a9225fbefc"
       },
       "red": null,
-      "reason": null,
+      "reason": "Scope revision 4 changed the environment and the rules revision; the review was redone as EV-CWS-READINESS-4",
       "scope_sha256": "6d90661bf08d2570c35a7c48ff0c7e8eb438329eebf4bbbc57796ce9c35966f1",
       "environment": {
         "platform": "windows",
@@ -722,7 +735,7 @@ developer.
         "AC-CWS-COMPAT"
       ],
       "kind": "behavior",
-      "status": "pass",
+      "status": "stale",
       "command": [
         "ctest",
         "--test-dir",
@@ -738,7 +751,7 @@ developer.
         "sha256": "505cf99effd4e906b1cb9ee318d49b5ac5a0e9dcde72ba68e5021fc84a3be54c"
       },
       "red": null,
-      "reason": null,
+      "reason": "Scope revision 4: the Linux evidence moved to the Ubuntu laptop, the dry run's key check changed after the first real dry run, and the rules file changed; the checks were run again",
       "scope_sha256": "6d90661bf08d2570c35a7c48ff0c7e8eb438329eebf4bbbc57796ce9c35966f1",
       "environment": {
         "platform": "windows",
@@ -946,7 +959,7 @@ developer.
         "AC-CWS-COMPAT"
       ],
       "kind": "behavior",
-      "status": "pass",
+      "status": "stale",
       "command": [
         "npm",
         "run",
@@ -959,7 +972,7 @@ developer.
         "sha256": "d4bbac2db515ec7dae0217a26176746dea17034c2f845fcb28232a13783abd06"
       },
       "red": null,
-      "reason": null,
+      "reason": "Scope revision 4: the Linux evidence moved to the Ubuntu laptop, the dry run's key check changed after the first real dry run, and the rules file changed; the checks were run again",
       "scope_sha256": "6d90661bf08d2570c35a7c48ff0c7e8eb438329eebf4bbbc57796ce9c35966f1",
       "environment": {
         "platform": "windows",
@@ -1168,7 +1181,7 @@ developer.
         "AC-CWS-COMPAT"
       ],
       "kind": "behavior",
-      "status": "pass",
+      "status": "stale",
       "command": [
         "node",
         "tests/e2e/isolated_run.mjs",
@@ -1183,7 +1196,7 @@ developer.
         "sha256": "117d07796dbade8ccea58631e0e9582ac2d0366791651562b60dbe776f2f0cc5"
       },
       "red": null,
-      "reason": null,
+      "reason": "Scope revision 4: the Linux evidence moved to the Ubuntu laptop, the dry run's key check changed after the first real dry run, and the rules file changed; the checks were run again",
       "scope_sha256": "6d90661bf08d2570c35a7c48ff0c7e8eb438329eebf4bbbc57796ce9c35966f1",
       "environment": {
         "platform": "windows",
@@ -1391,7 +1404,7 @@ developer.
         "AC-CWS-GROUPS"
       ],
       "kind": "behavior",
-      "status": "pass",
+      "status": "stale",
       "command": [
         "node",
         "--test",
@@ -1404,7 +1417,7 @@ developer.
         "sha256": "0c42a303cef51088eedd00642cfa6aafdc8a0a8a8ef768605b5f2fe594d91569"
       },
       "red": null,
-      "reason": null,
+      "reason": "Scope revision 4: the Linux evidence moved to the Ubuntu laptop, the dry run's key check changed after the first real dry run, and the rules file changed; the checks were run again",
       "scope_sha256": "aa06559afe4f970db17758b1d90bbba47ec1625d4398b043bb5f5dc2f5f9fdb3",
       "environment": {
         "platform": "windows",
@@ -1450,7 +1463,7 @@ developer.
         "AC-CWS-COMPAT"
       ],
       "kind": "behavior",
-      "status": "pass",
+      "status": "stale",
       "command": [
         "bash",
         "/tmp/wsl_evidence.sh",
@@ -1464,7 +1477,7 @@ developer.
         "sha256": "117d07796dbade8ccea58631e0e9582ac2d0366791651562b60dbe776f2f0cc5"
       },
       "red": null,
-      "reason": null,
+      "reason": "Scope revision 4: the Linux evidence moved to the Ubuntu laptop, the dry run's key check changed after the first real dry run, and the rules file changed; the checks were run again",
       "scope_sha256": "6d90661bf08d2570c35a7c48ff0c7e8eb438329eebf4bbbc57796ce9c35966f1",
       "environment": {
         "platform": "windows",
@@ -1672,7 +1685,7 @@ developer.
         "AC-CWS-COMPAT"
       ],
       "kind": "behavior",
-      "status": "pass",
+      "status": "stale",
       "command": [
         "bash",
         "/tmp/wsl_evidence.sh",
@@ -1686,7 +1699,7 @@ developer.
         "sha256": "117d07796dbade8ccea58631e0e9582ac2d0366791651562b60dbe776f2f0cc5"
       },
       "red": null,
-      "reason": null,
+      "reason": "Scope revision 4: the Linux evidence moved to the Ubuntu laptop, the dry run's key check changed after the first real dry run, and the rules file changed; the checks were run again",
       "scope_sha256": "6d90661bf08d2570c35a7c48ff0c7e8eb438329eebf4bbbc57796ce9c35966f1",
       "environment": {
         "platform": "windows",
@@ -1894,7 +1907,7 @@ developer.
         "AC-CWS-LIVE"
       ],
       "kind": "behavior",
-      "status": "pass",
+      "status": "stale",
       "command": [
         "node",
         "tests/e2e/isolated_run.mjs",
@@ -1910,7 +1923,7 @@ developer.
         "sha256": "09a6e72df534e0904b7c1f353ee224fd642c9226792f9c254983c89757b51fbb"
       },
       "red": null,
-      "reason": null,
+      "reason": "Scope revision 4: the Linux evidence moved to the Ubuntu laptop, the dry run's key check changed after the first real dry run, and the rules file changed; the checks were run again",
       "scope_sha256": "9ce11e932bb235547869472b4a6755043694e17a8ce67ba3af0d1ab3d6a355dc",
       "environment": {
         "platform": "windows",
@@ -2027,7 +2040,7 @@ developer.
         "AC-CWS-COMPAT"
       ],
       "kind": "behavior",
-      "status": "pass",
+      "status": "stale",
       "command": [
         "node",
         "tests/e2e/isolated_run.mjs",
@@ -2042,7 +2055,7 @@ developer.
         "sha256": "95d39a4c603f870190b9d5356a943356737cbc961179c47189f6bef64cf9cd9b"
       },
       "red": null,
-      "reason": null,
+      "reason": "Scope revision 4: the Linux evidence moved to the Ubuntu laptop, the dry run's key check changed after the first real dry run, and the rules file changed; the checks were run again",
       "scope_sha256": "6d90661bf08d2570c35a7c48ff0c7e8eb438329eebf4bbbc57796ce9c35966f1",
       "environment": {
         "platform": "windows",
@@ -2250,7 +2263,7 @@ developer.
         "AC-CWS-PRIVACY"
       ],
       "kind": "manual",
-      "status": "pass",
+      "status": "stale",
       "command": [],
       "method": "docs/PRIVACY.md read claim by claim against the manifest, the extension's code, the bridge and the updater; every claim holds, recorded with the source each was checked against",
       "exit_code": null,
@@ -2259,7 +2272,7 @@ developer.
         "sha256": "ed16ecb56df2178378380314382a4990205a29199f614e3e1c88b4f601cf8d4b"
       },
       "red": null,
-      "reason": null,
+      "reason": "Scope revision 4: the Linux evidence moved to the Ubuntu laptop, the dry run's key check changed after the first real dry run, and the rules file changed; the checks were run again",
       "scope_sha256": "ab96c9ea051efb45acabdb879e063b0c1d7fb6fbee42cc5980fae5aaaa00896c",
       "environment": {
         "platform": "windows",
@@ -2455,7 +2468,7 @@ developer.
         "AC-CWS-PUBLISH"
       ],
       "kind": "red",
-      "status": "pass",
+      "status": "stale",
       "command": [
         "node",
         "--test",
@@ -2493,7 +2506,7 @@ developer.
           }
         ]
       },
-      "reason": null,
+      "reason": "Scope revision 4: the Linux evidence moved to the Ubuntu laptop, the dry run's key check changed after the first real dry run, and the rules file changed; the checks were run again",
       "scope_sha256": "7c0c42bc48eefb486c0cb53dc99eaa2749801cadbe924f3d09acbea4a2e27c77",
       "environment": {
         "platform": "windows",
@@ -2569,7 +2582,7 @@ developer.
         "AC-CWS-REGISTRATION"
       ],
       "kind": "red",
-      "status": "pass",
+      "status": "stale",
       "command": [
         "./build/test_browser_extension_installer"
       ],
@@ -2605,7 +2618,7 @@ developer.
           }
         ]
       },
-      "reason": null,
+      "reason": "Scope revision 4: the Linux evidence moved to the Ubuntu laptop, the dry run's key check changed after the first real dry run, and the rules file changed; the checks were run again",
       "scope_sha256": "60b862e09efc94d3493a544a638a78c127d5ea8881dd684b185403a305b56a9d",
       "environment": {
         "platform": "windows",
@@ -2677,7 +2690,7 @@ developer.
         "AC-CWS-PUBLISH"
       ],
       "kind": "red",
-      "status": "pass",
+      "status": "stale",
       "command": [
         "node",
         "--test",
@@ -2715,7 +2728,7 @@ developer.
           }
         ]
       },
-      "reason": null,
+      "reason": "Scope revision 4: the Linux evidence moved to the Ubuntu laptop, the dry run's key check changed after the first real dry run, and the rules file changed; the checks were run again",
       "scope_sha256": "7c0c42bc48eefb486c0cb53dc99eaa2749801cadbe924f3d09acbea4a2e27c77",
       "environment": {
         "platform": "windows",
@@ -2791,7 +2804,7 @@ developer.
         "AC-CWS-GROUPS"
       ],
       "kind": "red",
-      "status": "pass",
+      "status": "stale",
       "command": [
         "node",
         "--test",
@@ -2829,7 +2842,7 @@ developer.
           }
         ]
       },
-      "reason": null,
+      "reason": "Scope revision 4: the Linux evidence moved to the Ubuntu laptop, the dry run's key check changed after the first real dry run, and the rules file changed; the checks were run again",
       "scope_sha256": "aa06559afe4f970db17758b1d90bbba47ec1625d4398b043bb5f5dc2f5f9fdb3",
       "environment": {
         "platform": "windows",
@@ -2869,7 +2882,7 @@ developer.
         "AC-CWS-GROUPS"
       ],
       "kind": "red",
-      "status": "pass",
+      "status": "stale",
       "command": [
         "node",
         "--test",
@@ -2907,7 +2920,7 @@ developer.
           }
         ]
       },
-      "reason": null,
+      "reason": "Scope revision 4: the Linux evidence moved to the Ubuntu laptop, the dry run's key check changed after the first real dry run, and the rules file changed; the checks were run again",
       "scope_sha256": "aa06559afe4f970db17758b1d90bbba47ec1625d4398b043bb5f5dc2f5f9fdb3",
       "environment": {
         "platform": "windows",
@@ -2947,7 +2960,7 @@ developer.
         "AC-CWS-INSTRUCTIONS"
       ],
       "kind": "red",
-      "status": "pass",
+      "status": "stale",
       "command": [
         "./build/test_browser_mcp_server"
       ],
@@ -2983,7 +2996,7 @@ developer.
           }
         ]
       },
-      "reason": null,
+      "reason": "Scope revision 4: the Linux evidence moved to the Ubuntu laptop, the dry run's key check changed after the first real dry run, and the rules file changed; the checks were run again",
       "scope_sha256": "60b862e09efc94d3493a544a638a78c127d5ea8881dd684b185403a305b56a9d",
       "environment": {
         "platform": "windows",
@@ -3055,7 +3068,7 @@ developer.
         "AC-CWS-LIVE"
       ],
       "kind": "red",
-      "status": "pass",
+      "status": "stale",
       "command": [
         "node",
         "tests/e2e/isolated_run.mjs",
@@ -3096,7 +3109,7 @@ developer.
           }
         ]
       },
-      "reason": null,
+      "reason": "Scope revision 4: the Linux evidence moved to the Ubuntu laptop, the dry run's key check changed after the first real dry run, and the rules file changed; the checks were run again",
       "scope_sha256": "9ce11e932bb235547869472b4a6755043694e17a8ce67ba3af0d1ab3d6a355dc",
       "environment": {
         "platform": "windows",
@@ -3212,7 +3225,7 @@ developer.
         "AC-CWS-ORIGIN"
       ],
       "kind": "red",
-      "status": "pass",
+      "status": "stale",
       "command": [
         "./build/test_browser_extension_installer"
       ],
@@ -3248,7 +3261,7 @@ developer.
           }
         ]
       },
-      "reason": null,
+      "reason": "Scope revision 4: the Linux evidence moved to the Ubuntu laptop, the dry run's key check changed after the first real dry run, and the rules file changed; the checks were run again",
       "scope_sha256": "60b862e09efc94d3493a544a638a78c127d5ea8881dd684b185403a305b56a9d",
       "environment": {
         "platform": "windows",
@@ -3320,7 +3333,7 @@ developer.
         "AC-CWS-PACKAGE"
       ],
       "kind": "red",
-      "status": "pass",
+      "status": "stale",
       "command": [
         "node",
         "--test",
@@ -3358,7 +3371,7 @@ developer.
           }
         ]
       },
-      "reason": null,
+      "reason": "Scope revision 4: the Linux evidence moved to the Ubuntu laptop, the dry run's key check changed after the first real dry run, and the rules file changed; the checks were run again",
       "scope_sha256": "7c0c42bc48eefb486c0cb53dc99eaa2749801cadbe924f3d09acbea4a2e27c77",
       "environment": {
         "platform": "windows",
@@ -3434,7 +3447,7 @@ developer.
         "AC-CWS-PACKAGE"
       ],
       "kind": "red",
-      "status": "pass",
+      "status": "stale",
       "command": [
         "node",
         "--test",
@@ -3472,7 +3485,7 @@ developer.
           }
         ]
       },
-      "reason": null,
+      "reason": "Scope revision 4: the Linux evidence moved to the Ubuntu laptop, the dry run's key check changed after the first real dry run, and the rules file changed; the checks were run again",
       "scope_sha256": "7c0c42bc48eefb486c0cb53dc99eaa2749801cadbe924f3d09acbea4a2e27c77",
       "environment": {
         "platform": "windows",
@@ -3548,7 +3561,7 @@ developer.
         "AC-CWS-PUBLISH"
       ],
       "kind": "red",
-      "status": "pass",
+      "status": "stale",
       "command": [
         "node",
         "--test",
@@ -3586,7 +3599,7 @@ developer.
           }
         ]
       },
-      "reason": null,
+      "reason": "Scope revision 4: the Linux evidence moved to the Ubuntu laptop, the dry run's key check changed after the first real dry run, and the rules file changed; the checks were run again",
       "scope_sha256": "7c0c42bc48eefb486c0cb53dc99eaa2749801cadbe924f3d09acbea4a2e27c77",
       "environment": {
         "platform": "windows",
@@ -3662,7 +3675,7 @@ developer.
         "AC-CWS-REGISTRATION"
       ],
       "kind": "red",
-      "status": "pass",
+      "status": "stale",
       "command": [
         "./build/test_browser_extension_installer"
       ],
@@ -3698,7 +3711,7 @@ developer.
           }
         ]
       },
-      "reason": null,
+      "reason": "Scope revision 4: the Linux evidence moved to the Ubuntu laptop, the dry run's key check changed after the first real dry run, and the rules file changed; the checks were run again",
       "scope_sha256": "60b862e09efc94d3493a544a638a78c127d5ea8881dd684b185403a305b56a9d",
       "environment": {
         "platform": "windows",
@@ -3770,7 +3783,7 @@ developer.
         "AC-CWS-COMPAT"
       ],
       "kind": "red",
-      "status": "pass",
+      "status": "stale",
       "command": [
         "./build/test_browser_mcp_server"
       ],
@@ -3806,7 +3819,7 @@ developer.
           }
         ]
       },
-      "reason": null,
+      "reason": "Scope revision 4: the Linux evidence moved to the Ubuntu laptop, the dry run's key check changed after the first real dry run, and the rules file changed; the checks were run again",
       "scope_sha256": "6d90661bf08d2570c35a7c48ff0c7e8eb438329eebf4bbbc57796ce9c35966f1",
       "environment": {
         "platform": "windows",
@@ -4014,7 +4027,7 @@ developer.
         "AC-CWS-REGISTRATION"
       ],
       "kind": "red",
-      "status": "pass",
+      "status": "stale",
       "command": [
         "./build/test_browser_extension_installer"
       ],
@@ -4050,7 +4063,7 @@ developer.
           }
         ]
       },
-      "reason": null,
+      "reason": "Scope revision 4: the Linux evidence moved to the Ubuntu laptop, the dry run's key check changed after the first real dry run, and the rules file changed; the checks were run again",
       "scope_sha256": "60b862e09efc94d3493a544a638a78c127d5ea8881dd684b185403a305b56a9d",
       "environment": {
         "platform": "windows",
@@ -4122,7 +4135,7 @@ developer.
         "AC-CWS-COMPAT"
       ],
       "kind": "red",
-      "status": "pass",
+      "status": "stale",
       "command": [
         "./build/test_browser_extension_installer"
       ],
@@ -4158,7 +4171,7 @@ developer.
           }
         ]
       },
-      "reason": null,
+      "reason": "Scope revision 4: the Linux evidence moved to the Ubuntu laptop, the dry run's key check changed after the first real dry run, and the rules file changed; the checks were run again",
       "scope_sha256": "6d90661bf08d2570c35a7c48ff0c7e8eb438329eebf4bbbc57796ce9c35966f1",
       "environment": {
         "platform": "windows",
@@ -4366,7 +4379,7 @@ developer.
         "AC-CWS-PUBLISH"
       ],
       "kind": "red",
-      "status": "pass",
+      "status": "stale",
       "command": [
         "node",
         "--test",
@@ -4404,7 +4417,7 @@ developer.
           }
         ]
       },
-      "reason": null,
+      "reason": "Scope revision 4: the Linux evidence moved to the Ubuntu laptop, the dry run's key check changed after the first real dry run, and the rules file changed; the checks were run again",
       "scope_sha256": "7c0c42bc48eefb486c0cb53dc99eaa2749801cadbe924f3d09acbea4a2e27c77",
       "environment": {
         "platform": "windows",
@@ -4480,7 +4493,7 @@ developer.
         "AC-CWS-REGISTRATION"
       ],
       "kind": "behavior",
-      "status": "pass",
+      "status": "stale",
       "command": [
         "powershell",
         "-File",
@@ -4493,7 +4506,7 @@ developer.
         "sha256": "1adf4b4c72c950ee0f47d9ac7b9356ebe1170dc1d750c0d2bc95dc34ea12dc05"
       },
       "red": null,
-      "reason": null,
+      "reason": "Scope revision 4: the Linux evidence moved to the Ubuntu laptop, the dry run's key check changed after the first real dry run, and the rules file changed; the checks were run again",
       "scope_sha256": "60b862e09efc94d3493a544a638a78c127d5ea8881dd684b185403a305b56a9d",
       "environment": {
         "platform": "windows",
@@ -4565,7 +4578,7 @@ developer.
         "AC-CWS-COMPAT"
       ],
       "kind": "behavior",
-      "status": "pass",
+      "status": "stale",
       "command": [
         "node",
         "scripts/mcp_smoke.mjs",
@@ -4578,7 +4591,7 @@ developer.
         "sha256": "8f381b739f67e15bf466ff810149c5497c1711371886a85518f0c59729e56927"
       },
       "red": null,
-      "reason": null,
+      "reason": "Scope revision 4: the Linux evidence moved to the Ubuntu laptop, the dry run's key check changed after the first real dry run, and the rules file changed; the checks were run again",
       "scope_sha256": "6d90661bf08d2570c35a7c48ff0c7e8eb438329eebf4bbbc57796ce9c35966f1",
       "environment": {
         "platform": "windows",
@@ -4788,7 +4801,7 @@ developer.
         "AC-CWS-COMPAT"
       ],
       "kind": "behavior",
-      "status": "pass",
+      "status": "stale",
       "command": [
         "npm",
         "run",
@@ -4801,7 +4814,7 @@ developer.
         "sha256": "0c42a303cef51088eedd00642cfa6aafdc8a0a8a8ef768605b5f2fe594d91569"
       },
       "red": null,
-      "reason": null,
+      "reason": "Scope revision 4: the Linux evidence moved to the Ubuntu laptop, the dry run's key check changed after the first real dry run, and the rules file changed; the checks were run again",
       "scope_sha256": "6d90661bf08d2570c35a7c48ff0c7e8eb438329eebf4bbbc57796ce9c35966f1",
       "environment": {
         "platform": "windows",
@@ -5002,10 +5015,4694 @@ developer.
           "sha256": "3fa8f06b07fb903f09370ac10d21f5375a2915873d9b3c7703c797f373b20b44"
         }
       ]
+    },
+    {
+      "id": "EV-CWS-READINESS-4",
+      "acceptance": [
+        "AC-CWS-GROUPS",
+        "AC-CWS-REGISTRATION",
+        "AC-CWS-ORIGIN",
+        "AC-CWS-LIVE",
+        "AC-CWS-PACKAGE",
+        "AC-CWS-PUBLISH",
+        "AC-CWS-INSTRUCTIONS",
+        "AC-CWS-PRIVACY",
+        "AC-CWS-COMPAT"
+      ],
+      "kind": "readiness",
+      "status": "pass",
+      "command": [],
+      "method": "Scope revision 4 reviewed: the first real dry run's refusal traced to a byte-for-byte key comparison and fixed to check the ID the key gives; the Linux evidence moved to the owner's Ubuntu laptop with tools installed in the user's home only; the environment and rules revision updated; every earlier receipt kept as stale history; recorded in the readiness review's addendum",
+      "exit_code": null,
+      "artifact": {
+        "path": "docs/plans/evidence/cws/readiness-review.md",
+        "sha256": "7cabb8a8f07af81e6556435ffb68b62e78d1ed3922e61dec2e47d7f917210276"
+      },
+      "red": null,
+      "reason": null,
+      "scope_sha256": "a443cfc1f13d3d8968542cc60c2a0c99171bd5be0baafffc61367d02e8fa219e",
+      "environment": {
+        "platform": "windows",
+        "tools": {
+          "chrome-for-testing": "153.0.8010.52",
+          "cmake": "4.4.5",
+          "node": "v24.20.0",
+          "python": "3.14.10",
+          "ubuntu-laptop-clang": "21.1.8",
+          "ubuntu-laptop-cmake": "4.2.3",
+          "ubuntu-laptop-cppcheck": "2.19.0",
+          "ubuntu-laptop-gcc": "15.2.0",
+          "ubuntu-laptop-node": "v24.20.0",
+          "ubuntu-laptop-os": "Ubuntu 26.04.1 LTS",
+          "ubuntu-laptop-python": "3.14.4",
+          "ubuntu-laptop-qt": "6.10.2",
+          "ubuntu-laptop-semgrep": "1.174.0"
+        }
+      },
+      "inputs": [
+        {
+          "path": "docs/QUALITY.md",
+          "sha256": "f14cf32431382cdb70da6f72e9003207d51a75e5415a0d742e445ba98988027b"
+        }
+      ]
+    },
+    {
+      "id": "EV-CWS-CTEST-2",
+      "acceptance": [
+        "AC-CWS-GROUPS",
+        "AC-CWS-REGISTRATION",
+        "AC-CWS-ORIGIN",
+        "AC-CWS-INSTRUCTIONS",
+        "AC-CWS-PACKAGE",
+        "AC-CWS-PUBLISH",
+        "AC-CWS-COMPAT"
+      ],
+      "kind": "behavior",
+      "status": "pass",
+      "command": [
+        "ctest",
+        "--test-dir",
+        "build",
+        "-C",
+        "Release",
+        "--output-on-failure"
+      ],
+      "method": "Windows 11, MSVC with Qt 6.10.3, the 1.13.0 tree: all 28 suites pass, among them test_browser_extension_installer (exactly the two origins registered; a one-origin 1.12.0 registration not current and rewritten; extra or swapped origins not current; a starting server's repair of its own registration only; the store key derives mbkacllnbffbadcajpkkpelifdkfgcbd; both origins accepted bare and with a path, lookalikes and others refused; the install reply names the store listing), test_browser_mcp_server (find, then screenshot, then a whole snapshot in the instructions, within 4,096 characters; status reports store_extension_id) and test_store_publish",
+      "exit_code": 0,
+      "artifact": {
+        "path": "docs/plans/evidence/cws/windows-ctest.txt",
+        "sha256": "6af3717de1c4d18fdb9d116d8956c841a17e20df6bb513e3b49fa155326c3eea"
+      },
+      "red": null,
+      "reason": null,
+      "scope_sha256": "a443cfc1f13d3d8968542cc60c2a0c99171bd5be0baafffc61367d02e8fa219e",
+      "environment": {
+        "platform": "windows",
+        "tools": {
+          "chrome-for-testing": "153.0.8010.52",
+          "cmake": "4.4.5",
+          "node": "v24.20.0",
+          "python": "3.14.10",
+          "ubuntu-laptop-clang": "21.1.8",
+          "ubuntu-laptop-cmake": "4.2.3",
+          "ubuntu-laptop-cppcheck": "2.19.0",
+          "ubuntu-laptop-gcc": "15.2.0",
+          "ubuntu-laptop-node": "v24.20.0",
+          "ubuntu-laptop-os": "Ubuntu 26.04.1 LTS",
+          "ubuntu-laptop-python": "3.14.4",
+          "ubuntu-laptop-qt": "6.10.2",
+          "ubuntu-laptop-semgrep": "1.174.0"
+        }
+      },
+      "inputs": [
+        {
+          "path": ".github/workflows/live.yml",
+          "sha256": "6a5d1a3231bbdb1a7218f35248e1c60fa090eb8588c78029b8951a108f5e6e29"
+        },
+        {
+          "path": ".github/workflows/release.yml",
+          "sha256": "b5cb97e7ed7611e383208223d7c023d03c7877c0629df05ca740132a733855f3"
+        },
+        {
+          "path": ".github/workflows/store-check.yml",
+          "sha256": "34a67bd73558ca839d732350300444e9e5b847b84df7a9b59e48c4f5af2e0dbe"
+        },
+        {
+          "path": "CHANGELOG.md",
+          "sha256": "890939b9cc7f57008729adb8d55b65aa5083ba2d69810e36d00a9d7e73ec0c02"
+        },
+        {
+          "path": "CMakeLists.txt",
+          "sha256": "7d9992d61053c1ec653d417d6b8150602f20cd61652197f6759ad9f25d46494a"
+        },
+        {
+          "path": "PLAN.md",
+          "sha256": "2f928851e1f531b02dbea03787541c65c0932b93cef1bc115b8ea1978fceb953"
+        },
+        {
+          "path": "README.md",
+          "sha256": "2e276826f509386945096a2dae2afe67ad5dd43b02c66067ad5c119ed41f998b"
+        },
+        {
+          "path": "browser/extension/background.js",
+          "sha256": "9a46ed0d5a930bbf0d1ead212425fffbb6083f99dbdf276b24407e18f6b1caed"
+        },
+        {
+          "path": "browser/extension/icons/icon.svg",
+          "sha256": "e66610a56eea06e37ff4737d0411bd5d4d8e5a8ec0018c4d9a84893e569cb065"
+        },
+        {
+          "path": "browser/extension/icons/icon128.png",
+          "sha256": "7b70af8972ae1cfaab9e2dac52edd7f2bc60ef01816d128b4506d0e7ec242027"
+        },
+        {
+          "path": "browser/extension/icons/icon16.png",
+          "sha256": "ac9949fb7dae7f7633d9a0549ab9aef91f25ba0e97f299b2ea09e6bf4d623c03"
+        },
+        {
+          "path": "browser/extension/icons/icon32.png",
+          "sha256": "094f5caf4044dd8de18d039efab9c3698d647f2f6dda74bd9d81aaafa6ea6d6a"
+        },
+        {
+          "path": "browser/extension/icons/icon48.png",
+          "sha256": "13c5ddfeaee7a4f3e6d8e5454299afd4b95a58c980ed143090a7041ff88da38d"
+        },
+        {
+          "path": "browser/extension/manifest.json",
+          "sha256": "c52c6d8f9d703c96cbea0ad31795971026728992b33a775bfa9069c406a5484c"
+        },
+        {
+          "path": "browser/native-host/com.chromecontrolmcp.browser.json",
+          "sha256": "b9c05b8b765a99a4c351080a74d475902fa696f20769f2ed41a3d0ffad4946b3"
+        },
+        {
+          "path": "browser/native-host/register_native_host.ps1",
+          "sha256": "ae519c0db2ecd7699fb741f3e2cb32f12c5639490bbe4d444feb4d7b74194d32"
+        },
+        {
+          "path": "browser/store-public-key.txt",
+          "sha256": "f64981ba2481d58abdd7b6c83adb571179b6d6e75973d6d1b01aa8d7372e6827"
+        },
+        {
+          "path": "docs/CHROME_WEB_STORE.md",
+          "sha256": "e31da9aa7e15ffab5c84e231ac0650a662c32da6cbf706915bb7f88c4e4f47c0"
+        },
+        {
+          "path": "docs/PRIVACY.md",
+          "sha256": "06ae406ac6059ab9cfb876669872f69d989407d019200ee06c3680db83a17ad9"
+        },
+        {
+          "path": "docs/QUALITY.md",
+          "sha256": "f14cf32431382cdb70da6f72e9003207d51a75e5415a0d742e445ba98988027b"
+        },
+        {
+          "path": "docs/RELEASES.md",
+          "sha256": "e88f9e941c1815bd549307d1d7c8b7ff64b015c93c9a8c208a82cc7f85c92acc"
+        },
+        {
+          "path": "docs/SECURITY.md",
+          "sha256": "5ff5d96ed58be78183dc8a9508fcf7f802d11b5083e355ef217b593742bc8804"
+        },
+        {
+          "path": "docs/TOOLS.md",
+          "sha256": "5f9a31517ae341355c3e396ce9e593508b8b2afa10849f9b8730153e7c5047c4"
+        },
+        {
+          "path": "docs/releases/v1.13.0.md",
+          "sha256": "118894f7e25fb8d263b3b4eed759dc6e96fa57ff0e8b44348e20b5f6a59ba0f4"
+        },
+        {
+          "path": "include/chrome_control_mcp/browser_extension_installer.h",
+          "sha256": "1a24e15adb6d320f0da2c9c28f97f568d91b55bb28e5f45acb904e536de1d829"
+        },
+        {
+          "path": "include/chrome_control_mcp/mcp_entry.h",
+          "sha256": "fe6bfe1ca92ccfdde92f7b9b9c052bc6b9f6dd557669277c0df8209eaca58fcb"
+        },
+        {
+          "path": "package-lock.json",
+          "sha256": "1cf2ff808ed3d02ea23d87b5b0b9a81851b55907b1f01a20681739dd85c9cfd5"
+        },
+        {
+          "path": "package.json",
+          "sha256": "efcb2d7cd197155912dd5a4064772d9f998d5c0c9edeeca26ef2e8606aa133e9"
+        },
+        {
+          "path": "scripts/cws_publish.mjs",
+          "sha256": "21804f91e90d5b0450221c59d312b0708015b73d874671e0c5454dc1a5f10821"
+        },
+        {
+          "path": "scripts/store_package.mjs",
+          "sha256": "da7e447371a3d84a30ff9b13f7a27ac8c7de579e2f2dee3199010c33e68850eb"
+        },
+        {
+          "path": "src/browser_extension_installer.cpp",
+          "sha256": "6e4b45a1942b5c6ad272da62eaa2b7cb3263a1a3c56b0778bf723b51a4555cb1"
+        },
+        {
+          "path": "src/browser_mcp_tools.cpp",
+          "sha256": "cadf34f8d15643e64f4b12bd023e03bca19033baf2d1750710fecc073f840dfd"
+        },
+        {
+          "path": "src/mcp_dispatch.cpp",
+          "sha256": "b28853bc614878f9fb93b65f4829421f425d2bfeea3ef82837d69752e0386065"
+        },
+        {
+          "path": "src/mcp_entry.cpp",
+          "sha256": "e8c4b80d36589a65535ec3bae72f5a92e68abcc77a1de32289ff4ca2a6cc6a42"
+        },
+        {
+          "path": "tests/e2e/devtools.mjs",
+          "sha256": "6b9a9f6f8fe52f05a62e7f389b8b3a44036c344a5292a40248ab18add935a324"
+        },
+        {
+          "path": "tests/e2e/extension_version_e2e.mjs",
+          "sha256": "b9211e14a243b4f3e99abc8e21e25b908c6db10b4d2e2c8a50f18f7527080d95"
+        },
+        {
+          "path": "tests/e2e/isolated_chrome.mjs",
+          "sha256": "5b59019533a5917eaca784b95818999dbee1a36fa4eeee3ac0678e71b9685db0"
+        },
+        {
+          "path": "tests/e2e/isolated_run.mjs",
+          "sha256": "ce9f33c6414c694744da13373a348b0030b8dd0e2880b64e7cce0dd443a30685"
+        },
+        {
+          "path": "tests/e2e/multi_agent_e2e.mjs",
+          "sha256": "b012c11b431ef2ebcd0e8d6cf1ce54ad47be25cdc4a15c23948a882183cb462e"
+        },
+        {
+          "path": "tests/test_browser_extension_installer.cpp",
+          "sha256": "0cd573613239db7f766aec7ea6826ce056eea434720a42bc3bbd6209c83b4988"
+        },
+        {
+          "path": "tests/test_browser_extension_tabs.mjs",
+          "sha256": "02c124e0b309f8aa353467a0df94f914afb845bc1eb7d71b63b48c5ad2bc1a77"
+        },
+        {
+          "path": "tests/test_browser_mcp_server.cpp",
+          "sha256": "6aa679d1c3f33df1daf386b30780b394919db9419275b71e43f0a835938e2383"
+        },
+        {
+          "path": "tests/test_store_publish.mjs",
+          "sha256": "96f8a51f1b075cbe68315a60c5e5e605d1e47e9477c8309ed77d312cd21477a3"
+        },
+        {
+          "path": "vscode/README.md",
+          "sha256": "dd9c0bde060e4be456473256dbee13c0df6ae15c8cffc7afd1295cce1fc9e756"
+        },
+        {
+          "path": "vscode/package-lock.json",
+          "sha256": "214e3f81c1bc5180edd466733b1d9c951039788d9e66b848f5722632de452675"
+        },
+        {
+          "path": "vscode/package.json",
+          "sha256": "3fa8f06b07fb903f09370ac10d21f5375a2915873d9b3c7703c797f373b20b44"
+        }
+      ]
+    },
+    {
+      "id": "EV-CWS-GATES-2",
+      "acceptance": [
+        "AC-CWS-COMPAT"
+      ],
+      "kind": "behavior",
+      "status": "pass",
+      "command": [
+        "npm",
+        "run",
+        "lint"
+      ],
+      "method": "ESLint and PSScriptAnalyzer clean over the tree, the new scripts and the legacy registration script included; Prettier flags no file that is committed (the seven it lists are the untracked research notes, reports/ and research_notes/, which are not part of this change)",
+      "exit_code": 0,
+      "artifact": {
+        "path": "docs/plans/evidence/cws/windows-gates.txt",
+        "sha256": "d4bbac2db515ec7dae0217a26176746dea17034c2f845fcb28232a13783abd06"
+      },
+      "red": null,
+      "reason": null,
+      "scope_sha256": "a443cfc1f13d3d8968542cc60c2a0c99171bd5be0baafffc61367d02e8fa219e",
+      "environment": {
+        "platform": "windows",
+        "tools": {
+          "chrome-for-testing": "153.0.8010.52",
+          "cmake": "4.4.5",
+          "node": "v24.20.0",
+          "python": "3.14.10",
+          "ubuntu-laptop-clang": "21.1.8",
+          "ubuntu-laptop-cmake": "4.2.3",
+          "ubuntu-laptop-cppcheck": "2.19.0",
+          "ubuntu-laptop-gcc": "15.2.0",
+          "ubuntu-laptop-node": "v24.20.0",
+          "ubuntu-laptop-os": "Ubuntu 26.04.1 LTS",
+          "ubuntu-laptop-python": "3.14.4",
+          "ubuntu-laptop-qt": "6.10.2",
+          "ubuntu-laptop-semgrep": "1.174.0"
+        }
+      },
+      "inputs": [
+        {
+          "path": ".github/workflows/live.yml",
+          "sha256": "6a5d1a3231bbdb1a7218f35248e1c60fa090eb8588c78029b8951a108f5e6e29"
+        },
+        {
+          "path": ".github/workflows/release.yml",
+          "sha256": "b5cb97e7ed7611e383208223d7c023d03c7877c0629df05ca740132a733855f3"
+        },
+        {
+          "path": ".github/workflows/store-check.yml",
+          "sha256": "34a67bd73558ca839d732350300444e9e5b847b84df7a9b59e48c4f5af2e0dbe"
+        },
+        {
+          "path": "CHANGELOG.md",
+          "sha256": "890939b9cc7f57008729adb8d55b65aa5083ba2d69810e36d00a9d7e73ec0c02"
+        },
+        {
+          "path": "CMakeLists.txt",
+          "sha256": "7d9992d61053c1ec653d417d6b8150602f20cd61652197f6759ad9f25d46494a"
+        },
+        {
+          "path": "PLAN.md",
+          "sha256": "2f928851e1f531b02dbea03787541c65c0932b93cef1bc115b8ea1978fceb953"
+        },
+        {
+          "path": "README.md",
+          "sha256": "2e276826f509386945096a2dae2afe67ad5dd43b02c66067ad5c119ed41f998b"
+        },
+        {
+          "path": "browser/extension/background.js",
+          "sha256": "9a46ed0d5a930bbf0d1ead212425fffbb6083f99dbdf276b24407e18f6b1caed"
+        },
+        {
+          "path": "browser/extension/icons/icon.svg",
+          "sha256": "e66610a56eea06e37ff4737d0411bd5d4d8e5a8ec0018c4d9a84893e569cb065"
+        },
+        {
+          "path": "browser/extension/icons/icon128.png",
+          "sha256": "7b70af8972ae1cfaab9e2dac52edd7f2bc60ef01816d128b4506d0e7ec242027"
+        },
+        {
+          "path": "browser/extension/icons/icon16.png",
+          "sha256": "ac9949fb7dae7f7633d9a0549ab9aef91f25ba0e97f299b2ea09e6bf4d623c03"
+        },
+        {
+          "path": "browser/extension/icons/icon32.png",
+          "sha256": "094f5caf4044dd8de18d039efab9c3698d647f2f6dda74bd9d81aaafa6ea6d6a"
+        },
+        {
+          "path": "browser/extension/icons/icon48.png",
+          "sha256": "13c5ddfeaee7a4f3e6d8e5454299afd4b95a58c980ed143090a7041ff88da38d"
+        },
+        {
+          "path": "browser/extension/manifest.json",
+          "sha256": "c52c6d8f9d703c96cbea0ad31795971026728992b33a775bfa9069c406a5484c"
+        },
+        {
+          "path": "browser/native-host/com.chromecontrolmcp.browser.json",
+          "sha256": "b9c05b8b765a99a4c351080a74d475902fa696f20769f2ed41a3d0ffad4946b3"
+        },
+        {
+          "path": "browser/native-host/register_native_host.ps1",
+          "sha256": "ae519c0db2ecd7699fb741f3e2cb32f12c5639490bbe4d444feb4d7b74194d32"
+        },
+        {
+          "path": "browser/store-public-key.txt",
+          "sha256": "f64981ba2481d58abdd7b6c83adb571179b6d6e75973d6d1b01aa8d7372e6827"
+        },
+        {
+          "path": "docs/CHROME_WEB_STORE.md",
+          "sha256": "e31da9aa7e15ffab5c84e231ac0650a662c32da6cbf706915bb7f88c4e4f47c0"
+        },
+        {
+          "path": "docs/PRIVACY.md",
+          "sha256": "06ae406ac6059ab9cfb876669872f69d989407d019200ee06c3680db83a17ad9"
+        },
+        {
+          "path": "docs/QUALITY.md",
+          "sha256": "f14cf32431382cdb70da6f72e9003207d51a75e5415a0d742e445ba98988027b"
+        },
+        {
+          "path": "docs/RELEASES.md",
+          "sha256": "e88f9e941c1815bd549307d1d7c8b7ff64b015c93c9a8c208a82cc7f85c92acc"
+        },
+        {
+          "path": "docs/SECURITY.md",
+          "sha256": "5ff5d96ed58be78183dc8a9508fcf7f802d11b5083e355ef217b593742bc8804"
+        },
+        {
+          "path": "docs/TOOLS.md",
+          "sha256": "5f9a31517ae341355c3e396ce9e593508b8b2afa10849f9b8730153e7c5047c4"
+        },
+        {
+          "path": "docs/releases/v1.13.0.md",
+          "sha256": "118894f7e25fb8d263b3b4eed759dc6e96fa57ff0e8b44348e20b5f6a59ba0f4"
+        },
+        {
+          "path": "include/chrome_control_mcp/browser_extension_installer.h",
+          "sha256": "1a24e15adb6d320f0da2c9c28f97f568d91b55bb28e5f45acb904e536de1d829"
+        },
+        {
+          "path": "include/chrome_control_mcp/mcp_entry.h",
+          "sha256": "fe6bfe1ca92ccfdde92f7b9b9c052bc6b9f6dd557669277c0df8209eaca58fcb"
+        },
+        {
+          "path": "package-lock.json",
+          "sha256": "1cf2ff808ed3d02ea23d87b5b0b9a81851b55907b1f01a20681739dd85c9cfd5"
+        },
+        {
+          "path": "package.json",
+          "sha256": "efcb2d7cd197155912dd5a4064772d9f998d5c0c9edeeca26ef2e8606aa133e9"
+        },
+        {
+          "path": "scripts/cws_publish.mjs",
+          "sha256": "21804f91e90d5b0450221c59d312b0708015b73d874671e0c5454dc1a5f10821"
+        },
+        {
+          "path": "scripts/store_package.mjs",
+          "sha256": "da7e447371a3d84a30ff9b13f7a27ac8c7de579e2f2dee3199010c33e68850eb"
+        },
+        {
+          "path": "src/browser_extension_installer.cpp",
+          "sha256": "6e4b45a1942b5c6ad272da62eaa2b7cb3263a1a3c56b0778bf723b51a4555cb1"
+        },
+        {
+          "path": "src/browser_mcp_tools.cpp",
+          "sha256": "cadf34f8d15643e64f4b12bd023e03bca19033baf2d1750710fecc073f840dfd"
+        },
+        {
+          "path": "src/mcp_dispatch.cpp",
+          "sha256": "b28853bc614878f9fb93b65f4829421f425d2bfeea3ef82837d69752e0386065"
+        },
+        {
+          "path": "src/mcp_entry.cpp",
+          "sha256": "e8c4b80d36589a65535ec3bae72f5a92e68abcc77a1de32289ff4ca2a6cc6a42"
+        },
+        {
+          "path": "tests/e2e/devtools.mjs",
+          "sha256": "6b9a9f6f8fe52f05a62e7f389b8b3a44036c344a5292a40248ab18add935a324"
+        },
+        {
+          "path": "tests/e2e/extension_version_e2e.mjs",
+          "sha256": "b9211e14a243b4f3e99abc8e21e25b908c6db10b4d2e2c8a50f18f7527080d95"
+        },
+        {
+          "path": "tests/e2e/isolated_chrome.mjs",
+          "sha256": "5b59019533a5917eaca784b95818999dbee1a36fa4eeee3ac0678e71b9685db0"
+        },
+        {
+          "path": "tests/e2e/isolated_run.mjs",
+          "sha256": "ce9f33c6414c694744da13373a348b0030b8dd0e2880b64e7cce0dd443a30685"
+        },
+        {
+          "path": "tests/e2e/multi_agent_e2e.mjs",
+          "sha256": "b012c11b431ef2ebcd0e8d6cf1ce54ad47be25cdc4a15c23948a882183cb462e"
+        },
+        {
+          "path": "tests/test_browser_extension_installer.cpp",
+          "sha256": "0cd573613239db7f766aec7ea6826ce056eea434720a42bc3bbd6209c83b4988"
+        },
+        {
+          "path": "tests/test_browser_extension_tabs.mjs",
+          "sha256": "02c124e0b309f8aa353467a0df94f914afb845bc1eb7d71b63b48c5ad2bc1a77"
+        },
+        {
+          "path": "tests/test_browser_mcp_server.cpp",
+          "sha256": "6aa679d1c3f33df1daf386b30780b394919db9419275b71e43f0a835938e2383"
+        },
+        {
+          "path": "tests/test_store_publish.mjs",
+          "sha256": "96f8a51f1b075cbe68315a60c5e5e605d1e47e9477c8309ed77d312cd21477a3"
+        },
+        {
+          "path": "vscode/README.md",
+          "sha256": "dd9c0bde060e4be456473256dbee13c0df6ae15c8cffc7afd1295cce1fc9e756"
+        },
+        {
+          "path": "vscode/package-lock.json",
+          "sha256": "214e3f81c1bc5180edd466733b1d9c951039788d9e66b848f5722632de452675"
+        },
+        {
+          "path": "vscode/package.json",
+          "sha256": "3fa8f06b07fb903f09370ac10d21f5375a2915873d9b3c7703c797f373b20b44"
+        }
+      ]
+    },
+    {
+      "id": "EV-CWS-GROUPS-LIVE-2",
+      "acceptance": [
+        "AC-CWS-GROUPS",
+        "AC-CWS-COMPAT"
+      ],
+      "kind": "behavior",
+      "status": "pass",
+      "command": [
+        "node",
+        "tests/e2e/isolated_run.mjs",
+        "--chrome=/home/randy/ccm-tools/cft/chrome/linux-153.0.8010.52/chrome-linux64/chrome",
+        "--executable=build/chrome_control_mcp",
+        "--chrome-arg=--no-sandbox",
+        "tests/e2e/multi_agent_e2e.mjs"
+      ],
+      "method": "The multi-agent suite three times in a row against Chrome for Testing, each 25/25: the tab browser_new_tab opens for the agent \"研究\" is listed by an immediate browser_tabs in its own group under its whole name, in every run",
+      "exit_code": 0,
+      "artifact": {
+        "path": "docs/plans/evidence/cws/linux-summary.txt",
+        "sha256": "38673f42c0b3260f0d1dec3ba2e56526576fa77fb067ef08c2a59332bfe4d440"
+      },
+      "red": null,
+      "reason": null,
+      "scope_sha256": "a443cfc1f13d3d8968542cc60c2a0c99171bd5be0baafffc61367d02e8fa219e",
+      "environment": {
+        "platform": "windows",
+        "tools": {
+          "chrome-for-testing": "153.0.8010.52",
+          "cmake": "4.4.5",
+          "node": "v24.20.0",
+          "python": "3.14.10",
+          "ubuntu-laptop-clang": "21.1.8",
+          "ubuntu-laptop-cmake": "4.2.3",
+          "ubuntu-laptop-cppcheck": "2.19.0",
+          "ubuntu-laptop-gcc": "15.2.0",
+          "ubuntu-laptop-node": "v24.20.0",
+          "ubuntu-laptop-os": "Ubuntu 26.04.1 LTS",
+          "ubuntu-laptop-python": "3.14.4",
+          "ubuntu-laptop-qt": "6.10.2",
+          "ubuntu-laptop-semgrep": "1.174.0"
+        }
+      },
+      "inputs": [
+        {
+          "path": ".github/workflows/live.yml",
+          "sha256": "6a5d1a3231bbdb1a7218f35248e1c60fa090eb8588c78029b8951a108f5e6e29"
+        },
+        {
+          "path": ".github/workflows/release.yml",
+          "sha256": "b5cb97e7ed7611e383208223d7c023d03c7877c0629df05ca740132a733855f3"
+        },
+        {
+          "path": ".github/workflows/store-check.yml",
+          "sha256": "34a67bd73558ca839d732350300444e9e5b847b84df7a9b59e48c4f5af2e0dbe"
+        },
+        {
+          "path": "CHANGELOG.md",
+          "sha256": "890939b9cc7f57008729adb8d55b65aa5083ba2d69810e36d00a9d7e73ec0c02"
+        },
+        {
+          "path": "CMakeLists.txt",
+          "sha256": "7d9992d61053c1ec653d417d6b8150602f20cd61652197f6759ad9f25d46494a"
+        },
+        {
+          "path": "PLAN.md",
+          "sha256": "2f928851e1f531b02dbea03787541c65c0932b93cef1bc115b8ea1978fceb953"
+        },
+        {
+          "path": "README.md",
+          "sha256": "2e276826f509386945096a2dae2afe67ad5dd43b02c66067ad5c119ed41f998b"
+        },
+        {
+          "path": "browser/extension/background.js",
+          "sha256": "9a46ed0d5a930bbf0d1ead212425fffbb6083f99dbdf276b24407e18f6b1caed"
+        },
+        {
+          "path": "browser/extension/icons/icon.svg",
+          "sha256": "e66610a56eea06e37ff4737d0411bd5d4d8e5a8ec0018c4d9a84893e569cb065"
+        },
+        {
+          "path": "browser/extension/icons/icon128.png",
+          "sha256": "7b70af8972ae1cfaab9e2dac52edd7f2bc60ef01816d128b4506d0e7ec242027"
+        },
+        {
+          "path": "browser/extension/icons/icon16.png",
+          "sha256": "ac9949fb7dae7f7633d9a0549ab9aef91f25ba0e97f299b2ea09e6bf4d623c03"
+        },
+        {
+          "path": "browser/extension/icons/icon32.png",
+          "sha256": "094f5caf4044dd8de18d039efab9c3698d647f2f6dda74bd9d81aaafa6ea6d6a"
+        },
+        {
+          "path": "browser/extension/icons/icon48.png",
+          "sha256": "13c5ddfeaee7a4f3e6d8e5454299afd4b95a58c980ed143090a7041ff88da38d"
+        },
+        {
+          "path": "browser/extension/manifest.json",
+          "sha256": "c52c6d8f9d703c96cbea0ad31795971026728992b33a775bfa9069c406a5484c"
+        },
+        {
+          "path": "browser/native-host/com.chromecontrolmcp.browser.json",
+          "sha256": "b9c05b8b765a99a4c351080a74d475902fa696f20769f2ed41a3d0ffad4946b3"
+        },
+        {
+          "path": "browser/native-host/register_native_host.ps1",
+          "sha256": "ae519c0db2ecd7699fb741f3e2cb32f12c5639490bbe4d444feb4d7b74194d32"
+        },
+        {
+          "path": "browser/store-public-key.txt",
+          "sha256": "f64981ba2481d58abdd7b6c83adb571179b6d6e75973d6d1b01aa8d7372e6827"
+        },
+        {
+          "path": "docs/CHROME_WEB_STORE.md",
+          "sha256": "e31da9aa7e15ffab5c84e231ac0650a662c32da6cbf706915bb7f88c4e4f47c0"
+        },
+        {
+          "path": "docs/PRIVACY.md",
+          "sha256": "06ae406ac6059ab9cfb876669872f69d989407d019200ee06c3680db83a17ad9"
+        },
+        {
+          "path": "docs/QUALITY.md",
+          "sha256": "f14cf32431382cdb70da6f72e9003207d51a75e5415a0d742e445ba98988027b"
+        },
+        {
+          "path": "docs/RELEASES.md",
+          "sha256": "e88f9e941c1815bd549307d1d7c8b7ff64b015c93c9a8c208a82cc7f85c92acc"
+        },
+        {
+          "path": "docs/SECURITY.md",
+          "sha256": "5ff5d96ed58be78183dc8a9508fcf7f802d11b5083e355ef217b593742bc8804"
+        },
+        {
+          "path": "docs/TOOLS.md",
+          "sha256": "5f9a31517ae341355c3e396ce9e593508b8b2afa10849f9b8730153e7c5047c4"
+        },
+        {
+          "path": "docs/releases/v1.13.0.md",
+          "sha256": "118894f7e25fb8d263b3b4eed759dc6e96fa57ff0e8b44348e20b5f6a59ba0f4"
+        },
+        {
+          "path": "include/chrome_control_mcp/browser_extension_installer.h",
+          "sha256": "1a24e15adb6d320f0da2c9c28f97f568d91b55bb28e5f45acb904e536de1d829"
+        },
+        {
+          "path": "include/chrome_control_mcp/mcp_entry.h",
+          "sha256": "fe6bfe1ca92ccfdde92f7b9b9c052bc6b9f6dd557669277c0df8209eaca58fcb"
+        },
+        {
+          "path": "package-lock.json",
+          "sha256": "1cf2ff808ed3d02ea23d87b5b0b9a81851b55907b1f01a20681739dd85c9cfd5"
+        },
+        {
+          "path": "package.json",
+          "sha256": "efcb2d7cd197155912dd5a4064772d9f998d5c0c9edeeca26ef2e8606aa133e9"
+        },
+        {
+          "path": "scripts/cws_publish.mjs",
+          "sha256": "21804f91e90d5b0450221c59d312b0708015b73d874671e0c5454dc1a5f10821"
+        },
+        {
+          "path": "scripts/store_package.mjs",
+          "sha256": "da7e447371a3d84a30ff9b13f7a27ac8c7de579e2f2dee3199010c33e68850eb"
+        },
+        {
+          "path": "src/browser_extension_installer.cpp",
+          "sha256": "6e4b45a1942b5c6ad272da62eaa2b7cb3263a1a3c56b0778bf723b51a4555cb1"
+        },
+        {
+          "path": "src/browser_mcp_tools.cpp",
+          "sha256": "cadf34f8d15643e64f4b12bd023e03bca19033baf2d1750710fecc073f840dfd"
+        },
+        {
+          "path": "src/mcp_dispatch.cpp",
+          "sha256": "b28853bc614878f9fb93b65f4829421f425d2bfeea3ef82837d69752e0386065"
+        },
+        {
+          "path": "src/mcp_entry.cpp",
+          "sha256": "e8c4b80d36589a65535ec3bae72f5a92e68abcc77a1de32289ff4ca2a6cc6a42"
+        },
+        {
+          "path": "tests/e2e/devtools.mjs",
+          "sha256": "6b9a9f6f8fe52f05a62e7f389b8b3a44036c344a5292a40248ab18add935a324"
+        },
+        {
+          "path": "tests/e2e/extension_version_e2e.mjs",
+          "sha256": "b9211e14a243b4f3e99abc8e21e25b908c6db10b4d2e2c8a50f18f7527080d95"
+        },
+        {
+          "path": "tests/e2e/isolated_chrome.mjs",
+          "sha256": "5b59019533a5917eaca784b95818999dbee1a36fa4eeee3ac0678e71b9685db0"
+        },
+        {
+          "path": "tests/e2e/isolated_run.mjs",
+          "sha256": "ce9f33c6414c694744da13373a348b0030b8dd0e2880b64e7cce0dd443a30685"
+        },
+        {
+          "path": "tests/e2e/multi_agent_e2e.mjs",
+          "sha256": "b012c11b431ef2ebcd0e8d6cf1ce54ad47be25cdc4a15c23948a882183cb462e"
+        },
+        {
+          "path": "tests/test_browser_extension_installer.cpp",
+          "sha256": "0cd573613239db7f766aec7ea6826ce056eea434720a42bc3bbd6209c83b4988"
+        },
+        {
+          "path": "tests/test_browser_extension_tabs.mjs",
+          "sha256": "02c124e0b309f8aa353467a0df94f914afb845bc1eb7d71b63b48c5ad2bc1a77"
+        },
+        {
+          "path": "tests/test_browser_mcp_server.cpp",
+          "sha256": "6aa679d1c3f33df1daf386b30780b394919db9419275b71e43f0a835938e2383"
+        },
+        {
+          "path": "tests/test_store_publish.mjs",
+          "sha256": "96f8a51f1b075cbe68315a60c5e5e605d1e47e9477c8309ed77d312cd21477a3"
+        },
+        {
+          "path": "vscode/README.md",
+          "sha256": "dd9c0bde060e4be456473256dbee13c0df6ae15c8cffc7afd1295cce1fc9e756"
+        },
+        {
+          "path": "vscode/package-lock.json",
+          "sha256": "214e3f81c1bc5180edd466733b1d9c951039788d9e66b848f5722632de452675"
+        },
+        {
+          "path": "vscode/package.json",
+          "sha256": "3fa8f06b07fb903f09370ac10d21f5375a2915873d9b3c7703c797f373b20b44"
+        }
+      ]
+    },
+    {
+      "id": "EV-CWS-GROUPS-UNIT-2",
+      "acceptance": [
+        "AC-CWS-GROUPS"
+      ],
+      "kind": "behavior",
+      "status": "pass",
+      "command": [
+        "node",
+        "--test",
+        "tests/test_browser_extension_tabs.mjs"
+      ],
+      "method": "In the browser model with Chrome's tabGroups.update landing 100 ms late: the tab strip read the instant browser_new_tab's reply is posted shows the tab in the group named for its agent, and browser_tabs asked for straight after a tab is held lists it in that group; every earlier tab and group case unchanged",
+      "exit_code": 0,
+      "artifact": {
+        "path": "docs/plans/evidence/cws/windows-test-js.txt",
+        "sha256": "d28a0139de8fcda941692d12057ab1932fafc56092c436d36d65f2e4de268dc7"
+      },
+      "red": null,
+      "reason": null,
+      "scope_sha256": "3ede46f29432a68bed3f376d6f2b9fa6461399ab02af64372eb486381d682afb",
+      "environment": {
+        "platform": "windows",
+        "tools": {
+          "chrome-for-testing": "153.0.8010.52",
+          "cmake": "4.4.5",
+          "node": "v24.20.0",
+          "python": "3.14.10",
+          "ubuntu-laptop-clang": "21.1.8",
+          "ubuntu-laptop-cmake": "4.2.3",
+          "ubuntu-laptop-cppcheck": "2.19.0",
+          "ubuntu-laptop-gcc": "15.2.0",
+          "ubuntu-laptop-node": "v24.20.0",
+          "ubuntu-laptop-os": "Ubuntu 26.04.1 LTS",
+          "ubuntu-laptop-python": "3.14.4",
+          "ubuntu-laptop-qt": "6.10.2",
+          "ubuntu-laptop-semgrep": "1.174.0"
+        }
+      },
+      "inputs": [
+        {
+          "path": "browser/extension/background.js",
+          "sha256": "9a46ed0d5a930bbf0d1ead212425fffbb6083f99dbdf276b24407e18f6b1caed"
+        },
+        {
+          "path": "docs/QUALITY.md",
+          "sha256": "f14cf32431382cdb70da6f72e9003207d51a75e5415a0d742e445ba98988027b"
+        },
+        {
+          "path": "tests/e2e/multi_agent_e2e.mjs",
+          "sha256": "b012c11b431ef2ebcd0e8d6cf1ce54ad47be25cdc4a15c23948a882183cb462e"
+        },
+        {
+          "path": "tests/test_browser_extension_tabs.mjs",
+          "sha256": "02c124e0b309f8aa353467a0df94f914afb845bc1eb7d71b63b48c5ad2bc1a77"
+        }
+      ]
+    },
+    {
+      "id": "EV-CWS-LINUX-2",
+      "acceptance": [
+        "AC-CWS-GROUPS",
+        "AC-CWS-REGISTRATION",
+        "AC-CWS-ORIGIN",
+        "AC-CWS-INSTRUCTIONS",
+        "AC-CWS-PACKAGE",
+        "AC-CWS-PUBLISH",
+        "AC-CWS-COMPAT"
+      ],
+      "kind": "behavior",
+      "status": "pass",
+      "command": [
+        "ssh",
+        "linuxlt",
+        "bash",
+        "~/ccm-evidence/lt_evidence.sh",
+        "static"
+      ],
+      "method": "The Ubuntu 26.04.1 laptop (GCC 15.2.0, Qt 6.10.2, Clang 21.1.8): the 1.13.0 build with no warnings, ctest 27/27, clang-tidy 21.1.8 and exhaustive cppcheck 2.19.0 clean, Semgrep 1.174.0 with no findings",
+      "exit_code": 0,
+      "artifact": {
+        "path": "docs/plans/evidence/cws/linux-summary.txt",
+        "sha256": "38673f42c0b3260f0d1dec3ba2e56526576fa77fb067ef08c2a59332bfe4d440"
+      },
+      "red": null,
+      "reason": null,
+      "scope_sha256": "a443cfc1f13d3d8968542cc60c2a0c99171bd5be0baafffc61367d02e8fa219e",
+      "environment": {
+        "platform": "windows",
+        "tools": {
+          "chrome-for-testing": "153.0.8010.52",
+          "cmake": "4.4.5",
+          "node": "v24.20.0",
+          "python": "3.14.10",
+          "ubuntu-laptop-clang": "21.1.8",
+          "ubuntu-laptop-cmake": "4.2.3",
+          "ubuntu-laptop-cppcheck": "2.19.0",
+          "ubuntu-laptop-gcc": "15.2.0",
+          "ubuntu-laptop-node": "v24.20.0",
+          "ubuntu-laptop-os": "Ubuntu 26.04.1 LTS",
+          "ubuntu-laptop-python": "3.14.4",
+          "ubuntu-laptop-qt": "6.10.2",
+          "ubuntu-laptop-semgrep": "1.174.0"
+        }
+      },
+      "inputs": [
+        {
+          "path": ".github/workflows/live.yml",
+          "sha256": "6a5d1a3231bbdb1a7218f35248e1c60fa090eb8588c78029b8951a108f5e6e29"
+        },
+        {
+          "path": ".github/workflows/release.yml",
+          "sha256": "b5cb97e7ed7611e383208223d7c023d03c7877c0629df05ca740132a733855f3"
+        },
+        {
+          "path": ".github/workflows/store-check.yml",
+          "sha256": "34a67bd73558ca839d732350300444e9e5b847b84df7a9b59e48c4f5af2e0dbe"
+        },
+        {
+          "path": "CHANGELOG.md",
+          "sha256": "890939b9cc7f57008729adb8d55b65aa5083ba2d69810e36d00a9d7e73ec0c02"
+        },
+        {
+          "path": "CMakeLists.txt",
+          "sha256": "7d9992d61053c1ec653d417d6b8150602f20cd61652197f6759ad9f25d46494a"
+        },
+        {
+          "path": "PLAN.md",
+          "sha256": "2f928851e1f531b02dbea03787541c65c0932b93cef1bc115b8ea1978fceb953"
+        },
+        {
+          "path": "README.md",
+          "sha256": "2e276826f509386945096a2dae2afe67ad5dd43b02c66067ad5c119ed41f998b"
+        },
+        {
+          "path": "browser/extension/background.js",
+          "sha256": "9a46ed0d5a930bbf0d1ead212425fffbb6083f99dbdf276b24407e18f6b1caed"
+        },
+        {
+          "path": "browser/extension/icons/icon.svg",
+          "sha256": "e66610a56eea06e37ff4737d0411bd5d4d8e5a8ec0018c4d9a84893e569cb065"
+        },
+        {
+          "path": "browser/extension/icons/icon128.png",
+          "sha256": "7b70af8972ae1cfaab9e2dac52edd7f2bc60ef01816d128b4506d0e7ec242027"
+        },
+        {
+          "path": "browser/extension/icons/icon16.png",
+          "sha256": "ac9949fb7dae7f7633d9a0549ab9aef91f25ba0e97f299b2ea09e6bf4d623c03"
+        },
+        {
+          "path": "browser/extension/icons/icon32.png",
+          "sha256": "094f5caf4044dd8de18d039efab9c3698d647f2f6dda74bd9d81aaafa6ea6d6a"
+        },
+        {
+          "path": "browser/extension/icons/icon48.png",
+          "sha256": "13c5ddfeaee7a4f3e6d8e5454299afd4b95a58c980ed143090a7041ff88da38d"
+        },
+        {
+          "path": "browser/extension/manifest.json",
+          "sha256": "c52c6d8f9d703c96cbea0ad31795971026728992b33a775bfa9069c406a5484c"
+        },
+        {
+          "path": "browser/native-host/com.chromecontrolmcp.browser.json",
+          "sha256": "b9c05b8b765a99a4c351080a74d475902fa696f20769f2ed41a3d0ffad4946b3"
+        },
+        {
+          "path": "browser/native-host/register_native_host.ps1",
+          "sha256": "ae519c0db2ecd7699fb741f3e2cb32f12c5639490bbe4d444feb4d7b74194d32"
+        },
+        {
+          "path": "browser/store-public-key.txt",
+          "sha256": "f64981ba2481d58abdd7b6c83adb571179b6d6e75973d6d1b01aa8d7372e6827"
+        },
+        {
+          "path": "docs/CHROME_WEB_STORE.md",
+          "sha256": "e31da9aa7e15ffab5c84e231ac0650a662c32da6cbf706915bb7f88c4e4f47c0"
+        },
+        {
+          "path": "docs/PRIVACY.md",
+          "sha256": "06ae406ac6059ab9cfb876669872f69d989407d019200ee06c3680db83a17ad9"
+        },
+        {
+          "path": "docs/QUALITY.md",
+          "sha256": "f14cf32431382cdb70da6f72e9003207d51a75e5415a0d742e445ba98988027b"
+        },
+        {
+          "path": "docs/RELEASES.md",
+          "sha256": "e88f9e941c1815bd549307d1d7c8b7ff64b015c93c9a8c208a82cc7f85c92acc"
+        },
+        {
+          "path": "docs/SECURITY.md",
+          "sha256": "5ff5d96ed58be78183dc8a9508fcf7f802d11b5083e355ef217b593742bc8804"
+        },
+        {
+          "path": "docs/TOOLS.md",
+          "sha256": "5f9a31517ae341355c3e396ce9e593508b8b2afa10849f9b8730153e7c5047c4"
+        },
+        {
+          "path": "docs/releases/v1.13.0.md",
+          "sha256": "118894f7e25fb8d263b3b4eed759dc6e96fa57ff0e8b44348e20b5f6a59ba0f4"
+        },
+        {
+          "path": "include/chrome_control_mcp/browser_extension_installer.h",
+          "sha256": "1a24e15adb6d320f0da2c9c28f97f568d91b55bb28e5f45acb904e536de1d829"
+        },
+        {
+          "path": "include/chrome_control_mcp/mcp_entry.h",
+          "sha256": "fe6bfe1ca92ccfdde92f7b9b9c052bc6b9f6dd557669277c0df8209eaca58fcb"
+        },
+        {
+          "path": "package-lock.json",
+          "sha256": "1cf2ff808ed3d02ea23d87b5b0b9a81851b55907b1f01a20681739dd85c9cfd5"
+        },
+        {
+          "path": "package.json",
+          "sha256": "efcb2d7cd197155912dd5a4064772d9f998d5c0c9edeeca26ef2e8606aa133e9"
+        },
+        {
+          "path": "scripts/cws_publish.mjs",
+          "sha256": "21804f91e90d5b0450221c59d312b0708015b73d874671e0c5454dc1a5f10821"
+        },
+        {
+          "path": "scripts/store_package.mjs",
+          "sha256": "da7e447371a3d84a30ff9b13f7a27ac8c7de579e2f2dee3199010c33e68850eb"
+        },
+        {
+          "path": "src/browser_extension_installer.cpp",
+          "sha256": "6e4b45a1942b5c6ad272da62eaa2b7cb3263a1a3c56b0778bf723b51a4555cb1"
+        },
+        {
+          "path": "src/browser_mcp_tools.cpp",
+          "sha256": "cadf34f8d15643e64f4b12bd023e03bca19033baf2d1750710fecc073f840dfd"
+        },
+        {
+          "path": "src/mcp_dispatch.cpp",
+          "sha256": "b28853bc614878f9fb93b65f4829421f425d2bfeea3ef82837d69752e0386065"
+        },
+        {
+          "path": "src/mcp_entry.cpp",
+          "sha256": "e8c4b80d36589a65535ec3bae72f5a92e68abcc77a1de32289ff4ca2a6cc6a42"
+        },
+        {
+          "path": "tests/e2e/devtools.mjs",
+          "sha256": "6b9a9f6f8fe52f05a62e7f389b8b3a44036c344a5292a40248ab18add935a324"
+        },
+        {
+          "path": "tests/e2e/extension_version_e2e.mjs",
+          "sha256": "b9211e14a243b4f3e99abc8e21e25b908c6db10b4d2e2c8a50f18f7527080d95"
+        },
+        {
+          "path": "tests/e2e/isolated_chrome.mjs",
+          "sha256": "5b59019533a5917eaca784b95818999dbee1a36fa4eeee3ac0678e71b9685db0"
+        },
+        {
+          "path": "tests/e2e/isolated_run.mjs",
+          "sha256": "ce9f33c6414c694744da13373a348b0030b8dd0e2880b64e7cce0dd443a30685"
+        },
+        {
+          "path": "tests/e2e/multi_agent_e2e.mjs",
+          "sha256": "b012c11b431ef2ebcd0e8d6cf1ce54ad47be25cdc4a15c23948a882183cb462e"
+        },
+        {
+          "path": "tests/test_browser_extension_installer.cpp",
+          "sha256": "0cd573613239db7f766aec7ea6826ce056eea434720a42bc3bbd6209c83b4988"
+        },
+        {
+          "path": "tests/test_browser_extension_tabs.mjs",
+          "sha256": "02c124e0b309f8aa353467a0df94f914afb845bc1eb7d71b63b48c5ad2bc1a77"
+        },
+        {
+          "path": "tests/test_browser_mcp_server.cpp",
+          "sha256": "6aa679d1c3f33df1daf386b30780b394919db9419275b71e43f0a835938e2383"
+        },
+        {
+          "path": "tests/test_store_publish.mjs",
+          "sha256": "96f8a51f1b075cbe68315a60c5e5e605d1e47e9477c8309ed77d312cd21477a3"
+        },
+        {
+          "path": "vscode/README.md",
+          "sha256": "dd9c0bde060e4be456473256dbee13c0df6ae15c8cffc7afd1295cce1fc9e756"
+        },
+        {
+          "path": "vscode/package-lock.json",
+          "sha256": "214e3f81c1bc5180edd466733b1d9c951039788d9e66b848f5722632de452675"
+        },
+        {
+          "path": "vscode/package.json",
+          "sha256": "3fa8f06b07fb903f09370ac10d21f5375a2915873d9b3c7703c797f373b20b44"
+        }
+      ]
+    },
+    {
+      "id": "EV-CWS-LIVE-REGRESSION-2",
+      "acceptance": [
+        "AC-CWS-COMPAT"
+      ],
+      "kind": "behavior",
+      "status": "pass",
+      "command": [
+        "ssh",
+        "linuxlt",
+        "bash",
+        "~/ccm-evidence/lt_evidence.sh",
+        "live"
+      ],
+      "method": "Every live suite that existed before this work, on the 1.13.0 build: display matrix, full browser, user interference, multi-agent, per-agent clipboard, large upload, extension version older and the released 1.11.1 extension, two profiles and the profiles upgrade (the closed-history rule: earlier plans are not re-stamped)",
+      "exit_code": 0,
+      "artifact": {
+        "path": "docs/plans/evidence/cws/linux-summary.txt",
+        "sha256": "38673f42c0b3260f0d1dec3ba2e56526576fa77fb067ef08c2a59332bfe4d440"
+      },
+      "red": null,
+      "reason": null,
+      "scope_sha256": "a443cfc1f13d3d8968542cc60c2a0c99171bd5be0baafffc61367d02e8fa219e",
+      "environment": {
+        "platform": "windows",
+        "tools": {
+          "chrome-for-testing": "153.0.8010.52",
+          "cmake": "4.4.5",
+          "node": "v24.20.0",
+          "python": "3.14.10",
+          "ubuntu-laptop-clang": "21.1.8",
+          "ubuntu-laptop-cmake": "4.2.3",
+          "ubuntu-laptop-cppcheck": "2.19.0",
+          "ubuntu-laptop-gcc": "15.2.0",
+          "ubuntu-laptop-node": "v24.20.0",
+          "ubuntu-laptop-os": "Ubuntu 26.04.1 LTS",
+          "ubuntu-laptop-python": "3.14.4",
+          "ubuntu-laptop-qt": "6.10.2",
+          "ubuntu-laptop-semgrep": "1.174.0"
+        }
+      },
+      "inputs": [
+        {
+          "path": ".github/workflows/live.yml",
+          "sha256": "6a5d1a3231bbdb1a7218f35248e1c60fa090eb8588c78029b8951a108f5e6e29"
+        },
+        {
+          "path": ".github/workflows/release.yml",
+          "sha256": "b5cb97e7ed7611e383208223d7c023d03c7877c0629df05ca740132a733855f3"
+        },
+        {
+          "path": ".github/workflows/store-check.yml",
+          "sha256": "34a67bd73558ca839d732350300444e9e5b847b84df7a9b59e48c4f5af2e0dbe"
+        },
+        {
+          "path": "CHANGELOG.md",
+          "sha256": "890939b9cc7f57008729adb8d55b65aa5083ba2d69810e36d00a9d7e73ec0c02"
+        },
+        {
+          "path": "CMakeLists.txt",
+          "sha256": "7d9992d61053c1ec653d417d6b8150602f20cd61652197f6759ad9f25d46494a"
+        },
+        {
+          "path": "PLAN.md",
+          "sha256": "2f928851e1f531b02dbea03787541c65c0932b93cef1bc115b8ea1978fceb953"
+        },
+        {
+          "path": "README.md",
+          "sha256": "2e276826f509386945096a2dae2afe67ad5dd43b02c66067ad5c119ed41f998b"
+        },
+        {
+          "path": "browser/extension/background.js",
+          "sha256": "9a46ed0d5a930bbf0d1ead212425fffbb6083f99dbdf276b24407e18f6b1caed"
+        },
+        {
+          "path": "browser/extension/icons/icon.svg",
+          "sha256": "e66610a56eea06e37ff4737d0411bd5d4d8e5a8ec0018c4d9a84893e569cb065"
+        },
+        {
+          "path": "browser/extension/icons/icon128.png",
+          "sha256": "7b70af8972ae1cfaab9e2dac52edd7f2bc60ef01816d128b4506d0e7ec242027"
+        },
+        {
+          "path": "browser/extension/icons/icon16.png",
+          "sha256": "ac9949fb7dae7f7633d9a0549ab9aef91f25ba0e97f299b2ea09e6bf4d623c03"
+        },
+        {
+          "path": "browser/extension/icons/icon32.png",
+          "sha256": "094f5caf4044dd8de18d039efab9c3698d647f2f6dda74bd9d81aaafa6ea6d6a"
+        },
+        {
+          "path": "browser/extension/icons/icon48.png",
+          "sha256": "13c5ddfeaee7a4f3e6d8e5454299afd4b95a58c980ed143090a7041ff88da38d"
+        },
+        {
+          "path": "browser/extension/manifest.json",
+          "sha256": "c52c6d8f9d703c96cbea0ad31795971026728992b33a775bfa9069c406a5484c"
+        },
+        {
+          "path": "browser/native-host/com.chromecontrolmcp.browser.json",
+          "sha256": "b9c05b8b765a99a4c351080a74d475902fa696f20769f2ed41a3d0ffad4946b3"
+        },
+        {
+          "path": "browser/native-host/register_native_host.ps1",
+          "sha256": "ae519c0db2ecd7699fb741f3e2cb32f12c5639490bbe4d444feb4d7b74194d32"
+        },
+        {
+          "path": "browser/store-public-key.txt",
+          "sha256": "f64981ba2481d58abdd7b6c83adb571179b6d6e75973d6d1b01aa8d7372e6827"
+        },
+        {
+          "path": "docs/CHROME_WEB_STORE.md",
+          "sha256": "e31da9aa7e15ffab5c84e231ac0650a662c32da6cbf706915bb7f88c4e4f47c0"
+        },
+        {
+          "path": "docs/PRIVACY.md",
+          "sha256": "06ae406ac6059ab9cfb876669872f69d989407d019200ee06c3680db83a17ad9"
+        },
+        {
+          "path": "docs/QUALITY.md",
+          "sha256": "f14cf32431382cdb70da6f72e9003207d51a75e5415a0d742e445ba98988027b"
+        },
+        {
+          "path": "docs/RELEASES.md",
+          "sha256": "e88f9e941c1815bd549307d1d7c8b7ff64b015c93c9a8c208a82cc7f85c92acc"
+        },
+        {
+          "path": "docs/SECURITY.md",
+          "sha256": "5ff5d96ed58be78183dc8a9508fcf7f802d11b5083e355ef217b593742bc8804"
+        },
+        {
+          "path": "docs/TOOLS.md",
+          "sha256": "5f9a31517ae341355c3e396ce9e593508b8b2afa10849f9b8730153e7c5047c4"
+        },
+        {
+          "path": "docs/releases/v1.13.0.md",
+          "sha256": "118894f7e25fb8d263b3b4eed759dc6e96fa57ff0e8b44348e20b5f6a59ba0f4"
+        },
+        {
+          "path": "include/chrome_control_mcp/browser_extension_installer.h",
+          "sha256": "1a24e15adb6d320f0da2c9c28f97f568d91b55bb28e5f45acb904e536de1d829"
+        },
+        {
+          "path": "include/chrome_control_mcp/mcp_entry.h",
+          "sha256": "fe6bfe1ca92ccfdde92f7b9b9c052bc6b9f6dd557669277c0df8209eaca58fcb"
+        },
+        {
+          "path": "package-lock.json",
+          "sha256": "1cf2ff808ed3d02ea23d87b5b0b9a81851b55907b1f01a20681739dd85c9cfd5"
+        },
+        {
+          "path": "package.json",
+          "sha256": "efcb2d7cd197155912dd5a4064772d9f998d5c0c9edeeca26ef2e8606aa133e9"
+        },
+        {
+          "path": "scripts/cws_publish.mjs",
+          "sha256": "21804f91e90d5b0450221c59d312b0708015b73d874671e0c5454dc1a5f10821"
+        },
+        {
+          "path": "scripts/store_package.mjs",
+          "sha256": "da7e447371a3d84a30ff9b13f7a27ac8c7de579e2f2dee3199010c33e68850eb"
+        },
+        {
+          "path": "src/browser_extension_installer.cpp",
+          "sha256": "6e4b45a1942b5c6ad272da62eaa2b7cb3263a1a3c56b0778bf723b51a4555cb1"
+        },
+        {
+          "path": "src/browser_mcp_tools.cpp",
+          "sha256": "cadf34f8d15643e64f4b12bd023e03bca19033baf2d1750710fecc073f840dfd"
+        },
+        {
+          "path": "src/mcp_dispatch.cpp",
+          "sha256": "b28853bc614878f9fb93b65f4829421f425d2bfeea3ef82837d69752e0386065"
+        },
+        {
+          "path": "src/mcp_entry.cpp",
+          "sha256": "e8c4b80d36589a65535ec3bae72f5a92e68abcc77a1de32289ff4ca2a6cc6a42"
+        },
+        {
+          "path": "tests/e2e/devtools.mjs",
+          "sha256": "6b9a9f6f8fe52f05a62e7f389b8b3a44036c344a5292a40248ab18add935a324"
+        },
+        {
+          "path": "tests/e2e/extension_version_e2e.mjs",
+          "sha256": "b9211e14a243b4f3e99abc8e21e25b908c6db10b4d2e2c8a50f18f7527080d95"
+        },
+        {
+          "path": "tests/e2e/isolated_chrome.mjs",
+          "sha256": "5b59019533a5917eaca784b95818999dbee1a36fa4eeee3ac0678e71b9685db0"
+        },
+        {
+          "path": "tests/e2e/isolated_run.mjs",
+          "sha256": "ce9f33c6414c694744da13373a348b0030b8dd0e2880b64e7cce0dd443a30685"
+        },
+        {
+          "path": "tests/e2e/multi_agent_e2e.mjs",
+          "sha256": "b012c11b431ef2ebcd0e8d6cf1ce54ad47be25cdc4a15c23948a882183cb462e"
+        },
+        {
+          "path": "tests/test_browser_extension_installer.cpp",
+          "sha256": "0cd573613239db7f766aec7ea6826ce056eea434720a42bc3bbd6209c83b4988"
+        },
+        {
+          "path": "tests/test_browser_extension_tabs.mjs",
+          "sha256": "02c124e0b309f8aa353467a0df94f914afb845bc1eb7d71b63b48c5ad2bc1a77"
+        },
+        {
+          "path": "tests/test_browser_mcp_server.cpp",
+          "sha256": "6aa679d1c3f33df1daf386b30780b394919db9419275b71e43f0a835938e2383"
+        },
+        {
+          "path": "tests/test_store_publish.mjs",
+          "sha256": "96f8a51f1b075cbe68315a60c5e5e605d1e47e9477c8309ed77d312cd21477a3"
+        },
+        {
+          "path": "vscode/README.md",
+          "sha256": "dd9c0bde060e4be456473256dbee13c0df6ae15c8cffc7afd1295cce1fc9e756"
+        },
+        {
+          "path": "vscode/package-lock.json",
+          "sha256": "214e3f81c1bc5180edd466733b1d9c951039788d9e66b848f5722632de452675"
+        },
+        {
+          "path": "vscode/package.json",
+          "sha256": "3fa8f06b07fb903f09370ac10d21f5375a2915873d9b3c7703c797f373b20b44"
+        }
+      ]
+    },
+    {
+      "id": "EV-CWS-LIVE-STORE-2",
+      "acceptance": [
+        "AC-CWS-LIVE"
+      ],
+      "kind": "behavior",
+      "status": "pass",
+      "command": [
+        "node",
+        "tests/e2e/isolated_run.mjs",
+        "--chrome=/home/randy/ccm-tools/cft/chrome/linux-153.0.8010.52/chrome-linux64/chrome",
+        "--executable=build/chrome_control_mcp",
+        "--chrome-arg=--no-sandbox",
+        "--store-key",
+        "tests/e2e/extension_version_e2e.mjs"
+      ],
+      "method": "Chrome for Testing 153 with the extension loaded under the Chrome Web Store's public key: the browser gives it mbkacllnbffbadcajpkkpelifdkfgcbd, the native host registered by the 1.13.0 installer lets it in, and through the server a tab opens, browser_find finds the button and a click on its ref reaches the page; 9/9",
+      "exit_code": 0,
+      "artifact": {
+        "path": "docs/plans/evidence/cws/live-extension-version-store.json",
+        "sha256": "09a6e72df534e0904b7c1f353ee224fd642c9226792f9c254983c89757b51fbb"
+      },
+      "red": null,
+      "reason": null,
+      "scope_sha256": "cf487f815d41ee606441aba68e65d7dd2346a5b48677446decd4a078093980a9",
+      "environment": {
+        "platform": "windows",
+        "tools": {
+          "chrome-for-testing": "153.0.8010.52",
+          "cmake": "4.4.5",
+          "node": "v24.20.0",
+          "python": "3.14.10",
+          "ubuntu-laptop-clang": "21.1.8",
+          "ubuntu-laptop-cmake": "4.2.3",
+          "ubuntu-laptop-cppcheck": "2.19.0",
+          "ubuntu-laptop-gcc": "15.2.0",
+          "ubuntu-laptop-node": "v24.20.0",
+          "ubuntu-laptop-os": "Ubuntu 26.04.1 LTS",
+          "ubuntu-laptop-python": "3.14.4",
+          "ubuntu-laptop-qt": "6.10.2",
+          "ubuntu-laptop-semgrep": "1.174.0"
+        }
+      },
+      "inputs": [
+        {
+          "path": ".github/workflows/live.yml",
+          "sha256": "6a5d1a3231bbdb1a7218f35248e1c60fa090eb8588c78029b8951a108f5e6e29"
+        },
+        {
+          "path": "browser/extension/icons/icon.svg",
+          "sha256": "e66610a56eea06e37ff4737d0411bd5d4d8e5a8ec0018c4d9a84893e569cb065"
+        },
+        {
+          "path": "browser/extension/icons/icon128.png",
+          "sha256": "7b70af8972ae1cfaab9e2dac52edd7f2bc60ef01816d128b4506d0e7ec242027"
+        },
+        {
+          "path": "browser/extension/icons/icon16.png",
+          "sha256": "ac9949fb7dae7f7633d9a0549ab9aef91f25ba0e97f299b2ea09e6bf4d623c03"
+        },
+        {
+          "path": "browser/extension/icons/icon32.png",
+          "sha256": "094f5caf4044dd8de18d039efab9c3698d647f2f6dda74bd9d81aaafa6ea6d6a"
+        },
+        {
+          "path": "browser/extension/icons/icon48.png",
+          "sha256": "13c5ddfeaee7a4f3e6d8e5454299afd4b95a58c980ed143090a7041ff88da38d"
+        },
+        {
+          "path": "browser/extension/manifest.json",
+          "sha256": "c52c6d8f9d703c96cbea0ad31795971026728992b33a775bfa9069c406a5484c"
+        },
+        {
+          "path": "browser/native-host/com.chromecontrolmcp.browser.json",
+          "sha256": "b9c05b8b765a99a4c351080a74d475902fa696f20769f2ed41a3d0ffad4946b3"
+        },
+        {
+          "path": "browser/native-host/register_native_host.ps1",
+          "sha256": "ae519c0db2ecd7699fb741f3e2cb32f12c5639490bbe4d444feb4d7b74194d32"
+        },
+        {
+          "path": "browser/store-public-key.txt",
+          "sha256": "f64981ba2481d58abdd7b6c83adb571179b6d6e75973d6d1b01aa8d7372e6827"
+        },
+        {
+          "path": "docs/QUALITY.md",
+          "sha256": "f14cf32431382cdb70da6f72e9003207d51a75e5415a0d742e445ba98988027b"
+        },
+        {
+          "path": "include/chrome_control_mcp/browser_extension_installer.h",
+          "sha256": "1a24e15adb6d320f0da2c9c28f97f568d91b55bb28e5f45acb904e536de1d829"
+        },
+        {
+          "path": "include/chrome_control_mcp/mcp_entry.h",
+          "sha256": "fe6bfe1ca92ccfdde92f7b9b9c052bc6b9f6dd557669277c0df8209eaca58fcb"
+        },
+        {
+          "path": "src/browser_extension_installer.cpp",
+          "sha256": "6e4b45a1942b5c6ad272da62eaa2b7cb3263a1a3c56b0778bf723b51a4555cb1"
+        },
+        {
+          "path": "src/browser_mcp_tools.cpp",
+          "sha256": "cadf34f8d15643e64f4b12bd023e03bca19033baf2d1750710fecc073f840dfd"
+        },
+        {
+          "path": "src/mcp_dispatch.cpp",
+          "sha256": "b28853bc614878f9fb93b65f4829421f425d2bfeea3ef82837d69752e0386065"
+        },
+        {
+          "path": "src/mcp_entry.cpp",
+          "sha256": "e8c4b80d36589a65535ec3bae72f5a92e68abcc77a1de32289ff4ca2a6cc6a42"
+        },
+        {
+          "path": "tests/e2e/devtools.mjs",
+          "sha256": "6b9a9f6f8fe52f05a62e7f389b8b3a44036c344a5292a40248ab18add935a324"
+        },
+        {
+          "path": "tests/e2e/extension_version_e2e.mjs",
+          "sha256": "b9211e14a243b4f3e99abc8e21e25b908c6db10b4d2e2c8a50f18f7527080d95"
+        },
+        {
+          "path": "tests/e2e/isolated_chrome.mjs",
+          "sha256": "5b59019533a5917eaca784b95818999dbee1a36fa4eeee3ac0678e71b9685db0"
+        },
+        {
+          "path": "tests/e2e/isolated_run.mjs",
+          "sha256": "ce9f33c6414c694744da13373a348b0030b8dd0e2880b64e7cce0dd443a30685"
+        },
+        {
+          "path": "tests/test_browser_extension_installer.cpp",
+          "sha256": "0cd573613239db7f766aec7ea6826ce056eea434720a42bc3bbd6209c83b4988"
+        },
+        {
+          "path": "tests/test_browser_mcp_server.cpp",
+          "sha256": "6aa679d1c3f33df1daf386b30780b394919db9419275b71e43f0a835938e2383"
+        }
+      ]
+    },
+    {
+      "id": "EV-CWS-LIVE-UNPACKED-2",
+      "acceptance": [
+        "AC-CWS-LIVE",
+        "AC-CWS-COMPAT"
+      ],
+      "kind": "behavior",
+      "status": "pass",
+      "command": [
+        "node",
+        "tests/e2e/isolated_run.mjs",
+        "--chrome=/home/randy/ccm-tools/cft/chrome/linux-153.0.8010.52/chrome-linux64/chrome",
+        "--executable=build/chrome_control_mcp",
+        "--chrome-arg=--no-sandbox",
+        "tests/e2e/extension_version_e2e.mjs"
+      ],
+      "method": "The same run with the unpacked key: iojehhmnaigcejfcpmilpclmeljhlkaa, 9/9, the find and the click included",
+      "exit_code": 0,
+      "artifact": {
+        "path": "docs/plans/evidence/cws/live-extension-version-current.json",
+        "sha256": "95d39a4c603f870190b9d5356a943356737cbc961179c47189f6bef64cf9cd9b"
+      },
+      "red": null,
+      "reason": null,
+      "scope_sha256": "a443cfc1f13d3d8968542cc60c2a0c99171bd5be0baafffc61367d02e8fa219e",
+      "environment": {
+        "platform": "windows",
+        "tools": {
+          "chrome-for-testing": "153.0.8010.52",
+          "cmake": "4.4.5",
+          "node": "v24.20.0",
+          "python": "3.14.10",
+          "ubuntu-laptop-clang": "21.1.8",
+          "ubuntu-laptop-cmake": "4.2.3",
+          "ubuntu-laptop-cppcheck": "2.19.0",
+          "ubuntu-laptop-gcc": "15.2.0",
+          "ubuntu-laptop-node": "v24.20.0",
+          "ubuntu-laptop-os": "Ubuntu 26.04.1 LTS",
+          "ubuntu-laptop-python": "3.14.4",
+          "ubuntu-laptop-qt": "6.10.2",
+          "ubuntu-laptop-semgrep": "1.174.0"
+        }
+      },
+      "inputs": [
+        {
+          "path": ".github/workflows/live.yml",
+          "sha256": "6a5d1a3231bbdb1a7218f35248e1c60fa090eb8588c78029b8951a108f5e6e29"
+        },
+        {
+          "path": ".github/workflows/release.yml",
+          "sha256": "b5cb97e7ed7611e383208223d7c023d03c7877c0629df05ca740132a733855f3"
+        },
+        {
+          "path": ".github/workflows/store-check.yml",
+          "sha256": "34a67bd73558ca839d732350300444e9e5b847b84df7a9b59e48c4f5af2e0dbe"
+        },
+        {
+          "path": "CHANGELOG.md",
+          "sha256": "890939b9cc7f57008729adb8d55b65aa5083ba2d69810e36d00a9d7e73ec0c02"
+        },
+        {
+          "path": "CMakeLists.txt",
+          "sha256": "7d9992d61053c1ec653d417d6b8150602f20cd61652197f6759ad9f25d46494a"
+        },
+        {
+          "path": "PLAN.md",
+          "sha256": "2f928851e1f531b02dbea03787541c65c0932b93cef1bc115b8ea1978fceb953"
+        },
+        {
+          "path": "README.md",
+          "sha256": "2e276826f509386945096a2dae2afe67ad5dd43b02c66067ad5c119ed41f998b"
+        },
+        {
+          "path": "browser/extension/background.js",
+          "sha256": "9a46ed0d5a930bbf0d1ead212425fffbb6083f99dbdf276b24407e18f6b1caed"
+        },
+        {
+          "path": "browser/extension/icons/icon.svg",
+          "sha256": "e66610a56eea06e37ff4737d0411bd5d4d8e5a8ec0018c4d9a84893e569cb065"
+        },
+        {
+          "path": "browser/extension/icons/icon128.png",
+          "sha256": "7b70af8972ae1cfaab9e2dac52edd7f2bc60ef01816d128b4506d0e7ec242027"
+        },
+        {
+          "path": "browser/extension/icons/icon16.png",
+          "sha256": "ac9949fb7dae7f7633d9a0549ab9aef91f25ba0e97f299b2ea09e6bf4d623c03"
+        },
+        {
+          "path": "browser/extension/icons/icon32.png",
+          "sha256": "094f5caf4044dd8de18d039efab9c3698d647f2f6dda74bd9d81aaafa6ea6d6a"
+        },
+        {
+          "path": "browser/extension/icons/icon48.png",
+          "sha256": "13c5ddfeaee7a4f3e6d8e5454299afd4b95a58c980ed143090a7041ff88da38d"
+        },
+        {
+          "path": "browser/extension/manifest.json",
+          "sha256": "c52c6d8f9d703c96cbea0ad31795971026728992b33a775bfa9069c406a5484c"
+        },
+        {
+          "path": "browser/native-host/com.chromecontrolmcp.browser.json",
+          "sha256": "b9c05b8b765a99a4c351080a74d475902fa696f20769f2ed41a3d0ffad4946b3"
+        },
+        {
+          "path": "browser/native-host/register_native_host.ps1",
+          "sha256": "ae519c0db2ecd7699fb741f3e2cb32f12c5639490bbe4d444feb4d7b74194d32"
+        },
+        {
+          "path": "browser/store-public-key.txt",
+          "sha256": "f64981ba2481d58abdd7b6c83adb571179b6d6e75973d6d1b01aa8d7372e6827"
+        },
+        {
+          "path": "docs/CHROME_WEB_STORE.md",
+          "sha256": "e31da9aa7e15ffab5c84e231ac0650a662c32da6cbf706915bb7f88c4e4f47c0"
+        },
+        {
+          "path": "docs/PRIVACY.md",
+          "sha256": "06ae406ac6059ab9cfb876669872f69d989407d019200ee06c3680db83a17ad9"
+        },
+        {
+          "path": "docs/QUALITY.md",
+          "sha256": "f14cf32431382cdb70da6f72e9003207d51a75e5415a0d742e445ba98988027b"
+        },
+        {
+          "path": "docs/RELEASES.md",
+          "sha256": "e88f9e941c1815bd549307d1d7c8b7ff64b015c93c9a8c208a82cc7f85c92acc"
+        },
+        {
+          "path": "docs/SECURITY.md",
+          "sha256": "5ff5d96ed58be78183dc8a9508fcf7f802d11b5083e355ef217b593742bc8804"
+        },
+        {
+          "path": "docs/TOOLS.md",
+          "sha256": "5f9a31517ae341355c3e396ce9e593508b8b2afa10849f9b8730153e7c5047c4"
+        },
+        {
+          "path": "docs/releases/v1.13.0.md",
+          "sha256": "118894f7e25fb8d263b3b4eed759dc6e96fa57ff0e8b44348e20b5f6a59ba0f4"
+        },
+        {
+          "path": "include/chrome_control_mcp/browser_extension_installer.h",
+          "sha256": "1a24e15adb6d320f0da2c9c28f97f568d91b55bb28e5f45acb904e536de1d829"
+        },
+        {
+          "path": "include/chrome_control_mcp/mcp_entry.h",
+          "sha256": "fe6bfe1ca92ccfdde92f7b9b9c052bc6b9f6dd557669277c0df8209eaca58fcb"
+        },
+        {
+          "path": "package-lock.json",
+          "sha256": "1cf2ff808ed3d02ea23d87b5b0b9a81851b55907b1f01a20681739dd85c9cfd5"
+        },
+        {
+          "path": "package.json",
+          "sha256": "efcb2d7cd197155912dd5a4064772d9f998d5c0c9edeeca26ef2e8606aa133e9"
+        },
+        {
+          "path": "scripts/cws_publish.mjs",
+          "sha256": "21804f91e90d5b0450221c59d312b0708015b73d874671e0c5454dc1a5f10821"
+        },
+        {
+          "path": "scripts/store_package.mjs",
+          "sha256": "da7e447371a3d84a30ff9b13f7a27ac8c7de579e2f2dee3199010c33e68850eb"
+        },
+        {
+          "path": "src/browser_extension_installer.cpp",
+          "sha256": "6e4b45a1942b5c6ad272da62eaa2b7cb3263a1a3c56b0778bf723b51a4555cb1"
+        },
+        {
+          "path": "src/browser_mcp_tools.cpp",
+          "sha256": "cadf34f8d15643e64f4b12bd023e03bca19033baf2d1750710fecc073f840dfd"
+        },
+        {
+          "path": "src/mcp_dispatch.cpp",
+          "sha256": "b28853bc614878f9fb93b65f4829421f425d2bfeea3ef82837d69752e0386065"
+        },
+        {
+          "path": "src/mcp_entry.cpp",
+          "sha256": "e8c4b80d36589a65535ec3bae72f5a92e68abcc77a1de32289ff4ca2a6cc6a42"
+        },
+        {
+          "path": "tests/e2e/devtools.mjs",
+          "sha256": "6b9a9f6f8fe52f05a62e7f389b8b3a44036c344a5292a40248ab18add935a324"
+        },
+        {
+          "path": "tests/e2e/extension_version_e2e.mjs",
+          "sha256": "b9211e14a243b4f3e99abc8e21e25b908c6db10b4d2e2c8a50f18f7527080d95"
+        },
+        {
+          "path": "tests/e2e/isolated_chrome.mjs",
+          "sha256": "5b59019533a5917eaca784b95818999dbee1a36fa4eeee3ac0678e71b9685db0"
+        },
+        {
+          "path": "tests/e2e/isolated_run.mjs",
+          "sha256": "ce9f33c6414c694744da13373a348b0030b8dd0e2880b64e7cce0dd443a30685"
+        },
+        {
+          "path": "tests/e2e/multi_agent_e2e.mjs",
+          "sha256": "b012c11b431ef2ebcd0e8d6cf1ce54ad47be25cdc4a15c23948a882183cb462e"
+        },
+        {
+          "path": "tests/test_browser_extension_installer.cpp",
+          "sha256": "0cd573613239db7f766aec7ea6826ce056eea434720a42bc3bbd6209c83b4988"
+        },
+        {
+          "path": "tests/test_browser_extension_tabs.mjs",
+          "sha256": "02c124e0b309f8aa353467a0df94f914afb845bc1eb7d71b63b48c5ad2bc1a77"
+        },
+        {
+          "path": "tests/test_browser_mcp_server.cpp",
+          "sha256": "6aa679d1c3f33df1daf386b30780b394919db9419275b71e43f0a835938e2383"
+        },
+        {
+          "path": "tests/test_store_publish.mjs",
+          "sha256": "96f8a51f1b075cbe68315a60c5e5e605d1e47e9477c8309ed77d312cd21477a3"
+        },
+        {
+          "path": "vscode/README.md",
+          "sha256": "dd9c0bde060e4be456473256dbee13c0df6ae15c8cffc7afd1295cce1fc9e756"
+        },
+        {
+          "path": "vscode/package-lock.json",
+          "sha256": "214e3f81c1bc5180edd466733b1d9c951039788d9e66b848f5722632de452675"
+        },
+        {
+          "path": "vscode/package.json",
+          "sha256": "3fa8f06b07fb903f09370ac10d21f5375a2915873d9b3c7703c797f373b20b44"
+        }
+      ]
+    },
+    {
+      "id": "EV-CWS-PRIVACY-2",
+      "acceptance": [
+        "AC-CWS-PRIVACY"
+      ],
+      "kind": "manual",
+      "status": "pass",
+      "command": [],
+      "method": "docs/PRIVACY.md read claim by claim against the manifest, the extension's code, the bridge and the updater; every claim holds, recorded with the source each was checked against",
+      "exit_code": null,
+      "artifact": {
+        "path": "docs/plans/evidence/cws/privacy-review.md",
+        "sha256": "ed16ecb56df2178378380314382a4990205a29199f614e3e1c88b4f601cf8d4b"
+      },
+      "red": null,
+      "reason": null,
+      "scope_sha256": "f07d549da0ed8a7707603fc41e52abb6bb6d6dec88eed763db86d6e62d12595f",
+      "environment": {
+        "platform": "windows",
+        "tools": {
+          "chrome-for-testing": "153.0.8010.52",
+          "cmake": "4.4.5",
+          "node": "v24.20.0",
+          "python": "3.14.10",
+          "ubuntu-laptop-clang": "21.1.8",
+          "ubuntu-laptop-cmake": "4.2.3",
+          "ubuntu-laptop-cppcheck": "2.19.0",
+          "ubuntu-laptop-gcc": "15.2.0",
+          "ubuntu-laptop-node": "v24.20.0",
+          "ubuntu-laptop-os": "Ubuntu 26.04.1 LTS",
+          "ubuntu-laptop-python": "3.14.4",
+          "ubuntu-laptop-qt": "6.10.2",
+          "ubuntu-laptop-semgrep": "1.174.0"
+        }
+      },
+      "inputs": [
+        {
+          "path": ".github/workflows/live.yml",
+          "sha256": "6a5d1a3231bbdb1a7218f35248e1c60fa090eb8588c78029b8951a108f5e6e29"
+        },
+        {
+          "path": ".github/workflows/release.yml",
+          "sha256": "b5cb97e7ed7611e383208223d7c023d03c7877c0629df05ca740132a733855f3"
+        },
+        {
+          "path": ".github/workflows/store-check.yml",
+          "sha256": "34a67bd73558ca839d732350300444e9e5b847b84df7a9b59e48c4f5af2e0dbe"
+        },
+        {
+          "path": "CHANGELOG.md",
+          "sha256": "890939b9cc7f57008729adb8d55b65aa5083ba2d69810e36d00a9d7e73ec0c02"
+        },
+        {
+          "path": "CMakeLists.txt",
+          "sha256": "7d9992d61053c1ec653d417d6b8150602f20cd61652197f6759ad9f25d46494a"
+        },
+        {
+          "path": "PLAN.md",
+          "sha256": "2f928851e1f531b02dbea03787541c65c0932b93cef1bc115b8ea1978fceb953"
+        },
+        {
+          "path": "README.md",
+          "sha256": "2e276826f509386945096a2dae2afe67ad5dd43b02c66067ad5c119ed41f998b"
+        },
+        {
+          "path": "browser/extension/icons/icon.svg",
+          "sha256": "e66610a56eea06e37ff4737d0411bd5d4d8e5a8ec0018c4d9a84893e569cb065"
+        },
+        {
+          "path": "browser/extension/icons/icon128.png",
+          "sha256": "7b70af8972ae1cfaab9e2dac52edd7f2bc60ef01816d128b4506d0e7ec242027"
+        },
+        {
+          "path": "browser/extension/icons/icon16.png",
+          "sha256": "ac9949fb7dae7f7633d9a0549ab9aef91f25ba0e97f299b2ea09e6bf4d623c03"
+        },
+        {
+          "path": "browser/extension/icons/icon32.png",
+          "sha256": "094f5caf4044dd8de18d039efab9c3698d647f2f6dda74bd9d81aaafa6ea6d6a"
+        },
+        {
+          "path": "browser/extension/icons/icon48.png",
+          "sha256": "13c5ddfeaee7a4f3e6d8e5454299afd4b95a58c980ed143090a7041ff88da38d"
+        },
+        {
+          "path": "browser/extension/manifest.json",
+          "sha256": "c52c6d8f9d703c96cbea0ad31795971026728992b33a775bfa9069c406a5484c"
+        },
+        {
+          "path": "browser/native-host/com.chromecontrolmcp.browser.json",
+          "sha256": "b9c05b8b765a99a4c351080a74d475902fa696f20769f2ed41a3d0ffad4946b3"
+        },
+        {
+          "path": "browser/native-host/register_native_host.ps1",
+          "sha256": "ae519c0db2ecd7699fb741f3e2cb32f12c5639490bbe4d444feb4d7b74194d32"
+        },
+        {
+          "path": "browser/store-public-key.txt",
+          "sha256": "f64981ba2481d58abdd7b6c83adb571179b6d6e75973d6d1b01aa8d7372e6827"
+        },
+        {
+          "path": "docs/CHROME_WEB_STORE.md",
+          "sha256": "e31da9aa7e15ffab5c84e231ac0650a662c32da6cbf706915bb7f88c4e4f47c0"
+        },
+        {
+          "path": "docs/PRIVACY.md",
+          "sha256": "06ae406ac6059ab9cfb876669872f69d989407d019200ee06c3680db83a17ad9"
+        },
+        {
+          "path": "docs/QUALITY.md",
+          "sha256": "f14cf32431382cdb70da6f72e9003207d51a75e5415a0d742e445ba98988027b"
+        },
+        {
+          "path": "docs/RELEASES.md",
+          "sha256": "e88f9e941c1815bd549307d1d7c8b7ff64b015c93c9a8c208a82cc7f85c92acc"
+        },
+        {
+          "path": "docs/SECURITY.md",
+          "sha256": "5ff5d96ed58be78183dc8a9508fcf7f802d11b5083e355ef217b593742bc8804"
+        },
+        {
+          "path": "docs/TOOLS.md",
+          "sha256": "5f9a31517ae341355c3e396ce9e593508b8b2afa10849f9b8730153e7c5047c4"
+        },
+        {
+          "path": "docs/releases/v1.13.0.md",
+          "sha256": "118894f7e25fb8d263b3b4eed759dc6e96fa57ff0e8b44348e20b5f6a59ba0f4"
+        },
+        {
+          "path": "include/chrome_control_mcp/browser_extension_installer.h",
+          "sha256": "1a24e15adb6d320f0da2c9c28f97f568d91b55bb28e5f45acb904e536de1d829"
+        },
+        {
+          "path": "include/chrome_control_mcp/mcp_entry.h",
+          "sha256": "fe6bfe1ca92ccfdde92f7b9b9c052bc6b9f6dd557669277c0df8209eaca58fcb"
+        },
+        {
+          "path": "package-lock.json",
+          "sha256": "1cf2ff808ed3d02ea23d87b5b0b9a81851b55907b1f01a20681739dd85c9cfd5"
+        },
+        {
+          "path": "package.json",
+          "sha256": "efcb2d7cd197155912dd5a4064772d9f998d5c0c9edeeca26ef2e8606aa133e9"
+        },
+        {
+          "path": "scripts/cws_publish.mjs",
+          "sha256": "21804f91e90d5b0450221c59d312b0708015b73d874671e0c5454dc1a5f10821"
+        },
+        {
+          "path": "scripts/store_package.mjs",
+          "sha256": "da7e447371a3d84a30ff9b13f7a27ac8c7de579e2f2dee3199010c33e68850eb"
+        },
+        {
+          "path": "src/browser_extension_installer.cpp",
+          "sha256": "6e4b45a1942b5c6ad272da62eaa2b7cb3263a1a3c56b0778bf723b51a4555cb1"
+        },
+        {
+          "path": "src/browser_mcp_tools.cpp",
+          "sha256": "cadf34f8d15643e64f4b12bd023e03bca19033baf2d1750710fecc073f840dfd"
+        },
+        {
+          "path": "src/mcp_dispatch.cpp",
+          "sha256": "b28853bc614878f9fb93b65f4829421f425d2bfeea3ef82837d69752e0386065"
+        },
+        {
+          "path": "src/mcp_entry.cpp",
+          "sha256": "e8c4b80d36589a65535ec3bae72f5a92e68abcc77a1de32289ff4ca2a6cc6a42"
+        },
+        {
+          "path": "tests/e2e/devtools.mjs",
+          "sha256": "6b9a9f6f8fe52f05a62e7f389b8b3a44036c344a5292a40248ab18add935a324"
+        },
+        {
+          "path": "tests/e2e/extension_version_e2e.mjs",
+          "sha256": "b9211e14a243b4f3e99abc8e21e25b908c6db10b4d2e2c8a50f18f7527080d95"
+        },
+        {
+          "path": "tests/e2e/isolated_chrome.mjs",
+          "sha256": "5b59019533a5917eaca784b95818999dbee1a36fa4eeee3ac0678e71b9685db0"
+        },
+        {
+          "path": "tests/e2e/isolated_run.mjs",
+          "sha256": "ce9f33c6414c694744da13373a348b0030b8dd0e2880b64e7cce0dd443a30685"
+        },
+        {
+          "path": "tests/test_browser_extension_installer.cpp",
+          "sha256": "0cd573613239db7f766aec7ea6826ce056eea434720a42bc3bbd6209c83b4988"
+        },
+        {
+          "path": "tests/test_browser_mcp_server.cpp",
+          "sha256": "6aa679d1c3f33df1daf386b30780b394919db9419275b71e43f0a835938e2383"
+        },
+        {
+          "path": "tests/test_store_publish.mjs",
+          "sha256": "96f8a51f1b075cbe68315a60c5e5e605d1e47e9477c8309ed77d312cd21477a3"
+        },
+        {
+          "path": "vscode/README.md",
+          "sha256": "dd9c0bde060e4be456473256dbee13c0df6ae15c8cffc7afd1295cce1fc9e756"
+        },
+        {
+          "path": "vscode/package-lock.json",
+          "sha256": "214e3f81c1bc5180edd466733b1d9c951039788d9e66b848f5722632de452675"
+        },
+        {
+          "path": "vscode/package.json",
+          "sha256": "3fa8f06b07fb903f09370ac10d21f5375a2915873d9b3c7703c797f373b20b44"
+        }
+      ]
+    },
+    {
+      "id": "EV-CWS-RED-AUDIENCE-2",
+      "acceptance": [
+        "AC-CWS-PUBLISH"
+      ],
+      "kind": "red",
+      "status": "pass",
+      "command": [
+        "node",
+        "--test",
+        "tests/test_store_publish.mjs"
+      ],
+      "method": "Drill (publish-audience): the assertion names the wrong audience. Planted, the suite failed in a release signs in, uploads, waits out processing and submits; restored byte for byte and green again",
+      "exit_code": 0,
+      "artifact": {
+        "path": "docs/plans/evidence/cws/js-red-drills.txt",
+        "sha256": "57024c07d253c9fcb1000e6b30a3520a7534583eb14393d08714d76157b492d3"
+      },
+      "red": {
+        "mutation": "the assertion names the wrong audience",
+        "baseline_exit": 0,
+        "mutated_exit": 1,
+        "restored_exit": 0,
+        "expected_diagnostic": "a release signs in, uploads, waits out processing and submits",
+        "observed_diagnostic": "a release signs in, uploads, waits out processing and submits",
+        "before": [
+          {
+            "path": "scripts/cws_publish.mjs",
+            "sha256": "21804f91e90d5b0450221c59d312b0708015b73d874671e0c5454dc1a5f10821"
+          }
+        ],
+        "after": [
+          {
+            "path": "scripts/cws_publish.mjs",
+            "sha256": "21804f91e90d5b0450221c59d312b0708015b73d874671e0c5454dc1a5f10821"
+          }
+        ],
+        "mutated": [
+          {
+            "path": "scripts/cws_publish.mjs",
+            "sha256": "579423c6778c1c491651c9dae1809fe0d7cf74843df0d53cad3f5660bdc15aa6"
+          }
+        ]
+      },
+      "reason": null,
+      "scope_sha256": "481ddd704abeaf86cb75b92bbc44aaf4ab79bf8f150970e20ed90ed7a9b6e685",
+      "environment": {
+        "platform": "windows",
+        "tools": {
+          "chrome-for-testing": "153.0.8010.52",
+          "cmake": "4.4.5",
+          "node": "v24.20.0",
+          "python": "3.14.10",
+          "ubuntu-laptop-clang": "21.1.8",
+          "ubuntu-laptop-cmake": "4.2.3",
+          "ubuntu-laptop-cppcheck": "2.19.0",
+          "ubuntu-laptop-gcc": "15.2.0",
+          "ubuntu-laptop-node": "v24.20.0",
+          "ubuntu-laptop-os": "Ubuntu 26.04.1 LTS",
+          "ubuntu-laptop-python": "3.14.4",
+          "ubuntu-laptop-qt": "6.10.2",
+          "ubuntu-laptop-semgrep": "1.174.0"
+        }
+      },
+      "inputs": [
+        {
+          "path": ".github/workflows/release.yml",
+          "sha256": "b5cb97e7ed7611e383208223d7c023d03c7877c0629df05ca740132a733855f3"
+        },
+        {
+          "path": ".github/workflows/store-check.yml",
+          "sha256": "34a67bd73558ca839d732350300444e9e5b847b84df7a9b59e48c4f5af2e0dbe"
+        },
+        {
+          "path": "browser/extension/icons/icon.svg",
+          "sha256": "e66610a56eea06e37ff4737d0411bd5d4d8e5a8ec0018c4d9a84893e569cb065"
+        },
+        {
+          "path": "browser/extension/icons/icon128.png",
+          "sha256": "7b70af8972ae1cfaab9e2dac52edd7f2bc60ef01816d128b4506d0e7ec242027"
+        },
+        {
+          "path": "browser/extension/icons/icon16.png",
+          "sha256": "ac9949fb7dae7f7633d9a0549ab9aef91f25ba0e97f299b2ea09e6bf4d623c03"
+        },
+        {
+          "path": "browser/extension/icons/icon32.png",
+          "sha256": "094f5caf4044dd8de18d039efab9c3698d647f2f6dda74bd9d81aaafa6ea6d6a"
+        },
+        {
+          "path": "browser/extension/icons/icon48.png",
+          "sha256": "13c5ddfeaee7a4f3e6d8e5454299afd4b95a58c980ed143090a7041ff88da38d"
+        },
+        {
+          "path": "browser/extension/manifest.json",
+          "sha256": "c52c6d8f9d703c96cbea0ad31795971026728992b33a775bfa9069c406a5484c"
+        },
+        {
+          "path": "docs/QUALITY.md",
+          "sha256": "f14cf32431382cdb70da6f72e9003207d51a75e5415a0d742e445ba98988027b"
+        },
+        {
+          "path": "package.json",
+          "sha256": "efcb2d7cd197155912dd5a4064772d9f998d5c0c9edeeca26ef2e8606aa133e9"
+        },
+        {
+          "path": "scripts/cws_publish.mjs",
+          "sha256": "21804f91e90d5b0450221c59d312b0708015b73d874671e0c5454dc1a5f10821"
+        },
+        {
+          "path": "scripts/store_package.mjs",
+          "sha256": "da7e447371a3d84a30ff9b13f7a27ac8c7de579e2f2dee3199010c33e68850eb"
+        },
+        {
+          "path": "tests/test_store_publish.mjs",
+          "sha256": "96f8a51f1b075cbe68315a60c5e5e605d1e47e9477c8309ed77d312cd21477a3"
+        }
+      ]
+    },
+    {
+      "id": "EV-CWS-RED-EXACT-2",
+      "acceptance": [
+        "AC-CWS-REGISTRATION"
+      ],
+      "kind": "red",
+      "status": "pass",
+      "command": [
+        "./build/test_browser_extension_installer"
+      ],
+      "method": "Drill (registration-exact): a registration listing our two origins and one more counts as current. Planted, the suite failed in foreignOriginRegistrationIsNotCurrent; restored byte for byte and green again",
+      "exit_code": 0,
+      "artifact": {
+        "path": "docs/plans/evidence/cws/unit-red-drills.txt",
+        "sha256": "55923043159c02e51996da54654761d54b7cf018a171ceb9cae50e0bd39a012b"
+      },
+      "red": {
+        "mutation": "a registration listing our two origins and one more counts as current",
+        "baseline_exit": 0,
+        "mutated_exit": 1,
+        "restored_exit": 0,
+        "expected_diagnostic": "foreignOriginRegistrationIsNotCurrent",
+        "observed_diagnostic": "foreignOriginRegistrationIsNotCurrent",
+        "before": [
+          {
+            "path": "src/browser_extension_installer.cpp",
+            "sha256": "6e4b45a1942b5c6ad272da62eaa2b7cb3263a1a3c56b0778bf723b51a4555cb1"
+          }
+        ],
+        "after": [
+          {
+            "path": "src/browser_extension_installer.cpp",
+            "sha256": "6e4b45a1942b5c6ad272da62eaa2b7cb3263a1a3c56b0778bf723b51a4555cb1"
+          }
+        ],
+        "mutated": [
+          {
+            "path": "src/browser_extension_installer.cpp",
+            "sha256": "82896e51a7581c8c2ebb07ccc0c5c9be1e49f7f5af577871a227bfead72d3597"
+          }
+        ]
+      },
+      "reason": null,
+      "scope_sha256": "53ee14dbbbc57c13e851632e14169cfdc61c6647959ef80c261cb6f1a4da4104",
+      "environment": {
+        "platform": "windows",
+        "tools": {
+          "chrome-for-testing": "153.0.8010.52",
+          "cmake": "4.4.5",
+          "node": "v24.20.0",
+          "python": "3.14.10",
+          "ubuntu-laptop-clang": "21.1.8",
+          "ubuntu-laptop-cmake": "4.2.3",
+          "ubuntu-laptop-cppcheck": "2.19.0",
+          "ubuntu-laptop-gcc": "15.2.0",
+          "ubuntu-laptop-node": "v24.20.0",
+          "ubuntu-laptop-os": "Ubuntu 26.04.1 LTS",
+          "ubuntu-laptop-python": "3.14.4",
+          "ubuntu-laptop-qt": "6.10.2",
+          "ubuntu-laptop-semgrep": "1.174.0"
+        }
+      },
+      "inputs": [
+        {
+          "path": "browser/native-host/com.chromecontrolmcp.browser.json",
+          "sha256": "b9c05b8b765a99a4c351080a74d475902fa696f20769f2ed41a3d0ffad4946b3"
+        },
+        {
+          "path": "browser/native-host/register_native_host.ps1",
+          "sha256": "ae519c0db2ecd7699fb741f3e2cb32f12c5639490bbe4d444feb4d7b74194d32"
+        },
+        {
+          "path": "browser/store-public-key.txt",
+          "sha256": "f64981ba2481d58abdd7b6c83adb571179b6d6e75973d6d1b01aa8d7372e6827"
+        },
+        {
+          "path": "docs/QUALITY.md",
+          "sha256": "f14cf32431382cdb70da6f72e9003207d51a75e5415a0d742e445ba98988027b"
+        },
+        {
+          "path": "include/chrome_control_mcp/browser_extension_installer.h",
+          "sha256": "1a24e15adb6d320f0da2c9c28f97f568d91b55bb28e5f45acb904e536de1d829"
+        },
+        {
+          "path": "include/chrome_control_mcp/mcp_entry.h",
+          "sha256": "fe6bfe1ca92ccfdde92f7b9b9c052bc6b9f6dd557669277c0df8209eaca58fcb"
+        },
+        {
+          "path": "src/browser_extension_installer.cpp",
+          "sha256": "6e4b45a1942b5c6ad272da62eaa2b7cb3263a1a3c56b0778bf723b51a4555cb1"
+        },
+        {
+          "path": "src/browser_mcp_tools.cpp",
+          "sha256": "cadf34f8d15643e64f4b12bd023e03bca19033baf2d1750710fecc073f840dfd"
+        },
+        {
+          "path": "src/mcp_dispatch.cpp",
+          "sha256": "b28853bc614878f9fb93b65f4829421f425d2bfeea3ef82837d69752e0386065"
+        },
+        {
+          "path": "src/mcp_entry.cpp",
+          "sha256": "e8c4b80d36589a65535ec3bae72f5a92e68abcc77a1de32289ff4ca2a6cc6a42"
+        },
+        {
+          "path": "tests/test_browser_extension_installer.cpp",
+          "sha256": "0cd573613239db7f766aec7ea6826ce056eea434720a42bc3bbd6209c83b4988"
+        },
+        {
+          "path": "tests/test_browser_mcp_server.cpp",
+          "sha256": "6aa679d1c3f33df1daf386b30780b394919db9419275b71e43f0a835938e2383"
+        }
+      ]
+    },
+    {
+      "id": "EV-CWS-RED-FAILED-UPLOAD-2",
+      "acceptance": [
+        "AC-CWS-PUBLISH"
+      ],
+      "kind": "red",
+      "status": "pass",
+      "command": [
+        "node",
+        "--test",
+        "tests/test_store_publish.mjs"
+      ],
+      "method": "Drill (publish-failed-upload): an upload the store refused is not reported as refused. Planted, the suite failed in ✖ the upload; restored byte for byte and green again",
+      "exit_code": 0,
+      "artifact": {
+        "path": "docs/plans/evidence/cws/js-red-drills.txt",
+        "sha256": "57024c07d253c9fcb1000e6b30a3520a7534583eb14393d08714d76157b492d3"
+      },
+      "red": {
+        "mutation": "an upload the store refused is not reported as refused",
+        "baseline_exit": 0,
+        "mutated_exit": 1,
+        "restored_exit": 0,
+        "expected_diagnostic": "✖ the upload",
+        "observed_diagnostic": "✖ the upload",
+        "before": [
+          {
+            "path": "scripts/cws_publish.mjs",
+            "sha256": "21804f91e90d5b0450221c59d312b0708015b73d874671e0c5454dc1a5f10821"
+          }
+        ],
+        "after": [
+          {
+            "path": "scripts/cws_publish.mjs",
+            "sha256": "21804f91e90d5b0450221c59d312b0708015b73d874671e0c5454dc1a5f10821"
+          }
+        ],
+        "mutated": [
+          {
+            "path": "scripts/cws_publish.mjs",
+            "sha256": "7c39fa2e1d6a4b4e89461b863d3b513c4c1f497236d3143c3a1e78013f2d03e7"
+          }
+        ]
+      },
+      "reason": null,
+      "scope_sha256": "481ddd704abeaf86cb75b92bbc44aaf4ab79bf8f150970e20ed90ed7a9b6e685",
+      "environment": {
+        "platform": "windows",
+        "tools": {
+          "chrome-for-testing": "153.0.8010.52",
+          "cmake": "4.4.5",
+          "node": "v24.20.0",
+          "python": "3.14.10",
+          "ubuntu-laptop-clang": "21.1.8",
+          "ubuntu-laptop-cmake": "4.2.3",
+          "ubuntu-laptop-cppcheck": "2.19.0",
+          "ubuntu-laptop-gcc": "15.2.0",
+          "ubuntu-laptop-node": "v24.20.0",
+          "ubuntu-laptop-os": "Ubuntu 26.04.1 LTS",
+          "ubuntu-laptop-python": "3.14.4",
+          "ubuntu-laptop-qt": "6.10.2",
+          "ubuntu-laptop-semgrep": "1.174.0"
+        }
+      },
+      "inputs": [
+        {
+          "path": ".github/workflows/release.yml",
+          "sha256": "b5cb97e7ed7611e383208223d7c023d03c7877c0629df05ca740132a733855f3"
+        },
+        {
+          "path": ".github/workflows/store-check.yml",
+          "sha256": "34a67bd73558ca839d732350300444e9e5b847b84df7a9b59e48c4f5af2e0dbe"
+        },
+        {
+          "path": "browser/extension/icons/icon.svg",
+          "sha256": "e66610a56eea06e37ff4737d0411bd5d4d8e5a8ec0018c4d9a84893e569cb065"
+        },
+        {
+          "path": "browser/extension/icons/icon128.png",
+          "sha256": "7b70af8972ae1cfaab9e2dac52edd7f2bc60ef01816d128b4506d0e7ec242027"
+        },
+        {
+          "path": "browser/extension/icons/icon16.png",
+          "sha256": "ac9949fb7dae7f7633d9a0549ab9aef91f25ba0e97f299b2ea09e6bf4d623c03"
+        },
+        {
+          "path": "browser/extension/icons/icon32.png",
+          "sha256": "094f5caf4044dd8de18d039efab9c3698d647f2f6dda74bd9d81aaafa6ea6d6a"
+        },
+        {
+          "path": "browser/extension/icons/icon48.png",
+          "sha256": "13c5ddfeaee7a4f3e6d8e5454299afd4b95a58c980ed143090a7041ff88da38d"
+        },
+        {
+          "path": "browser/extension/manifest.json",
+          "sha256": "c52c6d8f9d703c96cbea0ad31795971026728992b33a775bfa9069c406a5484c"
+        },
+        {
+          "path": "docs/QUALITY.md",
+          "sha256": "f14cf32431382cdb70da6f72e9003207d51a75e5415a0d742e445ba98988027b"
+        },
+        {
+          "path": "package.json",
+          "sha256": "efcb2d7cd197155912dd5a4064772d9f998d5c0c9edeeca26ef2e8606aa133e9"
+        },
+        {
+          "path": "scripts/cws_publish.mjs",
+          "sha256": "21804f91e90d5b0450221c59d312b0708015b73d874671e0c5454dc1a5f10821"
+        },
+        {
+          "path": "scripts/store_package.mjs",
+          "sha256": "da7e447371a3d84a30ff9b13f7a27ac8c7de579e2f2dee3199010c33e68850eb"
+        },
+        {
+          "path": "tests/test_store_publish.mjs",
+          "sha256": "96f8a51f1b075cbe68315a60c5e5e605d1e47e9477c8309ed77d312cd21477a3"
+        }
+      ]
+    },
+    {
+      "id": "EV-CWS-RED-GROUPS-LIST-2",
+      "acceptance": [
+        "AC-CWS-GROUPS"
+      ],
+      "kind": "red",
+      "status": "pass",
+      "command": [
+        "node",
+        "--test",
+        "tests/test_browser_extension_tabs.mjs"
+      ],
+      "method": "Drill (group-settle-list-tabs): browser_tabs lists without waiting for a just-held tab's group. Planted, the suite failed in browser_tabs lists a just-held tab in its named group; restored byte for byte and green again",
+      "exit_code": 0,
+      "artifact": {
+        "path": "docs/plans/evidence/cws/extension-red-drills.txt",
+        "sha256": "42006b42bb6650a974b8e6aca66be27451fb4c1a749b0b66221967c893e4ecfb"
+      },
+      "red": {
+        "mutation": "browser_tabs lists without waiting for a just-held tab's group",
+        "baseline_exit": 0,
+        "mutated_exit": 1,
+        "restored_exit": 0,
+        "expected_diagnostic": "browser_tabs lists a just-held tab in its named group",
+        "observed_diagnostic": "browser_tabs lists a just-held tab in its named group",
+        "before": [
+          {
+            "path": "browser/extension/background.js",
+            "sha256": "9a46ed0d5a930bbf0d1ead212425fffbb6083f99dbdf276b24407e18f6b1caed"
+          }
+        ],
+        "after": [
+          {
+            "path": "browser/extension/background.js",
+            "sha256": "9a46ed0d5a930bbf0d1ead212425fffbb6083f99dbdf276b24407e18f6b1caed"
+          }
+        ],
+        "mutated": [
+          {
+            "path": "browser/extension/background.js",
+            "sha256": "288af55cbe306162730d622208a9e9f31a0332325e3896238aab959fdd0d8ab6"
+          }
+        ]
+      },
+      "reason": null,
+      "scope_sha256": "3ede46f29432a68bed3f376d6f2b9fa6461399ab02af64372eb486381d682afb",
+      "environment": {
+        "platform": "windows",
+        "tools": {
+          "chrome-for-testing": "153.0.8010.52",
+          "cmake": "4.4.5",
+          "node": "v24.20.0",
+          "python": "3.14.10",
+          "ubuntu-laptop-clang": "21.1.8",
+          "ubuntu-laptop-cmake": "4.2.3",
+          "ubuntu-laptop-cppcheck": "2.19.0",
+          "ubuntu-laptop-gcc": "15.2.0",
+          "ubuntu-laptop-node": "v24.20.0",
+          "ubuntu-laptop-os": "Ubuntu 26.04.1 LTS",
+          "ubuntu-laptop-python": "3.14.4",
+          "ubuntu-laptop-qt": "6.10.2",
+          "ubuntu-laptop-semgrep": "1.174.0"
+        }
+      },
+      "inputs": [
+        {
+          "path": "browser/extension/background.js",
+          "sha256": "9a46ed0d5a930bbf0d1ead212425fffbb6083f99dbdf276b24407e18f6b1caed"
+        },
+        {
+          "path": "docs/QUALITY.md",
+          "sha256": "f14cf32431382cdb70da6f72e9003207d51a75e5415a0d742e445ba98988027b"
+        },
+        {
+          "path": "tests/e2e/multi_agent_e2e.mjs",
+          "sha256": "b012c11b431ef2ebcd0e8d6cf1ce54ad47be25cdc4a15c23948a882183cb462e"
+        },
+        {
+          "path": "tests/test_browser_extension_tabs.mjs",
+          "sha256": "02c124e0b309f8aa353467a0df94f914afb845bc1eb7d71b63b48c5ad2bc1a77"
+        }
+      ]
+    },
+    {
+      "id": "EV-CWS-RED-GROUPS-NEWTAB-2",
+      "acceptance": [
+        "AC-CWS-GROUPS"
+      ],
+      "kind": "red",
+      "status": "pass",
+      "command": [
+        "node",
+        "--test",
+        "tests/test_browser_extension_tabs.mjs"
+      ],
+      "method": "Drill (group-settle-new-tab): browser_new_tab replies without waiting for the tab's group. Planted, the suite failed in a new tab is in its agent's named group when browser_new_tab replies; restored byte for byte and green again",
+      "exit_code": 0,
+      "artifact": {
+        "path": "docs/plans/evidence/cws/extension-red-drills.txt",
+        "sha256": "42006b42bb6650a974b8e6aca66be27451fb4c1a749b0b66221967c893e4ecfb"
+      },
+      "red": {
+        "mutation": "browser_new_tab replies without waiting for the tab's group",
+        "baseline_exit": 0,
+        "mutated_exit": 1,
+        "restored_exit": 0,
+        "expected_diagnostic": "a new tab is in its agent's named group when browser_new_tab replies",
+        "observed_diagnostic": "a new tab is in its agent's named group when browser_new_tab replies",
+        "before": [
+          {
+            "path": "browser/extension/background.js",
+            "sha256": "9a46ed0d5a930bbf0d1ead212425fffbb6083f99dbdf276b24407e18f6b1caed"
+          }
+        ],
+        "after": [
+          {
+            "path": "browser/extension/background.js",
+            "sha256": "9a46ed0d5a930bbf0d1ead212425fffbb6083f99dbdf276b24407e18f6b1caed"
+          }
+        ],
+        "mutated": [
+          {
+            "path": "browser/extension/background.js",
+            "sha256": "65c6f06e2beae9c1b8bf751e0627c82521ea7dcce7d46fa75e389af3ad039a34"
+          }
+        ]
+      },
+      "reason": null,
+      "scope_sha256": "3ede46f29432a68bed3f376d6f2b9fa6461399ab02af64372eb486381d682afb",
+      "environment": {
+        "platform": "windows",
+        "tools": {
+          "chrome-for-testing": "153.0.8010.52",
+          "cmake": "4.4.5",
+          "node": "v24.20.0",
+          "python": "3.14.10",
+          "ubuntu-laptop-clang": "21.1.8",
+          "ubuntu-laptop-cmake": "4.2.3",
+          "ubuntu-laptop-cppcheck": "2.19.0",
+          "ubuntu-laptop-gcc": "15.2.0",
+          "ubuntu-laptop-node": "v24.20.0",
+          "ubuntu-laptop-os": "Ubuntu 26.04.1 LTS",
+          "ubuntu-laptop-python": "3.14.4",
+          "ubuntu-laptop-qt": "6.10.2",
+          "ubuntu-laptop-semgrep": "1.174.0"
+        }
+      },
+      "inputs": [
+        {
+          "path": "browser/extension/background.js",
+          "sha256": "9a46ed0d5a930bbf0d1ead212425fffbb6083f99dbdf276b24407e18f6b1caed"
+        },
+        {
+          "path": "docs/QUALITY.md",
+          "sha256": "f14cf32431382cdb70da6f72e9003207d51a75e5415a0d742e445ba98988027b"
+        },
+        {
+          "path": "tests/e2e/multi_agent_e2e.mjs",
+          "sha256": "b012c11b431ef2ebcd0e8d6cf1ce54ad47be25cdc4a15c23948a882183cb462e"
+        },
+        {
+          "path": "tests/test_browser_extension_tabs.mjs",
+          "sha256": "02c124e0b309f8aa353467a0df94f914afb845bc1eb7d71b63b48c5ad2bc1a77"
+        }
+      ]
+    },
+    {
+      "id": "EV-CWS-RED-INSTRUCTIONS-2",
+      "acceptance": [
+        "AC-CWS-INSTRUCTIONS"
+      ],
+      "kind": "red",
+      "status": "pass",
+      "command": [
+        "./build/test_browser_mcp_server"
+      ],
+      "method": "Drill (instructions-order): the instructions no longer keep a whole snapshot for last. Planted, the suite failed in initializeCarriesClientAgnosticInstructions; restored byte for byte and green again",
+      "exit_code": 0,
+      "artifact": {
+        "path": "docs/plans/evidence/cws/unit-red-drills.txt",
+        "sha256": "55923043159c02e51996da54654761d54b7cf018a171ceb9cae50e0bd39a012b"
+      },
+      "red": {
+        "mutation": "the instructions no longer keep a whole snapshot for last",
+        "baseline_exit": 0,
+        "mutated_exit": 1,
+        "restored_exit": 0,
+        "expected_diagnostic": "initializeCarriesClientAgnosticInstructions",
+        "observed_diagnostic": "initializeCarriesClientAgnosticInstructions",
+        "before": [
+          {
+            "path": "src/mcp_dispatch.cpp",
+            "sha256": "b28853bc614878f9fb93b65f4829421f425d2bfeea3ef82837d69752e0386065"
+          }
+        ],
+        "after": [
+          {
+            "path": "src/mcp_dispatch.cpp",
+            "sha256": "b28853bc614878f9fb93b65f4829421f425d2bfeea3ef82837d69752e0386065"
+          }
+        ],
+        "mutated": [
+          {
+            "path": "src/mcp_dispatch.cpp",
+            "sha256": "ec1d7ea563b0d04302e61ed2874ce1e64d8c4b1cf1a2fe6d22450657f72f6cba"
+          }
+        ]
+      },
+      "reason": null,
+      "scope_sha256": "53ee14dbbbc57c13e851632e14169cfdc61c6647959ef80c261cb6f1a4da4104",
+      "environment": {
+        "platform": "windows",
+        "tools": {
+          "chrome-for-testing": "153.0.8010.52",
+          "cmake": "4.4.5",
+          "node": "v24.20.0",
+          "python": "3.14.10",
+          "ubuntu-laptop-clang": "21.1.8",
+          "ubuntu-laptop-cmake": "4.2.3",
+          "ubuntu-laptop-cppcheck": "2.19.0",
+          "ubuntu-laptop-gcc": "15.2.0",
+          "ubuntu-laptop-node": "v24.20.0",
+          "ubuntu-laptop-os": "Ubuntu 26.04.1 LTS",
+          "ubuntu-laptop-python": "3.14.4",
+          "ubuntu-laptop-qt": "6.10.2",
+          "ubuntu-laptop-semgrep": "1.174.0"
+        }
+      },
+      "inputs": [
+        {
+          "path": "browser/native-host/com.chromecontrolmcp.browser.json",
+          "sha256": "b9c05b8b765a99a4c351080a74d475902fa696f20769f2ed41a3d0ffad4946b3"
+        },
+        {
+          "path": "browser/native-host/register_native_host.ps1",
+          "sha256": "ae519c0db2ecd7699fb741f3e2cb32f12c5639490bbe4d444feb4d7b74194d32"
+        },
+        {
+          "path": "browser/store-public-key.txt",
+          "sha256": "f64981ba2481d58abdd7b6c83adb571179b6d6e75973d6d1b01aa8d7372e6827"
+        },
+        {
+          "path": "docs/QUALITY.md",
+          "sha256": "f14cf32431382cdb70da6f72e9003207d51a75e5415a0d742e445ba98988027b"
+        },
+        {
+          "path": "include/chrome_control_mcp/browser_extension_installer.h",
+          "sha256": "1a24e15adb6d320f0da2c9c28f97f568d91b55bb28e5f45acb904e536de1d829"
+        },
+        {
+          "path": "include/chrome_control_mcp/mcp_entry.h",
+          "sha256": "fe6bfe1ca92ccfdde92f7b9b9c052bc6b9f6dd557669277c0df8209eaca58fcb"
+        },
+        {
+          "path": "src/browser_extension_installer.cpp",
+          "sha256": "6e4b45a1942b5c6ad272da62eaa2b7cb3263a1a3c56b0778bf723b51a4555cb1"
+        },
+        {
+          "path": "src/browser_mcp_tools.cpp",
+          "sha256": "cadf34f8d15643e64f4b12bd023e03bca19033baf2d1750710fecc073f840dfd"
+        },
+        {
+          "path": "src/mcp_dispatch.cpp",
+          "sha256": "b28853bc614878f9fb93b65f4829421f425d2bfeea3ef82837d69752e0386065"
+        },
+        {
+          "path": "src/mcp_entry.cpp",
+          "sha256": "e8c4b80d36589a65535ec3bae72f5a92e68abcc77a1de32289ff4ca2a6cc6a42"
+        },
+        {
+          "path": "tests/test_browser_extension_installer.cpp",
+          "sha256": "0cd573613239db7f766aec7ea6826ce056eea434720a42bc3bbd6209c83b4988"
+        },
+        {
+          "path": "tests/test_browser_mcp_server.cpp",
+          "sha256": "6aa679d1c3f33df1daf386b30780b394919db9419275b71e43f0a835938e2383"
+        }
+      ]
+    },
+    {
+      "id": "EV-CWS-RED-LIVE-STORE-2",
+      "acceptance": [
+        "AC-CWS-LIVE"
+      ],
+      "kind": "red",
+      "status": "pass",
+      "command": [
+        "node",
+        "tests/e2e/isolated_run.mjs",
+        "--chrome=/home/randy/ccm-tools/cft/chrome/linux-153.0.8010.52/chrome-linux64/chrome",
+        "--executable=build/chrome_control_mcp",
+        "--chrome-arg=--no-sandbox",
+        "--store-key",
+        "tests/e2e/extension_version_e2e.mjs"
+      ],
+      "method": "Drill (store-origin-dropped): a server that answers to the unpacked build only, against the store build in real Chrome. Planted, the suite failed in did not attach; restored byte for byte and green again",
+      "exit_code": 0,
+      "artifact": {
+        "path": "docs/plans/evidence/cws/live-red-drills.txt",
+        "sha256": "d09136f3d4f0d36b64c39d60d945cb2862beb6082e63f219ff7209f02febf0f4"
+      },
+      "red": {
+        "mutation": "a server that answers to the unpacked build only, against the store build in real Chrome",
+        "baseline_exit": 0,
+        "mutated_exit": 1,
+        "restored_exit": 0,
+        "expected_diagnostic": "did not attach",
+        "observed_diagnostic": "did not attach",
+        "before": [
+          {
+            "path": "include/chrome_control_mcp/browser_extension_installer.h",
+            "sha256": "1a24e15adb6d320f0da2c9c28f97f568d91b55bb28e5f45acb904e536de1d829"
+          }
+        ],
+        "after": [
+          {
+            "path": "include/chrome_control_mcp/browser_extension_installer.h",
+            "sha256": "1a24e15adb6d320f0da2c9c28f97f568d91b55bb28e5f45acb904e536de1d829"
+          }
+        ],
+        "mutated": [
+          {
+            "path": "include/chrome_control_mcp/browser_extension_installer.h",
+            "sha256": "6e24340d37f8a1cbf1007f97e9ebe640a1a991bfd6a45f3dac4685e10ae90041"
+          }
+        ]
+      },
+      "reason": null,
+      "scope_sha256": "cf487f815d41ee606441aba68e65d7dd2346a5b48677446decd4a078093980a9",
+      "environment": {
+        "platform": "windows",
+        "tools": {
+          "chrome-for-testing": "153.0.8010.52",
+          "cmake": "4.4.5",
+          "node": "v24.20.0",
+          "python": "3.14.10",
+          "ubuntu-laptop-clang": "21.1.8",
+          "ubuntu-laptop-cmake": "4.2.3",
+          "ubuntu-laptop-cppcheck": "2.19.0",
+          "ubuntu-laptop-gcc": "15.2.0",
+          "ubuntu-laptop-node": "v24.20.0",
+          "ubuntu-laptop-os": "Ubuntu 26.04.1 LTS",
+          "ubuntu-laptop-python": "3.14.4",
+          "ubuntu-laptop-qt": "6.10.2",
+          "ubuntu-laptop-semgrep": "1.174.0"
+        }
+      },
+      "inputs": [
+        {
+          "path": ".github/workflows/live.yml",
+          "sha256": "6a5d1a3231bbdb1a7218f35248e1c60fa090eb8588c78029b8951a108f5e6e29"
+        },
+        {
+          "path": "browser/extension/icons/icon.svg",
+          "sha256": "e66610a56eea06e37ff4737d0411bd5d4d8e5a8ec0018c4d9a84893e569cb065"
+        },
+        {
+          "path": "browser/extension/icons/icon128.png",
+          "sha256": "7b70af8972ae1cfaab9e2dac52edd7f2bc60ef01816d128b4506d0e7ec242027"
+        },
+        {
+          "path": "browser/extension/icons/icon16.png",
+          "sha256": "ac9949fb7dae7f7633d9a0549ab9aef91f25ba0e97f299b2ea09e6bf4d623c03"
+        },
+        {
+          "path": "browser/extension/icons/icon32.png",
+          "sha256": "094f5caf4044dd8de18d039efab9c3698d647f2f6dda74bd9d81aaafa6ea6d6a"
+        },
+        {
+          "path": "browser/extension/icons/icon48.png",
+          "sha256": "13c5ddfeaee7a4f3e6d8e5454299afd4b95a58c980ed143090a7041ff88da38d"
+        },
+        {
+          "path": "browser/extension/manifest.json",
+          "sha256": "c52c6d8f9d703c96cbea0ad31795971026728992b33a775bfa9069c406a5484c"
+        },
+        {
+          "path": "browser/native-host/com.chromecontrolmcp.browser.json",
+          "sha256": "b9c05b8b765a99a4c351080a74d475902fa696f20769f2ed41a3d0ffad4946b3"
+        },
+        {
+          "path": "browser/native-host/register_native_host.ps1",
+          "sha256": "ae519c0db2ecd7699fb741f3e2cb32f12c5639490bbe4d444feb4d7b74194d32"
+        },
+        {
+          "path": "browser/store-public-key.txt",
+          "sha256": "f64981ba2481d58abdd7b6c83adb571179b6d6e75973d6d1b01aa8d7372e6827"
+        },
+        {
+          "path": "docs/QUALITY.md",
+          "sha256": "f14cf32431382cdb70da6f72e9003207d51a75e5415a0d742e445ba98988027b"
+        },
+        {
+          "path": "include/chrome_control_mcp/browser_extension_installer.h",
+          "sha256": "1a24e15adb6d320f0da2c9c28f97f568d91b55bb28e5f45acb904e536de1d829"
+        },
+        {
+          "path": "include/chrome_control_mcp/mcp_entry.h",
+          "sha256": "fe6bfe1ca92ccfdde92f7b9b9c052bc6b9f6dd557669277c0df8209eaca58fcb"
+        },
+        {
+          "path": "src/browser_extension_installer.cpp",
+          "sha256": "6e4b45a1942b5c6ad272da62eaa2b7cb3263a1a3c56b0778bf723b51a4555cb1"
+        },
+        {
+          "path": "src/browser_mcp_tools.cpp",
+          "sha256": "cadf34f8d15643e64f4b12bd023e03bca19033baf2d1750710fecc073f840dfd"
+        },
+        {
+          "path": "src/mcp_dispatch.cpp",
+          "sha256": "b28853bc614878f9fb93b65f4829421f425d2bfeea3ef82837d69752e0386065"
+        },
+        {
+          "path": "src/mcp_entry.cpp",
+          "sha256": "e8c4b80d36589a65535ec3bae72f5a92e68abcc77a1de32289ff4ca2a6cc6a42"
+        },
+        {
+          "path": "tests/e2e/devtools.mjs",
+          "sha256": "6b9a9f6f8fe52f05a62e7f389b8b3a44036c344a5292a40248ab18add935a324"
+        },
+        {
+          "path": "tests/e2e/extension_version_e2e.mjs",
+          "sha256": "b9211e14a243b4f3e99abc8e21e25b908c6db10b4d2e2c8a50f18f7527080d95"
+        },
+        {
+          "path": "tests/e2e/isolated_chrome.mjs",
+          "sha256": "5b59019533a5917eaca784b95818999dbee1a36fa4eeee3ac0678e71b9685db0"
+        },
+        {
+          "path": "tests/e2e/isolated_run.mjs",
+          "sha256": "ce9f33c6414c694744da13373a348b0030b8dd0e2880b64e7cce0dd443a30685"
+        },
+        {
+          "path": "tests/test_browser_extension_installer.cpp",
+          "sha256": "0cd573613239db7f766aec7ea6826ce056eea434720a42bc3bbd6209c83b4988"
+        },
+        {
+          "path": "tests/test_browser_mcp_server.cpp",
+          "sha256": "6aa679d1c3f33df1daf386b30780b394919db9419275b71e43f0a835938e2383"
+        }
+      ]
+    },
+    {
+      "id": "EV-CWS-RED-LOOKALIKE-2",
+      "acceptance": [
+        "AC-CWS-ORIGIN"
+      ],
+      "kind": "red",
+      "status": "pass",
+      "command": [
+        "./build/test_browser_extension_installer"
+      ],
+      "method": "Drill (origin-lookalike): an origin that only begins with one of our IDs selects the relay. Planted, the suite failed in extensionOriginAcceptsBothBuilds; restored byte for byte and green again",
+      "exit_code": 0,
+      "artifact": {
+        "path": "docs/plans/evidence/cws/unit-red-drills.txt",
+        "sha256": "55923043159c02e51996da54654761d54b7cf018a171ceb9cae50e0bd39a012b"
+      },
+      "red": {
+        "mutation": "an origin that only begins with one of our IDs selects the relay",
+        "baseline_exit": 0,
+        "mutated_exit": 1,
+        "restored_exit": 0,
+        "expected_diagnostic": "extensionOriginAcceptsBothBuilds",
+        "observed_diagnostic": "extensionOriginAcceptsBothBuilds",
+        "before": [
+          {
+            "path": "include/chrome_control_mcp/mcp_entry.h",
+            "sha256": "fe6bfe1ca92ccfdde92f7b9b9c052bc6b9f6dd557669277c0df8209eaca58fcb"
+          }
+        ],
+        "after": [
+          {
+            "path": "include/chrome_control_mcp/mcp_entry.h",
+            "sha256": "fe6bfe1ca92ccfdde92f7b9b9c052bc6b9f6dd557669277c0df8209eaca58fcb"
+          }
+        ],
+        "mutated": [
+          {
+            "path": "include/chrome_control_mcp/mcp_entry.h",
+            "sha256": "46d8ee36f3107e3f7da037c80c5f8a493db7bae3b3b8ee75d9db0485a414ee2d"
+          }
+        ]
+      },
+      "reason": null,
+      "scope_sha256": "53ee14dbbbc57c13e851632e14169cfdc61c6647959ef80c261cb6f1a4da4104",
+      "environment": {
+        "platform": "windows",
+        "tools": {
+          "chrome-for-testing": "153.0.8010.52",
+          "cmake": "4.4.5",
+          "node": "v24.20.0",
+          "python": "3.14.10",
+          "ubuntu-laptop-clang": "21.1.8",
+          "ubuntu-laptop-cmake": "4.2.3",
+          "ubuntu-laptop-cppcheck": "2.19.0",
+          "ubuntu-laptop-gcc": "15.2.0",
+          "ubuntu-laptop-node": "v24.20.0",
+          "ubuntu-laptop-os": "Ubuntu 26.04.1 LTS",
+          "ubuntu-laptop-python": "3.14.4",
+          "ubuntu-laptop-qt": "6.10.2",
+          "ubuntu-laptop-semgrep": "1.174.0"
+        }
+      },
+      "inputs": [
+        {
+          "path": "browser/native-host/com.chromecontrolmcp.browser.json",
+          "sha256": "b9c05b8b765a99a4c351080a74d475902fa696f20769f2ed41a3d0ffad4946b3"
+        },
+        {
+          "path": "browser/native-host/register_native_host.ps1",
+          "sha256": "ae519c0db2ecd7699fb741f3e2cb32f12c5639490bbe4d444feb4d7b74194d32"
+        },
+        {
+          "path": "browser/store-public-key.txt",
+          "sha256": "f64981ba2481d58abdd7b6c83adb571179b6d6e75973d6d1b01aa8d7372e6827"
+        },
+        {
+          "path": "docs/QUALITY.md",
+          "sha256": "f14cf32431382cdb70da6f72e9003207d51a75e5415a0d742e445ba98988027b"
+        },
+        {
+          "path": "include/chrome_control_mcp/browser_extension_installer.h",
+          "sha256": "1a24e15adb6d320f0da2c9c28f97f568d91b55bb28e5f45acb904e536de1d829"
+        },
+        {
+          "path": "include/chrome_control_mcp/mcp_entry.h",
+          "sha256": "fe6bfe1ca92ccfdde92f7b9b9c052bc6b9f6dd557669277c0df8209eaca58fcb"
+        },
+        {
+          "path": "src/browser_extension_installer.cpp",
+          "sha256": "6e4b45a1942b5c6ad272da62eaa2b7cb3263a1a3c56b0778bf723b51a4555cb1"
+        },
+        {
+          "path": "src/browser_mcp_tools.cpp",
+          "sha256": "cadf34f8d15643e64f4b12bd023e03bca19033baf2d1750710fecc073f840dfd"
+        },
+        {
+          "path": "src/mcp_dispatch.cpp",
+          "sha256": "b28853bc614878f9fb93b65f4829421f425d2bfeea3ef82837d69752e0386065"
+        },
+        {
+          "path": "src/mcp_entry.cpp",
+          "sha256": "e8c4b80d36589a65535ec3bae72f5a92e68abcc77a1de32289ff4ca2a6cc6a42"
+        },
+        {
+          "path": "tests/test_browser_extension_installer.cpp",
+          "sha256": "0cd573613239db7f766aec7ea6826ce056eea434720a42bc3bbd6209c83b4988"
+        },
+        {
+          "path": "tests/test_browser_mcp_server.cpp",
+          "sha256": "6aa679d1c3f33df1daf386b30780b394919db9419275b71e43f0a835938e2383"
+        }
+      ]
+    },
+    {
+      "id": "EV-CWS-RED-PACKAGE-DESC-2",
+      "acceptance": [
+        "AC-CWS-PACKAGE"
+      ],
+      "kind": "red",
+      "status": "pass",
+      "command": [
+        "node",
+        "--test",
+        "tests/test_store_publish.mjs"
+      ],
+      "method": "Drill (package-description): a 133-character description passes. Planted, the suite failed in a description over 132 characters; restored byte for byte and green again",
+      "exit_code": 0,
+      "artifact": {
+        "path": "docs/plans/evidence/cws/js-red-drills.txt",
+        "sha256": "57024c07d253c9fcb1000e6b30a3520a7534583eb14393d08714d76157b492d3"
+      },
+      "red": {
+        "mutation": "a 133-character description passes",
+        "baseline_exit": 0,
+        "mutated_exit": 1,
+        "restored_exit": 0,
+        "expected_diagnostic": "a description over 132 characters",
+        "observed_diagnostic": "a description over 132 characters",
+        "before": [
+          {
+            "path": "scripts/store_package.mjs",
+            "sha256": "da7e447371a3d84a30ff9b13f7a27ac8c7de579e2f2dee3199010c33e68850eb"
+          }
+        ],
+        "after": [
+          {
+            "path": "scripts/store_package.mjs",
+            "sha256": "da7e447371a3d84a30ff9b13f7a27ac8c7de579e2f2dee3199010c33e68850eb"
+          }
+        ],
+        "mutated": [
+          {
+            "path": "scripts/store_package.mjs",
+            "sha256": "c604068e9d25abfd088a6b04ed7518e07fc75d19f76a93dcf26ff3ac2f1dd854"
+          }
+        ]
+      },
+      "reason": null,
+      "scope_sha256": "481ddd704abeaf86cb75b92bbc44aaf4ab79bf8f150970e20ed90ed7a9b6e685",
+      "environment": {
+        "platform": "windows",
+        "tools": {
+          "chrome-for-testing": "153.0.8010.52",
+          "cmake": "4.4.5",
+          "node": "v24.20.0",
+          "python": "3.14.10",
+          "ubuntu-laptop-clang": "21.1.8",
+          "ubuntu-laptop-cmake": "4.2.3",
+          "ubuntu-laptop-cppcheck": "2.19.0",
+          "ubuntu-laptop-gcc": "15.2.0",
+          "ubuntu-laptop-node": "v24.20.0",
+          "ubuntu-laptop-os": "Ubuntu 26.04.1 LTS",
+          "ubuntu-laptop-python": "3.14.4",
+          "ubuntu-laptop-qt": "6.10.2",
+          "ubuntu-laptop-semgrep": "1.174.0"
+        }
+      },
+      "inputs": [
+        {
+          "path": ".github/workflows/release.yml",
+          "sha256": "b5cb97e7ed7611e383208223d7c023d03c7877c0629df05ca740132a733855f3"
+        },
+        {
+          "path": ".github/workflows/store-check.yml",
+          "sha256": "34a67bd73558ca839d732350300444e9e5b847b84df7a9b59e48c4f5af2e0dbe"
+        },
+        {
+          "path": "browser/extension/icons/icon.svg",
+          "sha256": "e66610a56eea06e37ff4737d0411bd5d4d8e5a8ec0018c4d9a84893e569cb065"
+        },
+        {
+          "path": "browser/extension/icons/icon128.png",
+          "sha256": "7b70af8972ae1cfaab9e2dac52edd7f2bc60ef01816d128b4506d0e7ec242027"
+        },
+        {
+          "path": "browser/extension/icons/icon16.png",
+          "sha256": "ac9949fb7dae7f7633d9a0549ab9aef91f25ba0e97f299b2ea09e6bf4d623c03"
+        },
+        {
+          "path": "browser/extension/icons/icon32.png",
+          "sha256": "094f5caf4044dd8de18d039efab9c3698d647f2f6dda74bd9d81aaafa6ea6d6a"
+        },
+        {
+          "path": "browser/extension/icons/icon48.png",
+          "sha256": "13c5ddfeaee7a4f3e6d8e5454299afd4b95a58c980ed143090a7041ff88da38d"
+        },
+        {
+          "path": "browser/extension/manifest.json",
+          "sha256": "c52c6d8f9d703c96cbea0ad31795971026728992b33a775bfa9069c406a5484c"
+        },
+        {
+          "path": "docs/QUALITY.md",
+          "sha256": "f14cf32431382cdb70da6f72e9003207d51a75e5415a0d742e445ba98988027b"
+        },
+        {
+          "path": "package.json",
+          "sha256": "efcb2d7cd197155912dd5a4064772d9f998d5c0c9edeeca26ef2e8606aa133e9"
+        },
+        {
+          "path": "scripts/cws_publish.mjs",
+          "sha256": "21804f91e90d5b0450221c59d312b0708015b73d874671e0c5454dc1a5f10821"
+        },
+        {
+          "path": "scripts/store_package.mjs",
+          "sha256": "da7e447371a3d84a30ff9b13f7a27ac8c7de579e2f2dee3199010c33e68850eb"
+        },
+        {
+          "path": "tests/test_store_publish.mjs",
+          "sha256": "96f8a51f1b075cbe68315a60c5e5e605d1e47e9477c8309ed77d312cd21477a3"
+        }
+      ]
+    },
+    {
+      "id": "EV-CWS-RED-PACKAGE-KEY-2",
+      "acceptance": [
+        "AC-CWS-PACKAGE"
+      ],
+      "kind": "red",
+      "status": "pass",
+      "command": [
+        "node",
+        "--test",
+        "tests/test_store_publish.mjs"
+      ],
+      "method": "Drill (package-key): the store package keeps the manifest's key. Planted, the suite failed in the store package is the extension's files with the manifest's key removed; restored byte for byte and green again",
+      "exit_code": 0,
+      "artifact": {
+        "path": "docs/plans/evidence/cws/js-red-drills.txt",
+        "sha256": "57024c07d253c9fcb1000e6b30a3520a7534583eb14393d08714d76157b492d3"
+      },
+      "red": {
+        "mutation": "the store package keeps the manifest's key",
+        "baseline_exit": 0,
+        "mutated_exit": 1,
+        "restored_exit": 0,
+        "expected_diagnostic": "the store package is the extension's files with the manifest's key removed",
+        "observed_diagnostic": "the store package is the extension's files with the manifest's key removed",
+        "before": [
+          {
+            "path": "scripts/store_package.mjs",
+            "sha256": "da7e447371a3d84a30ff9b13f7a27ac8c7de579e2f2dee3199010c33e68850eb"
+          }
+        ],
+        "after": [
+          {
+            "path": "scripts/store_package.mjs",
+            "sha256": "da7e447371a3d84a30ff9b13f7a27ac8c7de579e2f2dee3199010c33e68850eb"
+          }
+        ],
+        "mutated": [
+          {
+            "path": "scripts/store_package.mjs",
+            "sha256": "6810740d5836db91f5744733699bc5b422107c222c4ac02b88cc21d320e0d754"
+          }
+        ]
+      },
+      "reason": null,
+      "scope_sha256": "481ddd704abeaf86cb75b92bbc44aaf4ab79bf8f150970e20ed90ed7a9b6e685",
+      "environment": {
+        "platform": "windows",
+        "tools": {
+          "chrome-for-testing": "153.0.8010.52",
+          "cmake": "4.4.5",
+          "node": "v24.20.0",
+          "python": "3.14.10",
+          "ubuntu-laptop-clang": "21.1.8",
+          "ubuntu-laptop-cmake": "4.2.3",
+          "ubuntu-laptop-cppcheck": "2.19.0",
+          "ubuntu-laptop-gcc": "15.2.0",
+          "ubuntu-laptop-node": "v24.20.0",
+          "ubuntu-laptop-os": "Ubuntu 26.04.1 LTS",
+          "ubuntu-laptop-python": "3.14.4",
+          "ubuntu-laptop-qt": "6.10.2",
+          "ubuntu-laptop-semgrep": "1.174.0"
+        }
+      },
+      "inputs": [
+        {
+          "path": ".github/workflows/release.yml",
+          "sha256": "b5cb97e7ed7611e383208223d7c023d03c7877c0629df05ca740132a733855f3"
+        },
+        {
+          "path": ".github/workflows/store-check.yml",
+          "sha256": "34a67bd73558ca839d732350300444e9e5b847b84df7a9b59e48c4f5af2e0dbe"
+        },
+        {
+          "path": "browser/extension/icons/icon.svg",
+          "sha256": "e66610a56eea06e37ff4737d0411bd5d4d8e5a8ec0018c4d9a84893e569cb065"
+        },
+        {
+          "path": "browser/extension/icons/icon128.png",
+          "sha256": "7b70af8972ae1cfaab9e2dac52edd7f2bc60ef01816d128b4506d0e7ec242027"
+        },
+        {
+          "path": "browser/extension/icons/icon16.png",
+          "sha256": "ac9949fb7dae7f7633d9a0549ab9aef91f25ba0e97f299b2ea09e6bf4d623c03"
+        },
+        {
+          "path": "browser/extension/icons/icon32.png",
+          "sha256": "094f5caf4044dd8de18d039efab9c3698d647f2f6dda74bd9d81aaafa6ea6d6a"
+        },
+        {
+          "path": "browser/extension/icons/icon48.png",
+          "sha256": "13c5ddfeaee7a4f3e6d8e5454299afd4b95a58c980ed143090a7041ff88da38d"
+        },
+        {
+          "path": "browser/extension/manifest.json",
+          "sha256": "c52c6d8f9d703c96cbea0ad31795971026728992b33a775bfa9069c406a5484c"
+        },
+        {
+          "path": "docs/QUALITY.md",
+          "sha256": "f14cf32431382cdb70da6f72e9003207d51a75e5415a0d742e445ba98988027b"
+        },
+        {
+          "path": "package.json",
+          "sha256": "efcb2d7cd197155912dd5a4064772d9f998d5c0c9edeeca26ef2e8606aa133e9"
+        },
+        {
+          "path": "scripts/cws_publish.mjs",
+          "sha256": "21804f91e90d5b0450221c59d312b0708015b73d874671e0c5454dc1a5f10821"
+        },
+        {
+          "path": "scripts/store_package.mjs",
+          "sha256": "da7e447371a3d84a30ff9b13f7a27ac8c7de579e2f2dee3199010c33e68850eb"
+        },
+        {
+          "path": "tests/test_store_publish.mjs",
+          "sha256": "96f8a51f1b075cbe68315a60c5e5e605d1e47e9477c8309ed77d312cd21477a3"
+        }
+      ]
+    },
+    {
+      "id": "EV-CWS-RED-POLL-2",
+      "acceptance": [
+        "AC-CWS-PUBLISH"
+      ],
+      "kind": "red",
+      "status": "pass",
+      "command": [
+        "node",
+        "--test",
+        "tests/test_store_publish.mjs"
+      ],
+      "method": "Drill (publish-poll): the publisher stops waiting while the store is still processing. Planted, the suite failed in a release signs in, uploads, waits out processing and submits; restored byte for byte and green again",
+      "exit_code": 0,
+      "artifact": {
+        "path": "docs/plans/evidence/cws/js-red-drills.txt",
+        "sha256": "57024c07d253c9fcb1000e6b30a3520a7534583eb14393d08714d76157b492d3"
+      },
+      "red": {
+        "mutation": "the publisher stops waiting while the store is still processing",
+        "baseline_exit": 0,
+        "mutated_exit": 1,
+        "restored_exit": 0,
+        "expected_diagnostic": "a release signs in, uploads, waits out processing and submits",
+        "observed_diagnostic": "a release signs in, uploads, waits out processing and submits",
+        "before": [
+          {
+            "path": "scripts/cws_publish.mjs",
+            "sha256": "21804f91e90d5b0450221c59d312b0708015b73d874671e0c5454dc1a5f10821"
+          }
+        ],
+        "after": [
+          {
+            "path": "scripts/cws_publish.mjs",
+            "sha256": "21804f91e90d5b0450221c59d312b0708015b73d874671e0c5454dc1a5f10821"
+          }
+        ],
+        "mutated": [
+          {
+            "path": "scripts/cws_publish.mjs",
+            "sha256": "e913768b63b958d45b5c6572d3eb86c2589f4795e90dd985d60bc6296b03e632"
+          }
+        ]
+      },
+      "reason": null,
+      "scope_sha256": "481ddd704abeaf86cb75b92bbc44aaf4ab79bf8f150970e20ed90ed7a9b6e685",
+      "environment": {
+        "platform": "windows",
+        "tools": {
+          "chrome-for-testing": "153.0.8010.52",
+          "cmake": "4.4.5",
+          "node": "v24.20.0",
+          "python": "3.14.10",
+          "ubuntu-laptop-clang": "21.1.8",
+          "ubuntu-laptop-cmake": "4.2.3",
+          "ubuntu-laptop-cppcheck": "2.19.0",
+          "ubuntu-laptop-gcc": "15.2.0",
+          "ubuntu-laptop-node": "v24.20.0",
+          "ubuntu-laptop-os": "Ubuntu 26.04.1 LTS",
+          "ubuntu-laptop-python": "3.14.4",
+          "ubuntu-laptop-qt": "6.10.2",
+          "ubuntu-laptop-semgrep": "1.174.0"
+        }
+      },
+      "inputs": [
+        {
+          "path": ".github/workflows/release.yml",
+          "sha256": "b5cb97e7ed7611e383208223d7c023d03c7877c0629df05ca740132a733855f3"
+        },
+        {
+          "path": ".github/workflows/store-check.yml",
+          "sha256": "34a67bd73558ca839d732350300444e9e5b847b84df7a9b59e48c4f5af2e0dbe"
+        },
+        {
+          "path": "browser/extension/icons/icon.svg",
+          "sha256": "e66610a56eea06e37ff4737d0411bd5d4d8e5a8ec0018c4d9a84893e569cb065"
+        },
+        {
+          "path": "browser/extension/icons/icon128.png",
+          "sha256": "7b70af8972ae1cfaab9e2dac52edd7f2bc60ef01816d128b4506d0e7ec242027"
+        },
+        {
+          "path": "browser/extension/icons/icon16.png",
+          "sha256": "ac9949fb7dae7f7633d9a0549ab9aef91f25ba0e97f299b2ea09e6bf4d623c03"
+        },
+        {
+          "path": "browser/extension/icons/icon32.png",
+          "sha256": "094f5caf4044dd8de18d039efab9c3698d647f2f6dda74bd9d81aaafa6ea6d6a"
+        },
+        {
+          "path": "browser/extension/icons/icon48.png",
+          "sha256": "13c5ddfeaee7a4f3e6d8e5454299afd4b95a58c980ed143090a7041ff88da38d"
+        },
+        {
+          "path": "browser/extension/manifest.json",
+          "sha256": "c52c6d8f9d703c96cbea0ad31795971026728992b33a775bfa9069c406a5484c"
+        },
+        {
+          "path": "docs/QUALITY.md",
+          "sha256": "f14cf32431382cdb70da6f72e9003207d51a75e5415a0d742e445ba98988027b"
+        },
+        {
+          "path": "package.json",
+          "sha256": "efcb2d7cd197155912dd5a4064772d9f998d5c0c9edeeca26ef2e8606aa133e9"
+        },
+        {
+          "path": "scripts/cws_publish.mjs",
+          "sha256": "21804f91e90d5b0450221c59d312b0708015b73d874671e0c5454dc1a5f10821"
+        },
+        {
+          "path": "scripts/store_package.mjs",
+          "sha256": "da7e447371a3d84a30ff9b13f7a27ac8c7de579e2f2dee3199010c33e68850eb"
+        },
+        {
+          "path": "tests/test_store_publish.mjs",
+          "sha256": "96f8a51f1b075cbe68315a60c5e5e605d1e47e9477c8309ed77d312cd21477a3"
+        }
+      ]
+    },
+    {
+      "id": "EV-CWS-RED-REFRESH-2",
+      "acceptance": [
+        "AC-CWS-REGISTRATION"
+      ],
+      "kind": "red",
+      "status": "pass",
+      "command": [
+        "./build/test_browser_extension_installer"
+      ],
+      "method": "Drill (refresh-foreign): a starting server rewrites another copy's registration. Planted, the suite failed in refreshRewritesOnlyItsOwnStaleRegistration; restored byte for byte and green again",
+      "exit_code": 0,
+      "artifact": {
+        "path": "docs/plans/evidence/cws/unit-red-drills.txt",
+        "sha256": "55923043159c02e51996da54654761d54b7cf018a171ceb9cae50e0bd39a012b"
+      },
+      "red": {
+        "mutation": "a starting server rewrites another copy's registration",
+        "baseline_exit": 0,
+        "mutated_exit": 1,
+        "restored_exit": 0,
+        "expected_diagnostic": "refreshRewritesOnlyItsOwnStaleRegistration",
+        "observed_diagnostic": "refreshRewritesOnlyItsOwnStaleRegistration",
+        "before": [
+          {
+            "path": "src/browser_extension_installer.cpp",
+            "sha256": "6e4b45a1942b5c6ad272da62eaa2b7cb3263a1a3c56b0778bf723b51a4555cb1"
+          }
+        ],
+        "after": [
+          {
+            "path": "src/browser_extension_installer.cpp",
+            "sha256": "6e4b45a1942b5c6ad272da62eaa2b7cb3263a1a3c56b0778bf723b51a4555cb1"
+          }
+        ],
+        "mutated": [
+          {
+            "path": "src/browser_extension_installer.cpp",
+            "sha256": "2ffd3beb6d2dad8dce85332afb1b2131cde57f2fb940996b7cfed1b4143e94fd"
+          }
+        ]
+      },
+      "reason": null,
+      "scope_sha256": "53ee14dbbbc57c13e851632e14169cfdc61c6647959ef80c261cb6f1a4da4104",
+      "environment": {
+        "platform": "windows",
+        "tools": {
+          "chrome-for-testing": "153.0.8010.52",
+          "cmake": "4.4.5",
+          "node": "v24.20.0",
+          "python": "3.14.10",
+          "ubuntu-laptop-clang": "21.1.8",
+          "ubuntu-laptop-cmake": "4.2.3",
+          "ubuntu-laptop-cppcheck": "2.19.0",
+          "ubuntu-laptop-gcc": "15.2.0",
+          "ubuntu-laptop-node": "v24.20.0",
+          "ubuntu-laptop-os": "Ubuntu 26.04.1 LTS",
+          "ubuntu-laptop-python": "3.14.4",
+          "ubuntu-laptop-qt": "6.10.2",
+          "ubuntu-laptop-semgrep": "1.174.0"
+        }
+      },
+      "inputs": [
+        {
+          "path": "browser/native-host/com.chromecontrolmcp.browser.json",
+          "sha256": "b9c05b8b765a99a4c351080a74d475902fa696f20769f2ed41a3d0ffad4946b3"
+        },
+        {
+          "path": "browser/native-host/register_native_host.ps1",
+          "sha256": "ae519c0db2ecd7699fb741f3e2cb32f12c5639490bbe4d444feb4d7b74194d32"
+        },
+        {
+          "path": "browser/store-public-key.txt",
+          "sha256": "f64981ba2481d58abdd7b6c83adb571179b6d6e75973d6d1b01aa8d7372e6827"
+        },
+        {
+          "path": "docs/QUALITY.md",
+          "sha256": "f14cf32431382cdb70da6f72e9003207d51a75e5415a0d742e445ba98988027b"
+        },
+        {
+          "path": "include/chrome_control_mcp/browser_extension_installer.h",
+          "sha256": "1a24e15adb6d320f0da2c9c28f97f568d91b55bb28e5f45acb904e536de1d829"
+        },
+        {
+          "path": "include/chrome_control_mcp/mcp_entry.h",
+          "sha256": "fe6bfe1ca92ccfdde92f7b9b9c052bc6b9f6dd557669277c0df8209eaca58fcb"
+        },
+        {
+          "path": "src/browser_extension_installer.cpp",
+          "sha256": "6e4b45a1942b5c6ad272da62eaa2b7cb3263a1a3c56b0778bf723b51a4555cb1"
+        },
+        {
+          "path": "src/browser_mcp_tools.cpp",
+          "sha256": "cadf34f8d15643e64f4b12bd023e03bca19033baf2d1750710fecc073f840dfd"
+        },
+        {
+          "path": "src/mcp_dispatch.cpp",
+          "sha256": "b28853bc614878f9fb93b65f4829421f425d2bfeea3ef82837d69752e0386065"
+        },
+        {
+          "path": "src/mcp_entry.cpp",
+          "sha256": "e8c4b80d36589a65535ec3bae72f5a92e68abcc77a1de32289ff4ca2a6cc6a42"
+        },
+        {
+          "path": "tests/test_browser_extension_installer.cpp",
+          "sha256": "0cd573613239db7f766aec7ea6826ce056eea434720a42bc3bbd6209c83b4988"
+        },
+        {
+          "path": "tests/test_browser_mcp_server.cpp",
+          "sha256": "6aa679d1c3f33df1daf386b30780b394919db9419275b71e43f0a835938e2383"
+        }
+      ]
+    },
+    {
+      "id": "EV-CWS-RED-STATUS-2",
+      "acceptance": [
+        "AC-CWS-COMPAT"
+      ],
+      "kind": "red",
+      "status": "pass",
+      "command": [
+        "./build/test_browser_mcp_server"
+      ],
+      "method": "Drill (status-store-id): browser_extension_status reports the unpacked ID as the store's. Planted, the suite failed in installerStatusReturnsMcpContent; restored byte for byte and green again",
+      "exit_code": 0,
+      "artifact": {
+        "path": "docs/plans/evidence/cws/unit-red-drills.txt",
+        "sha256": "55923043159c02e51996da54654761d54b7cf018a171ceb9cae50e0bd39a012b"
+      },
+      "red": {
+        "mutation": "browser_extension_status reports the unpacked ID as the store's",
+        "baseline_exit": 0,
+        "mutated_exit": 1,
+        "restored_exit": 0,
+        "expected_diagnostic": "installerStatusReturnsMcpContent",
+        "observed_diagnostic": "installerStatusReturnsMcpContent",
+        "before": [
+          {
+            "path": "src/browser_mcp_tools.cpp",
+            "sha256": "cadf34f8d15643e64f4b12bd023e03bca19033baf2d1750710fecc073f840dfd"
+          }
+        ],
+        "after": [
+          {
+            "path": "src/browser_mcp_tools.cpp",
+            "sha256": "cadf34f8d15643e64f4b12bd023e03bca19033baf2d1750710fecc073f840dfd"
+          }
+        ],
+        "mutated": [
+          {
+            "path": "src/browser_mcp_tools.cpp",
+            "sha256": "bee65de8cb89abebfc32f5717b1c36e7a9a5fe0589ac0a9b4c7e8aee4a21c31b"
+          }
+        ]
+      },
+      "reason": null,
+      "scope_sha256": "a443cfc1f13d3d8968542cc60c2a0c99171bd5be0baafffc61367d02e8fa219e",
+      "environment": {
+        "platform": "windows",
+        "tools": {
+          "chrome-for-testing": "153.0.8010.52",
+          "cmake": "4.4.5",
+          "node": "v24.20.0",
+          "python": "3.14.10",
+          "ubuntu-laptop-clang": "21.1.8",
+          "ubuntu-laptop-cmake": "4.2.3",
+          "ubuntu-laptop-cppcheck": "2.19.0",
+          "ubuntu-laptop-gcc": "15.2.0",
+          "ubuntu-laptop-node": "v24.20.0",
+          "ubuntu-laptop-os": "Ubuntu 26.04.1 LTS",
+          "ubuntu-laptop-python": "3.14.4",
+          "ubuntu-laptop-qt": "6.10.2",
+          "ubuntu-laptop-semgrep": "1.174.0"
+        }
+      },
+      "inputs": [
+        {
+          "path": ".github/workflows/live.yml",
+          "sha256": "6a5d1a3231bbdb1a7218f35248e1c60fa090eb8588c78029b8951a108f5e6e29"
+        },
+        {
+          "path": ".github/workflows/release.yml",
+          "sha256": "b5cb97e7ed7611e383208223d7c023d03c7877c0629df05ca740132a733855f3"
+        },
+        {
+          "path": ".github/workflows/store-check.yml",
+          "sha256": "34a67bd73558ca839d732350300444e9e5b847b84df7a9b59e48c4f5af2e0dbe"
+        },
+        {
+          "path": "CHANGELOG.md",
+          "sha256": "890939b9cc7f57008729adb8d55b65aa5083ba2d69810e36d00a9d7e73ec0c02"
+        },
+        {
+          "path": "CMakeLists.txt",
+          "sha256": "7d9992d61053c1ec653d417d6b8150602f20cd61652197f6759ad9f25d46494a"
+        },
+        {
+          "path": "PLAN.md",
+          "sha256": "2f928851e1f531b02dbea03787541c65c0932b93cef1bc115b8ea1978fceb953"
+        },
+        {
+          "path": "README.md",
+          "sha256": "2e276826f509386945096a2dae2afe67ad5dd43b02c66067ad5c119ed41f998b"
+        },
+        {
+          "path": "browser/extension/background.js",
+          "sha256": "9a46ed0d5a930bbf0d1ead212425fffbb6083f99dbdf276b24407e18f6b1caed"
+        },
+        {
+          "path": "browser/extension/icons/icon.svg",
+          "sha256": "e66610a56eea06e37ff4737d0411bd5d4d8e5a8ec0018c4d9a84893e569cb065"
+        },
+        {
+          "path": "browser/extension/icons/icon128.png",
+          "sha256": "7b70af8972ae1cfaab9e2dac52edd7f2bc60ef01816d128b4506d0e7ec242027"
+        },
+        {
+          "path": "browser/extension/icons/icon16.png",
+          "sha256": "ac9949fb7dae7f7633d9a0549ab9aef91f25ba0e97f299b2ea09e6bf4d623c03"
+        },
+        {
+          "path": "browser/extension/icons/icon32.png",
+          "sha256": "094f5caf4044dd8de18d039efab9c3698d647f2f6dda74bd9d81aaafa6ea6d6a"
+        },
+        {
+          "path": "browser/extension/icons/icon48.png",
+          "sha256": "13c5ddfeaee7a4f3e6d8e5454299afd4b95a58c980ed143090a7041ff88da38d"
+        },
+        {
+          "path": "browser/extension/manifest.json",
+          "sha256": "c52c6d8f9d703c96cbea0ad31795971026728992b33a775bfa9069c406a5484c"
+        },
+        {
+          "path": "browser/native-host/com.chromecontrolmcp.browser.json",
+          "sha256": "b9c05b8b765a99a4c351080a74d475902fa696f20769f2ed41a3d0ffad4946b3"
+        },
+        {
+          "path": "browser/native-host/register_native_host.ps1",
+          "sha256": "ae519c0db2ecd7699fb741f3e2cb32f12c5639490bbe4d444feb4d7b74194d32"
+        },
+        {
+          "path": "browser/store-public-key.txt",
+          "sha256": "f64981ba2481d58abdd7b6c83adb571179b6d6e75973d6d1b01aa8d7372e6827"
+        },
+        {
+          "path": "docs/CHROME_WEB_STORE.md",
+          "sha256": "e31da9aa7e15ffab5c84e231ac0650a662c32da6cbf706915bb7f88c4e4f47c0"
+        },
+        {
+          "path": "docs/PRIVACY.md",
+          "sha256": "06ae406ac6059ab9cfb876669872f69d989407d019200ee06c3680db83a17ad9"
+        },
+        {
+          "path": "docs/QUALITY.md",
+          "sha256": "f14cf32431382cdb70da6f72e9003207d51a75e5415a0d742e445ba98988027b"
+        },
+        {
+          "path": "docs/RELEASES.md",
+          "sha256": "e88f9e941c1815bd549307d1d7c8b7ff64b015c93c9a8c208a82cc7f85c92acc"
+        },
+        {
+          "path": "docs/SECURITY.md",
+          "sha256": "5ff5d96ed58be78183dc8a9508fcf7f802d11b5083e355ef217b593742bc8804"
+        },
+        {
+          "path": "docs/TOOLS.md",
+          "sha256": "5f9a31517ae341355c3e396ce9e593508b8b2afa10849f9b8730153e7c5047c4"
+        },
+        {
+          "path": "docs/releases/v1.13.0.md",
+          "sha256": "118894f7e25fb8d263b3b4eed759dc6e96fa57ff0e8b44348e20b5f6a59ba0f4"
+        },
+        {
+          "path": "include/chrome_control_mcp/browser_extension_installer.h",
+          "sha256": "1a24e15adb6d320f0da2c9c28f97f568d91b55bb28e5f45acb904e536de1d829"
+        },
+        {
+          "path": "include/chrome_control_mcp/mcp_entry.h",
+          "sha256": "fe6bfe1ca92ccfdde92f7b9b9c052bc6b9f6dd557669277c0df8209eaca58fcb"
+        },
+        {
+          "path": "package-lock.json",
+          "sha256": "1cf2ff808ed3d02ea23d87b5b0b9a81851b55907b1f01a20681739dd85c9cfd5"
+        },
+        {
+          "path": "package.json",
+          "sha256": "efcb2d7cd197155912dd5a4064772d9f998d5c0c9edeeca26ef2e8606aa133e9"
+        },
+        {
+          "path": "scripts/cws_publish.mjs",
+          "sha256": "21804f91e90d5b0450221c59d312b0708015b73d874671e0c5454dc1a5f10821"
+        },
+        {
+          "path": "scripts/store_package.mjs",
+          "sha256": "da7e447371a3d84a30ff9b13f7a27ac8c7de579e2f2dee3199010c33e68850eb"
+        },
+        {
+          "path": "src/browser_extension_installer.cpp",
+          "sha256": "6e4b45a1942b5c6ad272da62eaa2b7cb3263a1a3c56b0778bf723b51a4555cb1"
+        },
+        {
+          "path": "src/browser_mcp_tools.cpp",
+          "sha256": "cadf34f8d15643e64f4b12bd023e03bca19033baf2d1750710fecc073f840dfd"
+        },
+        {
+          "path": "src/mcp_dispatch.cpp",
+          "sha256": "b28853bc614878f9fb93b65f4829421f425d2bfeea3ef82837d69752e0386065"
+        },
+        {
+          "path": "src/mcp_entry.cpp",
+          "sha256": "e8c4b80d36589a65535ec3bae72f5a92e68abcc77a1de32289ff4ca2a6cc6a42"
+        },
+        {
+          "path": "tests/e2e/devtools.mjs",
+          "sha256": "6b9a9f6f8fe52f05a62e7f389b8b3a44036c344a5292a40248ab18add935a324"
+        },
+        {
+          "path": "tests/e2e/extension_version_e2e.mjs",
+          "sha256": "b9211e14a243b4f3e99abc8e21e25b908c6db10b4d2e2c8a50f18f7527080d95"
+        },
+        {
+          "path": "tests/e2e/isolated_chrome.mjs",
+          "sha256": "5b59019533a5917eaca784b95818999dbee1a36fa4eeee3ac0678e71b9685db0"
+        },
+        {
+          "path": "tests/e2e/isolated_run.mjs",
+          "sha256": "ce9f33c6414c694744da13373a348b0030b8dd0e2880b64e7cce0dd443a30685"
+        },
+        {
+          "path": "tests/e2e/multi_agent_e2e.mjs",
+          "sha256": "b012c11b431ef2ebcd0e8d6cf1ce54ad47be25cdc4a15c23948a882183cb462e"
+        },
+        {
+          "path": "tests/test_browser_extension_installer.cpp",
+          "sha256": "0cd573613239db7f766aec7ea6826ce056eea434720a42bc3bbd6209c83b4988"
+        },
+        {
+          "path": "tests/test_browser_extension_tabs.mjs",
+          "sha256": "02c124e0b309f8aa353467a0df94f914afb845bc1eb7d71b63b48c5ad2bc1a77"
+        },
+        {
+          "path": "tests/test_browser_mcp_server.cpp",
+          "sha256": "6aa679d1c3f33df1daf386b30780b394919db9419275b71e43f0a835938e2383"
+        },
+        {
+          "path": "tests/test_store_publish.mjs",
+          "sha256": "96f8a51f1b075cbe68315a60c5e5e605d1e47e9477c8309ed77d312cd21477a3"
+        },
+        {
+          "path": "vscode/README.md",
+          "sha256": "dd9c0bde060e4be456473256dbee13c0df6ae15c8cffc7afd1295cce1fc9e756"
+        },
+        {
+          "path": "vscode/package-lock.json",
+          "sha256": "214e3f81c1bc5180edd466733b1d9c951039788d9e66b848f5722632de452675"
+        },
+        {
+          "path": "vscode/package.json",
+          "sha256": "3fa8f06b07fb903f09370ac10d21f5375a2915873d9b3c7703c797f373b20b44"
+        }
+      ]
+    },
+    {
+      "id": "EV-CWS-RED-STORE-DROPPED-2",
+      "acceptance": [
+        "AC-CWS-ORIGIN",
+        "AC-CWS-REGISTRATION"
+      ],
+      "kind": "red",
+      "status": "pass",
+      "command": [
+        "./build/test_browser_extension_installer"
+      ],
+      "method": "Drill (origin-store-dropped): the server answers to the unpacked build only. Planted, the suite failed in extensionOriginAcceptsBothBuilds; restored byte for byte and green again",
+      "exit_code": 0,
+      "artifact": {
+        "path": "docs/plans/evidence/cws/unit-red-drills.txt",
+        "sha256": "55923043159c02e51996da54654761d54b7cf018a171ceb9cae50e0bd39a012b"
+      },
+      "red": {
+        "mutation": "the server answers to the unpacked build only",
+        "baseline_exit": 0,
+        "mutated_exit": 5,
+        "restored_exit": 0,
+        "expected_diagnostic": "extensionOriginAcceptsBothBuilds",
+        "observed_diagnostic": "extensionOriginAcceptsBothBuilds",
+        "before": [
+          {
+            "path": "include/chrome_control_mcp/browser_extension_installer.h",
+            "sha256": "1a24e15adb6d320f0da2c9c28f97f568d91b55bb28e5f45acb904e536de1d829"
+          }
+        ],
+        "after": [
+          {
+            "path": "include/chrome_control_mcp/browser_extension_installer.h",
+            "sha256": "1a24e15adb6d320f0da2c9c28f97f568d91b55bb28e5f45acb904e536de1d829"
+          }
+        ],
+        "mutated": [
+          {
+            "path": "include/chrome_control_mcp/browser_extension_installer.h",
+            "sha256": "6e24340d37f8a1cbf1007f97e9ebe640a1a991bfd6a45f3dac4685e10ae90041"
+          }
+        ]
+      },
+      "reason": null,
+      "scope_sha256": "53ee14dbbbc57c13e851632e14169cfdc61c6647959ef80c261cb6f1a4da4104",
+      "environment": {
+        "platform": "windows",
+        "tools": {
+          "chrome-for-testing": "153.0.8010.52",
+          "cmake": "4.4.5",
+          "node": "v24.20.0",
+          "python": "3.14.10",
+          "ubuntu-laptop-clang": "21.1.8",
+          "ubuntu-laptop-cmake": "4.2.3",
+          "ubuntu-laptop-cppcheck": "2.19.0",
+          "ubuntu-laptop-gcc": "15.2.0",
+          "ubuntu-laptop-node": "v24.20.0",
+          "ubuntu-laptop-os": "Ubuntu 26.04.1 LTS",
+          "ubuntu-laptop-python": "3.14.4",
+          "ubuntu-laptop-qt": "6.10.2",
+          "ubuntu-laptop-semgrep": "1.174.0"
+        }
+      },
+      "inputs": [
+        {
+          "path": "browser/native-host/com.chromecontrolmcp.browser.json",
+          "sha256": "b9c05b8b765a99a4c351080a74d475902fa696f20769f2ed41a3d0ffad4946b3"
+        },
+        {
+          "path": "browser/native-host/register_native_host.ps1",
+          "sha256": "ae519c0db2ecd7699fb741f3e2cb32f12c5639490bbe4d444feb4d7b74194d32"
+        },
+        {
+          "path": "browser/store-public-key.txt",
+          "sha256": "f64981ba2481d58abdd7b6c83adb571179b6d6e75973d6d1b01aa8d7372e6827"
+        },
+        {
+          "path": "docs/QUALITY.md",
+          "sha256": "f14cf32431382cdb70da6f72e9003207d51a75e5415a0d742e445ba98988027b"
+        },
+        {
+          "path": "include/chrome_control_mcp/browser_extension_installer.h",
+          "sha256": "1a24e15adb6d320f0da2c9c28f97f568d91b55bb28e5f45acb904e536de1d829"
+        },
+        {
+          "path": "include/chrome_control_mcp/mcp_entry.h",
+          "sha256": "fe6bfe1ca92ccfdde92f7b9b9c052bc6b9f6dd557669277c0df8209eaca58fcb"
+        },
+        {
+          "path": "src/browser_extension_installer.cpp",
+          "sha256": "6e4b45a1942b5c6ad272da62eaa2b7cb3263a1a3c56b0778bf723b51a4555cb1"
+        },
+        {
+          "path": "src/browser_mcp_tools.cpp",
+          "sha256": "cadf34f8d15643e64f4b12bd023e03bca19033baf2d1750710fecc073f840dfd"
+        },
+        {
+          "path": "src/mcp_dispatch.cpp",
+          "sha256": "b28853bc614878f9fb93b65f4829421f425d2bfeea3ef82837d69752e0386065"
+        },
+        {
+          "path": "src/mcp_entry.cpp",
+          "sha256": "e8c4b80d36589a65535ec3bae72f5a92e68abcc77a1de32289ff4ca2a6cc6a42"
+        },
+        {
+          "path": "tests/test_browser_extension_installer.cpp",
+          "sha256": "0cd573613239db7f766aec7ea6826ce056eea434720a42bc3bbd6209c83b4988"
+        },
+        {
+          "path": "tests/test_browser_mcp_server.cpp",
+          "sha256": "6aa679d1c3f33df1daf386b30780b394919db9419275b71e43f0a835938e2383"
+        }
+      ]
+    },
+    {
+      "id": "EV-CWS-RED-UNPACKED-2",
+      "acceptance": [
+        "AC-CWS-COMPAT"
+      ],
+      "kind": "red",
+      "status": "pass",
+      "command": [
+        "./build/test_browser_extension_installer"
+      ],
+      "method": "Drill (compat-unpacked-dropped): the unpacked build, every existing install, is no longer let in. Planted, the suite failed in prepareRegistersValidatedNativeHost; restored byte for byte and green again",
+      "exit_code": 0,
+      "artifact": {
+        "path": "docs/plans/evidence/cws/unit-red-drills.txt",
+        "sha256": "55923043159c02e51996da54654761d54b7cf018a171ceb9cae50e0bd39a012b"
+      },
+      "red": {
+        "mutation": "the unpacked build, every existing install, is no longer let in",
+        "baseline_exit": 0,
+        "mutated_exit": 4,
+        "restored_exit": 0,
+        "expected_diagnostic": "prepareRegistersValidatedNativeHost",
+        "observed_diagnostic": "prepareRegistersValidatedNativeHost",
+        "before": [
+          {
+            "path": "include/chrome_control_mcp/browser_extension_installer.h",
+            "sha256": "1a24e15adb6d320f0da2c9c28f97f568d91b55bb28e5f45acb904e536de1d829"
+          }
+        ],
+        "after": [
+          {
+            "path": "include/chrome_control_mcp/browser_extension_installer.h",
+            "sha256": "1a24e15adb6d320f0da2c9c28f97f568d91b55bb28e5f45acb904e536de1d829"
+          }
+        ],
+        "mutated": [
+          {
+            "path": "include/chrome_control_mcp/browser_extension_installer.h",
+            "sha256": "85098ac267bef9b511e21279984c228e26d1c4a664f2d56d5c347ccea2630289"
+          }
+        ]
+      },
+      "reason": null,
+      "scope_sha256": "a443cfc1f13d3d8968542cc60c2a0c99171bd5be0baafffc61367d02e8fa219e",
+      "environment": {
+        "platform": "windows",
+        "tools": {
+          "chrome-for-testing": "153.0.8010.52",
+          "cmake": "4.4.5",
+          "node": "v24.20.0",
+          "python": "3.14.10",
+          "ubuntu-laptop-clang": "21.1.8",
+          "ubuntu-laptop-cmake": "4.2.3",
+          "ubuntu-laptop-cppcheck": "2.19.0",
+          "ubuntu-laptop-gcc": "15.2.0",
+          "ubuntu-laptop-node": "v24.20.0",
+          "ubuntu-laptop-os": "Ubuntu 26.04.1 LTS",
+          "ubuntu-laptop-python": "3.14.4",
+          "ubuntu-laptop-qt": "6.10.2",
+          "ubuntu-laptop-semgrep": "1.174.0"
+        }
+      },
+      "inputs": [
+        {
+          "path": ".github/workflows/live.yml",
+          "sha256": "6a5d1a3231bbdb1a7218f35248e1c60fa090eb8588c78029b8951a108f5e6e29"
+        },
+        {
+          "path": ".github/workflows/release.yml",
+          "sha256": "b5cb97e7ed7611e383208223d7c023d03c7877c0629df05ca740132a733855f3"
+        },
+        {
+          "path": ".github/workflows/store-check.yml",
+          "sha256": "34a67bd73558ca839d732350300444e9e5b847b84df7a9b59e48c4f5af2e0dbe"
+        },
+        {
+          "path": "CHANGELOG.md",
+          "sha256": "890939b9cc7f57008729adb8d55b65aa5083ba2d69810e36d00a9d7e73ec0c02"
+        },
+        {
+          "path": "CMakeLists.txt",
+          "sha256": "7d9992d61053c1ec653d417d6b8150602f20cd61652197f6759ad9f25d46494a"
+        },
+        {
+          "path": "PLAN.md",
+          "sha256": "2f928851e1f531b02dbea03787541c65c0932b93cef1bc115b8ea1978fceb953"
+        },
+        {
+          "path": "README.md",
+          "sha256": "2e276826f509386945096a2dae2afe67ad5dd43b02c66067ad5c119ed41f998b"
+        },
+        {
+          "path": "browser/extension/background.js",
+          "sha256": "9a46ed0d5a930bbf0d1ead212425fffbb6083f99dbdf276b24407e18f6b1caed"
+        },
+        {
+          "path": "browser/extension/icons/icon.svg",
+          "sha256": "e66610a56eea06e37ff4737d0411bd5d4d8e5a8ec0018c4d9a84893e569cb065"
+        },
+        {
+          "path": "browser/extension/icons/icon128.png",
+          "sha256": "7b70af8972ae1cfaab9e2dac52edd7f2bc60ef01816d128b4506d0e7ec242027"
+        },
+        {
+          "path": "browser/extension/icons/icon16.png",
+          "sha256": "ac9949fb7dae7f7633d9a0549ab9aef91f25ba0e97f299b2ea09e6bf4d623c03"
+        },
+        {
+          "path": "browser/extension/icons/icon32.png",
+          "sha256": "094f5caf4044dd8de18d039efab9c3698d647f2f6dda74bd9d81aaafa6ea6d6a"
+        },
+        {
+          "path": "browser/extension/icons/icon48.png",
+          "sha256": "13c5ddfeaee7a4f3e6d8e5454299afd4b95a58c980ed143090a7041ff88da38d"
+        },
+        {
+          "path": "browser/extension/manifest.json",
+          "sha256": "c52c6d8f9d703c96cbea0ad31795971026728992b33a775bfa9069c406a5484c"
+        },
+        {
+          "path": "browser/native-host/com.chromecontrolmcp.browser.json",
+          "sha256": "b9c05b8b765a99a4c351080a74d475902fa696f20769f2ed41a3d0ffad4946b3"
+        },
+        {
+          "path": "browser/native-host/register_native_host.ps1",
+          "sha256": "ae519c0db2ecd7699fb741f3e2cb32f12c5639490bbe4d444feb4d7b74194d32"
+        },
+        {
+          "path": "browser/store-public-key.txt",
+          "sha256": "f64981ba2481d58abdd7b6c83adb571179b6d6e75973d6d1b01aa8d7372e6827"
+        },
+        {
+          "path": "docs/CHROME_WEB_STORE.md",
+          "sha256": "e31da9aa7e15ffab5c84e231ac0650a662c32da6cbf706915bb7f88c4e4f47c0"
+        },
+        {
+          "path": "docs/PRIVACY.md",
+          "sha256": "06ae406ac6059ab9cfb876669872f69d989407d019200ee06c3680db83a17ad9"
+        },
+        {
+          "path": "docs/QUALITY.md",
+          "sha256": "f14cf32431382cdb70da6f72e9003207d51a75e5415a0d742e445ba98988027b"
+        },
+        {
+          "path": "docs/RELEASES.md",
+          "sha256": "e88f9e941c1815bd549307d1d7c8b7ff64b015c93c9a8c208a82cc7f85c92acc"
+        },
+        {
+          "path": "docs/SECURITY.md",
+          "sha256": "5ff5d96ed58be78183dc8a9508fcf7f802d11b5083e355ef217b593742bc8804"
+        },
+        {
+          "path": "docs/TOOLS.md",
+          "sha256": "5f9a31517ae341355c3e396ce9e593508b8b2afa10849f9b8730153e7c5047c4"
+        },
+        {
+          "path": "docs/releases/v1.13.0.md",
+          "sha256": "118894f7e25fb8d263b3b4eed759dc6e96fa57ff0e8b44348e20b5f6a59ba0f4"
+        },
+        {
+          "path": "include/chrome_control_mcp/browser_extension_installer.h",
+          "sha256": "1a24e15adb6d320f0da2c9c28f97f568d91b55bb28e5f45acb904e536de1d829"
+        },
+        {
+          "path": "include/chrome_control_mcp/mcp_entry.h",
+          "sha256": "fe6bfe1ca92ccfdde92f7b9b9c052bc6b9f6dd557669277c0df8209eaca58fcb"
+        },
+        {
+          "path": "package-lock.json",
+          "sha256": "1cf2ff808ed3d02ea23d87b5b0b9a81851b55907b1f01a20681739dd85c9cfd5"
+        },
+        {
+          "path": "package.json",
+          "sha256": "efcb2d7cd197155912dd5a4064772d9f998d5c0c9edeeca26ef2e8606aa133e9"
+        },
+        {
+          "path": "scripts/cws_publish.mjs",
+          "sha256": "21804f91e90d5b0450221c59d312b0708015b73d874671e0c5454dc1a5f10821"
+        },
+        {
+          "path": "scripts/store_package.mjs",
+          "sha256": "da7e447371a3d84a30ff9b13f7a27ac8c7de579e2f2dee3199010c33e68850eb"
+        },
+        {
+          "path": "src/browser_extension_installer.cpp",
+          "sha256": "6e4b45a1942b5c6ad272da62eaa2b7cb3263a1a3c56b0778bf723b51a4555cb1"
+        },
+        {
+          "path": "src/browser_mcp_tools.cpp",
+          "sha256": "cadf34f8d15643e64f4b12bd023e03bca19033baf2d1750710fecc073f840dfd"
+        },
+        {
+          "path": "src/mcp_dispatch.cpp",
+          "sha256": "b28853bc614878f9fb93b65f4829421f425d2bfeea3ef82837d69752e0386065"
+        },
+        {
+          "path": "src/mcp_entry.cpp",
+          "sha256": "e8c4b80d36589a65535ec3bae72f5a92e68abcc77a1de32289ff4ca2a6cc6a42"
+        },
+        {
+          "path": "tests/e2e/devtools.mjs",
+          "sha256": "6b9a9f6f8fe52f05a62e7f389b8b3a44036c344a5292a40248ab18add935a324"
+        },
+        {
+          "path": "tests/e2e/extension_version_e2e.mjs",
+          "sha256": "b9211e14a243b4f3e99abc8e21e25b908c6db10b4d2e2c8a50f18f7527080d95"
+        },
+        {
+          "path": "tests/e2e/isolated_chrome.mjs",
+          "sha256": "5b59019533a5917eaca784b95818999dbee1a36fa4eeee3ac0678e71b9685db0"
+        },
+        {
+          "path": "tests/e2e/isolated_run.mjs",
+          "sha256": "ce9f33c6414c694744da13373a348b0030b8dd0e2880b64e7cce0dd443a30685"
+        },
+        {
+          "path": "tests/e2e/multi_agent_e2e.mjs",
+          "sha256": "b012c11b431ef2ebcd0e8d6cf1ce54ad47be25cdc4a15c23948a882183cb462e"
+        },
+        {
+          "path": "tests/test_browser_extension_installer.cpp",
+          "sha256": "0cd573613239db7f766aec7ea6826ce056eea434720a42bc3bbd6209c83b4988"
+        },
+        {
+          "path": "tests/test_browser_extension_tabs.mjs",
+          "sha256": "02c124e0b309f8aa353467a0df94f914afb845bc1eb7d71b63b48c5ad2bc1a77"
+        },
+        {
+          "path": "tests/test_browser_mcp_server.cpp",
+          "sha256": "6aa679d1c3f33df1daf386b30780b394919db9419275b71e43f0a835938e2383"
+        },
+        {
+          "path": "tests/test_store_publish.mjs",
+          "sha256": "96f8a51f1b075cbe68315a60c5e5e605d1e47e9477c8309ed77d312cd21477a3"
+        },
+        {
+          "path": "vscode/README.md",
+          "sha256": "dd9c0bde060e4be456473256dbee13c0df6ae15c8cffc7afd1295cce1fc9e756"
+        },
+        {
+          "path": "vscode/package-lock.json",
+          "sha256": "214e3f81c1bc5180edd466733b1d9c951039788d9e66b848f5722632de452675"
+        },
+        {
+          "path": "vscode/package.json",
+          "sha256": "3fa8f06b07fb903f09370ac10d21f5375a2915873d9b3c7703c797f373b20b44"
+        }
+      ]
+    },
+    {
+      "id": "EV-CWS-RED-WORDS-2",
+      "acceptance": [
+        "AC-CWS-PUBLISH"
+      ],
+      "kind": "red",
+      "status": "pass",
+      "command": [
+        "node",
+        "--test",
+        "tests/test_store_publish.mjs"
+      ],
+      "method": "Drill (publish-google-words): Google's message is not read out of its error body. Planted, the suite failed in Google's error bodies are read in each of their shapes; restored byte for byte and green again",
+      "exit_code": 0,
+      "artifact": {
+        "path": "docs/plans/evidence/cws/js-red-drills.txt",
+        "sha256": "57024c07d253c9fcb1000e6b30a3520a7534583eb14393d08714d76157b492d3"
+      },
+      "red": {
+        "mutation": "Google's message is not read out of its error body",
+        "baseline_exit": 0,
+        "mutated_exit": 1,
+        "restored_exit": 0,
+        "expected_diagnostic": "Google's error bodies are read in each of their shapes",
+        "observed_diagnostic": "Google's error bodies are read in each of their shapes",
+        "before": [
+          {
+            "path": "scripts/cws_publish.mjs",
+            "sha256": "21804f91e90d5b0450221c59d312b0708015b73d874671e0c5454dc1a5f10821"
+          }
+        ],
+        "after": [
+          {
+            "path": "scripts/cws_publish.mjs",
+            "sha256": "21804f91e90d5b0450221c59d312b0708015b73d874671e0c5454dc1a5f10821"
+          }
+        ],
+        "mutated": [
+          {
+            "path": "scripts/cws_publish.mjs",
+            "sha256": "12a26197476f800a6b48e9cc344ed880f4fd7955cc3a9ef503965fb4debc66e4"
+          }
+        ]
+      },
+      "reason": null,
+      "scope_sha256": "481ddd704abeaf86cb75b92bbc44aaf4ab79bf8f150970e20ed90ed7a9b6e685",
+      "environment": {
+        "platform": "windows",
+        "tools": {
+          "chrome-for-testing": "153.0.8010.52",
+          "cmake": "4.4.5",
+          "node": "v24.20.0",
+          "python": "3.14.10",
+          "ubuntu-laptop-clang": "21.1.8",
+          "ubuntu-laptop-cmake": "4.2.3",
+          "ubuntu-laptop-cppcheck": "2.19.0",
+          "ubuntu-laptop-gcc": "15.2.0",
+          "ubuntu-laptop-node": "v24.20.0",
+          "ubuntu-laptop-os": "Ubuntu 26.04.1 LTS",
+          "ubuntu-laptop-python": "3.14.4",
+          "ubuntu-laptop-qt": "6.10.2",
+          "ubuntu-laptop-semgrep": "1.174.0"
+        }
+      },
+      "inputs": [
+        {
+          "path": ".github/workflows/release.yml",
+          "sha256": "b5cb97e7ed7611e383208223d7c023d03c7877c0629df05ca740132a733855f3"
+        },
+        {
+          "path": ".github/workflows/store-check.yml",
+          "sha256": "34a67bd73558ca839d732350300444e9e5b847b84df7a9b59e48c4f5af2e0dbe"
+        },
+        {
+          "path": "browser/extension/icons/icon.svg",
+          "sha256": "e66610a56eea06e37ff4737d0411bd5d4d8e5a8ec0018c4d9a84893e569cb065"
+        },
+        {
+          "path": "browser/extension/icons/icon128.png",
+          "sha256": "7b70af8972ae1cfaab9e2dac52edd7f2bc60ef01816d128b4506d0e7ec242027"
+        },
+        {
+          "path": "browser/extension/icons/icon16.png",
+          "sha256": "ac9949fb7dae7f7633d9a0549ab9aef91f25ba0e97f299b2ea09e6bf4d623c03"
+        },
+        {
+          "path": "browser/extension/icons/icon32.png",
+          "sha256": "094f5caf4044dd8de18d039efab9c3698d647f2f6dda74bd9d81aaafa6ea6d6a"
+        },
+        {
+          "path": "browser/extension/icons/icon48.png",
+          "sha256": "13c5ddfeaee7a4f3e6d8e5454299afd4b95a58c980ed143090a7041ff88da38d"
+        },
+        {
+          "path": "browser/extension/manifest.json",
+          "sha256": "c52c6d8f9d703c96cbea0ad31795971026728992b33a775bfa9069c406a5484c"
+        },
+        {
+          "path": "docs/QUALITY.md",
+          "sha256": "f14cf32431382cdb70da6f72e9003207d51a75e5415a0d742e445ba98988027b"
+        },
+        {
+          "path": "package.json",
+          "sha256": "efcb2d7cd197155912dd5a4064772d9f998d5c0c9edeeca26ef2e8606aa133e9"
+        },
+        {
+          "path": "scripts/cws_publish.mjs",
+          "sha256": "21804f91e90d5b0450221c59d312b0708015b73d874671e0c5454dc1a5f10821"
+        },
+        {
+          "path": "scripts/store_package.mjs",
+          "sha256": "da7e447371a3d84a30ff9b13f7a27ac8c7de579e2f2dee3199010c33e68850eb"
+        },
+        {
+          "path": "tests/test_store_publish.mjs",
+          "sha256": "96f8a51f1b075cbe68315a60c5e5e605d1e47e9477c8309ed77d312cd21477a3"
+        }
+      ]
+    },
+    {
+      "id": "EV-CWS-REGISTER-SCRIPT-2",
+      "acceptance": [
+        "AC-CWS-REGISTRATION"
+      ],
+      "kind": "behavior",
+      "status": "pass",
+      "command": [
+        "powershell",
+        "-File",
+        "ps1_check.ps1"
+      ],
+      "method": "The legacy registration script, run from a copy against a test registry key: both origins written and read back, a malformed store ID refused, the same ID given twice written once, and the test key removed",
+      "exit_code": 0,
+      "artifact": {
+        "path": "docs/plans/evidence/cws/windows-register-script.txt",
+        "sha256": "9462c652e8ddd8a1faf08c89ad14612ab08c902cbd62b46741ebf3f1060eaa5e"
+      },
+      "red": null,
+      "reason": null,
+      "scope_sha256": "53ee14dbbbc57c13e851632e14169cfdc61c6647959ef80c261cb6f1a4da4104",
+      "environment": {
+        "platform": "windows",
+        "tools": {
+          "chrome-for-testing": "153.0.8010.52",
+          "cmake": "4.4.5",
+          "node": "v24.20.0",
+          "python": "3.14.10",
+          "ubuntu-laptop-clang": "21.1.8",
+          "ubuntu-laptop-cmake": "4.2.3",
+          "ubuntu-laptop-cppcheck": "2.19.0",
+          "ubuntu-laptop-gcc": "15.2.0",
+          "ubuntu-laptop-node": "v24.20.0",
+          "ubuntu-laptop-os": "Ubuntu 26.04.1 LTS",
+          "ubuntu-laptop-python": "3.14.4",
+          "ubuntu-laptop-qt": "6.10.2",
+          "ubuntu-laptop-semgrep": "1.174.0"
+        }
+      },
+      "inputs": [
+        {
+          "path": "browser/native-host/com.chromecontrolmcp.browser.json",
+          "sha256": "b9c05b8b765a99a4c351080a74d475902fa696f20769f2ed41a3d0ffad4946b3"
+        },
+        {
+          "path": "browser/native-host/register_native_host.ps1",
+          "sha256": "ae519c0db2ecd7699fb741f3e2cb32f12c5639490bbe4d444feb4d7b74194d32"
+        },
+        {
+          "path": "browser/store-public-key.txt",
+          "sha256": "f64981ba2481d58abdd7b6c83adb571179b6d6e75973d6d1b01aa8d7372e6827"
+        },
+        {
+          "path": "docs/QUALITY.md",
+          "sha256": "f14cf32431382cdb70da6f72e9003207d51a75e5415a0d742e445ba98988027b"
+        },
+        {
+          "path": "include/chrome_control_mcp/browser_extension_installer.h",
+          "sha256": "1a24e15adb6d320f0da2c9c28f97f568d91b55bb28e5f45acb904e536de1d829"
+        },
+        {
+          "path": "include/chrome_control_mcp/mcp_entry.h",
+          "sha256": "fe6bfe1ca92ccfdde92f7b9b9c052bc6b9f6dd557669277c0df8209eaca58fcb"
+        },
+        {
+          "path": "src/browser_extension_installer.cpp",
+          "sha256": "6e4b45a1942b5c6ad272da62eaa2b7cb3263a1a3c56b0778bf723b51a4555cb1"
+        },
+        {
+          "path": "src/browser_mcp_tools.cpp",
+          "sha256": "cadf34f8d15643e64f4b12bd023e03bca19033baf2d1750710fecc073f840dfd"
+        },
+        {
+          "path": "src/mcp_dispatch.cpp",
+          "sha256": "b28853bc614878f9fb93b65f4829421f425d2bfeea3ef82837d69752e0386065"
+        },
+        {
+          "path": "src/mcp_entry.cpp",
+          "sha256": "e8c4b80d36589a65535ec3bae72f5a92e68abcc77a1de32289ff4ca2a6cc6a42"
+        },
+        {
+          "path": "tests/test_browser_extension_installer.cpp",
+          "sha256": "0cd573613239db7f766aec7ea6826ce056eea434720a42bc3bbd6209c83b4988"
+        },
+        {
+          "path": "tests/test_browser_mcp_server.cpp",
+          "sha256": "6aa679d1c3f33df1daf386b30780b394919db9419275b71e43f0a835938e2383"
+        }
+      ]
+    },
+    {
+      "id": "EV-CWS-SMOKE-2",
+      "acceptance": [
+        "AC-CWS-COMPAT"
+      ],
+      "kind": "behavior",
+      "status": "pass",
+      "command": [
+        "node",
+        "scripts/mcp_smoke.mjs",
+        "build/Release/chrome_control_mcp.exe"
+      ],
+      "method": "The built server's MCP smoke test in both profiles: 54 tools in full and 15 read-only, unchanged",
+      "exit_code": 0,
+      "artifact": {
+        "path": "docs/plans/evidence/cws/windows-smoke.txt",
+        "sha256": "8f381b739f67e15bf466ff810149c5497c1711371886a85518f0c59729e56927"
+      },
+      "red": null,
+      "reason": null,
+      "scope_sha256": "a443cfc1f13d3d8968542cc60c2a0c99171bd5be0baafffc61367d02e8fa219e",
+      "environment": {
+        "platform": "windows",
+        "tools": {
+          "chrome-for-testing": "153.0.8010.52",
+          "cmake": "4.4.5",
+          "node": "v24.20.0",
+          "python": "3.14.10",
+          "ubuntu-laptop-clang": "21.1.8",
+          "ubuntu-laptop-cmake": "4.2.3",
+          "ubuntu-laptop-cppcheck": "2.19.0",
+          "ubuntu-laptop-gcc": "15.2.0",
+          "ubuntu-laptop-node": "v24.20.0",
+          "ubuntu-laptop-os": "Ubuntu 26.04.1 LTS",
+          "ubuntu-laptop-python": "3.14.4",
+          "ubuntu-laptop-qt": "6.10.2",
+          "ubuntu-laptop-semgrep": "1.174.0"
+        }
+      },
+      "inputs": [
+        {
+          "path": ".github/workflows/live.yml",
+          "sha256": "6a5d1a3231bbdb1a7218f35248e1c60fa090eb8588c78029b8951a108f5e6e29"
+        },
+        {
+          "path": ".github/workflows/release.yml",
+          "sha256": "b5cb97e7ed7611e383208223d7c023d03c7877c0629df05ca740132a733855f3"
+        },
+        {
+          "path": ".github/workflows/store-check.yml",
+          "sha256": "34a67bd73558ca839d732350300444e9e5b847b84df7a9b59e48c4f5af2e0dbe"
+        },
+        {
+          "path": "CHANGELOG.md",
+          "sha256": "890939b9cc7f57008729adb8d55b65aa5083ba2d69810e36d00a9d7e73ec0c02"
+        },
+        {
+          "path": "CMakeLists.txt",
+          "sha256": "7d9992d61053c1ec653d417d6b8150602f20cd61652197f6759ad9f25d46494a"
+        },
+        {
+          "path": "PLAN.md",
+          "sha256": "2f928851e1f531b02dbea03787541c65c0932b93cef1bc115b8ea1978fceb953"
+        },
+        {
+          "path": "README.md",
+          "sha256": "2e276826f509386945096a2dae2afe67ad5dd43b02c66067ad5c119ed41f998b"
+        },
+        {
+          "path": "browser/extension/background.js",
+          "sha256": "9a46ed0d5a930bbf0d1ead212425fffbb6083f99dbdf276b24407e18f6b1caed"
+        },
+        {
+          "path": "browser/extension/icons/icon.svg",
+          "sha256": "e66610a56eea06e37ff4737d0411bd5d4d8e5a8ec0018c4d9a84893e569cb065"
+        },
+        {
+          "path": "browser/extension/icons/icon128.png",
+          "sha256": "7b70af8972ae1cfaab9e2dac52edd7f2bc60ef01816d128b4506d0e7ec242027"
+        },
+        {
+          "path": "browser/extension/icons/icon16.png",
+          "sha256": "ac9949fb7dae7f7633d9a0549ab9aef91f25ba0e97f299b2ea09e6bf4d623c03"
+        },
+        {
+          "path": "browser/extension/icons/icon32.png",
+          "sha256": "094f5caf4044dd8de18d039efab9c3698d647f2f6dda74bd9d81aaafa6ea6d6a"
+        },
+        {
+          "path": "browser/extension/icons/icon48.png",
+          "sha256": "13c5ddfeaee7a4f3e6d8e5454299afd4b95a58c980ed143090a7041ff88da38d"
+        },
+        {
+          "path": "browser/extension/manifest.json",
+          "sha256": "c52c6d8f9d703c96cbea0ad31795971026728992b33a775bfa9069c406a5484c"
+        },
+        {
+          "path": "browser/native-host/com.chromecontrolmcp.browser.json",
+          "sha256": "b9c05b8b765a99a4c351080a74d475902fa696f20769f2ed41a3d0ffad4946b3"
+        },
+        {
+          "path": "browser/native-host/register_native_host.ps1",
+          "sha256": "ae519c0db2ecd7699fb741f3e2cb32f12c5639490bbe4d444feb4d7b74194d32"
+        },
+        {
+          "path": "browser/store-public-key.txt",
+          "sha256": "f64981ba2481d58abdd7b6c83adb571179b6d6e75973d6d1b01aa8d7372e6827"
+        },
+        {
+          "path": "docs/CHROME_WEB_STORE.md",
+          "sha256": "e31da9aa7e15ffab5c84e231ac0650a662c32da6cbf706915bb7f88c4e4f47c0"
+        },
+        {
+          "path": "docs/PRIVACY.md",
+          "sha256": "06ae406ac6059ab9cfb876669872f69d989407d019200ee06c3680db83a17ad9"
+        },
+        {
+          "path": "docs/QUALITY.md",
+          "sha256": "f14cf32431382cdb70da6f72e9003207d51a75e5415a0d742e445ba98988027b"
+        },
+        {
+          "path": "docs/RELEASES.md",
+          "sha256": "e88f9e941c1815bd549307d1d7c8b7ff64b015c93c9a8c208a82cc7f85c92acc"
+        },
+        {
+          "path": "docs/SECURITY.md",
+          "sha256": "5ff5d96ed58be78183dc8a9508fcf7f802d11b5083e355ef217b593742bc8804"
+        },
+        {
+          "path": "docs/TOOLS.md",
+          "sha256": "5f9a31517ae341355c3e396ce9e593508b8b2afa10849f9b8730153e7c5047c4"
+        },
+        {
+          "path": "docs/releases/v1.13.0.md",
+          "sha256": "118894f7e25fb8d263b3b4eed759dc6e96fa57ff0e8b44348e20b5f6a59ba0f4"
+        },
+        {
+          "path": "include/chrome_control_mcp/browser_extension_installer.h",
+          "sha256": "1a24e15adb6d320f0da2c9c28f97f568d91b55bb28e5f45acb904e536de1d829"
+        },
+        {
+          "path": "include/chrome_control_mcp/mcp_entry.h",
+          "sha256": "fe6bfe1ca92ccfdde92f7b9b9c052bc6b9f6dd557669277c0df8209eaca58fcb"
+        },
+        {
+          "path": "package-lock.json",
+          "sha256": "1cf2ff808ed3d02ea23d87b5b0b9a81851b55907b1f01a20681739dd85c9cfd5"
+        },
+        {
+          "path": "package.json",
+          "sha256": "efcb2d7cd197155912dd5a4064772d9f998d5c0c9edeeca26ef2e8606aa133e9"
+        },
+        {
+          "path": "scripts/cws_publish.mjs",
+          "sha256": "21804f91e90d5b0450221c59d312b0708015b73d874671e0c5454dc1a5f10821"
+        },
+        {
+          "path": "scripts/store_package.mjs",
+          "sha256": "da7e447371a3d84a30ff9b13f7a27ac8c7de579e2f2dee3199010c33e68850eb"
+        },
+        {
+          "path": "src/browser_extension_installer.cpp",
+          "sha256": "6e4b45a1942b5c6ad272da62eaa2b7cb3263a1a3c56b0778bf723b51a4555cb1"
+        },
+        {
+          "path": "src/browser_mcp_tools.cpp",
+          "sha256": "cadf34f8d15643e64f4b12bd023e03bca19033baf2d1750710fecc073f840dfd"
+        },
+        {
+          "path": "src/mcp_dispatch.cpp",
+          "sha256": "b28853bc614878f9fb93b65f4829421f425d2bfeea3ef82837d69752e0386065"
+        },
+        {
+          "path": "src/mcp_entry.cpp",
+          "sha256": "e8c4b80d36589a65535ec3bae72f5a92e68abcc77a1de32289ff4ca2a6cc6a42"
+        },
+        {
+          "path": "tests/e2e/devtools.mjs",
+          "sha256": "6b9a9f6f8fe52f05a62e7f389b8b3a44036c344a5292a40248ab18add935a324"
+        },
+        {
+          "path": "tests/e2e/extension_version_e2e.mjs",
+          "sha256": "b9211e14a243b4f3e99abc8e21e25b908c6db10b4d2e2c8a50f18f7527080d95"
+        },
+        {
+          "path": "tests/e2e/isolated_chrome.mjs",
+          "sha256": "5b59019533a5917eaca784b95818999dbee1a36fa4eeee3ac0678e71b9685db0"
+        },
+        {
+          "path": "tests/e2e/isolated_run.mjs",
+          "sha256": "ce9f33c6414c694744da13373a348b0030b8dd0e2880b64e7cce0dd443a30685"
+        },
+        {
+          "path": "tests/e2e/multi_agent_e2e.mjs",
+          "sha256": "b012c11b431ef2ebcd0e8d6cf1ce54ad47be25cdc4a15c23948a882183cb462e"
+        },
+        {
+          "path": "tests/test_browser_extension_installer.cpp",
+          "sha256": "0cd573613239db7f766aec7ea6826ce056eea434720a42bc3bbd6209c83b4988"
+        },
+        {
+          "path": "tests/test_browser_extension_tabs.mjs",
+          "sha256": "02c124e0b309f8aa353467a0df94f914afb845bc1eb7d71b63b48c5ad2bc1a77"
+        },
+        {
+          "path": "tests/test_browser_mcp_server.cpp",
+          "sha256": "6aa679d1c3f33df1daf386b30780b394919db9419275b71e43f0a835938e2383"
+        },
+        {
+          "path": "tests/test_store_publish.mjs",
+          "sha256": "96f8a51f1b075cbe68315a60c5e5e605d1e47e9477c8309ed77d312cd21477a3"
+        },
+        {
+          "path": "vscode/README.md",
+          "sha256": "dd9c0bde060e4be456473256dbee13c0df6ae15c8cffc7afd1295cce1fc9e756"
+        },
+        {
+          "path": "vscode/package-lock.json",
+          "sha256": "214e3f81c1bc5180edd466733b1d9c951039788d9e66b848f5722632de452675"
+        },
+        {
+          "path": "vscode/package.json",
+          "sha256": "3fa8f06b07fb903f09370ac10d21f5375a2915873d9b3c7703c797f373b20b44"
+        }
+      ]
+    },
+    {
+      "id": "EV-CWS-UNIT-JS-2",
+      "acceptance": [
+        "AC-CWS-PACKAGE",
+        "AC-CWS-PUBLISH",
+        "AC-CWS-COMPAT"
+      ],
+      "kind": "behavior",
+      "status": "pass",
+      "command": [
+        "npm",
+        "run",
+        "test:js"
+      ],
+      "method": "The 14 JavaScript suites, 255 tests, test_store_publish and the two new group cases among them: the package holds every file with the manifest's key removed and the same bytes each time, Python's zipfile reads it, and a manifest the store would refuse is refused; against a recorded API the publisher signs an RS256 assertion the server verifies, uploads byte for byte, waits out processing, submits, reports Google's own words for refusals, and a dry run reads the status and checks the item's public key; every earlier suite unchanged",
+      "exit_code": 0,
+      "artifact": {
+        "path": "docs/plans/evidence/cws/windows-test-js.txt",
+        "sha256": "d28a0139de8fcda941692d12057ab1932fafc56092c436d36d65f2e4de268dc7"
+      },
+      "red": null,
+      "reason": null,
+      "scope_sha256": "a443cfc1f13d3d8968542cc60c2a0c99171bd5be0baafffc61367d02e8fa219e",
+      "environment": {
+        "platform": "windows",
+        "tools": {
+          "chrome-for-testing": "153.0.8010.52",
+          "cmake": "4.4.5",
+          "node": "v24.20.0",
+          "python": "3.14.10",
+          "ubuntu-laptop-clang": "21.1.8",
+          "ubuntu-laptop-cmake": "4.2.3",
+          "ubuntu-laptop-cppcheck": "2.19.0",
+          "ubuntu-laptop-gcc": "15.2.0",
+          "ubuntu-laptop-node": "v24.20.0",
+          "ubuntu-laptop-os": "Ubuntu 26.04.1 LTS",
+          "ubuntu-laptop-python": "3.14.4",
+          "ubuntu-laptop-qt": "6.10.2",
+          "ubuntu-laptop-semgrep": "1.174.0"
+        }
+      },
+      "inputs": [
+        {
+          "path": ".github/workflows/live.yml",
+          "sha256": "6a5d1a3231bbdb1a7218f35248e1c60fa090eb8588c78029b8951a108f5e6e29"
+        },
+        {
+          "path": ".github/workflows/release.yml",
+          "sha256": "b5cb97e7ed7611e383208223d7c023d03c7877c0629df05ca740132a733855f3"
+        },
+        {
+          "path": ".github/workflows/store-check.yml",
+          "sha256": "34a67bd73558ca839d732350300444e9e5b847b84df7a9b59e48c4f5af2e0dbe"
+        },
+        {
+          "path": "CHANGELOG.md",
+          "sha256": "890939b9cc7f57008729adb8d55b65aa5083ba2d69810e36d00a9d7e73ec0c02"
+        },
+        {
+          "path": "CMakeLists.txt",
+          "sha256": "7d9992d61053c1ec653d417d6b8150602f20cd61652197f6759ad9f25d46494a"
+        },
+        {
+          "path": "PLAN.md",
+          "sha256": "2f928851e1f531b02dbea03787541c65c0932b93cef1bc115b8ea1978fceb953"
+        },
+        {
+          "path": "README.md",
+          "sha256": "2e276826f509386945096a2dae2afe67ad5dd43b02c66067ad5c119ed41f998b"
+        },
+        {
+          "path": "browser/extension/background.js",
+          "sha256": "9a46ed0d5a930bbf0d1ead212425fffbb6083f99dbdf276b24407e18f6b1caed"
+        },
+        {
+          "path": "browser/extension/icons/icon.svg",
+          "sha256": "e66610a56eea06e37ff4737d0411bd5d4d8e5a8ec0018c4d9a84893e569cb065"
+        },
+        {
+          "path": "browser/extension/icons/icon128.png",
+          "sha256": "7b70af8972ae1cfaab9e2dac52edd7f2bc60ef01816d128b4506d0e7ec242027"
+        },
+        {
+          "path": "browser/extension/icons/icon16.png",
+          "sha256": "ac9949fb7dae7f7633d9a0549ab9aef91f25ba0e97f299b2ea09e6bf4d623c03"
+        },
+        {
+          "path": "browser/extension/icons/icon32.png",
+          "sha256": "094f5caf4044dd8de18d039efab9c3698d647f2f6dda74bd9d81aaafa6ea6d6a"
+        },
+        {
+          "path": "browser/extension/icons/icon48.png",
+          "sha256": "13c5ddfeaee7a4f3e6d8e5454299afd4b95a58c980ed143090a7041ff88da38d"
+        },
+        {
+          "path": "browser/extension/manifest.json",
+          "sha256": "c52c6d8f9d703c96cbea0ad31795971026728992b33a775bfa9069c406a5484c"
+        },
+        {
+          "path": "browser/native-host/com.chromecontrolmcp.browser.json",
+          "sha256": "b9c05b8b765a99a4c351080a74d475902fa696f20769f2ed41a3d0ffad4946b3"
+        },
+        {
+          "path": "browser/native-host/register_native_host.ps1",
+          "sha256": "ae519c0db2ecd7699fb741f3e2cb32f12c5639490bbe4d444feb4d7b74194d32"
+        },
+        {
+          "path": "browser/store-public-key.txt",
+          "sha256": "f64981ba2481d58abdd7b6c83adb571179b6d6e75973d6d1b01aa8d7372e6827"
+        },
+        {
+          "path": "docs/CHROME_WEB_STORE.md",
+          "sha256": "e31da9aa7e15ffab5c84e231ac0650a662c32da6cbf706915bb7f88c4e4f47c0"
+        },
+        {
+          "path": "docs/PRIVACY.md",
+          "sha256": "06ae406ac6059ab9cfb876669872f69d989407d019200ee06c3680db83a17ad9"
+        },
+        {
+          "path": "docs/QUALITY.md",
+          "sha256": "f14cf32431382cdb70da6f72e9003207d51a75e5415a0d742e445ba98988027b"
+        },
+        {
+          "path": "docs/RELEASES.md",
+          "sha256": "e88f9e941c1815bd549307d1d7c8b7ff64b015c93c9a8c208a82cc7f85c92acc"
+        },
+        {
+          "path": "docs/SECURITY.md",
+          "sha256": "5ff5d96ed58be78183dc8a9508fcf7f802d11b5083e355ef217b593742bc8804"
+        },
+        {
+          "path": "docs/TOOLS.md",
+          "sha256": "5f9a31517ae341355c3e396ce9e593508b8b2afa10849f9b8730153e7c5047c4"
+        },
+        {
+          "path": "docs/releases/v1.13.0.md",
+          "sha256": "118894f7e25fb8d263b3b4eed759dc6e96fa57ff0e8b44348e20b5f6a59ba0f4"
+        },
+        {
+          "path": "include/chrome_control_mcp/browser_extension_installer.h",
+          "sha256": "1a24e15adb6d320f0da2c9c28f97f568d91b55bb28e5f45acb904e536de1d829"
+        },
+        {
+          "path": "include/chrome_control_mcp/mcp_entry.h",
+          "sha256": "fe6bfe1ca92ccfdde92f7b9b9c052bc6b9f6dd557669277c0df8209eaca58fcb"
+        },
+        {
+          "path": "package-lock.json",
+          "sha256": "1cf2ff808ed3d02ea23d87b5b0b9a81851b55907b1f01a20681739dd85c9cfd5"
+        },
+        {
+          "path": "package.json",
+          "sha256": "efcb2d7cd197155912dd5a4064772d9f998d5c0c9edeeca26ef2e8606aa133e9"
+        },
+        {
+          "path": "scripts/cws_publish.mjs",
+          "sha256": "21804f91e90d5b0450221c59d312b0708015b73d874671e0c5454dc1a5f10821"
+        },
+        {
+          "path": "scripts/store_package.mjs",
+          "sha256": "da7e447371a3d84a30ff9b13f7a27ac8c7de579e2f2dee3199010c33e68850eb"
+        },
+        {
+          "path": "src/browser_extension_installer.cpp",
+          "sha256": "6e4b45a1942b5c6ad272da62eaa2b7cb3263a1a3c56b0778bf723b51a4555cb1"
+        },
+        {
+          "path": "src/browser_mcp_tools.cpp",
+          "sha256": "cadf34f8d15643e64f4b12bd023e03bca19033baf2d1750710fecc073f840dfd"
+        },
+        {
+          "path": "src/mcp_dispatch.cpp",
+          "sha256": "b28853bc614878f9fb93b65f4829421f425d2bfeea3ef82837d69752e0386065"
+        },
+        {
+          "path": "src/mcp_entry.cpp",
+          "sha256": "e8c4b80d36589a65535ec3bae72f5a92e68abcc77a1de32289ff4ca2a6cc6a42"
+        },
+        {
+          "path": "tests/e2e/devtools.mjs",
+          "sha256": "6b9a9f6f8fe52f05a62e7f389b8b3a44036c344a5292a40248ab18add935a324"
+        },
+        {
+          "path": "tests/e2e/extension_version_e2e.mjs",
+          "sha256": "b9211e14a243b4f3e99abc8e21e25b908c6db10b4d2e2c8a50f18f7527080d95"
+        },
+        {
+          "path": "tests/e2e/isolated_chrome.mjs",
+          "sha256": "5b59019533a5917eaca784b95818999dbee1a36fa4eeee3ac0678e71b9685db0"
+        },
+        {
+          "path": "tests/e2e/isolated_run.mjs",
+          "sha256": "ce9f33c6414c694744da13373a348b0030b8dd0e2880b64e7cce0dd443a30685"
+        },
+        {
+          "path": "tests/e2e/multi_agent_e2e.mjs",
+          "sha256": "b012c11b431ef2ebcd0e8d6cf1ce54ad47be25cdc4a15c23948a882183cb462e"
+        },
+        {
+          "path": "tests/test_browser_extension_installer.cpp",
+          "sha256": "0cd573613239db7f766aec7ea6826ce056eea434720a42bc3bbd6209c83b4988"
+        },
+        {
+          "path": "tests/test_browser_extension_tabs.mjs",
+          "sha256": "02c124e0b309f8aa353467a0df94f914afb845bc1eb7d71b63b48c5ad2bc1a77"
+        },
+        {
+          "path": "tests/test_browser_mcp_server.cpp",
+          "sha256": "6aa679d1c3f33df1daf386b30780b394919db9419275b71e43f0a835938e2383"
+        },
+        {
+          "path": "tests/test_store_publish.mjs",
+          "sha256": "96f8a51f1b075cbe68315a60c5e5e605d1e47e9477c8309ed77d312cd21477a3"
+        },
+        {
+          "path": "vscode/README.md",
+          "sha256": "dd9c0bde060e4be456473256dbee13c0df6ae15c8cffc7afd1295cce1fc9e756"
+        },
+        {
+          "path": "vscode/package-lock.json",
+          "sha256": "214e3f81c1bc5180edd466733b1d9c951039788d9e66b848f5722632de452675"
+        },
+        {
+          "path": "vscode/package.json",
+          "sha256": "3fa8f06b07fb903f09370ac10d21f5375a2915873d9b3c7703c797f373b20b44"
+        }
+      ]
+    },
+    {
+      "id": "EV-CWS-DRY-RUN-1",
+      "acceptance": [
+        "AC-CWS-PUBLISH"
+      ],
+      "kind": "behavior",
+      "status": "fail",
+      "command": [
+        "gh",
+        "workflow",
+        "run",
+        "store-check.yml",
+        "-f",
+        "mode=dry-run"
+      ],
+      "method": "The first real dry run, Chrome Web Store check run 42430524883 on 97840fa: it signed in as the publisher's service account and read the item, then refused it, because it compared the public key the store returned with browser/store-public-key.txt byte for byte. Kept as history; the comparison was the defect, fixed in c5fbfcb",
+      "exit_code": 1,
+      "artifact": {
+        "path": "docs/plans/evidence/cws/store-dry-run-1.txt",
+        "sha256": "ea2bee1b15d049cb8f40ea6ba0eba7c89009548c3732172be835a84c403e2027"
+      },
+      "red": null,
+      "reason": "The key comparison was byte for byte, so a differently wrapped copy of the same key was refused; the dry run now derives the ID from the key",
+      "scope_sha256": "481ddd704abeaf86cb75b92bbc44aaf4ab79bf8f150970e20ed90ed7a9b6e685",
+      "environment": {
+        "platform": "windows",
+        "tools": {
+          "chrome-for-testing": "153.0.8010.52",
+          "cmake": "4.4.5",
+          "node": "v24.20.0",
+          "python": "3.14.10",
+          "ubuntu-laptop-clang": "21.1.8",
+          "ubuntu-laptop-cmake": "4.2.3",
+          "ubuntu-laptop-cppcheck": "2.19.0",
+          "ubuntu-laptop-gcc": "15.2.0",
+          "ubuntu-laptop-node": "v24.20.0",
+          "ubuntu-laptop-os": "Ubuntu 26.04.1 LTS",
+          "ubuntu-laptop-python": "3.14.4",
+          "ubuntu-laptop-qt": "6.10.2",
+          "ubuntu-laptop-semgrep": "1.174.0"
+        }
+      },
+      "inputs": [
+        {
+          "path": ".github/workflows/release.yml",
+          "sha256": "b5cb97e7ed7611e383208223d7c023d03c7877c0629df05ca740132a733855f3"
+        },
+        {
+          "path": ".github/workflows/store-check.yml",
+          "sha256": "34a67bd73558ca839d732350300444e9e5b847b84df7a9b59e48c4f5af2e0dbe"
+        },
+        {
+          "path": "browser/extension/icons/icon.svg",
+          "sha256": "e66610a56eea06e37ff4737d0411bd5d4d8e5a8ec0018c4d9a84893e569cb065"
+        },
+        {
+          "path": "browser/extension/icons/icon128.png",
+          "sha256": "7b70af8972ae1cfaab9e2dac52edd7f2bc60ef01816d128b4506d0e7ec242027"
+        },
+        {
+          "path": "browser/extension/icons/icon16.png",
+          "sha256": "ac9949fb7dae7f7633d9a0549ab9aef91f25ba0e97f299b2ea09e6bf4d623c03"
+        },
+        {
+          "path": "browser/extension/icons/icon32.png",
+          "sha256": "094f5caf4044dd8de18d039efab9c3698d647f2f6dda74bd9d81aaafa6ea6d6a"
+        },
+        {
+          "path": "browser/extension/icons/icon48.png",
+          "sha256": "13c5ddfeaee7a4f3e6d8e5454299afd4b95a58c980ed143090a7041ff88da38d"
+        },
+        {
+          "path": "browser/extension/manifest.json",
+          "sha256": "c52c6d8f9d703c96cbea0ad31795971026728992b33a775bfa9069c406a5484c"
+        },
+        {
+          "path": "docs/QUALITY.md",
+          "sha256": "f14cf32431382cdb70da6f72e9003207d51a75e5415a0d742e445ba98988027b"
+        },
+        {
+          "path": "package.json",
+          "sha256": "efcb2d7cd197155912dd5a4064772d9f998d5c0c9edeeca26ef2e8606aa133e9"
+        },
+        {
+          "path": "scripts/cws_publish.mjs",
+          "sha256": "21804f91e90d5b0450221c59d312b0708015b73d874671e0c5454dc1a5f10821"
+        },
+        {
+          "path": "scripts/store_package.mjs",
+          "sha256": "da7e447371a3d84a30ff9b13f7a27ac8c7de579e2f2dee3199010c33e68850eb"
+        },
+        {
+          "path": "tests/test_store_publish.mjs",
+          "sha256": "96f8a51f1b075cbe68315a60c5e5e605d1e47e9477c8309ed77d312cd21477a3"
+        }
+      ]
+    },
+    {
+      "id": "EV-CWS-DRY-RUN",
+      "acceptance": [
+        "AC-CWS-PUBLISH"
+      ],
+      "kind": "behavior",
+      "status": "pass",
+      "command": [
+        "gh",
+        "workflow",
+        "run",
+        "store-check.yml",
+        "-f",
+        "mode=dry-run"
+      ],
+      "method": "The real dry run, Chrome Web Store check run 42430683011 on c5fbfcb, against the live Chrome Web Store API with the repository secret: signed in as chrome-web-store-publisher@chrome-control-mcp.iam.gserviceaccount.com (an RS256 assertion exchanged for a chromewebstore token), read item mbkacllnbffbadcajpkkpelifdkfgcbd's status (published none, submitted none), and the key the store holds for the item gives that ID and is the key in browser/store-public-key.txt",
+      "exit_code": 0,
+      "artifact": {
+        "path": "docs/plans/evidence/cws/store-dry-run.txt",
+        "sha256": "f0b9ee2f43912c42227563375a4364356a4462a0a5bfdaf8e903915cf4bba75d"
+      },
+      "red": null,
+      "reason": null,
+      "scope_sha256": "481ddd704abeaf86cb75b92bbc44aaf4ab79bf8f150970e20ed90ed7a9b6e685",
+      "environment": {
+        "platform": "windows",
+        "tools": {
+          "chrome-for-testing": "153.0.8010.52",
+          "cmake": "4.4.5",
+          "node": "v24.20.0",
+          "python": "3.14.10",
+          "ubuntu-laptop-clang": "21.1.8",
+          "ubuntu-laptop-cmake": "4.2.3",
+          "ubuntu-laptop-cppcheck": "2.19.0",
+          "ubuntu-laptop-gcc": "15.2.0",
+          "ubuntu-laptop-node": "v24.20.0",
+          "ubuntu-laptop-os": "Ubuntu 26.04.1 LTS",
+          "ubuntu-laptop-python": "3.14.4",
+          "ubuntu-laptop-qt": "6.10.2",
+          "ubuntu-laptop-semgrep": "1.174.0"
+        }
+      },
+      "inputs": [
+        {
+          "path": ".github/workflows/release.yml",
+          "sha256": "b5cb97e7ed7611e383208223d7c023d03c7877c0629df05ca740132a733855f3"
+        },
+        {
+          "path": ".github/workflows/store-check.yml",
+          "sha256": "34a67bd73558ca839d732350300444e9e5b847b84df7a9b59e48c4f5af2e0dbe"
+        },
+        {
+          "path": "browser/extension/icons/icon.svg",
+          "sha256": "e66610a56eea06e37ff4737d0411bd5d4d8e5a8ec0018c4d9a84893e569cb065"
+        },
+        {
+          "path": "browser/extension/icons/icon128.png",
+          "sha256": "7b70af8972ae1cfaab9e2dac52edd7f2bc60ef01816d128b4506d0e7ec242027"
+        },
+        {
+          "path": "browser/extension/icons/icon16.png",
+          "sha256": "ac9949fb7dae7f7633d9a0549ab9aef91f25ba0e97f299b2ea09e6bf4d623c03"
+        },
+        {
+          "path": "browser/extension/icons/icon32.png",
+          "sha256": "094f5caf4044dd8de18d039efab9c3698d647f2f6dda74bd9d81aaafa6ea6d6a"
+        },
+        {
+          "path": "browser/extension/icons/icon48.png",
+          "sha256": "13c5ddfeaee7a4f3e6d8e5454299afd4b95a58c980ed143090a7041ff88da38d"
+        },
+        {
+          "path": "browser/extension/manifest.json",
+          "sha256": "c52c6d8f9d703c96cbea0ad31795971026728992b33a775bfa9069c406a5484c"
+        },
+        {
+          "path": "docs/QUALITY.md",
+          "sha256": "f14cf32431382cdb70da6f72e9003207d51a75e5415a0d742e445ba98988027b"
+        },
+        {
+          "path": "package.json",
+          "sha256": "efcb2d7cd197155912dd5a4064772d9f998d5c0c9edeeca26ef2e8606aa133e9"
+        },
+        {
+          "path": "scripts/cws_publish.mjs",
+          "sha256": "21804f91e90d5b0450221c59d312b0708015b73d874671e0c5454dc1a5f10821"
+        },
+        {
+          "path": "scripts/store_package.mjs",
+          "sha256": "da7e447371a3d84a30ff9b13f7a27ac8c7de579e2f2dee3199010c33e68850eb"
+        },
+        {
+          "path": "tests/test_store_publish.mjs",
+          "sha256": "96f8a51f1b075cbe68315a60c5e5e605d1e47e9477c8309ed77d312cd21477a3"
+        }
+      ]
     }
   ],
   "checkpoint": {
-    "scope_sha256": "6d90661bf08d2570c35a7c48ff0c7e8eb438329eebf4bbbc57796ce9c35966f1",
+    "scope_sha256": "a443cfc1f13d3d8968542cc60c2a0c99171bd5be0baafffc61367d02e8fa219e",
     "inputs": [
       {
         "path": ".github/workflows/live.yml",
@@ -5085,7 +9782,7 @@ developer.
       },
       {
         "path": "docs/QUALITY.md",
-        "sha256": "82e937a113b372cf4ea56642fd1cab781b333ec923ea2027a902611c560f61cc"
+        "sha256": "f14cf32431382cdb70da6f72e9003207d51a75e5415a0d742e445ba98988027b"
       },
       {
         "path": "docs/RELEASES.md",
@@ -5121,7 +9818,7 @@ developer.
       },
       {
         "path": "scripts/cws_publish.mjs",
-        "sha256": "9580214d89a3421c0f61d03073f8ffd4f219fc6b7ab300d18f31e49d6faf900d"
+        "sha256": "21804f91e90d5b0450221c59d312b0708015b73d874671e0c5454dc1a5f10821"
       },
       {
         "path": "scripts/store_package.mjs",
@@ -5177,7 +9874,7 @@ developer.
       },
       {
         "path": "tests/test_store_publish.mjs",
-        "sha256": "28d4e398e1b86f9b64ec7665cbc85d4fbc76f483e01dbe563a724e02cb2cf7d3"
+        "sha256": "96f8a51f1b075cbe68315a60c5e5e605d1e47e9477c8309ed77d312cd21477a3"
       },
       {
         "path": "vscode/README.md",
@@ -5199,27 +9896,28 @@ developer.
         "cmake": "4.4.5",
         "node": "v24.20.0",
         "python": "3.14.10",
-        "wsl2-arch-cmake": "4.4.5",
-        "wsl2-arch-node": "v26.13.0",
-        "wsl2-arch-python": "3.12.16",
-        "wsl2-arch-semgrep": "1.174.0"
+        "ubuntu-laptop-clang": "21.1.8",
+        "ubuntu-laptop-cmake": "4.2.3",
+        "ubuntu-laptop-cppcheck": "2.19.0",
+        "ubuntu-laptop-gcc": "15.2.0",
+        "ubuntu-laptop-node": "v24.20.0",
+        "ubuntu-laptop-os": "Ubuntu 26.04.1 LTS",
+        "ubuntu-laptop-python": "3.14.4",
+        "ubuntu-laptop-qt": "6.10.2",
+        "ubuntu-laptop-semgrep": "1.174.0"
       }
     },
     "verified_tasks": [
       "TASK-CWS-SERVER",
       "TASK-CWS-EXTENSION",
+      "TASK-CWS-PUBLISH",
       "TASK-CWS-LIVE",
+      "TASK-CWS-DOCS",
       "TASK-CWS-GROUPS"
     ],
-    "pending_operations": [
-      {
-        "id": "OP-CWS-DRY-RUN",
-        "description": "The real dry run of scripts/cws_publish.mjs against the Chrome Web Store (AC-CWS-PUBLISH). The service account's key exists only as the repository secret CWS_SERVICE_ACCOUNT_JSON, so it runs in the Chrome Web Store check workflow, which must be on main first.",
-        "next_action": "Push this work, let CI pass, run the Chrome Web Store check workflow with mode dry-run, save its log as docs/plans/evidence/cws/store-dry-run.txt, record its receipt, then verify TASK-CWS-PUBLISH and TASK-CWS-DOCS and close."
-      }
-    ],
-    "next_action": "Commit and push the 1.13.0 work; run the store check's dry run; record it; close the plan; tag v1.13.0.",
-    "source_revision": "f42e021"
+    "pending_operations": [],
+    "next_action": "Closed. Tag v1.13.0; the release publishes the GitHub release, the VS Code packages and the Chrome Web Store submission.",
+    "source_revision": "c5fbfcb"
   }
 }
 ```

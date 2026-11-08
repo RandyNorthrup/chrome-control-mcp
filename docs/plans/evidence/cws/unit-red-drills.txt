@@ -4,50 +4,53 @@
    FAIL!  : BrowserExtensionInstallerTests::foreignOriginRegistrationIsNotCurrent() Compared values are not the same
    Totals: 15 passed, 1 failed, 0 skipped, 0 blacklisted, 2ms
    restored byte for byte
-   restored: test_browser_extension_installer exit=0 Totals: 16 passed, 0 failed, 0 skipped, 0 blacklisted, 3ms
+   restored: test_browser_extension_installer exit=0 Totals: 16 passed, 0 failed, 0 skipped, 0 blacklisted, 2ms
 == drill origin-store-dropped: include/chrome_control_mcp/browser_extension_installer.h
    mutation: '    kBrowserExtensionId, kStoreExtensionId};' -> '    kBrowserExtensionId, kBrowserExtensionId};'
    planted: build exit=0, test_browser_extension_installer exit=5
    FAIL!  : BrowserExtensionInstallerTests::prepareRegistersValidatedNativeHost() Compared values are not the same
    FAIL!  : BrowserExtensionInstallerTests::singleOriginRegistrationIsRewritten() Compared values are not the same
    FAIL!  : BrowserExtensionInstallerTests::foreignOriginRegistrationIsNotCurrent() Compared values are not the same
-   Totals: 11 passed, 5 failed, 0 skipped, 0 blacklisted, 3ms
+   FAIL!  : BrowserExtensionInstallerTests::refreshRewritesOnlyItsOwnStaleRegistration() Compared values are not the same
+   FAIL!  : BrowserExtensionInstallerTests::extensionOriginAcceptsBothBuilds() 'isOurExtensionOrigin(origin.c_str())' returned FALSE. (mbkacllnbffbadcajpkkpelifdkfgcbd)
+   Totals: 11 passed, 5 failed, 0 skipped, 0 blacklisted, 2ms
    restored byte for byte
-   restored: test_browser_extension_installer exit=0 Totals: 16 passed, 0 failed, 0 skipped, 0 blacklisted, 3ms
+   restored: test_browser_extension_installer exit=0 Totals: 16 passed, 0 failed, 0 skipped, 0 blacklisted, 2ms
 == drill compat-unpacked-dropped: include/chrome_control_mcp/browser_extension_installer.h
    mutation: '    kBrowserExtensionId, kStoreExtensionId};' -> '    kStoreExtensionId, kStoreExtensionId};'
    planted: build exit=0, test_browser_extension_installer exit=4
    FAIL!  : BrowserExtensionInstallerTests::prepareRegistersValidatedNativeHost() Compared values are not the same
    FAIL!  : BrowserExtensionInstallerTests::singleOriginRegistrationIsRewritten() Compared values are not the same
    FAIL!  : BrowserExtensionInstallerTests::refreshRewritesOnlyItsOwnStaleRegistration() Compared values are not the same
-   Totals: 12 passed, 4 failed, 0 skipped, 0 blacklisted, 3ms
+   FAIL!  : BrowserExtensionInstallerTests::extensionOriginAcceptsBothBuilds() 'isOurExtensionOrigin(origin.c_str())' returned FALSE. (iojehhmnaigcejfcpmilpclmeljhlkaa)
+   Totals: 12 passed, 4 failed, 0 skipped, 0 blacklisted, 2ms
    restored byte for byte
-   restored: test_browser_extension_installer exit=0 Totals: 16 passed, 0 failed, 0 skipped, 0 blacklisted, 3ms
+   restored: test_browser_extension_installer exit=0 Totals: 16 passed, 0 failed, 0 skipped, 0 blacklisted, 2ms
 == drill origin-lookalike: include/chrome_control_mcp/mcp_entry.h
    mutation: 'return after == '\0' || after == '/';' -> 'return after != 'x';'
    planted: build exit=0, test_browser_extension_installer exit=1
    FAIL!  : BrowserExtensionInstallerTests::extensionOriginAcceptsBothBuilds() '!isOurExtensionOrigin((origin + "a").c_str())' returned FALSE. (iojehhmnaigcejfcpmilpclmeljhlkaa)
-   Totals: 15 passed, 1 failed, 0 skipped, 0 blacklisted, 3ms
+   Totals: 15 passed, 1 failed, 0 skipped, 0 blacklisted, 2ms
    restored byte for byte
-   restored: test_browser_extension_installer exit=0 Totals: 16 passed, 0 failed, 0 skipped, 0 blacklisted, 3ms
+   restored: test_browser_extension_installer exit=0 Totals: 16 passed, 0 failed, 0 skipped, 0 blacklisted, 2ms
 == drill refresh-foreign: src/browser_extension_installer.cpp
    mutation: '      !sameExecutable(registered, config_.host_exe_path)) {' -> '      false) {'
    planted: build exit=0, test_browser_extension_installer exit=1
    FAIL!  : BrowserExtensionInstallerTests::refreshRewritesOnlyItsOwnStaleRegistration() '!installer.refreshOwnRegistration()' returned FALSE. ()
-   Totals: 15 passed, 1 failed, 0 skipped, 0 blacklisted, 15ms
+   Totals: 15 passed, 1 failed, 0 skipped, 0 blacklisted, 2ms
    restored byte for byte
-   restored: test_browser_extension_installer exit=0 Totals: 16 passed, 0 failed, 0 skipped, 0 blacklisted, 3ms
+   restored: test_browser_extension_installer exit=0 Totals: 16 passed, 0 failed, 0 skipped, 0 blacklisted, 2ms
 == drill instructions-order: src/mcp_dispatch.cpp
    mutation: '"tokens); a whole browser_snapshot only when you need the full "' -> '"tokens); a browser_snapshot when you need the full "'
    planted: build exit=0, test_browser_mcp_server exit=1
    FAIL!  : BrowserMcpServerTests::initializeCarriesClientAgnosticInstructions() 'snapshot > screenshot' returned FALSE. ()
-   Totals: 16 passed, 1 failed, 0 skipped, 0 blacklisted, 7ms
+   Totals: 16 passed, 1 failed, 0 skipped, 0 blacklisted, 6ms
    restored byte for byte
-   restored: test_browser_mcp_server exit=0 Totals: 17 passed, 0 failed, 0 skipped, 0 blacklisted, 4ms
+   restored: test_browser_mcp_server exit=0 Totals: 17 passed, 0 failed, 0 skipped, 0 blacklisted, 6ms
 == drill status-store-id: src/browser_mcp_tools.cpp
    mutation: '       QString::fromLatin1(kStoreExtensionId)}};' -> '       QString::fromLatin1(kBrowserExtensionId)}};'
    planted: build exit=0, test_browser_mcp_server exit=1
    FAIL!  : BrowserMcpServerTests::installerStatusReturnsMcpContent() Compared values are not the same
-   Totals: 16 passed, 1 failed, 0 skipped, 0 blacklisted, 4ms
+   Totals: 16 passed, 1 failed, 0 skipped, 0 blacklisted, 6ms
    restored byte for byte
-   restored: test_browser_mcp_server exit=0 Totals: 17 passed, 0 failed, 0 skipped, 0 blacklisted, 5ms
+   restored: test_browser_mcp_server exit=0 Totals: 17 passed, 0 failed, 0 skipped, 0 blacklisted, 6ms

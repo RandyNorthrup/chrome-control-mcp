@@ -1,12 +1,14 @@
-== uname: Linux 6.18.54.1-microsoft-standard-WSL2
-== gcc: gcc (GCC) 16.2.1 20260810
-== clang: clang version 23.1.4
-== qt: 6.12.0
-== cppcheck: Cppcheck 2.22.0
-== node: v26.13.0
+== host: randy-lt, Ubuntu 26.04.1 LTS, 7.0.0-42-generic, 8 cores
+== gcc: gcc (Ubuntu 15.2.0-16ubuntu1) 15.2.0
+== clang: Ubuntu clang version 21.1.8 (6ubuntu1)
+== qt: 6.10.2
+== cmake: cmake version 4.2.3
+== cppcheck: Cppcheck 2.19.0
+== node: v24.20.0
+== chrome: Google Chrome for Testing 153.0.8010.52
 == version: project(chrome_control_mcp VERSION 1.13.0
 == gcc build exit=0 warnings=0
-== ctest exit=0 100% tests passed out of 27
+== ctest exit=0 100% tests passed, 0 tests failed out of 27
 == clang build exit=0
 == clang-tidy exit=0 errors=0
 == cppcheck exit=0
@@ -18,12 +20,6 @@
 == drill refresh-foreign: planted build=0 red=1 green=0
 == drill instructions-order: planted build=0 red=1 green=0
 == drill status-store-id: planted build=0 red=1 green=0
-== jsdrill package-key: red=1 green=0
-== jsdrill package-description: red=1 green=0
-== jsdrill publish-audience: red=1 green=0
-== jsdrill publish-failed-upload: red=1 green=0
-== jsdrill publish-google-words: red=1 green=0
-== jsdrill publish-poll: red=1 green=0
 == live extension-version-store exit=0 {"ok":true,"checks":9,"passed":9,"case":"current"} build: store (mbkacllnbffbadcajpkkpelifdkfgcbd)
 == live extension-version-current exit=0 {"ok":true,"checks":9,"passed":9,"case":"current"} build: unpacked (iojehhmnaigcejfcpmilpclmeljhlkaa)
 == live extension-version-older exit=0 {"ok":true,"checks":12,"passed":12,"case":"older"} build: unpacked (iojehhmnaigcejfcpmilpclmeljhlkaa)
@@ -38,5 +34,5 @@
 == live profiles-two exit=0 {"ok":true,"checks":14,"passed":14,"case":"two-profiles"}
 == live profiles-upgrade exit=0 {"ok":true,"checks":4,"passed":4,"case":"upgrade"}
 == live display-matrix exit=0 {"ok":true}
-== live drill store-origin-dropped:    planted: store-key run exit=1 {   "ok": false,   "case": "unknown",   "checks": [],   "error": "AssertionError [ERR_ASSERTION]: the extension did not attach within 180 s\n    at main (file:///home/randy/ccmcp/tests/e2e/extension_version_e2e.mjs:120:12)\n    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)\n    at async file:///home/randy/ccmcp/tests/e2e/extension_version_e2e.mjs:387:1" }     restored: store-key run exit=0 build: store (mbkacllnbffbadcajpkkpelifdkfgcbd)
+== live drill store-origin-dropped:    planted: store-key run exit=1 {   "ok": false,   "case": "unknown",   "checks": [],   "error": "AssertionError [ERR_ASSERTION]: the extension did not attach within 180 s\n    at main (file:///home/randy/ccm-evidence/ccmcp/tests/e2e/extension_version_e2e.mjs:120:12)\n    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)\n    at async file:///home/randy/ccm-evidence/ccmcp/tests/e2e/extension_version_    restored: store-key run exit=0 build: store (mbkacllnbffbadcajpkkpelifdkfgcbd)
 == done

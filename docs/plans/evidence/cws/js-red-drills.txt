@@ -1,39 +1,39 @@
-== baseline: test_store_publish exit=0 ℹ pass 21 ℹ fail 0
+== baseline: test_store_publish exit=0 ℹ pass 22 ℹ fail 0
 == drill package-key: scripts/store_package.mjs
    mutation: '  const { key: _key, ...rest } = manifest;
   return rest;' -> '  return manifest;'
-   planted: test_store_publish exit=1 ℹ pass 20 ℹ fail 1
+   planted: test_store_publish exit=1 ℹ pass 21 ℹ fail 1
    ✖ the store package is the extension's files with the manifest's key removed
    restored byte for byte
-   restored: test_store_publish exit=0 ℹ pass 21 ℹ fail 0
+   restored: test_store_publish exit=0 ℹ pass 22 ℹ fail 0
 == drill package-description: scripts/store_package.mjs
    mutation: 'description.length > DESCRIPTION_MAX' -> 'description.length > DESCRIPTION_MAX + 1'
-   planted: test_store_publish exit=1 ℹ pass 19 ℹ fail 2
+   planted: test_store_publish exit=1 ℹ pass 20 ℹ fail 2
    ✖ a description over 132 characters
    restored byte for byte
-   restored: test_store_publish exit=0 ℹ pass 21 ℹ fail 0
+   restored: test_store_publish exit=0 ℹ pass 22 ℹ fail 0
 == drill publish-audience: scripts/cws_publish.mjs
    mutation: 'aud: account.tokenUri,' -> 'aud: SCOPE,'
-   planted: test_store_publish exit=1 ℹ pass 20 ℹ fail 1
+   planted: test_store_publish exit=1 ℹ pass 21 ℹ fail 1
    ✖ a release signs in, uploads, waits out processing and submits
    restored byte for byte
-   restored: test_store_publish exit=0 ℹ pass 21 ℹ fail 0
+   restored: test_store_publish exit=0 ℹ pass 22 ℹ fail 0
 == drill publish-failed-upload: scripts/cws_publish.mjs
    mutation: '  if (!IN_PROGRESS.has(reply.uploadState)) {' -> '  if (false) {'
-   planted: test_store_publish exit=1 ℹ pass 19 ℹ fail 2
+   planted: test_store_publish exit=1 ℹ pass 20 ℹ fail 2
    ✖ the upload
    restored byte for byte
-   restored: test_store_publish exit=0 ℹ pass 21 ℹ fail 0
+   restored: test_store_publish exit=0 ℹ pass 22 ℹ fail 0
 == drill publish-google-words: scripts/cws_publish.mjs
    mutation: 'const parts = [body.error.status, body.error.message].filter(Boolean);' -> 'const parts = [];'
-   planted: test_store_publish exit=1 ℹ pass 20 ℹ fail 1
+   planted: test_store_publish exit=1 ℹ pass 21 ℹ fail 1
    ✖ Google's error bodies are read in each of their shapes
    restored byte for byte
-   restored: test_store_publish exit=0 ℹ pass 21 ℹ fail 0
+   restored: test_store_publish exit=0 ℹ pass 22 ℹ fail 0
 == drill publish-poll: scripts/cws_publish.mjs
    mutation: 'if (status.lastAsyncUploadState === "SUCCEEDED") {' -> 'if (status.lastAsyncUploadState === "IN_PROGRESS") {'
-   planted: test_store_publish exit=1 ℹ pass 19 ℹ fail 2
+   planted: test_store_publish exit=1 ℹ pass 20 ℹ fail 2
    ✖ a release signs in, uploads, waits out processing and submits
    ✖ processing that never ends gives up with a reason
    restored byte for byte
-   restored: test_store_publish exit=0 ℹ pass 21 ℹ fail 0
+   restored: test_store_publish exit=0 ℹ pass 22 ℹ fail 0
