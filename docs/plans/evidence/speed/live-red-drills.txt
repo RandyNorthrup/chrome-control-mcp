@@ -1,0 +1,21 @@
+== drill latency-frames-never-start: browser/extension/background.js
+   mutation: '        sendCdp(tabId, "Page.startScreencast", FRAME_FORCING_SCREENCAST),' -> '        Promise.reject(new Error("drill: no cast")),'
+   planted: build exit=0
+   planted: suite exit=1
+   FAIL scroll a region by ref replies without waiting for a background frame (worst 3090 ms): [67,3090,3083] ms, bound 500
+   FAIL scroll the page by ref replies without waiting for a background frame (worst 3092 ms): [3083,3092,2083] ms, bound 500
+   FAIL scroll the page replies without waiting for a background frame (worst 1068 ms): [266,1068,1067] ms, bound 500
+   restored byte for byte
+   restored: suite exit=0
+== drill matrix-point-factor-ignored: browser/extension/background.js
+   mutation: '  const factor = shot.factor > 0 ? shot.factor : 1;' -> '  const factor = 1;'
+   planted: build exit=0
+   planted: suite exit=1
+   FAIL 2x-1440x900-zoom100-overlay pinch 2: 89/101
+       FAIL click_at on target tr's pixels hits it: miss@704,8
+       FAIL click_at on target bl's pixels hits it: miss@8,370
+       FAIL click_at on target br's pixels hits it: hit:mid@704,370
+       FAIL click_at on target mid's pixels hits it: miss@356,189
+       FAIL click_at on target tiny's pixels hits it: miss@215,115
+   restored byte for byte
+   restored: suite exit=0

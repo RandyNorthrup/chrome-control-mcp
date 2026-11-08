@@ -10,6 +10,7 @@
 #include <QString>
 #include <QStringList>
 
+#include <chrono>
 #include <condition_variable>
 #include <functional>
 #include <mutex>
@@ -197,6 +198,12 @@ readBrowserReplyPastProgress(const BrowserReadFn &browser_read,
 [[nodiscard]] bool drainProgressToPipe(NativeIpcHandle pipe,
                                        RelayProgressQueue *progress);
 
+/// How long the relay waits between looks at the pipe while the extension
+/// works: short enough that a cancel stops a polling handler promptly, long
+/// enough that an idle wait costs nothing measurable. A reply does not wait for
+/// it.
+inline constexpr std::chrono::milliseconds kRelayCancelPoll{25};
+
 /// Wait for the browser's reply to a command already forwarded, while staying
 /// able to see a `cancel` the server sends mid-exchange and pass it on, and to
 /// forward the beats the extension sends while it is still working.
@@ -219,10 +226,15 @@ readBrowserReplyPastProgress(const BrowserReadFn &browser_read,
 /// for readable bytes have nothing in common; the pump around it does not.
 /// Returns false when either side went away, or when the server sent anything
 /// but a cancel mid-exchange (which would desynchronize the one-op pump).
-[[nodiscard]] bool awaitBrowserReply(NativeIpcHandle pipe,
-                                     const BrowserReadFn &browser_read,
-                                     const BrowserWriteFn &browser_write,
-                                     QJsonObject *reply);
+///
+/// @p cancel_poll bounds each wait between looks at the pipe: how soon a cancel
+/// or a queued progress beat is forwarded. The reply itself wakes the wait at
+/// once. Tests lengthen it, so that a reply that waited out the tick cannot be
+/// mistaken for one that woke it.
+[[nodiscard]] bool
+awaitBrowserReply(NativeIpcHandle pipe, const BrowserReadFn &browser_read,
+                  const BrowserWriteFn &browser_write, QJsonObject *reply,
+                  std::chrono::milliseconds cancel_poll = kRelayCancelPoll);
 
 /// Connect to the bridge server described by the rendezvous record at @p
 /// rendezvous_path: read the record, verify the recorded pid resolves to OUR
@@ -261,9 +273,10 @@ readBrowserReplyPastProgress(const BrowserReadFn &browser_read,
 /// back to @p pipe. Returns false when either side closes (the caller stops the
 /// relay), true to continue. Id-transparent: frames are moved verbatim, never
 /// parsed or correlated.
-[[nodiscard]] bool relayPumpOnce(NativeIpcHandle pipe,
-                                 const BrowserReadFn &browser_read,
-                                 const BrowserWriteFn &browser_write);
+[[nodiscard]] bool
+relayPumpOnce(NativeIpcHandle pipe, const BrowserReadFn &browser_read,
+              const BrowserWriteFn &browser_write,
+              std::chrono::milliseconds cancel_poll = kRelayCancelPoll);
 
 /// Blocking whole-frame read/write helpers for a synchronous (non-overlapped)
 /// client pipe handle. Exposed for the relay pump and its tests; each

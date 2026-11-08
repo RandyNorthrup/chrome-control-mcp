@@ -131,6 +131,62 @@ const MAX_SHOT_EDGE_PX = 16384;
 const MAX_SHOT_BASE64 = 16 * 1024 * 1024;
 const MAX_PDF_BASE64 = 24 * 1024 * 1024;
 
+// What an agent is shown. A model is billed for an image by its pixels, and Claude scales any
+// image whose long edge passes 1,568 px down to it anyway, so a view screenshot is taken at one
+// image pixel per CSS pixel and no larger than that: about a thousand image tokens for a desktop
+// viewport, where a 2x display's device pixels are four times the bytes for detail that is shrunk
+// away before the model sees it. A zoom (ref, or a region) gives detail where it is wanted, up to the device's own
+// pixels. A full-page view keeps one pixel per CSS pixel and fits both edges within 8,000 px, the
+// largest image the API accepts. purpose "presentation" is untouched: the device's own pixels,
+// lossless, saved to a file for people rather than shown to the model.
+const VIEW_MAX_EDGE_PX = 1568;
+const FULL_PAGE_VIEW_MAX_EDGE_PX = 8000;
+
+// How much a view screenshot of the viewport shrinks the device-pixel capture: to one image pixel
+// per CSS pixel, and further if the long edge would pass the cap. Never enlarged. browser_click_at
+// and browser_box's screenshot_center use the same factor, so a pixel read off the image is where
+// the click lands. The page reports its viewport in whole CSS pixels and Chrome captures a
+// fractional one rounded up, up to a CSS pixel past it (measured: a 1706-pixel viewport at 2.25
+// captured 3840 device pixels, not 3838.5), so the cap allows for that pixel.
+function viewFactor(vp) {
+  const longEdge = Math.max(
+    (vp.width + 1) * vp.dpr,
+    (vp.height + 1) * vp.dpr,
+    1,
+  );
+  return Math.min(1, 1 / vp.dpr, VIEW_MAX_EDGE_PX / longEdge);
+}
+
+// The same for a full-page view, from the size of the capture itself.
+function fullPageViewFactor(dpr, width, height) {
+  return Math.min(
+    1,
+    1 / dpr,
+    FULL_PAGE_VIEW_MAX_EDGE_PX / Math.max(width, height, 1),
+  );
+}
+
+// A zoom's crop in device pixels of the viewport capture, from a region given in view-screenshot
+// pixels (factor k), clamped to the image. Null when nothing of it is on the image.
+function zoomCrop(region, k, imageWidth, imageHeight) {
+  const left = Math.max(0, Math.floor(region.x / k));
+  const top = Math.max(0, Math.floor(region.y / k));
+  const right = Math.min(imageWidth, Math.ceil((region.x + region.width) / k));
+  const bottom = Math.min(
+    imageHeight,
+    Math.ceil((region.y + region.height) / k),
+  );
+  if (right - left < 1 || bottom - top < 1) {
+    return null;
+  }
+  return { x: left, y: top, width: right - left, height: bottom - top };
+}
+
+// The output size of a zoom: the crop's own pixels, shrunk only if its long edge passes the cap.
+function zoomFactor(crop) {
+  return Math.min(1, VIEW_MAX_EDGE_PX / Math.max(crop.width, crop.height, 1));
+}
+
 // Chrome answers Page.captureScreenshot only once the tab produces a compositor frame, and a tab
 // that is not the front tab of an on-screen window produces none: the capture then never returns.
 // The session works in a tab of its own, beside the user's, so that is the ORDINARY case here --
@@ -1713,8 +1769,17 @@ async function handleRecordStart(session, tabId, args) {
   if (!/\.webm$/i.test(filename)) {
     throw new Error("browser_record_start filename must end in .webm.");
   }
+  const resolution = recordingResolution(args && args.resolution);
+  const frame = recordingFrame(resolution, await viewportState(tabId));
   const id = "rec-" + stamp + "-" + Math.random().toString(16).slice(2, 10);
-  await toOffscreen({ type: "record.start", session: id });
+  // The encoder's canvas is the frame's own size. It used to be 1280x800 whatever the page's
+  // shape, and every frame was stretched to fill it.
+  await toOffscreen({
+    type: "record.start",
+    session: id,
+    width: frame.width,
+    height: frame.height,
+  });
   session.recording = {
     id,
     tabId,
@@ -1723,14 +1788,52 @@ async function handleRecordStart(session, tabId, args) {
     timeline: [],
   };
   try {
-    await sendCdp(tabId, "Page.startScreencast", RECORDING_SCREENCAST);
+    await sendCdp(tabId, "Page.startScreencast", {
+      ...RECORDING_SCREENCAST,
+      quality: frame.quality,
+      maxWidth: frame.width,
+      maxHeight: frame.height,
+    });
   } catch (e) {
     // The encoder is already up; leaving it running with nothing feeding it
     // would leak it for the life of the worker.
     discardRecording(session);
     throw e;
   }
-  return { ok: true, recording: true, filename };
+  return {
+    ok: true,
+    recording: true,
+    filename,
+    resolution,
+    width: frame.width,
+    height: frame.height,
+  };
+}
+
+function recordingResolution(value) {
+  const resolution = value === undefined ? "standard" : String(value);
+  if (resolution !== "standard" && resolution !== "full") {
+    throw new Error('resolution must be "standard" or "full".');
+  }
+  return resolution;
+}
+
+// The size of a recording's frames: the viewport's own shape, at up to 1280x800 ("standard") or at
+// the device's own pixels ("full"), in even numbers, which the video encoder needs. A viewport that
+// cannot be read records at the standard size.
+function recordingFrame(resolution, vp) {
+  const deviceWidth = vp.ok ? vp.width * vp.dpr : 1280;
+  const deviceHeight = vp.ok ? vp.height * vp.dpr : 800;
+  const fit =
+    resolution === "full"
+      ? 1
+      : Math.min(1, 1280 / deviceWidth, 800 / deviceHeight);
+  const even = (n) => Math.max(2, Math.round(n / 2) * 2);
+  return {
+    width: even(deviceWidth * fit),
+    height: even(deviceHeight * fit),
+    quality: resolution === "full" ? 92 : RECORDING_SCREENCAST.quality,
+  };
 }
 
 // Screencast settings for a recording, as opposed to the single-frame forcing
@@ -2217,17 +2320,19 @@ const COMMAND_TABLE = new Map([
   ["selectTab", { fn: handleSelectTab, tab: false, args: true }],
   ["newTab", { fn: handleNewTab, tab: false, args: true }],
   ["closeTab", { fn: handleCloseTab, tab: false, args: true }],
-  ["click", { fn: handleClick, tab: true, args: true }],
-  ["clickAt", { fn: handleClickAt, tab: true, args: true }],
-  ["hover", { fn: handleHover, tab: true, args: true }],
-  ["drag", { fn: handleDrag, tab: true, args: true }],
+  // frames: the command sends input or waits on the page moving, and so is run with the tab kept
+  // compositing (see withFrames).
+  ["click", { fn: handleClick, tab: true, args: true, frames: true }],
+  ["clickAt", { fn: handleClickAt, tab: true, args: true, frames: true }],
+  ["hover", { fn: handleHover, tab: true, args: true, frames: true }],
+  ["drag", { fn: handleDrag, tab: true, args: true, frames: true }],
   ["dialog", { fn: handleDialog, tab: true, args: true }],
-  ["type", { fn: handleType, tab: true, args: true }],
-  ["select", { fn: handleSelect, tab: true, args: true }],
+  ["type", { fn: handleType, tab: true, args: true, frames: true }],
+  ["select", { fn: handleSelect, tab: true, args: true, frames: true }],
   ["setValue", { fn: handleSetValue, tab: true, args: true }],
   ["media", { fn: handleMedia, tab: true, args: true }],
-  ["pressKey", { fn: handlePressKey, tab: true, args: true }],
-  ["scroll", { fn: handleScroll, tab: true, args: true }],
+  ["pressKey", { fn: handlePressKey, tab: true, args: true, frames: true }],
+  ["scroll", { fn: handleScroll, tab: true, args: true, frames: true }],
   ["screenshot", { fn: handleScreenshot, tab: true, args: true }],
   ["groupTabs", { fn: handleGroupTabs, tab: false, args: true }],
   ["ungroupTabs", { fn: handleUngroupTabs, tab: false, args: true }],
@@ -2264,8 +2369,8 @@ const COMMAND_TABLE = new Map([
   // A piece of a file the page will hold: given the tab, which it must hold, because the bytes go
   // into that page (1.11.0).
   ["uploadStage", { fn: handleUploadStage, tab: true, args: true }],
-  ["upload", { fn: handleUpload, tab: true, args: true }],
-  ["clipboard", { fn: handleClipboard, tab: true, args: true }],
+  ["upload", { fn: handleUpload, tab: true, args: true, frames: true }],
+  ["clipboard", { fn: handleClipboard, tab: true, args: true, frames: true }],
   ["release", { fn: handleRelease, tab: false, args: true }],
 ]);
 
@@ -2284,8 +2389,9 @@ async function dispatchCommand(session, cmd, args) {
   // except through what it was handed.
   const params = [session];
   let tab = null;
+  let tabId = null;
   if (entry.tab) {
-    const tabId = await commandTabId(session, args);
+    tabId = await commandTabId(session, args);
     tab = session.tabs.get(tabId) || null;
     params.push(tabId);
   }
@@ -2320,6 +2426,12 @@ async function dispatchCommand(session, cmd, args) {
     tab.inputUntil = Infinity;
   }
   try {
+    if (entry.frames && tabId !== null) {
+      // Attached first: the cast is a debugger command, and the handler's own attach would come
+      // after it.
+      await ensureAttached(session, tabId);
+      return await withFrames(tabId, () => entry.fn(...params));
+    }
     return await entry.fn(...params);
   } catch (error) {
     throw await explainUnreachablePage(tab, error);
@@ -6645,6 +6757,75 @@ function shotMatchesRender(tab, shot, now) {
   );
 }
 
+// A tab Chrome is not drawing -- in the background, in a minimized window, under another window --
+// composites about once a second, and every step that waits on a frame waits for that tick: an
+// input event's acknowledgement, a wheel's scroll animation and its scrollend, hover styles.
+// Measured on Linux (Chrome for Testing 153) in an agent's background tab: a hover 1,056 ms, a
+// click straight after a scroll 1,057 ms, a scroll by ref 2,036-3,092 ms -- the time spent inside
+// Input.dispatchMouseEvent waiting for its acknowledgement, and then waiting for scrollend. With a
+// screencast of the smallest frame running while the command acts, the same steps took 51 ms,
+// 51 ms and 76-101 ms, at about two frames a command. The page still reports itself hidden;
+// nothing it can observe changes.
+//
+// One cast per tab, shared by whatever overlaps on it. A tab a recording is filming is left alone:
+// the recording's own screencast already composites it, and starting another would replace its
+// frame size while stopping one would end the video.
+const framesForced = new Map(); // tabId -> { count, started, stopping }
+
+function tabIsRecorded(tabId) {
+  for (const session of [...sessions, ...pendingLeases.values()]) {
+    if (session.recording && session.recording.tabId === tabId) {
+      return true;
+    }
+  }
+  return false;
+}
+
+// Run fn while the tab is kept compositing, and stop the cast once nothing on the tab needs it. A
+// browser that refuses the cast runs fn all the same, at the slower pace.
+async function withFrames(tabId, fn) {
+  if (tabIsRecorded(tabId)) {
+    return fn();
+  }
+  let entry = framesForced.get(tabId);
+  if (!entry || entry.stopping) {
+    // A cast still being stopped is let finish first, or its stop would land after this start.
+    const prior = entry ? entry.stopping : Promise.resolve();
+    entry = { count: 0, started: null, stopping: null };
+    framesForced.set(tabId, entry);
+    entry.started = prior
+      .then(() =>
+        sendCdp(tabId, "Page.startScreencast", FRAME_FORCING_SCREENCAST),
+      )
+      .then(
+        () => true,
+        () => false,
+      );
+  }
+  entry.count += 1;
+  await entry.started;
+  try {
+    return await fn();
+  } finally {
+    entry.count -= 1;
+    if (entry.count === 0 && !entry.stopping) {
+      const ending = entry;
+      ending.stopping = ending.started
+        .then((on) =>
+          on
+            ? sendCdp(tabId, "Page.stopScreencast", {}).catch(() => undefined)
+            : undefined,
+        )
+        .finally(() => {
+          if (framesForced.get(tabId) === ending) {
+            framesForced.delete(tabId);
+          }
+        });
+      await ending.stopping;
+    }
+  }
+}
+
 // Run a command with a bound on the wait. Resolves to {value} when it answers, {timedOut:true}
 // when it does not; a command that fails outright still rejects, because that is an answer. The
 // abandoned command keeps a catch of its own: it can still reject later (a detach mid-capture),
@@ -6691,18 +6872,15 @@ async function captureScreenshotWithFrames(tabId, params) {
       return direct.value;
     }
   }
-  await sendCdp(tabId, "Page.startScreencast", FRAME_FORCING_SCREENCAST);
-  let forced;
-  try {
-    forced = await raceDeadline(
+  // The cast ends with the capture (withFrames stops it): a cast left running keeps compositing a
+  // tab nobody is looking at. On a tab a recording is filming, the recording's own cast serves,
+  // and is neither restarted at a single pixel nor stopped from here -- which once ended the video.
+  const forced = await withFrames(tabId, () =>
+    raceDeadline(
       sendCdp(tabId, "Page.captureScreenshot", params),
       FORCED_CAPTURE_DEADLINE_MS,
-    );
-  } finally {
-    // The cast must not outlive the capture: it is the tab's own frames being relayed, and a cast
-    // left running keeps compositing a tab nobody is looking at.
-    await sendCdp(tabId, "Page.stopScreencast", {}).catch(() => undefined);
-  }
+    ),
+  );
   if (forced.timedOut) {
     throw new Error(
       "The screenshot timed out: the tab produced no frame within " +
@@ -6714,13 +6892,148 @@ async function captureScreenshotWithFrames(tabId, params) {
   return forced.value;
 }
 
+function base64ToBytes(base64) {
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i += 1) {
+    bytes[i] = binary.charCodeAt(i);
+  }
+  return bytes;
+}
+
+function bytesToBase64(bytes) {
+  // In slices: String.fromCharCode spread over a whole capture would pass the engine's argument
+  // limit.
+  let binary = "";
+  const slice = 0x8000;
+  for (let i = 0; i < bytes.length; i += slice) {
+    binary += String.fromCharCode.apply(null, bytes.subarray(i, i + slice));
+  }
+  return btoa(binary);
+}
+
+// The PNG's own size, from its header, or null.
+function pngSize(bytes) {
+  if (
+    bytes.length < 24 ||
+    bytes[0] !== 0x89 ||
+    bytes[1] !== 0x50 ||
+    bytes[12] !== 0x49 ||
+    bytes[13] !== 0x48
+  ) {
+    return null;
+  }
+  const at = (i) =>
+    ((bytes[i] << 24) |
+      (bytes[i + 1] << 16) |
+      (bytes[i + 2] << 8) |
+      bytes[i + 3]) >>>
+    0;
+  return { width: at(16), height: at(20) };
+}
+
+// Crop and shrink a PNG capture, and encode the result as a PNG again: the worker's own canvas,
+// with Chrome's high-quality resampling, so nothing leaves the extension to be resized. crop is in
+// the capture's pixels (whole image when null); factor is the output size over the crop's.
+async function reshapePng(base64, crop, factor) {
+  const bytes = base64ToBytes(base64);
+  const size = pngSize(bytes);
+  if (!size) {
+    throw new Error("The capture is not a PNG; it could not be resized.");
+  }
+  const area = crop || { x: 0, y: 0, width: size.width, height: size.height };
+  if (!crop && factor >= 1) {
+    return { data: base64, width: size.width, height: size.height };
+  }
+  const width = Math.max(1, Math.round(area.width * factor));
+  const height = Math.max(1, Math.round(area.height * factor));
+  const bitmap = await createImageBitmap(
+    new Blob([bytes], { type: "image/png" }),
+    area.x,
+    area.y,
+    area.width,
+    area.height,
+    { resizeWidth: width, resizeHeight: height, resizeQuality: "high" },
+  );
+  try {
+    const canvas = new OffscreenCanvas(width, height);
+    canvas.getContext("2d").drawImage(bitmap, 0, 0);
+    const blob = await canvas.convertToBlob({ type: "image/png" });
+    const out = new Uint8Array(await blob.arrayBuffer());
+    return { data: bytesToBase64(out), width, height };
+  } finally {
+    bitmap.close();
+  }
+}
+
+// What the screenshot is for, and which part of the page it shows.
+function screenshotRequest(args) {
+  const purpose = args && args.purpose ? String(args.purpose) : "view";
+  if (purpose !== "view" && purpose !== "presentation") {
+    throw new Error('purpose must be "view" or "presentation".');
+  }
+  const region = ["x", "y", "width", "height"].filter(
+    (key) => args && args[key] !== undefined,
+  );
+  if (region.length > 0 && region.length < 4) {
+    throw new Error(
+      "A zoom region needs all of x, y, width and height, in screenshot pixels.",
+    );
+  }
+  const byRef = Boolean(args && typeof args.backendNodeId === "number");
+  if (byRef && region.length === 4) {
+    throw new Error("Zoom to a ref or to a region, not both.");
+  }
+  const fullPage = Boolean(args && args.full_page === true);
+  if (fullPage && (byRef || region.length === 4)) {
+    throw new Error(
+      "A zoom is of the viewport; it cannot be combined with full_page.",
+    );
+  }
+  let zoomRegion = null;
+  if (region.length === 4) {
+    zoomRegion = {
+      x: Number(args.x),
+      y: Number(args.y),
+      width: Number(args.width),
+      height: Number(args.height),
+    };
+    if (
+      !Object.values(zoomRegion).every(Number.isFinite) ||
+      zoomRegion.x < 0 ||
+      zoomRegion.y < 0 ||
+      zoomRegion.width < 1 ||
+      zoomRegion.height < 1
+    ) {
+      throw new Error(
+        "A zoom region is x, y, width and height in screenshot pixels: x and y at least 0, " +
+          "width and height at least 1.",
+      );
+    }
+  }
+  return { purpose, fullPage, byRef, zoomRegion };
+}
+
 async function handleScreenshot(session, tabId, args) {
   const tab = tabStateOf(session, tabId);
   await ensureAttached(session, tabId);
-  const fullPage = Boolean(args && args.full_page === true);
+  const request = screenshotRequest(args);
+  const fullPage = request.fullPage;
   const includeControlOverlay = Boolean(
     args && args.include_control_overlay === true,
   );
+  // A zoom to an element takes its box where it stands: a screenshot never moves the page (it is
+  // a read-only tool), so an element off screen is reported as such rather than scrolled to.
+  let zoomQuad = null;
+  if (request.byRef) {
+    requireSnapshotTab(session, tabId);
+    zoomQuad = await boxModelQuad(tabId, args.backendNodeId);
+    if (!zoomQuad) {
+      throw new Error(
+        "The element is not laid out (hidden or gone); take a fresh snapshot.",
+      );
+    }
+  }
   const params = { format: "png", captureBeyondViewport: fullPage };
   const metrics = fullPage
     ? await sendCdp(tabId, "Page.getLayoutMetrics", {}).catch(() => null)
@@ -6809,10 +7122,84 @@ async function handleScreenshot(session, tabId, args) {
       await setPresenceVisible(tabId, true);
     }
   }
-  const data = res && typeof res.data === "string" ? res.data : "";
-  if (!data) {
+  const captured = res && typeof res.data === "string" ? res.data : "";
+  if (!captured) {
     throw new Error("Screenshot capture returned no image data.");
   }
+  const capturedSize = pngSize(base64ToBytes(captured.slice(0, 64)));
+  if (!capturedSize) {
+    throw new Error("Screenshot capture returned an image that is not a PNG.");
+  }
+  // Shaped for its purpose: a view at one image pixel per CSS pixel within its cap, a zoom at up
+  // to the device's pixels, a presentation untouched. factor is the view's image pixels per
+  // device pixel, which browser_click_at reads coordinates back through.
+  let shaped;
+  let factor = 1;
+  let zoom = null;
+  const presentation = request.purpose === "presentation";
+  if (zoomQuad || request.zoomRegion) {
+    const k = viewFactor(state);
+    let region = request.zoomRegion;
+    if (zoomQuad) {
+      // The element's box, from visual-viewport CSS px into view-screenshot px.
+      const per = state.dpr * state.scale * k;
+      const xs = [zoomQuad[0], zoomQuad[2], zoomQuad[4], zoomQuad[6]];
+      const ys = [zoomQuad[1], zoomQuad[3], zoomQuad[5], zoomQuad[7]];
+      const left = Math.min(...xs) * per;
+      const top = Math.min(...ys) * per;
+      region = {
+        x: left,
+        y: top,
+        width: Math.max(...xs) * per - left,
+        height: Math.max(...ys) * per - top,
+      };
+    }
+    const crop = zoomCrop(region, k, capturedSize.width, capturedSize.height);
+    if (!crop && zoomQuad) {
+      throw new Error(
+        "The element is off screen; bring it into view (browser_reveal or browser_scroll) " +
+          "and zoom again.",
+      );
+    }
+    if (!crop) {
+      throw new Error(
+        "The zoom region (" +
+          [region.x, region.y, region.width, region.height]
+            .map((n) => Math.round(n))
+            .join(", ") +
+          ") is outside the " +
+          Math.round(capturedSize.width * k) +
+          "x" +
+          Math.round(capturedSize.height * k) +
+          " screenshot.",
+      );
+    }
+    shaped = await reshapePng(
+      captured,
+      crop,
+      presentation ? 1 : zoomFactor(crop),
+    );
+    zoom = {
+      x: Math.round(crop.x * k),
+      y: Math.round(crop.y * k),
+      width: Math.round(crop.width * k),
+      height: Math.round(crop.height * k),
+      pixels_per_screenshot_pixel:
+        Math.round((shaped.width / (crop.width * k)) * 100) / 100,
+    };
+  } else if (presentation) {
+    shaped = {
+      data: captured,
+      width: capturedSize.width,
+      height: capturedSize.height,
+    };
+  } else {
+    factor = fullPage
+      ? fullPageViewFactor(state.dpr, capturedSize.width, capturedSize.height)
+      : viewFactor(state);
+    shaped = await reshapePng(captured, null, factor);
+  }
+  const data = shaped.data;
   if (data.length > MAX_SHOT_BASE64) {
     throw new Error(
       fullPage
@@ -6820,26 +7207,30 @@ async function handleScreenshot(session, tabId, args) {
         : "The captured image is too large to return; reduce the window or the page's zoom.",
     );
   }
-  // Bind this image to the exact render so a later browser_click_at can convert with the
-  // same dpr and refuse if the tab, dpr, scroll, or document moved. Only bind when the
-  // fingerprint was read successfully; otherwise leave no binding so a coordinate click
-  // fails closed ("no current screenshot") rather than trusting placeholder values.
-  tab.lastShot = state.ok
-    ? {
-        tabId,
-        fullPage,
-        dpr: state.dpr,
-        scale: state.scale,
-        offsetX: state.offsetX,
-        offsetY: state.offsetY,
-        scrollX: state.scrollX,
-        scrollY: state.scrollY,
-        href: state.href,
-        width: state.width,
-        height: state.height,
-        epoch: tab.domEpoch,
-      }
-    : null;
+  // Bind a view of the viewport or the page to the exact render, so a later browser_click_at can
+  // convert with the same dpr and factor and refuse if the tab, dpr, scroll, or document moved.
+  // Only when the fingerprint was read successfully; otherwise no binding, so a coordinate click
+  // fails closed ("no current screenshot") rather than trusting placeholder values. A zoom and a
+  // presentation are other images: the coordinates stay those of the last view.
+  if (!presentation && !zoom) {
+    tab.lastShot = state.ok
+      ? {
+          tabId,
+          fullPage,
+          dpr: state.dpr,
+          scale: state.scale,
+          factor,
+          offsetX: state.offsetX,
+          offsetY: state.offsetY,
+          scrollX: state.scrollX,
+          scrollY: state.scrollY,
+          href: state.href,
+          width: state.width,
+          height: state.height,
+          epoch: tab.domEpoch,
+        }
+      : null;
+  }
   const info = await tabInfo(tabId);
   // Dimensions are read authoritatively from the PNG header on the bridge side, so they
   // reflect the real device pixels regardless of dpr/clip. What the header cannot show is that a
@@ -6853,7 +7244,11 @@ async function handleScreenshot(session, tabId, args) {
     // What the image HOLDS, not what was asked for: a hide that did not take leaves the frame,
     // badge, and cursor in the capture, and saying otherwise would describe an image nobody took.
     control_overlay_included: includeControlOverlay || !hidden,
+    purpose: request.purpose,
   };
+  if (zoom) {
+    payload.zoom = zoom;
+  }
   if (clipped.applied) {
     payload.clipped = true;
     payload.content_width = clipped.content_width;
@@ -6983,6 +7378,70 @@ async function awaitScrollStart(tabId, x, y, before) {
   return latest; // the grace expired with nothing moving: the wheel never landed
 }
 
+// Whether the element's whole box is visible as the page stands, so bringing it into view would
+// move nothing: inside the viewport, and inside every scrolling container around it. Only in the
+// top document (an element in a frame is in view only if the frame is, which this cannot see) and
+// on a page that is not pinch-zoomed (where the layout viewport the box is measured in and the
+// visual viewport the user sees differ). Anything else says no, and the element is scrolled and
+// settled as before.
+function whollyInViewFn() {
+  if (window !== window.top) {
+    return false;
+  }
+  const v = window.visualViewport;
+  if (v && (v.scale !== 1 || v.offsetLeft !== 0 || v.offsetTop !== 0)) {
+    return false;
+  }
+  const r = this.getBoundingClientRect();
+  const width = document.documentElement.clientWidth || window.innerWidth;
+  const height = document.documentElement.clientHeight || window.innerHeight;
+  const inside = (outer) =>
+    r.left >= outer.left &&
+    r.top >= outer.top &&
+    r.right <= outer.right &&
+    r.bottom <= outer.bottom;
+  if (
+    !(r.width > 0 && r.height > 0) ||
+    !inside({ left: 0, top: 0, right: width, bottom: height })
+  ) {
+    return false;
+  }
+  // Every container that clips: a scroller whose own box would hide part of the element is the
+  // case scrollIntoViewIfNeeded exists for. Across shadow roots to their hosts.
+  let node = this;
+  for (let guard = 0; guard < 256; guard += 1) {
+    const root = node.getRootNode ? node.getRootNode() : null;
+    node = node.parentElement || (root && root.host) || null;
+    if (!node || node === document.documentElement || node === document.body) {
+      return true;
+    }
+    const style = getComputedStyle(node);
+    if (style.overflowX !== "visible" || style.overflowY !== "visible") {
+      if (!inside(node.getBoundingClientRect())) {
+        return false;
+      }
+    }
+  }
+  return false;
+}
+
+async function whollyInView(tabId, backendNodeId) {
+  const resolved = await sendCdp(tabId, "DOM.resolveNode", {
+    backendNodeId,
+    objectGroup: CDP_OBJECT_GROUP,
+  }).catch(() => null);
+  const objectId = resolved && resolved.object && resolved.object.objectId;
+  if (!objectId) {
+    return false;
+  }
+  const answer = await sendCdp(tabId, "Runtime.callFunctionOn", {
+    objectId,
+    functionDeclaration: whollyInViewFn.toString(),
+    returnByValue: true,
+  }).catch(() => null);
+  return Boolean(answer && answer.result && answer.result.value === true);
+}
+
 // Scroll the element into view and return its content quad in visual-viewport CSS px.
 async function resolveActionQuad(tabId, backendNodeId) {
   if (typeof backendNodeId !== "number") {
@@ -6990,10 +7449,14 @@ async function resolveActionQuad(tabId, backendNodeId) {
       "This action needs a valid element ref from the latest snapshot.",
     );
   }
-  await sendCdp(tabId, "DOM.scrollIntoViewIfNeeded", { backendNodeId }).catch(
-    () => {},
-  );
-  await settleScroll(tabId);
+  // An element already wholly on screen is not scrolled, and so not waited on to settle: that
+  // settle's page-timed pause was 24 of the ~30 ms a click on a visible element spent in the page.
+  if (!(await whollyInView(tabId, backendNodeId))) {
+    await sendCdp(tabId, "DOM.scrollIntoViewIfNeeded", { backendNodeId }).catch(
+      () => {},
+    );
+    await settleScroll(tabId);
+  }
   let model;
   try {
     model = await sendCdp(tabId, "DOM.getBoxModel", { backendNodeId });
@@ -7860,11 +8323,13 @@ async function screenshotPoint(session, tabId, sx, sy, tool) {
     throw new Error(tool + " needs non-negative x and y in screenshot pixels.");
   }
   const shot = await currentShot(session, tabId, tool);
-  const perCssPixel = shot.dpr * shot.scale;
+  // The view's own scale: image pixels per device pixel (one per CSS pixel, within its cap).
+  const factor = shot.factor > 0 ? shot.factor : 1;
+  const perCssPixel = shot.dpr * shot.scale * factor;
   // Inside the image it was read from. A pixel past its edge is off the page on screen, and
   // dispatching there would report a click at coordinates nothing was ever drawn at.
-  const width = shot.width * shot.dpr;
-  const height = shot.height * shot.dpr;
+  const width = shot.width * shot.dpr * factor;
+  const height = shot.height * shot.dpr * factor;
   if (sx > width || sy > height) {
     throw new Error(
       tool +
@@ -8840,11 +9305,15 @@ async function handleBox(session, tabId, args) {
   if (vp.ok) {
     out.dpr = vp.dpr;
     // Where the center falls in a viewport browser_screenshot taken at this scroll position and
-    // pinch: the quad is in visual-viewport CSS px, and the image spans dpr x pinch-scale device
-    // pixels per CSS pixel from the visual viewport's origin.
+    // pinch: the quad is in visual-viewport CSS px, and the view spans dpr x pinch-scale device
+    // pixels per CSS pixel from the visual viewport's origin, shrunk by the view's own factor.
+    // To a tenth of a pixel: a view can be smaller than the page's CSS pixels (a wide viewport
+    // shrunk to its cap), where a whole screenshot pixel spans several of them.
+    const per = vp.dpr * vp.scale * viewFactor(vp);
+    const tenth = (n) => Math.round(n * 10) / 10;
     out.screenshot_center = {
-      x: Math.round(center.x * vp.dpr * vp.scale),
-      y: Math.round(center.y * vp.dpr * vp.scale),
+      x: tenth(center.x * per),
+      y: tenth(center.y * per),
     };
   } else {
     out.dpr_unknown = true;

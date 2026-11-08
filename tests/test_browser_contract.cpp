@@ -106,6 +106,7 @@ private slots:
   void renderSnapshot_emitsAriaStateAndValue();
   void buildCommand_selectTabCopiesIntArgument();
   void buildCommand_clickAtRequiresXAndY();
+  void buildCommand_screenshotCoordinatesTakeFractions();
   void buildCommand_rejectsWrongTypedArgInsteadOfCoercing();
   void buildCommand_dialogCopiesOptionalActionAndText();
   void buildCommand_inspectionToolsBuild();
@@ -144,6 +145,8 @@ private slots:
   void buildCommand_profileIsCheckedAndKeptOnThisSide();
   void catalog_agentOnExactlyNewTabAndSelectTab();
   void buildCommand_agentIsValidatedAndCopied();
+  void buildCommand_screenshotPurposeAndZoom();
+  void buildCommand_recordStartResolution();
 };
 
 void BrowserContractTests::
@@ -576,6 +579,68 @@ void BrowserContractTests::buildCommand_screenshotCopiesOverlayOption() {
   QFAIL("browser_screenshot missing from tool catalog");
 }
 
+// What a screenshot is for, and which part of the page it zooms into, reach
+// the extension as given; a purpose that is neither view nor presentation is
+// refused here rather than defaulted.
+void BrowserContractTests::buildCommand_screenshotPurposeAndZoom() {
+  const ExtensionCommand zoom = buildExtensionCommand(
+      QStringLiteral("browser_screenshot"),
+      QJsonObject{{QStringLiteral("purpose"), QStringLiteral("presentation")},
+                  {QStringLiteral("x"), 10},
+                  {QStringLiteral("y"), 20},
+                  {QStringLiteral("width"), 300},
+                  {QStringLiteral("height"), 200}},
+      {});
+  QVERIFY2(zoom.ok, qPrintable(zoom.error));
+  QCOMPARE(zoom.command.value(QStringLiteral("purpose")).toString(),
+           QStringLiteral("presentation"));
+  QCOMPARE(zoom.command.value(QStringLiteral("x")).toInt(), 10);
+  QCOMPARE(zoom.command.value(QStringLiteral("height")).toInt(), 200);
+
+  const ExtensionCommand bad = buildExtensionCommand(
+      QStringLiteral("browser_screenshot"),
+      QJsonObject{{QStringLiteral("purpose"), QStringLiteral("print")}}, {});
+  QVERIFY(!bad.ok);
+  QVERIFY2(bad.error.contains(QStringLiteral("purpose must be")),
+           qPrintable(bad.error));
+
+  const ExtensionCommand fractional =
+      buildExtensionCommand(QStringLiteral("browser_screenshot"),
+                            QJsonObject{{QStringLiteral("width"), 10.5}}, {});
+  QVERIFY(!fractional.ok);
+}
+
+// A recording's resolution is one of two words, checked here before anything
+// starts: an unknown one would otherwise reach the extension, which would
+// refuse it only after attaching to the tab.
+void BrowserContractTests::buildCommand_recordStartResolution() {
+  for (const QString &resolution :
+       {QStringLiteral("standard"), QStringLiteral("full")}) {
+    const ExtensionCommand ok = buildExtensionCommand(
+        QStringLiteral("browser_record_start"),
+        QJsonObject{{QStringLiteral("resolution"), resolution}}, {});
+    QVERIFY2(ok.ok, qPrintable(ok.error));
+    QCOMPARE(ok.command.value(QStringLiteral("resolution")).toString(),
+             resolution);
+  }
+  const ExtensionCommand unset = buildExtensionCommand(
+      QStringLiteral("browser_record_start"), QJsonObject{}, {});
+  QVERIFY2(unset.ok, qPrintable(unset.error));
+  QVERIFY(!unset.command.contains(QStringLiteral("resolution")));
+
+  const ExtensionCommand unknown = buildExtensionCommand(
+      QStringLiteral("browser_record_start"),
+      QJsonObject{{QStringLiteral("resolution"), QStringLiteral("4k")}}, {});
+  QVERIFY(!unknown.ok);
+  QVERIFY2(unknown.error.contains(QStringLiteral("resolution must be")),
+           qPrintable(unknown.error));
+
+  const ExtensionCommand typed = buildExtensionCommand(
+      QStringLiteral("browser_record_start"),
+      QJsonObject{{QStringLiteral("resolution"), 1080}}, {});
+  QVERIFY(!typed.ok);
+}
+
 void BrowserContractTests::buildCommand_navigateRequiresUrl() {
   const ExtensionCommand missing =
       buildExtensionCommand(QStringLiteral("browser_navigate"), {}, {});
@@ -870,8 +935,8 @@ void BrowserContractTests::buildCommand_dialogCopiesOptionalActionAndText() {
 }
 
 void BrowserContractTests::buildCommand_clickAtRequiresXAndY() {
-  // Coordinate click takes no ref; both x and y are required ints copied into
-  // the command.
+  // Coordinate click takes no ref; both x and y are required numbers copied
+  // into the command.
   const ExtensionCommand missing =
       buildExtensionCommand(QStringLiteral("browser_click_at"),
                             QJsonObject{{QStringLiteral("x"), 100}}, {});
@@ -886,6 +951,69 @@ void BrowserContractTests::buildCommand_clickAtRequiresXAndY() {
            QStringLiteral("clickAt"));
   QCOMPARE(ok.command.value(QStringLiteral("x")).toInt(), 120);
   QCOMPARE(ok.command.value(QStringLiteral("y")).toInt(), 340);
+}
+
+// A view screenshot can be smaller than the device's pixels, and a zoom shows
+// detail between them, so a screenshot coordinate may be a fraction -- passed
+// on exactly, not truncated. One that no image has is refused.
+void BrowserContractTests::buildCommand_screenshotCoordinatesTakeFractions() {
+  const ExtensionCommand frac = buildExtensionCommand(
+      QStringLiteral("browser_click_at"),
+      QJsonObject{{QStringLiteral("x"), 12.5}, {QStringLiteral("y"), 20.25}},
+      {});
+  QVERIFY2(frac.ok, qPrintable(frac.error));
+  QCOMPARE(frac.command.value(QStringLiteral("x")).toDouble(), 12.5);
+  QCOMPARE(frac.command.value(QStringLiteral("y")).toDouble(), 20.25);
+
+  const ExtensionCommand drag =
+      buildExtensionCommand(QStringLiteral("browser_drag"),
+                            QJsonObject{{QStringLiteral("from_x"), 1.5},
+                                        {QStringLiteral("from_y"), 2.5},
+                                        {QStringLiteral("to_x"), 30.75},
+                                        {QStringLiteral("to_y"), 40.25}},
+                            {});
+  QVERIFY2(drag.ok, qPrintable(drag.error));
+  QCOMPARE(drag.command.value(QStringLiteral("to_x")).toDouble(), 30.75);
+
+  for (const QJsonObject &bad :
+       {QJsonObject{{QStringLiteral("x"), -1}, {QStringLiteral("y"), 20}},
+        QJsonObject{{QStringLiteral("x"), 1e18}, {QStringLiteral("y"), 20}},
+        QJsonObject{{QStringLiteral("x"), 5}, {QStringLiteral("y"), 16385}}}) {
+    const ExtensionCommand refused =
+        buildExtensionCommand(QStringLiteral("browser_click_at"), bad, {});
+    QVERIFY(!refused.ok);
+    QVERIFY2(refused.error.contains(QStringLiteral("screenshot pixel")),
+             qPrintable(refused.error));
+  }
+  // The schema says number, so a client does not round before sending.
+  int checked = 0;
+  for (const QJsonValue &tool : browserToolCatalog()) {
+    const QJsonObject entry = tool.toObject();
+    const QString name = entry.value(QStringLiteral("name")).toString();
+    const QJsonObject props = entry.value(QStringLiteral("inputSchema"))
+                                  .toObject()
+                                  .value(QStringLiteral("properties"))
+                                  .toObject();
+    const auto typeOf = [&props](const char *key) {
+      return props.value(QLatin1String(key))
+          .toObject()
+          .value(QStringLiteral("type"))
+          .toString();
+    };
+    if (name == QLatin1String("browser_click_at") ||
+        name == QLatin1String("browser_hover")) {
+      QCOMPARE(typeOf("x"), QStringLiteral("number"));
+      QCOMPARE(typeOf("y"), QStringLiteral("number"));
+      ++checked;
+    }
+    if (name == QLatin1String("browser_drag")) {
+      for (const char *key : {"from_x", "from_y", "to_x", "to_y"}) {
+        QCOMPARE(typeOf(key), QStringLiteral("number"));
+      }
+      ++checked;
+    }
+  }
+  QCOMPARE(checked, 3);
 }
 
 void BrowserContractTests::
@@ -1488,19 +1616,24 @@ void BrowserContractTests::
 void BrowserContractTests::buildCommand_rejectsFractionalAndOutOfRangeInt() {
   // A fractional or out-of-range JSON number for an int arg must be REFUSED,
   // not passed to toInt() which truncates the fraction and collapses an
-  // out-of-range magnitude to a real coordinate (often 0) -- the (0,0)-click
-  // hazard.
-  const ExtensionCommand frac = buildExtensionCommand(
-      QStringLiteral("browser_click_at"),
-      QJsonObject{{QStringLiteral("x"), 12.5}, {QStringLiteral("y"), 20}}, {});
+  // out-of-range magnitude to a real value (often 0). A zoom region is in
+  // whole screenshot pixels.
+  const auto zoom = [](double x) {
+    return buildExtensionCommand(QStringLiteral("browser_screenshot"),
+                                 QJsonObject{{QStringLiteral("x"), x},
+                                             {QStringLiteral("y"), 20},
+                                             {QStringLiteral("width"), 50},
+                                             {QStringLiteral("height"), 50}},
+                                 {});
+  };
+  const ExtensionCommand frac = zoom(12.5);
   QVERIFY(!frac.ok);
   QVERIFY(frac.error.contains(QStringLiteral("x")));
 
-  const ExtensionCommand huge = buildExtensionCommand(
-      QStringLiteral("browser_click_at"),
-      QJsonObject{{QStringLiteral("x"), 1e18}, {QStringLiteral("y"), 20}}, {});
+  const ExtensionCommand huge = zoom(1e18);
   QVERIFY(!huge.ok);
   QVERIFY(huge.error.contains(QStringLiteral("x")));
+  QVERIFY(zoom(12).ok);
 }
 
 void BrowserContractTests::buildCommand_rejectsWrongTypedRef() {

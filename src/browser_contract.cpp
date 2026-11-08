@@ -355,17 +355,17 @@ QHash<QString, CmdSpec> interactionCommandSpecs() {
       {QStringLiteral("browser_hover"),
        {QStringLiteral("hover"),
         QStringLiteral("optional"),
-        {{QStringLiteral("x"), QStringLiteral("int"), false},
-         {QStringLiteral("y"), QStringLiteral("int"), false},
+        {{QStringLiteral("x"), QStringLiteral("number"), false},
+         {QStringLiteral("y"), QStringLiteral("number"), false},
          {QStringLiteral("duration_ms"), QStringLiteral("int"), false},
          {QStringLiteral("modifiers"), QStringLiteral("string"), false}}}},
       {QStringLiteral("browser_drag"),
        {QStringLiteral("drag"),
         QStringLiteral("optional"),
-        {{QStringLiteral("from_x"), QStringLiteral("int"), false},
-         {QStringLiteral("from_y"), QStringLiteral("int"), false},
-         {QStringLiteral("to_x"), QStringLiteral("int"), false},
-         {QStringLiteral("to_y"), QStringLiteral("int"), false},
+        {{QStringLiteral("from_x"), QStringLiteral("number"), false},
+         {QStringLiteral("from_y"), QStringLiteral("number"), false},
+         {QStringLiteral("to_x"), QStringLiteral("number"), false},
+         {QStringLiteral("to_y"), QStringLiteral("number"), false},
          {QStringLiteral("steps"), QStringLiteral("int"), false},
          {QStringLiteral("hold_ms"), QStringLiteral("int"), false}}}},
       {QStringLiteral("browser_type"),
@@ -385,8 +385,8 @@ QHash<QString, CmdSpec> interactionCommandSpecs() {
       {QStringLiteral("browser_click_at"),
        {QStringLiteral("clickAt"),
         QStringLiteral("none"),
-        {{QStringLiteral("x"), QStringLiteral("int"), true},
-         {QStringLiteral("y"), QStringLiteral("int"), true},
+        {{QStringLiteral("x"), QStringLiteral("number"), true},
+         {QStringLiteral("y"), QStringLiteral("number"), true},
          {QStringLiteral("button"), QStringLiteral("string"), false},
          {QStringLiteral("click_count"), QStringLiteral("int"), false},
          {QStringLiteral("modifiers"), QStringLiteral("string"), false}}}},
@@ -459,10 +459,15 @@ QHash<QString, CmdSpec> pageAndTabCommandSpecs() {
          {QStringLiteral("mode"), QStringLiteral("string"), false}}}},
       {QStringLiteral("browser_screenshot"),
        {QStringLiteral("screenshot"),
-        QStringLiteral("none"),
+        QStringLiteral("optional"),
         {{QStringLiteral("full_page"), QStringLiteral("bool"), false},
          {QStringLiteral("include_control_overlay"), QStringLiteral("bool"),
-          false}}}},
+          false},
+         {QStringLiteral("purpose"), QStringLiteral("string"), false},
+         {QStringLiteral("x"), QStringLiteral("int"), false},
+         {QStringLiteral("y"), QStringLiteral("int"), false},
+         {QStringLiteral("width"), QStringLiteral("int"), false},
+         {QStringLiteral("height"), QStringLiteral("int"), false}}}},
       {QStringLiteral("browser_tabs"),
        {QStringLiteral("listTabs"), QStringLiteral("none"), {}}},
       {QStringLiteral("browser_console"),
@@ -621,7 +626,8 @@ QHash<QString, CmdSpec> infraCommandSpecs() {
       {QStringLiteral("browser_record_start"),
        {QStringLiteral("recordStart"),
         QStringLiteral("none"),
-        {{QStringLiteral("filename"), QStringLiteral("string"), false}}}},
+        {{QStringLiteral("filename"), QStringLiteral("string"), false},
+         {QStringLiteral("resolution"), QStringLiteral("string"), false}}}},
       {QStringLiteral("browser_record_stop"),
        {QStringLiteral("recordStop"), QStringLiteral("none"), {}}},
       {QStringLiteral("browser_http_auth"),
@@ -862,6 +868,18 @@ QString directionSemanticError(const QJsonValue &value) {
 // matched case-insensitively and an empty button defers to the extension's
 // "left" default; direction is trimmed and lower-cased the same way. Empty on
 // success or for a key that carries no modeled constraint.
+// Pixels of a screenshot: never negative, and never past any image the browser
+// can make (16,384 a side). A fraction is fine -- a view screenshot can be
+// smaller than the device's pixels, and a zoom shows detail between them --
+// but a magnitude no image has is a malformed call, refused here.
+constexpr double kMaxScreenshotCoordinate = 16384;
+
+bool isScreenshotCoordinate(const QString &key) {
+  return key == QLatin1String("x") || key == QLatin1String("y") ||
+         key == QLatin1String("from_x") || key == QLatin1String("from_y") ||
+         key == QLatin1String("to_x") || key == QLatin1String("to_y");
+}
+
 QString argSemanticError(const QString &key, const QJsonValue &value) {
   // Chrome never issues tab id 0 or a negative one; refusing them here keeps a
   // placeholder or an off-by-one from reaching the extension as a real tab.
@@ -873,11 +891,33 @@ QString argSemanticError(const QString &key, const QJsonValue &value) {
   if (key == QLatin1String("button")) {
     return buttonSemanticError(value);
   }
+  if (isScreenshotCoordinate(key)) {
+    const double pixel = value.toDouble();
+    return pixel >= 0 && pixel <= kMaxScreenshotCoordinate
+               ? QString()
+               : QStringLiteral("%1 must be a screenshot pixel, from 0 to %2")
+                     .arg(key)
+                     .arg(kMaxScreenshotCoordinate);
+  }
   if (key == QLatin1String("click_count")) {
     return clickCountSemanticError(value);
   }
   if (key == QLatin1String("direction")) {
     return directionSemanticError(value);
+  }
+  if (key == QLatin1String("resolution")) {
+    const QString resolution = value.toString();
+    return resolution == QLatin1String("standard") ||
+                   resolution == QLatin1String("full")
+               ? QString()
+               : QStringLiteral("resolution must be \"standard\" or \"full\"");
+  }
+  if (key == QLatin1String("purpose")) {
+    const QString purpose = value.toString();
+    return purpose == QLatin1String("view") ||
+                   purpose == QLatin1String("presentation")
+               ? QString()
+               : QStringLiteral("purpose must be \"view\" or \"presentation\"");
   }
   return QString();
 }
@@ -1594,9 +1634,11 @@ void appendNavTools(QJsonArray &tools) {
   tools.append(toolEntry(
       QStringLiteral("browser_screenshot"),
       QStringLiteral(
-          "Capture a PNG screenshot of the active tab (viewport by default). "
-          "The "
-          "user-facing control overlay is hidden unless explicitly included."),
+          "PNG of the tab's viewport at one pixel per CSS pixel, long edge "
+          "at most 1568 (one to two thousand image tokens). Zoom for detail: "
+          "ref, or x/y/width/height in screenshot pixels. purpose "
+          "\"presentation\" saves full resolution to a file and returns its "
+          "path. Control overlay hidden unless included."),
       toolSchema(
           QJsonObject{
               {QStringLiteral("full_page"),
@@ -1607,7 +1649,24 @@ void appendNavTools(QJsonArray &tools) {
                typedProperty(
                    QStringLiteral("boolean"),
                    QStringLiteral("Include the visible control frame, badge, "
-                                  "and agent cursor for documentation."))}},
+                                  "and agent cursor for documentation."))},
+              {QStringLiteral("ref"),
+               stringProperty(QStringLiteral("Element to zoom to."))},
+              {QStringLiteral("purpose"),
+               choiceProperty(
+                   QStringLiteral("\"view\" (default) or "
+                                  "\"presentation\"."),
+                   {QStringLiteral("view"), QStringLiteral("presentation")})},
+              {QStringLiteral("x"), typedProperty(QStringLiteral("integer"),
+                                                  QStringLiteral("Zoom x."))},
+              {QStringLiteral("y"), typedProperty(QStringLiteral("integer"),
+                                                  QStringLiteral("Zoom y."))},
+              {QStringLiteral("width"),
+               typedProperty(QStringLiteral("integer"),
+                             QStringLiteral("Zoom width."))},
+              {QStringLiteral("height"),
+               typedProperty(QStringLiteral("integer"),
+                             QStringLiteral("Zoom height."))}},
           {})));
 }
 
@@ -1715,10 +1774,10 @@ void appendPointerTools(QJsonArray &tools) {
       toolSchema(
           QJsonObject{
               {QStringLiteral("x"),
-               typedProperty(QStringLiteral("integer"),
+               typedProperty(QStringLiteral("number"),
                              QStringLiteral("X in screenshot pixels."))},
               {QStringLiteral("y"),
-               typedProperty(QStringLiteral("integer"),
+               typedProperty(QStringLiteral("number"),
                              QStringLiteral("Y in screenshot pixels."))},
               {QStringLiteral("button"),
                stringProperty(
@@ -1746,11 +1805,11 @@ void appendPointerTools(QJsonArray &tools) {
                stringProperty(
                    QStringLiteral("Element ref to hover, e.g. \"e5\"."))},
               {QStringLiteral("x"),
-               typedProperty(QStringLiteral("integer"),
+               typedProperty(QStringLiteral("number"),
                              QStringLiteral(
                                  "Screenshot x, for an element with no ref."))},
               {QStringLiteral("y"),
-               typedProperty(QStringLiteral("integer"),
+               typedProperty(QStringLiteral("number"),
                              QStringLiteral(
                                  "Screenshot y, for an element with no ref."))},
               {QStringLiteral("duration_ms"),
@@ -1776,19 +1835,19 @@ void appendPointerTools(QJsonArray &tools) {
                stringProperty(QStringLiteral(
                    "Target element ref (optional if to_x/to_y)."))},
               {QStringLiteral("from_x"),
-               typedProperty(QStringLiteral("integer"),
+               typedProperty(QStringLiteral("number"),
                              QStringLiteral(
                                  "Source X in screenshot pixels (optional)."))},
               {QStringLiteral("from_y"),
-               typedProperty(QStringLiteral("integer"),
+               typedProperty(QStringLiteral("number"),
                              QStringLiteral(
                                  "Source Y in screenshot pixels (optional)."))},
               {QStringLiteral("to_x"),
-               typedProperty(QStringLiteral("integer"),
+               typedProperty(QStringLiteral("number"),
                              QStringLiteral(
                                  "Target X in screenshot pixels (optional)."))},
               {QStringLiteral("to_y"),
-               typedProperty(QStringLiteral("integer"),
+               typedProperty(QStringLiteral("number"),
                              QStringLiteral(
                                  "Target Y in screenshot pixels (optional)."))},
               {QStringLiteral("steps"),
@@ -2361,20 +2420,13 @@ void appendPermissionTool(QJsonArray &tools) {
   tools.append(toolEntry(
       QStringLiteral("browser_permission"),
       QStringLiteral(
-          "Set a site permission for an origin so automation can pre-answer "
-          "prompts: "
-          "name is one of geolocation, notifications, camera, microphone, "
-          "images, "
-          "javascript, popups, automatic_downloads; setting is allow, block, "
-          "or ask "
-          "(the default). setting=allow REQUIRES an explicit origin (e.g. "
-          "\"https://site.com\"): a grant is persistent and origin-scoped, so "
-          "the site "
-          "being handed the camera has to be named in the request rather than "
-          "left as "
-          "whatever tab happens to be in front. block and ask may omit it and "
-          "apply to "
-          "the active tab."),
+          "Set a site permission so automation can pre-answer prompts. name: "
+          "geolocation, notifications, camera, microphone, images, "
+          "javascript, popups or automatic_downloads; setting: allow, block "
+          "or ask (the default). allow needs an explicit origin (e.g. "
+          "\"https://site.com\"): a grant persists, so the site getting the "
+          "camera is named, not taken from whichever tab is in front. block "
+          "and ask default to the active tab."),
       toolSchema(
           QJsonObject{{QStringLiteral("name"),
                        stringProperty(QStringLiteral(
@@ -2495,8 +2547,8 @@ void appendRecordTools(QJsonArray &tools) {
       QStringLiteral(
           "Record the session's tab to a .webm video (no audio) until "
           "browser_record_stop, which returns the saved path; the video never "
-          "comes back in a reply. filename: optional, a relative name (no "
-          "\"..\"). One recording per session at a time. Chrome shows no "
+          "comes back in a reply. One recording per session at a time. "
+          "Chrome shows no "
           "separate recording indicator, only the debugging banner that is "
           "up for the whole session."),
       toolSchema(
@@ -2504,7 +2556,13 @@ void appendRecordTools(QJsonArray &tools) {
               {QStringLiteral("filename"),
                stringProperty(QStringLiteral(
                    "Relative name for the .webm, e.g. \"runs/login.webm\". "
-                   "Omit to have one derived from the time."))}},
+                   "Omit to have one derived from the time."))},
+              {QStringLiteral("resolution"),
+               choiceProperty(
+                   QStringLiteral("\"standard\" (up to 1280x800, "
+                                  "default) or \"full\" (device "
+                                  "pixels)."),
+                   {QStringLiteral("standard"), QStringLiteral("full")})}},
           {})));
   tools.append(toolEntry(
       QStringLiteral("browser_record_stop"),

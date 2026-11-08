@@ -12,16 +12,12 @@
 #include <QtEndian>
 
 #include <atomic>
+#include <chrono>
 #include <thread>
 
 namespace chrome_control_mcp {
 
 namespace {
-
-// How often the pump looks at the pipe while it is waiting for the extension's
-// reply. Short enough that a cancel stops a polling handler promptly, long
-// enough that an idle wait costs nothing measurable.
-constexpr DWORD kCancelPollMs = 25;
 
 // Loop a synchronous ReadFile until @p size bytes arrive or the pipe
 // closes/errors.
@@ -52,6 +48,41 @@ bool pipeWriteAll(HANDLE pipe, const char *buffer, DWORD size) {
   }
   return true;
 }
+
+// An event the reply's reader sets once the reply is in, so the loop waiting
+// on the bridge pipe wakes for it at once. Without it every exchange waited out
+// the rest of that loop's 25 ms Sleep: replies measured 26, 51, 76 and 101 ms,
+// whole ticks, however fast the extension was. An event that cannot be made
+// leaves the loop as it was, on its tick.
+class ReplyEvent {
+public:
+  ReplyEvent() : event_(CreateEventW(nullptr, TRUE, FALSE, nullptr)) {}
+  ReplyEvent(const ReplyEvent &) = delete;
+  ReplyEvent &operator=(const ReplyEvent &) = delete;
+  ReplyEvent(ReplyEvent &&) = delete;
+  ReplyEvent &operator=(ReplyEvent &&) = delete;
+  ~ReplyEvent() {
+    if (event_ != nullptr) {
+      CloseHandle(event_);
+    }
+  }
+  void set() const {
+    if (event_ != nullptr) {
+      SetEvent(event_);
+    }
+  }
+  // Up to @p ms, returning early when the reply is in.
+  void wait(DWORD ms) const {
+    if (event_ != nullptr) {
+      WaitForSingleObject(event_, ms);
+    } else {
+      Sleep(ms);
+    }
+  }
+
+private:
+  HANDLE event_;
+};
 
 } // namespace
 
@@ -155,14 +186,16 @@ HANDLE relayConnect(const QString &rendezvous_path, QString *token_out,
 }
 
 bool awaitBrowserReply(NativeIpcHandle pipe, const BrowserReadFn &browser_read,
-                       const BrowserWriteFn &browser_write,
-                       QJsonObject *reply) {
+                       const BrowserWriteFn &browser_write, QJsonObject *reply,
+                       std::chrono::milliseconds cancel_poll) {
   std::atomic<bool> finished{false};
   bool read_ok = false;
   RelayProgressQueue progress;
+  const ReplyEvent replied;
   std::thread reader([&] {
     read_ok = readBrowserReplyPastProgress(browser_read, &progress, reply);
     finished.store(true, std::memory_order_release);
+    replied.set();
   });
 
   bool pipe_ok = true;
@@ -182,7 +215,8 @@ bool awaitBrowserReply(NativeIpcHandle pipe, const BrowserReadFn &browser_read,
       break;
     }
     if (available < kNativeFrameHeaderBytes) {
-      Sleep(kCancelPollMs);
+      // Bounded by the tick so a cancel and queued progress are still seen.
+      replied.wait(static_cast<DWORD>(cancel_poll.count()));
       continue;
     }
     QJsonObject frame;

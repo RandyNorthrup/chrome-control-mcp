@@ -45,7 +45,20 @@ function load() {
     recorders: [],
     tracks: [],
     canvases: [],
+    // The size of the next decoded frame, and every paint made on a canvas.
+    frameSize: { width: 1280, height: 800 },
+    paints: [],
   };
+
+  const paintingContext = () => ({
+    fillStyle: "",
+    fillRect(...rect) {
+      seen.paints.push({ op: "fill", rect, style: this.fillStyle });
+    },
+    drawImage(_bitmap, ...rect) {
+      seen.paints.push({ op: "draw", rect });
+    },
+  });
 
   class OffscreenCanvas {
     constructor(width, height) {
@@ -93,7 +106,7 @@ function load() {
       const canvas = {
         width: 0,
         height: 0,
-        getContext: () => ({ drawImage() {} }),
+        getContext: paintingContext,
         captureStream: () => {
           const track = makeTrack();
           seen.tracks.push(track);
@@ -132,7 +145,7 @@ function load() {
         }
       }
     },
-    createImageBitmap: async () => ({ close() {} }),
+    createImageBitmap: async () => ({ ...seen.frameSize, close() {} }),
     fetch: async () => ({ blob: async () => ({}) }),
     console: { log() {}, warn() {}, error() {}, info() {}, debug() {} },
     setTimeout,
@@ -226,6 +239,36 @@ test("frames are counted per session", async () => {
     await send({ type: "record.frame", session: "a", data: "x" }),
     { ok: true, frames: 2 },
   );
+});
+
+test("a frame of the canvas's own shape fills it", async () => {
+  const { send, seen } = load();
+  await send({ type: "record.start", session: "a", width: 1280, height: 800 });
+  seen.frameSize = { width: 1280, height: 800 };
+  await send({ type: "record.frame", session: "a", data: "x" });
+  assert.deepEqual(JSON.parse(JSON.stringify(seen.paints)), [
+    { op: "draw", rect: [0, 0, 1280, 800] },
+  ]);
+});
+
+test("a frame of another shape keeps its own, on black, rather than being stretched", async () => {
+  const { send, seen } = load();
+  await send({ type: "record.start", session: "a", width: 1280, height: 800 });
+  // The page became tall and narrow mid-recording: 400x800 fits as 400x800, centred.
+  seen.frameSize = { width: 400, height: 800 };
+  await send({ type: "record.frame", session: "a", data: "x" });
+  assert.deepEqual(JSON.parse(JSON.stringify(seen.paints)), [
+    { op: "fill", rect: [0, 0, 1280, 800], style: "#000" },
+    { op: "draw", rect: [440, 0, 400, 800] },
+  ]);
+  // And a wide one is scaled down to the width, centred top to bottom.
+  seen.paints.length = 0;
+  seen.frameSize = { width: 2560, height: 800 };
+  await send({ type: "record.frame", session: "a", data: "x" });
+  assert.deepEqual(JSON.parse(JSON.stringify(seen.paints)), [
+    { op: "fill", rect: [0, 0, 1280, 800], style: "#000" },
+    { op: "draw", rect: [0, 200, 1280, 400] },
+  ]);
 });
 
 test("a recording that captured nothing is an error, not a zero-byte video", async () => {

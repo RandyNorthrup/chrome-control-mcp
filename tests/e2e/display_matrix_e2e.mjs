@@ -7,6 +7,12 @@
 // its click LANDED on the geometry fixture, and a screenshot by the pixels of its solid-colour
 // targets, measured against the page's own getBoundingClientRect.
 //
+// Every screenshot is taken twice, back to back: the view an agent is shown (one image pixel per
+// CSS pixel, long edge within 1568) and a presentation (the device's own pixels, saved to a file).
+// Geometry is proven on the presentation, whose pixels are the page's; a point for browser_click_at
+// is read off it and carried into the view by the view's factor, as an agent reading the view (or
+// a zoom of it) would.
+//
 // Usage: node tests/e2e/display_matrix_e2e.mjs --chrome=<Chrome for Testing binary>
 //          [--executable=<chrome_control_mcp>] [--parallel=3] [--only=<config name>]
 //          [--chrome-arg=<flag>]...
@@ -22,6 +28,7 @@
 
 import assert from "node:assert/strict";
 import { existsSync } from "node:fs";
+import { readFile, rm } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -184,6 +191,40 @@ const centreOf = (box) => ({
   y: Math.round((box.top + box.bottom) / 2),
 });
 
+// What a view screenshot shrinks the device-pixel capture by: to one image pixel per CSS pixel,
+// and further if its long edge would pass the cap, allowing for the CSS pixel a capture can run
+// past the page's whole-pixel viewport. Restated here from the page's own measurements rather than
+// taken from the tool, so the check does not trust the arithmetic under test.
+const VIEW_MAX_EDGE_PX = 1568;
+const FULL_PAGE_VIEW_MAX_EDGE_PX = 8000;
+const viewFactorOf = (metrics) =>
+  Math.min(
+    1,
+    1 / metrics.dpr,
+    VIEW_MAX_EDGE_PX /
+      Math.max(
+        (metrics.iw + 1) * metrics.dpr,
+        (metrics.ih + 1) * metrics.dpr,
+        1,
+      ),
+  );
+const fullPageViewFactorOf = (dpr, image) =>
+  Math.min(
+    1,
+    1 / dpr,
+    FULL_PAGE_VIEW_MAX_EDGE_PX / Math.max(image.width, image.height, 1),
+  );
+// A point on the presentation (device pixels) in the view's pixels.
+const toView = (point, factor) => ({
+  x: point.x * factor,
+  y: point.y * factor,
+});
+// A PNG's size from its header, without decoding it.
+const pngHeaderSize = (bytes) => ({
+  width: bytes.readUInt32BE(16),
+  height: bytes.readUInt32BE(20),
+});
+
 // Whether Chrome answers its own DevTools right now, and how fast: the browser process (version)
 // and the page's renderer (an evaluate in the geometry page). Bounded, so a stalled browser is
 // reported rather than waited on.
@@ -297,29 +338,46 @@ async function runConfig(config, { chrome, executable, fixture, extraArgs }) {
 
     const state = async () =>
       pageState((await client.tool("browser_read", { format: "text" })).text);
-    const screenshot = async (fullPage = false) => {
+    const capture = async (args) => {
       const startedAt = Date.now();
-      const outcome = await client.tool("browser_screenshot", {
-        full_page: fullPage,
-      });
+      const outcome = await client.tool("browser_screenshot", args);
       if (outcome.isError) {
         // A screenshot that failed after silence (Windows CI, a 3840x2160-pixel capture, three
         // times) leaves one question: did Chrome itself stop answering, or only the path through
         // the extension? Ask Chrome directly, over its own DevTools, and put the answer in the
         // failure.
         assert.fail(
-          `screenshot failed after ${Date.now() - startedAt} ms: ${outcome.text}; ` +
-            (await devtoolsAnswers(devtools)),
+          `screenshot ${JSON.stringify(args)} failed after ${Date.now() - startedAt} ms: ` +
+            `${outcome.text}; ${await devtoolsAnswers(devtools)}`,
         );
       }
-      const image = outcome.result.content.find(
+      return outcome;
+    };
+    // The view first, so it is the screenshot browser_click_at reads; the presentation does not
+    // replace it.
+    const screenshot = async (fullPage = false) => {
+      const viewed = await capture({ full_page: fullPage });
+      const image = viewed.result.content.find(
         (block) => block.type === "image",
       );
-      const png = decodePng(Buffer.from(image.data, "base64"));
+      const view = pngHeaderSize(Buffer.from(image.data, "base64"));
+      const presented = await capture({
+        full_page: fullPage,
+        purpose: "presentation",
+      });
+      const saved = JSON.parse(presented.text);
+      assert.ok(
+        !presented.result.content.some((block) => block.type === "image"),
+        "a presentation screenshot returns a path, not an image",
+      );
+      const png = decodePng(await readFile(saved.saved));
+      await rm(saved.saved, { force: true });
       return {
         png,
+        view,
+        saved,
         boxes: colourBoxes(png, GEOMETRY_TARGETS),
-        text: outcome.text,
+        text: viewed.text,
       };
     };
     const clickAt = async (point) => {
@@ -364,17 +422,33 @@ async function runConfig(config, { chrome, executable, fixture, extraArgs }) {
       `visible: ${visible.join(",")}`,
     );
     let shot = await screenshot();
+    const k = viewFactorOf(m);
     measured.screenshot = [shot.png.width, shot.png.height];
+    measured.view = [shot.view.width, shot.view.height];
+    measured.view_factor = k;
     // innerWidth/innerHeight, not the visual viewport's size: both they and the image include the
     // gutter a scrollbar that takes layout space reserves (measured: an 800px window photographs
     // 800px wide while its visual viewport is 785). The page reports them in whole CSS pixels and
     // a fractional viewport is cut down to one, so the image can stand a whole CSS pixel past
     // them -- five device pixels at 5x (measured: 1514 against a reported 302 at dpr 5).
     check(
-      "the screenshot is the viewport in device pixels",
+      "the presentation screenshot is the viewport in device pixels",
       Math.abs(shot.png.width - m.iw * dpr) <= dpr + 1 &&
-        Math.abs(shot.png.height - m.ih * dpr) <= dpr + 1,
-      `${shot.png.width}x${shot.png.height} for a ${m.iw}x${m.ih} CSS viewport at ${dpr}`,
+        Math.abs(shot.png.height - m.ih * dpr) <= dpr + 1 &&
+        shot.saved.width === shot.png.width &&
+        shot.saved.height === shot.png.height,
+      `${shot.png.width}x${shot.png.height} for a ${m.iw}x${m.ih} CSS viewport at ${dpr}; ` +
+        `reply ${JSON.stringify(shot.saved)}`,
+    );
+    // The view is the same render shrunk by the view's factor: one image pixel per CSS pixel, and
+    // smaller still where that would pass the cap. Never enlarged.
+    check(
+      "the view screenshot is one pixel per CSS pixel, within its cap",
+      Math.abs(shot.view.width - shot.png.width * k) <= 1 &&
+        Math.abs(shot.view.height - shot.png.height * k) <= 1 &&
+        Math.max(shot.view.width, shot.view.height) <= VIEW_MAX_EDGE_PX,
+      `view ${shot.view.width}x${shot.view.height}, presentation ` +
+        `${shot.png.width}x${shot.png.height}, factor ${k}`,
     );
     // Where a CSS rect must be in an image of the page taken with the given transform.
     const expectBox = (id, image, transform, label) => {
@@ -414,7 +488,7 @@ async function runConfig(config, { chrome, executable, fixture, extraArgs }) {
       if (!box) {
         continue;
       }
-      const landed = await clickAt(centreOf(box));
+      const landed = await clickAt(toView(centreOf(box), k));
       check(
         `click_at on target ${id}'s pixels hits it`,
         hitId(landed.out) === id,
@@ -434,7 +508,7 @@ async function runConfig(config, { chrome, executable, fixture, extraArgs }) {
       const box = await client.json("browser_box", { ref: refs.get(id) });
       const rect = page.rects.get(id);
       const drawn = shot.boxes.get(id);
-      const centre = drawn && centreOf(drawn);
+      const centre = drawn && toView(centreOf(drawn), k);
       check(
         `box reports target ${id}'s CSS rect`,
         Math.abs(box.x - rect.left) <= 1 &&
@@ -443,12 +517,15 @@ async function runConfig(config, { chrome, executable, fixture, extraArgs }) {
           Math.abs(box.height - rect.height) <= 1,
         `box ${JSON.stringify(box)}, page ${JSON.stringify(rect)}`,
       );
+      // The drawn box's own slack (1.5 device pixels), in view pixels, and the tenth of a pixel
+      // screenshot_center is given to.
+      const tolerance = 1.5 * k + 0.1;
       check(
         `box's screenshot_center for target ${id} is on its pixels`,
         centre &&
           box.screenshot_center &&
-          Math.abs(box.screenshot_center.x - centre.x) <= 1.5 &&
-          Math.abs(box.screenshot_center.y - centre.y) <= 1.5,
+          Math.abs(box.screenshot_center.x - centre.x) <= tolerance &&
+          Math.abs(box.screenshot_center.y - centre.y) <= tolerance,
         `screenshot_center ${JSON.stringify(box.screenshot_center)}, pixels centred at ${JSON.stringify(centre)}`,
       );
       check(
@@ -456,6 +533,34 @@ async function runConfig(config, { chrome, executable, fixture, extraArgs }) {
         box.in_viewport === true,
       );
     }
+
+    // -- a zoom by ref is that element, at up to the device's own pixels -------------------------
+    const zoomed = await client.tool("browser_screenshot", {
+      ref: refs.get("mid"),
+    });
+    const zoomImage =
+      !zoomed.isError &&
+      zoomed.result.content.find((block) => block.type === "image");
+    const zoomPng =
+      zoomImage && decodePng(Buffer.from(zoomImage.data, "base64"));
+    const midRect = page.rects.get("mid");
+    const zoomBox =
+      zoomPng && colourBoxes(zoomPng, GEOMETRY_TARGETS).get("mid");
+    measured.zoom = zoomPng && [zoomPng.width, zoomPng.height];
+    check(
+      "a zoom by ref is the element, in device pixels, and says what part of the view it shows",
+      zoomPng &&
+        Math.abs(zoomPng.width - midRect.width * dpr) <= 2 &&
+        Math.abs(zoomPng.height - midRect.height * dpr) <= 2 &&
+        zoomBox &&
+        zoomBox.right - zoomBox.left + 1 >= zoomPng.width - 2 &&
+        zoomBox.bottom - zoomBox.top + 1 >= zoomPng.height - 2 &&
+        /zooms into/.test(zoomed.text),
+      zoomed.isError
+        ? zoomed.text
+        : `${zoomPng?.width}x${zoomPng?.height} for a ${midRect.width}x${midRect.height} ` +
+            `element at ${dpr}; drawn ${JSON.stringify(zoomBox)}; ${zoomed.text}`,
+    );
 
     // -- hover and drag -------------------------------------------------------------------------
     await client.json("browser_hover", { ref: refs.get("mid") });
@@ -472,8 +577,8 @@ async function runConfig(config, { chrome, executable, fixture, extraArgs }) {
       page.out,
     );
     shot = await screenshot();
-    const from = centreOf(shot.boxes.get("tr"));
-    const to = centreOf(shot.boxes.get("bl"));
+    const from = toView(centreOf(shot.boxes.get("tr")), k);
+    const to = toView(centreOf(shot.boxes.get("bl")), k);
     const dragged = await client.tool("browser_drag", {
       from_x: from.x,
       from_y: from.y,
@@ -512,7 +617,7 @@ async function runConfig(config, { chrome, executable, fixture, extraArgs }) {
     expectBox("below", shot, viewportTransform, "scrolled screenshot");
     const below = shot.boxes.get("below");
     if (below) {
-      const landed = await clickAt(centreOf(below));
+      const landed = await clickAt(toView(centreOf(below), k));
       check(
         "click_at on the scrolled screenshot hits the target",
         hitId(landed.out) === "below",
@@ -535,8 +640,24 @@ async function runConfig(config, { chrome, executable, fixture, extraArgs }) {
       scrollable: [page.metrics.dw, page.metrics.dh],
       viewport: [page.metrics.cw, page.metrics.ch],
     };
-    const clipped = /clipped/i.test(full.text);
+    const clipped = /capture limit/.test(full.text);
     measured.full_page_clipped = clipped;
+    measured.full_page_view = [full.view.width, full.view.height];
+    check(
+      "a clipped full-page capture says so in the view and the presentation alike",
+      clipped === Boolean(full.saved.clipped),
+      `view: ${full.text}; presentation: ${JSON.stringify(full.saved)}`,
+    );
+    const fullFactor = fullPageViewFactorOf(dpr, full.png);
+    check(
+      "the full-page view is one pixel per CSS pixel, within its cap",
+      Math.abs(full.view.width - full.png.width * fullFactor) <= 1 &&
+        Math.abs(full.view.height - full.png.height * fullFactor) <= 1 &&
+        Math.max(full.view.width, full.view.height) <=
+          FULL_PAGE_VIEW_MAX_EDGE_PX,
+      `view ${full.view.width}x${full.view.height}, presentation ` +
+        `${full.png.width}x${full.png.height}, factor ${fullFactor}`,
+    );
     // Chrome rasters at most 16384 device pixels an edge. A capture may only excuse itself from
     // the size check when the document really is past that; otherwise "clipped" would be a way
     // for a broken capture to skip being measured.
@@ -663,7 +784,7 @@ async function runConfig(config, { chrome, executable, fixture, extraArgs }) {
       }),
     );
     const stale = midBefore
-      ? await clickAt(centreOf(midBefore))
+      ? await clickAt(toView(centreOf(midBefore), k))
       : { error: "no target" };
     check(
       "click_at refuses a screenshot taken before the pinch",
@@ -675,8 +796,11 @@ async function runConfig(config, { chrome, executable, fixture, extraArgs }) {
     check(
       "the pinched screenshot is still the screen's size",
       pinched.png.width === before.png.width &&
-        pinched.png.height === before.png.height,
-      `${pinched.png.width}x${pinched.png.height} after, ${before.png.width}x${before.png.height} before`,
+        pinched.png.height === before.png.height &&
+        pinched.view.width === before.view.width &&
+        pinched.view.height === before.view.height,
+      `${pinched.png.width}x${pinched.png.height} (view ${pinched.view.width}x${pinched.view.height}) ` +
+        `after, ${before.png.width}x${before.png.height} (view ${before.view.width}x${before.view.height}) before`,
     );
     const pinchTransform = {
       x: pm.vvl,
@@ -704,19 +828,20 @@ async function runConfig(config, { chrome, executable, fixture, extraArgs }) {
       if (!box) {
         continue;
       }
-      const landed = await clickAt(centreOf(box));
+      const landed = await clickAt(toView(centreOf(box), k));
       check(
         `click_at on target ${id}'s pixels hits it under the pinch`,
         hitId(landed.out) === id,
         landed.error || landed.out,
       );
       const reported = await client.json("browser_box", { ref: refs.get(id) });
-      const centre = centreOf(box);
+      const centre = toView(centreOf(box), k);
+      const tolerance = 2.5 * k + 0.1;
       check(
         `box's screenshot_center for target ${id} is on its pixels under the pinch`,
         reported.screenshot_center &&
-          Math.abs(reported.screenshot_center.x - centre.x) <= 2.5 &&
-          Math.abs(reported.screenshot_center.y - centre.y) <= 2.5,
+          Math.abs(reported.screenshot_center.x - centre.x) <= tolerance &&
+          Math.abs(reported.screenshot_center.y - centre.y) <= tolerance,
         `screenshot_center ${JSON.stringify(reported.screenshot_center)}, pixels centred at ${JSON.stringify(centre)}`,
       );
       check(

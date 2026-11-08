@@ -767,3 +767,152 @@ test("a server that refused is not asked again straight away", async () => {
     "the refusing server is left alone for a while",
   );
 });
+
+// -- A tab Chrome is not drawing, kept compositing while it is acted on -------------------------
+//
+// A background tab composites about once a second, and input acknowledgements, scroll animations
+// and hover styles all wait for that tick: a hover measured 1,056 ms, a scroll by ref up to
+// 3,092 ms. Input-driven commands run with a one-pixel screencast that keeps the tab compositing
+// (51 ms and 76-101 ms), stopped when they finish, and never touching a recording's own cast.
+
+const FRAME_EXPORTS = [
+  "withFrames",
+  "dispatchCommand",
+  "COMMAND_TABLE",
+  "captureScreenshotWithFrames",
+];
+const castCalls = (b) =>
+  b.calls.cdp
+    .filter(
+      (c) =>
+        c.method === "Page.startScreencast" ||
+        c.method === "Page.stopScreencast",
+    )
+    .map((c) => c.method.replace("Page.", ""));
+
+test("an input-driven command runs with the tab compositing, and the cast ends with it", async () => {
+  const b = await attachedBrowser("100", {
+    exported: [...EXPORTED, ...FRAME_EXPORTS],
+  });
+  const tab = b.addTab({});
+  b.worker.holdTab(b.session, b.copy(tab), "opened");
+  const seen = [];
+  b.worker.COMMAND_TABLE.set("probeFrames", {
+    fn: async () => {
+      seen.push(castCalls(b).join(","));
+      return { ok: true };
+    },
+    tab: true,
+    args: true,
+    frames: true,
+  });
+  await b.worker.dispatchCommand(b.session, "probeFrames", { tab_id: tab.id });
+  assert.deepEqual(
+    seen,
+    ["startScreencast"],
+    "the cast was running while the command acted",
+  );
+  assert.deepEqual(castCalls(b), ["startScreencast", "stopScreencast"]);
+  const start = b.calls.cdp.find((c) => c.method === "Page.startScreencast");
+  assert.equal(start.tabId, tab.id);
+  assert.equal(
+    start.params.maxWidth,
+    1,
+    "the smallest frame: it is not watched, only drawn",
+  );
+  b.worker.COMMAND_TABLE.delete("probeFrames");
+});
+
+test("the commands that send input or wait on the page moving are the ones kept compositing", async () => {
+  const b = await attachedBrowser("100", {
+    exported: [...EXPORTED, ...FRAME_EXPORTS],
+  });
+  const flagged = [...b.worker.COMMAND_TABLE]
+    .filter(([, entry]) => entry.frames)
+    .map(([name]) => name)
+    .sort();
+  assert.deepEqual(flagged, [
+    "click",
+    "clickAt",
+    "clipboard",
+    "drag",
+    "hover",
+    "pressKey",
+    "scroll",
+    "select",
+    "type",
+    "upload",
+  ]);
+});
+
+test("overlapping work on one tab shares one cast, stopped after the last of it", async () => {
+  const b = await attachedBrowser("100", {
+    exported: [...EXPORTED, ...FRAME_EXPORTS],
+  });
+  const tab = b.addTab({});
+  b.worker.holdTab(b.session, b.copy(tab), "opened");
+  let releaseFirst;
+  const first = b.worker.withFrames(
+    tab.id,
+    () => new Promise((r) => (releaseFirst = r)),
+  );
+  await settle();
+  const second = b.worker.withFrames(tab.id, async () => "second");
+  assert.equal(await second, "second");
+  assert.deepEqual(
+    castCalls(b),
+    ["startScreencast"],
+    "still needed by the first",
+  );
+  releaseFirst("first");
+  assert.equal(await first, "first");
+  assert.deepEqual(castCalls(b), ["startScreencast", "stopScreencast"]);
+});
+
+test("a tab a recording is filming keeps the recording's cast: none started, none stopped", async () => {
+  // A screenshot of a background tab used to start a one-pixel cast and stop it, which replaced
+  // the recording's frame size and then ended its video.
+  const b = await attachedBrowser("100", {
+    exported: [...EXPORTED, ...FRAME_EXPORTS],
+  });
+  const tab = b.addTab({ active: false });
+  b.worker.holdTab(b.session, b.copy(tab), "opened");
+  b.session.recording = {
+    id: "r1",
+    tabId: tab.id,
+    timeline: [],
+    startedAt: Date.now(),
+  };
+  assert.equal(await b.worker.withFrames(tab.id, async () => "ran"), "ran");
+  await b.worker.captureScreenshotWithFrames(tab.id, { format: "png" });
+  assert.deepEqual(
+    castCalls(b),
+    [],
+    "the recording's screencast is left exactly as it was",
+  );
+  assert.ok(
+    b.calls.cdp.some((c) => c.method === "Page.captureScreenshot"),
+    "the screenshot was still taken",
+  );
+  b.session.recording = null;
+});
+
+test("a browser that refuses the cast still runs the command, at the slower pace", async () => {
+  const b = await attachedBrowser("100", {
+    exported: [...EXPORTED, ...FRAME_EXPORTS],
+    cdp: (_tabId, method) => {
+      if (method === "Page.startScreencast") {
+        throw new Error("Page.startScreencast is not supported");
+      }
+      return undefined;
+    },
+  });
+  const tab = b.addTab({});
+  b.worker.holdTab(b.session, b.copy(tab), "opened");
+  assert.equal(await b.worker.withFrames(tab.id, async () => "ran"), "ran");
+  assert.deepEqual(
+    castCalls(b),
+    ["startScreencast"],
+    "and stops nothing it never started",
+  );
+});

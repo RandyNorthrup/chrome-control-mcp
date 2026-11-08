@@ -1,0 +1,207 @@
+PASS browser_extension_status :: extension status prepared
+PASS browser_extension_install :: extension install idempotent
+PASS browser_tabs :: capture baseline tabs
+PASS browser_windows :: capture baseline windows
+PASS browser_new_tab :: open fixture tab
+PASS browser_snapshot :: snapshot fixture home
+PASS browser_read :: read page text
+PASS browser_read :: read page HTML
+PASS browser_get_attribute :: read element attribute
+PASS browser_box :: measure input box
+PASS browser_focus :: focus input
+PASS browser_type :: type initial value
+PASS browser_get_value :: read typed value
+PASS browser_press_key :: select input text with keyboard
+PASS browser_type :: replace selected value
+PASS browser_get_value :: verify replacement value
+PASS browser_select :: select single option
+PASS browser_select :: select multiple options
+PASS browser_set_value :: check checkbox
+PASS browser_set_value :: set range value
+PASS browser_upload :: upload a file to the file input
+PASS browser_wait_for :: the page read the uploaded file's own bytes
+PASS browser_upload :: upload through the control that opens a hidden input
+PASS browser_wait_for :: the page read the file delivered through its label
+PASS browser_snapshot :: snapshot names hidden inputs
+PASS browser_upload :: upload to a hidden input named directly
+PASS browser_wait_for :: the page read the file put straight into its hidden input
+PASS browser_click :: click normal button
+PASS browser_wait_for :: wait for click result
+PASS browser_reveal :: reveal hover target
+PASS browser_hover :: hover target
+PASS browser_wait_for :: wait for hover result
+PASS browser_reveal :: reveal drag targets
+PASS browser_drag :: drag source to target
+PASS browser_wait_for :: wait for drag result
+PASS browser_reveal :: reveal media control
+PASS browser_media :: set media volume
+PASS browser_reveal :: reveal diagnostics
+PASS browser_click :: click diagnostics
+PASS browser_console :: read the page's console
+PASS browser_console :: read only console errors
+PASS browser_network :: read the page's requests
+PASS browser_network :: read only failed requests
+PASS browser_record_start :: start recording
+PASS browser_reveal :: move while recording
+PASS browser_record_stop :: stop recording
+PASS browser_box :: box of the nested scroll region
+PASS browser_scroll :: scroll nested region
+PASS browser_box :: box inside the nested scroller, before
+PASS browser_scroll :: scroll nested region again
+PASS browser_box :: box inside the nested scroller, after
+PASS browser_reveal :: reveal the page-scroll anchor
+PASS browser_box :: box before page scroll
+PASS browser_scroll :: scroll the page
+PASS browser_box :: box after page scroll
+PASS browser_scroll :: scroll back to the top
+PASS browser_click :: click the div the page wired to a click
+PASS browser_read :: read after wired click
+PASS browser_hover :: hover the div the page wired to a hover
+PASS browser_read :: read after wired hover
+PASS browser_click :: click the card that only looks clickable
+PASS browser_read :: read after card click
+PASS browser_reveal :: reveal deep target
+PASS browser_snapshot :: refresh refs before dialog and JavaScript click
+PASS browser_reveal :: reveal prompt button
+PASS browser_box :: verify prompt button geometry
+PASS browser_dialog :: arm prompt acceptance
+PASS browser_click :: open and accept prompt
+PASS browser_dialog :: read last dialog
+PASS browser_wait_for :: wait for prompt result
+PASS browser_reveal :: reveal JavaScript-click target
+PASS browser_js_click :: JavaScript click fallback
+PASS browser_wait_for :: wait for JavaScript click result
+PASS browser_reveal :: reveal coordinate-click target
+PASS browser_screenshot :: capture viewport screenshot
+PASS browser_box :: measure coordinate target
+PASS browser_click_at :: coordinate click from screenshot geometry
+PASS browser_wait_for :: wait for coordinate click result
+PASS browser_emulate :: emulate 1x 1280x800
+PASS browser_snapshot :: refresh refs at 1x 1280x800
+PASS browser_js_click :: reset at 1x 1280x800
+PASS browser_wait_for :: reset observed at 1x 1280x800
+PASS browser_reveal :: reveal at 1x 1280x800
+PASS browser_screenshot :: screenshot at 1x 1280x800
+PASS browser_screenshot :: presentation screenshot at 1x 1280x800
+PASS browser_box :: measure at 1x 1280x800
+PASS browser_click_at :: coordinate click at 1x 1280x800
+PASS browser_wait_for :: coordinate click landed at 1x 1280x800
+PASS browser_emulate :: emulate 1.25x 1024x768
+PASS browser_snapshot :: refresh refs at 1.25x 1024x768
+PASS browser_js_click :: reset at 1.25x 1024x768
+PASS browser_wait_for :: reset observed at 1.25x 1024x768
+PASS browser_reveal :: reveal at 1.25x 1024x768
+PASS browser_screenshot :: screenshot at 1.25x 1024x768
+PASS browser_screenshot :: presentation screenshot at 1.25x 1024x768
+PASS browser_box :: measure at 1.25x 1024x768
+PASS browser_click_at :: coordinate click at 1.25x 1024x768
+PASS browser_wait_for :: coordinate click landed at 1.25x 1024x768
+PASS browser_emulate :: emulate 1.5x 800x600
+PASS browser_snapshot :: refresh refs at 1.5x 800x600
+PASS browser_js_click :: reset at 1.5x 800x600
+PASS browser_wait_for :: reset observed at 1.5x 800x600
+PASS browser_reveal :: reveal at 1.5x 800x600
+PASS browser_screenshot :: screenshot at 1.5x 800x600
+PASS browser_screenshot :: presentation screenshot at 1.5x 800x600
+PASS browser_box :: measure at 1.5x 800x600
+PASS browser_click_at :: coordinate click at 1.5x 800x600
+PASS browser_wait_for :: coordinate click landed at 1.5x 800x600
+PASS browser_emulate :: emulate 2x 390x844
+PASS browser_snapshot :: refresh refs at 2x 390x844
+PASS browser_js_click :: reset at 2x 390x844
+PASS browser_wait_for :: reset observed at 2x 390x844
+PASS browser_reveal :: reveal at 2x 390x844
+PASS browser_screenshot :: screenshot at 2x 390x844
+PASS browser_screenshot :: presentation screenshot at 2x 390x844
+PASS browser_box :: measure at 2x 390x844
+PASS browser_click_at :: coordinate click at 2x 390x844
+PASS browser_wait_for :: coordinate click landed at 2x 390x844
+PASS browser_emulate :: emulate 3x 360x640
+PASS browser_snapshot :: refresh refs at 3x 360x640
+PASS browser_js_click :: reset at 3x 360x640
+PASS browser_wait_for :: reset observed at 3x 360x640
+PASS browser_reveal :: reveal at 3x 360x640
+PASS browser_screenshot :: screenshot at 3x 360x640
+PASS browser_screenshot :: presentation screenshot at 3x 360x640
+PASS browser_box :: measure at 3x 360x640
+PASS browser_click_at :: coordinate click at 3x 360x640
+PASS browser_wait_for :: coordinate click landed at 3x 360x640
+PASS browser_emulate :: reset scale matrix
+PASS browser_wait_for :: wait for shadow selector
+PASS browser_wait_for :: wait for network idle
+PASS browser_emulate :: apply mobile emulation
+PASS browser_emulate :: reset emulation
+PASS browser_storage :: set local storage
+PASS browser_storage :: get local storage
+PASS browser_storage :: list local storage keys
+PASS browser_storage :: remove local storage key
+PASS browser_storage :: set session storage
+PASS browser_storage :: clear session storage
+PASS browser_cookies :: set fixture cookie
+PASS browser_cookies :: read fixture cookies
+PASS browser_cookies :: remove fixture cookie
+PASS browser_permission :: block fixture geolocation
+PASS browser_permission :: restore fixture geolocation
+PASS browser_download :: download fixture file
+PASS browser_print :: print fixture PDF
+PASS browser_navigate :: navigate to page two
+PASS browser_wait_for :: wait for page-two URL
+PASS browser_snapshot :: snapshot page two
+PASS browser_back :: history back
+PASS browser_forward :: history forward
+PASS browser_reload :: reload page two
+PASS browser_navigate :: return to fixture home
+PASS browser_http_auth :: arm HTTP authentication
+PASS browser_navigate :: navigate through HTTP authentication
+PASS browser_snapshot :: snapshot authenticated page
+PASS browser_http_auth :: clear HTTP authentication
+PASS browser_new_tab :: open first group tab
+PASS browser_new_tab :: open second group tab
+PASS browser_tabs :: list tabs before grouping
+PASS browser_group_tabs :: group fixture tabs
+PASS browser_tabs :: refresh tabs after grouping
+PASS browser_ungroup_tabs :: ungroup fixture tabs
+PASS browser_tabs :: list tabs before selection
+PASS browser_select_tab :: select primary fixture tab
+PASS browser_windows :: OS focus after selecting a tab
+PASS browser_tabs :: list tabs before closing group=one
+PASS browser_close_tab :: close group=one tab
+PASS browser_tabs :: list tabs before closing group=two
+PASS browser_close_tab :: close group=two tab
+PASS browser_windows :: list windows before create
+PASS browser_window :: create fixture window
+PASS browser_windows :: list windows after create
+PASS browser_windows :: OS focus after opening a window
+PASS browser_window :: retarget session to original window
+PASS browser_tabs :: list tabs after window retarget
+PASS browser_windows :: OS focus after window retarget
+PASS browser_window :: close fixture window
+PASS browser_new_tab :: open the find page
+PASS browser_wait_for :: the find page loaded
+PASS browser_find :: find by visible text
+PASS browser_click :: click a find result with no snapshot between
+PASS browser_wait_for :: the click on a find result reached its button
+PASS browser_find :: find a name with brackets and a count
+PASS browser_find :: find by a phrase whose role word filters
+PASS browser_find :: find by pattern, below the fold
+PASS browser_find :: find with no match names the closest
+PASS browser_find :: find with nothing to look for is refused
+PASS browser_find :: find with a broken pattern is refused
+PASS browser_snapshot :: snapshot one region by ref
+PASS browser_snapshot :: snapshot the interactive elements
+PASS browser_snapshot :: snapshot what is on screen
+PASS browser_snapshot :: snapshot within a character cap
+PASS browser_read :: read the first page of a long page
+PASS browser_read :: read the next page
+PASS browser_read :: read one element by selector
+PASS browser_read :: read the main content
+PASS browser_read :: read one element by ref
+PASS browser_read :: a read past the end is refused
+PASS browser_read :: a selector that matches nothing is refused
+PASS browser_navigate :: load the find page again
+PASS browser_click :: a find ref from before a navigation is refused
+PASS browser_close_tab :: close the find page
+PASS browser_extension_uninstall :: unregister extension bridge
+PASS browser_extension_install :: restore extension bridge
+PASS browser_extension_status :: verify restored extension state
+PASS browser_tabs :: list tabs after the run

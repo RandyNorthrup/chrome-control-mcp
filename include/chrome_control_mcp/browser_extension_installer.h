@@ -19,7 +19,7 @@ inline constexpr char kStoreExtensionId[] = "mbkacllnbffbadcajpkkpelifdkfgcbd";
 // Every extension this server answers to: the unpacked build and the store's.
 inline constexpr std::array<const char *, 2> kAcceptedExtensionIds{
     kBrowserExtensionId, kStoreExtensionId};
-inline constexpr char kBrowserExtensionVersion[] = "1.13.0";
+inline constexpr char kBrowserExtensionVersion[] = "1.14.0";
 inline constexpr char kBrowserExtensionDirectoryName[] = "extension";
 inline constexpr char kNativeHostName[] = "com.chromecontrolmcp.browser";
 

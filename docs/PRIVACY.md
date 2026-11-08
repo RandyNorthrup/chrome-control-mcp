@@ -46,7 +46,8 @@ choose, which tabs each agent holds, and its own update and pause state.
    sending it to an AI model -- is governed by that client's and that model provider's terms, which
    you chose when you connected them.
 3. **To files on your computer.** Recordings, PDFs and downloads are saved where the agent's call
-   or Chrome's download settings say. Screenshots go back to the agent in the reply.
+   or Chrome's download settings say. A screenshot goes back to the agent in the reply, except
+   one taken for presentation, which is saved as a file instead.
 
 The server checks GitHub for a newer release when asked (`browser_update_check`) and downloads it
 when asked (`browser_update_apply`); that request carries no page content and nothing about you.

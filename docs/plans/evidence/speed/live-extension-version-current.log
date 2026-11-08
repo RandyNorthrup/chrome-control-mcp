@@ -1,0 +1,11 @@
+build: unpacked (iojehhmnaigcejfcpmilpclmeljhlkaa)
+case: current (extension 1.14.0, installed 1.14.0, server 1.14.0)
+PASS the relay reports the installed version, this build's
+PASS the extension runs under the unpacked build's ID, and the native host let it in
+PASS an extension of the server's own version is not mentioned
+PASS the first reply is the reply alone, with no notice
+PASS and the bridge works
+PASS browser_find finds the button
+PASS and clicking it reaches the page
+PASS the extension does not reload itself for its own version
+PASS releasing works

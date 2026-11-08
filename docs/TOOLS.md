@@ -106,6 +106,33 @@ come from -- prefer `tab_id`.
 - `browser_read`
 - `browser_screenshot`
 
+### Screenshots: a view for the agent, a presentation for people
+
+A model is billed for an image by its pixels, and Claude shrinks any image whose long edge passes
+1,568 px to that size before it reads it. So by default `browser_screenshot` returns a **view**: one
+image pixel per CSS pixel, long edge at most 1,568 -- the detail a model can use. A 1440×900
+viewport on a 2x Retina panel comes back as 1440×900 (about 1,700 image tokens), not as 2880×1800,
+four times the bytes to send for detail that is shrunk away before the model sees it. A full-page
+view keeps one pixel per CSS pixel, both edges within 8,000 px.
+
+- **Zoom for detail.** `ref` crops the screenshot to that element; `x`, `y`, `width` and `height`
+  crop it to a region given in view pixels. A zoom is shown at up to the device's own pixels
+  (long edge still at most 1,568), and its reply says which part of the view it shows and at what
+  magnification. A zoom never moves the page: an element off screen is refused, not scrolled to.
+- **`purpose: "presentation"`** is for people: the device's own pixels, lossless, saved as a PNG
+  beside `browser_print`'s PDFs. The reply is the file's path, size and dimensions -- the image never
+  enters the model's context. The read-only security profile refuses it, since it writes a file.
+- `browser_click_at`, `browser_hover` and `browser_drag` read coordinates off the last view, and
+  `browser_box`'s `screenshot_center` is in view pixels too. A zoom or a presentation does not
+  replace the view those coordinates belong to. See
+  [Coordinates, display scale, zoom, and pinch](#coordinates-display-scale-zoom-and-pinch).
+- A full-page capture of a document past Chrome's 16,384-pixel raster limit holds only its top-left
+  slice. The reply says so, with the document's size and the slice's, in the view's text and in a
+  presentation's reply alike.
+
+Files go to `ChromeControlMCP` in the user's Downloads folder, or to the folder named by the
+`CHROME_CONTROL_MCP_OUTPUT_DIR` environment variable when it is set.
+
 `browser_screenshot` hides the control frame, badge, and agent cursor by default so they do not
 obscure model-facing captures. Set `include_control_overlay: true` for user-facing documentation
 that should show the exact control presence visible in Chrome.
@@ -371,6 +398,11 @@ one narrow escape hatch, for an element that will not take a real click.
 a `.webm`; `browser_record_stop` ends it and returns where it was saved. Video only -- no audio is
 captured.
 
+The video keeps the viewport's own shape. `resolution: "standard"` (the default) fits it within
+1280×800; `"full"` records the device's own pixels, at a higher JPEG quality per frame. The reply
+gives the frame size chosen. If the page changes shape mid-recording, later frames are fitted into
+the first frame's size on black rather than stretched.
+
 The video never comes back through a tool reply. The bridge is one command, one reply, with hard
 caps on the reply (16 MiB for a screenshot, 8 MiB for text), so a recording of any length could not
 fit. Stop returns a path, the way `browser_download` does.
@@ -401,17 +433,20 @@ permission does and does not grant.
 
 ## Coordinates, display scale, zoom, and pinch
 
-A screenshot is the visual viewport -- the part of the page on screen -- in device pixels. One CSS
-pixel spans `devicePixelRatio × pinch scale` image pixels, where `devicePixelRatio` is the display's
-scale (a Windows 125% setting, a Retina panel, a Linux fractional scale) times the browser's zoom,
-and the image's origin is the visual viewport's.
+A screenshot is the visual viewport -- the part of the page on screen -- and its origin is the
+visual viewport's. Chrome captures it in device pixels: one CSS pixel spans
+`devicePixelRatio × pinch scale` of them, where `devicePixelRatio` is the display's scale (a Windows
+125% setting, a Retina panel, a Linux fractional scale) times the browser's zoom. A presentation is
+that capture untouched; a view shrinks it to one image pixel per CSS pixel (so a pinch still
+magnifies it), and further if its long edge would pass 1,568.
 
-- `browser_click_at` and `browser_drag`'s `from_x`/`from_y`/`to_x`/`to_y` are pixels of the most
-  recent viewport screenshot of that tab. They are bound to that image: if the page scrolls, zooms,
-  pinches, resizes, reloads, or navigates in between, the call is refused rather than converted
-  against a render the pixel no longer names.
-- `browser_box` reports the element's CSS geometry and `screenshot_center`, the same point in
-  screenshot pixels -- ready for `browser_click_at` at any scale, zoom, or pinch.
+- `browser_click_at`, `browser_hover`'s `x`/`y` and `browser_drag`'s `from_x`/`from_y`/`to_x`/`to_y`
+  are pixels of the most recent view screenshot of that tab, and may be fractions: a wide viewport's
+  view is smaller than its CSS pixels, and a zoom shows detail between view pixels. They are bound
+  to that image: if the page scrolls, zooms, pinches, resizes, reloads, or navigates in between, the
+  call is refused rather than converted against a render the pixel no longer names.
+- `browser_box` reports the element's CSS geometry and `screenshot_center`, the same point in view
+  pixels to a tenth -- ready for `browser_click_at` at any scale, zoom, or pinch.
 - `browser_click` by `[ref]` aims at the centre of the element's box, and when something covers the
   centre it tries points around it, as a user clicks the part of a button they can see. A macOS
   overlay scrollbar, which shows over the page's edge while the page scrolls, is given up to a
@@ -535,6 +570,7 @@ shipped elsewhere. Windows 10 1803 and later include one.
 `browser_focus`, `browser_hover` and `browser_reveal` are absent because they change what the page
 shows -- focus, hover state, scroll position. `browser_release` is absent because it closes tabs.
 `browser_update_apply` is absent by design: it replaces the program on disk, which is a mutation
-whatever the browser profile says.
+whatever the browser profile says. `browser_screenshot` is listed, but `purpose: "presentation"` is
+refused: it writes a file. A view or a zoom works as usual.
 
 The server also refuses non-read-only calls if a client invokes hidden tool names directly.

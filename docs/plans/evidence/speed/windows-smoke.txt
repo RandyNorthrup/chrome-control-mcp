@@ -1,0 +1,8 @@
+{
+  "server": "chrome-control-mcp",
+  "protocol": "2024-11-05",
+  "security_profile": "full",
+  "tool_count": 54,
+  "extension_state": "partial",
+  "extension_present": true
+}

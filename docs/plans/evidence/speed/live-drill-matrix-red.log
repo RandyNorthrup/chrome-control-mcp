@@ -1,0 +1,13 @@
+FAIL 2x-1440x900-zoom100-overlay pinch 2: 89/101
+    FAIL click_at on target tr's pixels hits it: miss@704,8
+    FAIL click_at on target bl's pixels hits it: miss@8,370
+    FAIL click_at on target br's pixels hits it: hit:mid@704,370
+    FAIL click_at on target mid's pixels hits it: miss@356,189
+    FAIL click_at on target tiny's pixels hits it: miss@215,115
+    FAIL click_at on target zoomed's pixels hits it: miss@123,243
+    FAIL click_at on target turned's pixels hits it: miss@504,233
+    FAIL a drag between two points read off the screenshot drops on the target: miss@8,370
+    FAIL click_at on the scrolled screenshot hits the target: miss@243,189
+    FAIL click_at on target mid's pixels hits it under the pinch: miss@534,284
+    FAIL click_at on target tiny's pixels hits it under the pinch: miss@394,210
+    FAIL click_at on target turned's pixels hits it under the pinch: miss@682,327

@@ -3,7 +3,7 @@
 ## Release target
 
 Ship standalone, MIT-licensed Chrome Control MCP from `main` with the same browser tool surface on
-Windows, Linux, and macOS. Current release: 1.13.0 (2026-11-07).
+Windows, Linux, and macOS. Current release: 1.14.0 (2026-11-07).
 
 ## Completed
 
@@ -61,14 +61,17 @@ Windows, Linux, and macOS. Current release: 1.13.0 (2026-11-07).
       ([VERIFICATION.md](docs/VERIFICATION.md#open-a-chrome-stall-in-one-display-configuration))
 - [ ] The rest of the token and speed research
       ([docs/research](docs/research/browser-mcp-speed-and-token-efficiency.md)): action replies that
-      say what changed, screenshots at CSS scale with a zoom (which would also capture fewer than
-      3840x2160 device pixels), `browser_fill_form`, opt-in unchanged snapshots, the latency items
-      (the scroll settle, the Linux click delay, the relay's 25 ms poll, per-command DevTools work),
-      and a default snapshot cap once the meter shows it loses nothing
+      say what changed, `browser_fill_form`, opt-in unchanged snapshots, per-command DevTools work
+      if a measurement shows it matters now that actions take tens of milliseconds, and a default
+      snapshot cap once the meter shows it loses nothing. Screenshots at CSS scale with a zoom and
+      the scroll, frame and relay waits shipped in 1.14.0
 - [x] Restore the Semgrep gate: the job keeps its pinned Python 3.12, since `semgrep-core` crashes
       under the 3.15 the Qt install step switched it to (1.8.1)
 - [x] Run `test_browser_extension_tabs.mjs` and `test_release_versions.mjs` in ctest, and so in CI
       (1.8.1)
+- [x] Actions in a background tab without waiting for its frame, replies without the relay's poll,
+      screenshots at one pixel per CSS pixel with zoom and a saved presentation, and recordings in
+      the page's shape (1.14.0; [docs/plans/speed-and-screenshots.md](docs/plans/speed-and-screenshots.md))
 - [x] Publish the extension to the Chrome Web Store: the server answers to the store build's ID
       and the unpacked one, each release uploads and submits the store package, and a privacy
       policy (1.13.0; [docs/plans/chrome-web-store.md](docs/plans/chrome-web-store.md))

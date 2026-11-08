@@ -1,0 +1,20 @@
+-- The CXX compiler identification is GNU 15.2.0
+-- Detecting CXX compiler ABI info
+-- Detecting CXX compiler ABI info - done
+-- Check for working CXX compiler: /usr/bin/c++ - skipped
+-- Detecting CXX compile features
+-- Detecting CXX compile features - done
+-- Performing Test CMAKE_HAVE_LIBC_PTHREAD
+-- Performing Test CMAKE_HAVE_LIBC_PTHREAD - Success
+-- Found Threads: TRUE
+-- Performing Test HAVE_STDATOMIC
+-- Performing Test HAVE_STDATOMIC - Success
+-- Found WrapAtomic: TRUE
+CMake Warning at CMakeLists.txt:177 (message):
+  No Qt TLS backend plugin target was found; browser_update_check and
+  browser_update_apply will not be able to reach the release host.
+
+
+-- Configuring done (0.5s)
+-- Generating done (0.0s)
+-- Build files have been written to: /home/randy/ccm-evidence/ccmcp/build

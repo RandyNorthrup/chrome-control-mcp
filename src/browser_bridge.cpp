@@ -52,16 +52,31 @@ constexpr int kMaxReplyTextChars = 8 * 1024 * 1024;
 // Falls back to the temp dir if Downloads is unavailable. The name is
 // timestamped and the bytes are written by US (the extension only returns the
 // payload), so a page can steer neither the path nor the filename.
+// CHROME_CONTROL_MCP_OUTPUT_DIR names the folder instead, whole: for an
+// operator who wants the files elsewhere, and for tests that must not write
+// into a real Downloads folder.
 QString printOutputPath() {
-  QString dir =
-      QStandardPaths::writableLocation(QStandardPaths::DownloadLocation);
+  QString dir = qEnvironmentVariable("CHROME_CONTROL_MCP_OUTPUT_DIR");
   if (dir.isEmpty()) {
-    dir = QStandardPaths::writableLocation(QStandardPaths::TempLocation);
+    dir = QStandardPaths::writableLocation(QStandardPaths::DownloadLocation);
+    if (dir.isEmpty()) {
+      dir = QStandardPaths::writableLocation(QStandardPaths::TempLocation);
+    }
+    dir = QDir(dir).filePath(QStringLiteral("ChromeControlMCP"));
   }
-  dir = QDir(dir).filePath(QStringLiteral("ChromeControlMCP"));
   const QString stamp = QDateTime::currentDateTime().toString(
       QStringLiteral("yyyyMMdd-hhmmss-zzz"));
   return QDir(dir).filePath(QStringLiteral("page-%1.pdf").arg(stamp));
+}
+
+// Where a presentation screenshot lands: beside browser_print's PDFs.
+QString screenshotOutputPath() {
+  const QString pdf = printOutputPath();
+  const QFileInfo info(pdf);
+  return info.dir().filePath(
+      info.completeBaseName().replace(QStringLiteral("page-"),
+                                      QStringLiteral("screenshot-")) +
+      QStringLiteral(".png"));
 }
 
 // Only image types WE emit are honored; anything else is coerced to PNG so a
@@ -130,6 +145,23 @@ QString screenshotSummary(const QString &base64) {
         .arg(height);
   }
   return QStringLiteral("Captured a PNG screenshot of the active tab.");
+}
+
+// A full-page capture of a document past Chrome's raster limit holds only its
+// top (and left) slice, and the image alone looks whole. The extension reports
+// the document's size and the slice's; this says so, in CSS px, so a model does
+// not reason about "the whole page" from part of it. Empty when not clipped.
+QString clippedNote(const QJsonObject &payload) {
+  if (!payload.value(QStringLiteral("clipped")).toBool()) {
+    return {};
+  }
+  return QStringLiteral(" The page is %1x%2 CSS px, past the browser's "
+                        "capture limit: this image holds only its top-left "
+                        "%3x%4.")
+      .arg(payload.value(QStringLiteral("content_width")).toInt())
+      .arg(payload.value(QStringLiteral("content_height")).toInt())
+      .arg(payload.value(QStringLiteral("captured_width")).toInt())
+      .arg(payload.value(QStringLiteral("captured_height")).toInt());
 }
 
 // The tab_id line is what tells a model sharing this server with other agents
@@ -463,9 +495,12 @@ BrowserBridgeSession::beginCommand(const QString &tool,
   // under; state mutations on the reply are keyed to these, never to the
   // untrusted reply frame's own claim about what it was.
   outstanding_cmd_ = command.command.value(QStringLiteral("cmd")).toString();
+  // The tools whose reply is shaped by what was asked: a find, snapshot or
+  // read by their options, a screenshot by its purpose.
   const bool shaped = tool == QLatin1String("browser_find") ||
                       tool == QLatin1String("browser_snapshot") ||
-                      tool == QLatin1String("browser_read");
+                      tool == QLatin1String("browser_read") ||
+                      tool == QLatin1String("browser_screenshot");
   outstanding_tool_ = shaped ? tool : QString();
   outstanding_args_ = shaped ? arguments : QJsonObject{};
   outstanding_tab_id_ = 0;
@@ -528,7 +563,7 @@ qint64 BrowserBridgeSession::fillResult(const QString &sent_cmd,
     return 0;
   }
   if (sent_cmd == QLatin1String("screenshot")) {
-    fillScreenshotResult(payload, incoming);
+    fillScreenshotResult(payload, sent_args, incoming);
     return 0;
   }
   if (sent_cmd == QLatin1String("print")) {
@@ -804,6 +839,7 @@ void BrowserBridgeSession::dropGoneTabs(const QJsonObject &frame) {
 }
 
 void BrowserBridgeSession::fillScreenshotResult(const QJsonObject &payload,
+                                                const QJsonObject &sent_args,
                                                 Incoming &incoming) {
   const QString data = payload.value(QStringLiteral("data")).toString();
   if (data.isEmpty()) {
@@ -832,10 +868,78 @@ void BrowserBridgeSession::fillScreenshotResult(const QJsonObject &payload,
         QStringLiteral("The browser returned a malformed screenshot payload.");
     return;
   }
+  // Decided by what this server asked for, not by what came back.
+  if (sent_args.value(QStringLiteral("purpose")).toString() ==
+      QLatin1String("presentation")) {
+    saveScreenshot(*decoded, payload, incoming);
+    return;
+  }
   incoming.image_base64 = data;
   incoming.image_mime =
       sanitizedImageMime(payload.value(QStringLiteral("mimeType")).toString());
   incoming.text = screenshotSummary(data);
+  // A zoom is a different image from the view whose pixels browser_click_at
+  // reads: say which part of that view it shows, and at what magnification.
+  const QJsonObject zoom = payload.value(QStringLiteral("zoom")).toObject();
+  if (!zoom.isEmpty()) {
+    incoming.text +=
+        QStringLiteral(" It zooms into %1,%2 %3x%4 of the viewport screenshot "
+                       "at %5 image pixels per screenshot pixel; "
+                       "browser_click_at still takes that screenshot's "
+                       "coordinates.")
+            .arg(zoom.value(QStringLiteral("x")).toInt())
+            .arg(zoom.value(QStringLiteral("y")).toInt())
+            .arg(zoom.value(QStringLiteral("width")).toInt())
+            .arg(zoom.value(QStringLiteral("height")).toInt())
+            .arg(zoom.value(QStringLiteral("pixels_per_screenshot_pixel"))
+                     .toDouble());
+  }
+  incoming.text += clippedNote(payload);
+}
+
+// Write a presentation screenshot beside the PDFs browser_print saves, under a
+// name of our choosing: the extension returns bytes, and only this side writes
+// them, so a page steers neither the path nor the name. Only a real PNG is
+// written, and the reply is its path and size -- the image never enters the
+// model's context.
+void BrowserBridgeSession::saveScreenshot(const QByteArray &png,
+                                          const QJsonObject &payload,
+                                          Incoming &incoming) {
+  int width = 0;
+  int height = 0;
+  if (!pngDimensions(png, width, height)) {
+    incoming.is_error = true;
+    incoming.error =
+        QStringLiteral("The browser returned a screenshot that is not a PNG.");
+    return;
+  }
+  const QString path = screenshotOutputPath();
+  const QFileInfo info(path);
+  if (!QDir().mkpath(info.absolutePath())) {
+    incoming.is_error = true;
+    incoming.error = QStringLiteral("Cannot create the output folder %1.")
+                         .arg(info.absolutePath());
+    return;
+  }
+  QFile file(path);
+  if (!file.open(QIODevice::WriteOnly | QIODevice::Truncate) ||
+      file.write(png) != png.size() || !file.flush()) {
+    incoming.is_error = true;
+    incoming.error =
+        QStringLiteral("Cannot write the screenshot to %1.").arg(path);
+    return;
+  }
+  file.close();
+  QJsonObject reply{{QStringLiteral("ok"), true},
+                    {QStringLiteral("saved"), QDir::toNativeSeparators(path)},
+                    {QStringLiteral("bytes"), static_cast<int>(png.size())},
+                    {QStringLiteral("width"), width},
+                    {QStringLiteral("height"), height}};
+  const QString clipped = clippedNote(payload);
+  if (!clipped.isEmpty()) {
+    reply.insert(QStringLiteral("clipped"), clipped.trimmed());
+  }
+  incoming.text = compactJson(reply);
 }
 
 // Decode the printed PDF, verify it is a real PDF, and write it to the output

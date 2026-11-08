@@ -239,13 +239,16 @@ ID. There is no private key, package signing, browser-store dependency, or enter
   session. A popup the agent's page brings to the front is put back behind the tab the user had in
   front. CDP focus emulation keeps focus-gated pages working in the background. A compositor that
   focuses new windows anyway (Hyprland) is observed and reported as `took_os_focus`.
-- `browser_screenshot` returns a native MCP image block. Control presence is hidden by default and
+- `browser_screenshot` returns a native MCP image block: a view at one image pixel per CSS pixel,
+  long edge at most 1,568, resized in the extension's own canvas; a zoom (ref or region) at up to
+  device pixels. `purpose: "presentation"` returns the device-pixel PNG to the server, which writes
+  it to the output folder and replies with the path only. Control presence is hidden by default and
   can be included for user-facing documentation.
-- `browser_click_at` and `browser_drag`'s x/y are pixels of the latest screenshot, bound to its tab,
-  URL, DPR, pinch scale and offset, scroll, and viewport fingerprint; stale geometry fails closed.
-  One screenshot pixel is one CSS px × DPR × pinch scale, measured from the visual viewport's
-  origin; `browser_box` reports CSS geometry plus `screenshot_center` so coordinate clicks land at
-  any display scale, browser zoom, and pinch.
+- `browser_click_at`, `browser_hover` and `browser_drag`'s x/y are pixels of the latest view, bound
+  to its tab, URL, DPR, pinch scale and offset, scroll, view factor, and viewport fingerprint; stale
+  geometry fails closed. One view pixel is one CSS px × DPR × pinch scale × the view's factor,
+  measured from the visual viewport's origin; `browser_box` reports CSS geometry plus
+  `screenshot_center` so coordinate clicks land at any display scale, browser zoom, and pinch.
 - Local and session storage run inside an isolated world bound to the verified active-frame origin,
   using pristine Storage methods.
 - A file picker the page opens during one of the agent's input or navigation commands is caught

@@ -1,0 +1,492 @@
+{
+  "ok": false,
+  "chrome": "/home/randy/ccm-tools/cft/chrome/linux-153.0.8010.52/chrome-linux64/chrome",
+  "coverage": {
+    "zooms": [
+      25, 33, 50, 67, 75, 80, 90, 100, 110, 125, 150, 175, 200, 250, 300, 400,
+      500
+    ],
+    "missing_zooms": [],
+    "scales": [1, 1.25, 1.5, 1.75, 2, 2.5, 3],
+    "pinches": [1.5, 2, 3],
+    "scrollbars": ["classic", "overlay"],
+    "scrollbars_at_100": ["classic", "overlay"],
+    "scrollbars_when_zoomed": ["classic", "overlay"]
+  },
+  "configurations": 1,
+  "configurations_passed": 0,
+  "checks": 101,
+  "checks_passed": 89,
+  "results": [
+    {
+      "config": {
+        "name": "2x-1440x900-zoom100-overlay",
+        "scaleFactor": 2,
+        "windowSize": [1440, 900],
+        "zoomPercent": 100,
+        "pinch": 2,
+        "scrollbar": "overlay"
+      },
+      "ok": false,
+      "measured": {
+        "dpr": 2,
+        "css_viewport": [1425, 757],
+        "layout_width": 1440,
+        "visible_targets": [
+          "tl",
+          "tr",
+          "bl",
+          "br",
+          "mid",
+          "tiny",
+          "zoomed",
+          "turned"
+        ],
+        "screenshot": [2880, 1514],
+        "view": [1440, 757],
+        "view_factor": 0.5,
+        "zoom": [48, 48],
+        "scrolled_to": 844.5,
+        "full_page": [2850, 4542],
+        "document": {
+          "content": [1425, 2271],
+          "scrollable": [1425, 2271],
+          "viewport": [1425, 757]
+        },
+        "full_page_clipped": false,
+        "full_page_view": [1425, 2271],
+        "scroll_down": {
+          "reply": {
+            "x": 0,
+            "y": 200
+          },
+          "page_moved": 200
+        },
+        "pinch": {
+          "scale": 2,
+          "offset": [356.5, 189.5],
+          "visible_targets": ["mid", "tiny", "turned"]
+        },
+        "pinched_screenshot": [2880, 1514]
+      },
+      "checks": [
+        {
+          "check": "the display scale and browser zoom are what the page sees",
+          "ok": true
+        },
+        {
+          "check": "every target but the one below the fold is on screen",
+          "ok": true
+        },
+        {
+          "check": "the presentation screenshot is the viewport in device pixels",
+          "ok": true
+        },
+        {
+          "check": "the view screenshot is one pixel per CSS pixel, within its cap",
+          "ok": true
+        },
+        {
+          "check": "viewport screenshot: target tl is drawn where the page laid it out",
+          "ok": true
+        },
+        {
+          "check": "viewport screenshot: target tr is drawn where the page laid it out",
+          "ok": true
+        },
+        {
+          "check": "viewport screenshot: target bl is drawn where the page laid it out",
+          "ok": true
+        },
+        {
+          "check": "viewport screenshot: target br is drawn where the page laid it out",
+          "ok": true
+        },
+        {
+          "check": "viewport screenshot: target mid is drawn where the page laid it out",
+          "ok": true
+        },
+        {
+          "check": "viewport screenshot: target tiny is drawn where the page laid it out",
+          "ok": true
+        },
+        {
+          "check": "viewport screenshot: target zoomed is drawn where the page laid it out",
+          "ok": true
+        },
+        {
+          "check": "viewport screenshot: target turned is drawn where the page laid it out",
+          "ok": true
+        },
+        {
+          "check": "click_at on target tl's pixels hits it",
+          "ok": true
+        },
+        {
+          "check": "click_at on target tr's pixels hits it",
+          "ok": false,
+          "detail": "miss@704,8"
+        },
+        {
+          "check": "click_at on target bl's pixels hits it",
+          "ok": false,
+          "detail": "miss@8,370"
+        },
+        {
+          "check": "click_at on target br's pixels hits it",
+          "ok": false,
+          "detail": "hit:mid@704,370"
+        },
+        {
+          "check": "click_at on target mid's pixels hits it",
+          "ok": false,
+          "detail": "miss@356,189"
+        },
+        {
+          "check": "click_at on target tiny's pixels hits it",
+          "ok": false,
+          "detail": "miss@215,115"
+        },
+        {
+          "check": "click_at on target zoomed's pixels hits it",
+          "ok": false,
+          "detail": "miss@123,243"
+        },
+        {
+          "check": "click_at on target turned's pixels hits it",
+          "ok": false,
+          "detail": "miss@504,233"
+        },
+        {
+          "check": "box reports target tl's CSS rect",
+          "ok": true
+        },
+        {
+          "check": "box's screenshot_center for target tl is on its pixels",
+          "ok": true
+        },
+        {
+          "check": "box says target tl is in the viewport",
+          "ok": true
+        },
+        {
+          "check": "box reports target tr's CSS rect",
+          "ok": true
+        },
+        {
+          "check": "box's screenshot_center for target tr is on its pixels",
+          "ok": true
+        },
+        {
+          "check": "box says target tr is in the viewport",
+          "ok": true
+        },
+        {
+          "check": "box reports target bl's CSS rect",
+          "ok": true
+        },
+        {
+          "check": "box's screenshot_center for target bl is on its pixels",
+          "ok": true
+        },
+        {
+          "check": "box says target bl is in the viewport",
+          "ok": true
+        },
+        {
+          "check": "box reports target br's CSS rect",
+          "ok": true
+        },
+        {
+          "check": "box's screenshot_center for target br is on its pixels",
+          "ok": true
+        },
+        {
+          "check": "box says target br is in the viewport",
+          "ok": true
+        },
+        {
+          "check": "box reports target mid's CSS rect",
+          "ok": true
+        },
+        {
+          "check": "box's screenshot_center for target mid is on its pixels",
+          "ok": true
+        },
+        {
+          "check": "box says target mid is in the viewport",
+          "ok": true
+        },
+        {
+          "check": "box reports target tiny's CSS rect",
+          "ok": true
+        },
+        {
+          "check": "box's screenshot_center for target tiny is on its pixels",
+          "ok": true
+        },
+        {
+          "check": "box says target tiny is in the viewport",
+          "ok": true
+        },
+        {
+          "check": "box reports target zoomed's CSS rect",
+          "ok": true
+        },
+        {
+          "check": "box's screenshot_center for target zoomed is on its pixels",
+          "ok": true
+        },
+        {
+          "check": "box says target zoomed is in the viewport",
+          "ok": true
+        },
+        {
+          "check": "box reports target turned's CSS rect",
+          "ok": true
+        },
+        {
+          "check": "box's screenshot_center for target turned is on its pixels",
+          "ok": true
+        },
+        {
+          "check": "box says target turned is in the viewport",
+          "ok": true
+        },
+        {
+          "check": "a zoom by ref is the element, in device pixels, and says what part of the view it shows",
+          "ok": true
+        },
+        {
+          "check": "hover reaches the target",
+          "ok": true
+        },
+        {
+          "check": "a drag by refs drops on the target",
+          "ok": true
+        },
+        {
+          "check": "a drag between two points read off the screenshot drops on the target",
+          "ok": false,
+          "detail": "miss@8,370"
+        },
+        {
+          "check": "click by ref hits target tl",
+          "ok": true
+        },
+        {
+          "check": "click by ref hits target tr",
+          "ok": true
+        },
+        {
+          "check": "click by ref hits target bl",
+          "ok": true
+        },
+        {
+          "check": "click by ref hits target br",
+          "ok": true
+        },
+        {
+          "check": "click by ref hits target mid",
+          "ok": true
+        },
+        {
+          "check": "click by ref hits target tiny",
+          "ok": true
+        },
+        {
+          "check": "click by ref hits target zoomed",
+          "ok": true
+        },
+        {
+          "check": "click by ref hits target turned",
+          "ok": true
+        },
+        {
+          "check": "click by ref hits target below",
+          "ok": true
+        },
+        {
+          "check": "reaching the target below the fold scrolled the page",
+          "ok": true
+        },
+        {
+          "check": "scrolled screenshot: target below is drawn where the page laid it out",
+          "ok": true
+        },
+        {
+          "check": "click_at on the scrolled screenshot hits the target",
+          "ok": false,
+          "detail": "miss@243,189"
+        },
+        {
+          "check": "a full-page screenshot leaves the page where it was",
+          "ok": true
+        },
+        {
+          "check": "a clipped full-page capture says so in the view and the presentation alike",
+          "ok": true
+        },
+        {
+          "check": "the full-page view is one pixel per CSS pixel, within its cap",
+          "ok": true
+        },
+        {
+          "check": "a full-page capture calls itself clipped only when the document is past the raster cap",
+          "ok": true
+        },
+        {
+          "check": "the full-page screenshot is the whole document in device pixels",
+          "ok": true
+        },
+        {
+          "check": "full-page screenshot: target below is drawn where the page laid it out",
+          "ok": true
+        },
+        {
+          "check": "a scroll's reply is how far the page moved, and the page is already there",
+          "ok": true
+        },
+        {
+          "check": "scrolling past the top stops there, and says how far it went",
+          "ok": true
+        },
+        {
+          "check": "a scroll at the top says it moved nothing",
+          "ok": true
+        },
+        {
+          "check": "the pinch took: the page is at 2x",
+          "ok": true
+        },
+        {
+          "check": "the centre target is in the screenshot before the pinch",
+          "ok": true
+        },
+        {
+          "check": "click_at refuses a screenshot taken before the pinch",
+          "ok": true
+        },
+        {
+          "check": "the pinched screenshot is still the screen's size",
+          "ok": true
+        },
+        {
+          "check": "the pinch magnified the centre target into view",
+          "ok": true
+        },
+        {
+          "check": "pinched screenshot: target mid is drawn where the page laid it out",
+          "ok": true
+        },
+        {
+          "check": "pinched screenshot: target tiny is drawn where the page laid it out",
+          "ok": true
+        },
+        {
+          "check": "pinched screenshot: target turned is drawn where the page laid it out",
+          "ok": true
+        },
+        {
+          "check": "click_at on target mid's pixels hits it under the pinch",
+          "ok": false,
+          "detail": "miss@534,284"
+        },
+        {
+          "check": "box's screenshot_center for target mid is on its pixels under the pinch",
+          "ok": true
+        },
+        {
+          "check": "box says target mid is in view under the pinch",
+          "ok": true
+        },
+        {
+          "check": "click_at on target tiny's pixels hits it under the pinch",
+          "ok": false,
+          "detail": "miss@394,210"
+        },
+        {
+          "check": "box's screenshot_center for target tiny is on its pixels under the pinch",
+          "ok": true
+        },
+        {
+          "check": "box says target tiny is in view under the pinch",
+          "ok": true
+        },
+        {
+          "check": "click_at on target turned's pixels hits it under the pinch",
+          "ok": false,
+          "detail": "miss@682,327"
+        },
+        {
+          "check": "box's screenshot_center for target turned is on its pixels under the pinch",
+          "ok": true
+        },
+        {
+          "check": "box says target turned is in view under the pinch",
+          "ok": true
+        },
+        {
+          "check": "box says target tl is out of view under the pinch",
+          "ok": true
+        },
+        {
+          "check": "box says target tr is out of view under the pinch",
+          "ok": true
+        },
+        {
+          "check": "box says target bl is out of view under the pinch",
+          "ok": true
+        },
+        {
+          "check": "box says target br is out of view under the pinch",
+          "ok": true
+        },
+        {
+          "check": "box says target zoomed is out of view under the pinch",
+          "ok": true
+        },
+        {
+          "check": "a full-page screenshot of the pinched page is refused, and the pinch is left alone",
+          "ok": true
+        },
+        {
+          "check": "click by ref hits target mid under the pinch, or is refused because nothing of it is on top",
+          "ok": true
+        },
+        {
+          "check": "click by ref hits target tiny under the pinch, or is refused because nothing of it is on top",
+          "ok": true
+        },
+        {
+          "check": "click by ref hits target turned under the pinch, or is refused because nothing of it is on top",
+          "ok": true
+        },
+        {
+          "check": "click by ref hits target tl under the pinch, or is refused because nothing of it is on top",
+          "ok": true
+        },
+        {
+          "check": "click by ref hits target tr under the pinch, or is refused because nothing of it is on top",
+          "ok": true
+        },
+        {
+          "check": "click by ref hits target bl under the pinch, or is refused because nothing of it is on top",
+          "ok": true
+        },
+        {
+          "check": "click by ref hits target br under the pinch, or is refused because nothing of it is on top",
+          "ok": true
+        },
+        {
+          "check": "click by ref hits target zoomed under the pinch, or is refused because nothing of it is on top",
+          "ok": true
+        },
+        {
+          "check": "the browser's own tab stayed in front throughout",
+          "ok": true
+        }
+      ]
+    }
+  ]
+}

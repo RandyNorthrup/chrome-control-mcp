@@ -1,0 +1,25 @@
+PASS the server tells every client how to share the browser (MCP instructions)
+PASS browser_new_tab answers with the tab_id to act on
+PASS each snapshot names the tab it was taken of
+PASS two tabs' refs never share a name
+PASS a ref acts on the tab it came from, whatever tab is current
+PASS each agent's tab sits in a group named for it
+PASS and the two agents' groups are different groups
+PASS an agent named in any script gets its own group under its whole name
+PASS a server started later is attached in seconds
+PASS one server cannot act on another server's tab
+PASS and the first server's tab and refs are untouched by the second
+PASS a file input the page created and clicked is filled without a ref
+PASS the reply names the file, and says the page emptied its input
+PASS the page received the file it asked for
+PASS a drop zone with no input is given the file by drag and drop
+PASS the drop zone received the file
+PASS a File System Access picker is answered with the agent's file
+PASS the page read the picked file's contents
+PASS a popup the agent's click opens is the agent's tab
+PASS and the user's tab stays in front
+PASS releasing a tab closes the popup its click opened too
+PASS releasing one agent's tab closes it
+PASS and leaves the other agent's tab alone
+PASS a server that exits has the tabs it opened closed for it
+PASS releasing everything leaves no AI tab or group behind

@@ -1,0 +1,4 @@
+PASS without the identity permissions the extension still names its profile
+PASS a port the extension has no server for never becomes a second connection
+PASS it reloads itself into files that ask for more permissions and comes back enabled
+PASS after the update it has the identity permission and keeps its profile's name

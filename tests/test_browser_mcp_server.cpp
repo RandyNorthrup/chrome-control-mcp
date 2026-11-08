@@ -58,6 +58,7 @@ private slots:
   void releaseIsAdvertisedAndNotReadOnly();
   void fullCatalogContainsEveryBrowserAndInstallerTool();
   void readOnlyCatalogFiltersMutatingTools();
+  void readOnlyRefusesAPresentationScreenshot();
   void catalogStaysWithinItsBudgetAndStable();
   void updateToolsAreServedNativelyNotThroughTheBridge();
   void notificationGetsNoResponse();
@@ -435,6 +436,26 @@ void BrowserMcpServerTests::extensionStatusSaysWhatChromeIsRunning() {
       toolCall(QStringLiteral("browser_extension_status")), &browser, policy);
   QVERIFY(read_only.has_value());
   QVERIFY(read_only->contains(QStringLiteral("result")));
+}
+
+// browser_screenshot only looks, so the read-only profile lists it -- but a
+// presentation screenshot writes a file, and that use of it is refused there,
+// by its argument, before anything reaches the browser.
+void BrowserMcpServerTests::readOnlyRefusesAPresentationScreenshot() {
+  BrowserControl browser;
+  McpServerPolicy policy;
+  policy.read_only_profile = true;
+  const auto refused =
+      handleRequest(toolCall(QStringLiteral("browser_screenshot"),
+                             QJsonObject{{QStringLiteral("purpose"),
+                                          QStringLiteral("presentation")}}),
+                    &browser, policy);
+  QVERIFY(refused.has_value());
+  const QJsonObject error = refused->value(QStringLiteral("error")).toObject();
+  QCOMPARE(error.value(QStringLiteral("code")).toInt(), -32602);
+  QVERIFY(error.value(QStringLiteral("message"))
+              .toString()
+              .contains(QStringLiteral("saves a file")));
 }
 
 QTEST_MAIN(BrowserMcpServerTests)

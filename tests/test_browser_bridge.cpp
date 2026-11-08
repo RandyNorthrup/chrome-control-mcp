@@ -4,10 +4,15 @@
 #include "chrome_control_mcp/browser_bridge.h"
 
 #include <QByteArray>
+#include <QDir>
+#include <QFile>
+#include <QFileInfo>
+#include <QJsonDocument>
 #include <QJsonArray>
 #include <QJsonObject>
 #include <QRegularExpression>
 #include <QSet>
+#include <QTemporaryDir>
 #include <QtTest/QtTest>
 
 using chrome_control_mcp::browser::BrowserBridgeSession;
@@ -166,6 +171,10 @@ private slots:
   void detachDuringSnapshot_replyDoesNotInstallRefIndex();
   void navigationInvalidatesRefsFromPriorSnapshot();
   void screenshotReply_populatesImageChannelWithDimsFromPngHeader();
+  void screenshotReply_presentationIsSavedNotShown();
+  void screenshotReply_presentationThatIsNotPngIsRefused();
+  void screenshotReply_zoomSaysWhatItShows();
+  void screenshotReply_clippedFullPageSaysSo();
   void screenshotReply_nonPngFallsBackToPlainSummary();
   void screenshotReply_emptyDataIsHonestError();
   void screenshotReply_oversizeBase64IsRejected();
@@ -515,6 +524,158 @@ void BrowserBridgeTests::
   // pixels.
   QVERIFY(in.text.contains(QStringLiteral("1280x720")));
   QVERIFY(!in.text.contains(png)); // the base64 is never dumped into text
+}
+
+// purpose "presentation": the full-resolution PNG is written to a file under a
+// name this side chooses, and only its path and size go back -- the image never
+// enters the model's context. Whether to write is decided by what the server
+// asked for, not by anything in the reply.
+void BrowserBridgeTests::screenshotReply_presentationIsSavedNotShown() {
+  QTemporaryDir out;
+  QVERIFY(out.isValid());
+  qputenv("CHROME_CONTROL_MCP_OUTPUT_DIR", out.path().toUtf8());
+  BrowserBridgeSession session;
+  session.onHostConnected();
+  const auto shot = session.beginCommand(
+      QStringLiteral("browser_screenshot"),
+      QJsonObject{{QStringLiteral("purpose"), QStringLiteral("presentation")}});
+  QVERIFY2(shot.ok, qPrintable(shot.error));
+  QCOMPARE(shot.frame.value(QStringLiteral("purpose")).toString(),
+           QStringLiteral("presentation"));
+  const QString png = pngHeaderBase64(2560, 1440);
+  const auto in = session.onReply(
+      resultFrame(shot.frame.value(QStringLiteral("id")).toString(),
+                  QStringLiteral("screenshot"), screenshotPayload(png)));
+  qunsetenv("CHROME_CONTROL_MCP_OUTPUT_DIR");
+  QVERIFY(in.matched);
+  QVERIFY2(!in.is_error, qPrintable(in.error));
+  QVERIFY(in.image_base64.isEmpty());
+  const QJsonObject reply = QJsonDocument::fromJson(in.text.toUtf8()).object();
+  QCOMPARE(reply.value(QStringLiteral("width")).toInt(), 2560);
+  QCOMPARE(reply.value(QStringLiteral("height")).toInt(), 1440);
+  const QString saved = reply.value(QStringLiteral("saved")).toString();
+  QVERIFY2(QDir::cleanPath(QFileInfo(saved).absolutePath()) ==
+               QDir::cleanPath(out.path()),
+           qPrintable(saved));
+  QVERIFY(
+      QFileInfo(saved).fileName().startsWith(QStringLiteral("screenshot-")));
+  QVERIFY(saved.endsWith(QStringLiteral(".png")));
+  QFile file(saved);
+  QVERIFY(file.open(QIODevice::ReadOnly));
+  QCOMPARE(file.readAll(), QByteArray::fromBase64(png.toLatin1()));
+}
+
+void BrowserBridgeTests::screenshotReply_presentationThatIsNotPngIsRefused() {
+  QTemporaryDir out;
+  QVERIFY(out.isValid());
+  qputenv("CHROME_CONTROL_MCP_OUTPUT_DIR", out.path().toUtf8());
+  BrowserBridgeSession session;
+  session.onHostConnected();
+  const auto shot = session.beginCommand(
+      QStringLiteral("browser_screenshot"),
+      QJsonObject{{QStringLiteral("purpose"), QStringLiteral("presentation")}});
+  const QString data = QString::fromLatin1(QByteArray("GIF89a...").toBase64());
+  const auto in = session.onReply(
+      resultFrame(shot.frame.value(QStringLiteral("id")).toString(),
+                  QStringLiteral("screenshot"), screenshotPayload(data)));
+  qunsetenv("CHROME_CONTROL_MCP_OUTPUT_DIR");
+  QVERIFY(in.is_error);
+  QVERIFY(in.error.contains(QStringLiteral("not a PNG")));
+  QVERIFY(QDir(out.path()).entryList(QDir::Files).isEmpty());
+}
+
+// A zoom is a different image from the view browser_click_at reads, so the
+// reply says what it shows and that click coordinates stay the view's.
+void BrowserBridgeTests::screenshotReply_zoomSaysWhatItShows() {
+  BrowserBridgeSession session;
+  session.onHostConnected();
+  const auto shot =
+      session.beginCommand(QStringLiteral("browser_screenshot"),
+                           QJsonObject{{QStringLiteral("x"), 100},
+                                       {QStringLiteral("y"), 50},
+                                       {QStringLiteral("width"), 200},
+                                       {QStringLiteral("height"), 120}});
+  QVERIFY2(shot.ok, qPrintable(shot.error));
+  QJsonObject payload = screenshotPayload(pngHeaderBase64(400, 240));
+  payload.insert(
+      QStringLiteral("zoom"),
+      QJsonObject{{QStringLiteral("x"), 100},
+                  {QStringLiteral("y"), 50},
+                  {QStringLiteral("width"), 200},
+                  {QStringLiteral("height"), 120},
+                  {QStringLiteral("pixels_per_screenshot_pixel"), 2}});
+  const auto in = session.onReply(
+      resultFrame(shot.frame.value(QStringLiteral("id")).toString(),
+                  QStringLiteral("screenshot"), payload));
+  QVERIFY(!in.is_error);
+  QVERIFY(!in.image_base64.isEmpty());
+  QVERIFY2(in.text.contains(QStringLiteral("100,50 200x120")),
+           qPrintable(in.text));
+  QVERIFY(in.text.contains(QStringLiteral("browser_click_at still takes")));
+}
+
+// A full-page capture of a document past the browser's raster limit holds only
+// its top slice and looks whole. The extension says so; the reply must carry
+// it, in the view's text and in a presentation's saved-file reply alike.
+void BrowserBridgeTests::screenshotReply_clippedFullPageSaysSo() {
+  const auto clippedPayload = [] {
+    QJsonObject payload = screenshotPayload(pngHeaderBase64(1280, 16384));
+    payload.insert(QStringLiteral("clipped"), true);
+    payload.insert(QStringLiteral("content_width"), 1280);
+    payload.insert(QStringLiteral("content_height"), 40000);
+    payload.insert(QStringLiteral("captured_width"), 1280);
+    payload.insert(QStringLiteral("captured_height"), 16384);
+    return payload;
+  };
+  const QString note = QStringLiteral("1280x40000 CSS px");
+  {
+    BrowserBridgeSession session;
+    session.onHostConnected();
+    const auto shot =
+        session.beginCommand(QStringLiteral("browser_screenshot"),
+                             QJsonObject{{QStringLiteral("full_page"), true}});
+    QVERIFY2(shot.ok, qPrintable(shot.error));
+    const auto in = session.onReply(
+        resultFrame(shot.frame.value(QStringLiteral("id")).toString(),
+                    QStringLiteral("screenshot"), clippedPayload()));
+    QVERIFY(!in.is_error);
+    QVERIFY2(in.text.contains(note), qPrintable(in.text));
+    QVERIFY2(in.text.contains(QStringLiteral("1280x16384")),
+             qPrintable(in.text));
+  }
+  {
+    QTemporaryDir out;
+    QVERIFY(out.isValid());
+    qputenv("CHROME_CONTROL_MCP_OUTPUT_DIR", out.path().toUtf8());
+    BrowserBridgeSession session;
+    session.onHostConnected();
+    const auto shot =
+        session.beginCommand(QStringLiteral("browser_screenshot"),
+                             QJsonObject{{QStringLiteral("full_page"), true},
+                                         {QStringLiteral("purpose"),
+                                          QStringLiteral("presentation")}});
+    QVERIFY2(shot.ok, qPrintable(shot.error));
+    const auto in = session.onReply(
+        resultFrame(shot.frame.value(QStringLiteral("id")).toString(),
+                    QStringLiteral("screenshot"), clippedPayload()));
+    qunsetenv("CHROME_CONTROL_MCP_OUTPUT_DIR");
+    QVERIFY2(!in.is_error, qPrintable(in.error));
+    const QJsonObject reply =
+        QJsonDocument::fromJson(in.text.toUtf8()).object();
+    QVERIFY2(reply.value(QStringLiteral("clipped")).toString().contains(note),
+             qPrintable(in.text));
+  }
+  // And a capture that is whole says nothing of the kind.
+  BrowserBridgeSession session;
+  session.onHostConnected();
+  const auto shot =
+      session.beginCommand(QStringLiteral("browser_screenshot"),
+                           QJsonObject{{QStringLiteral("full_page"), true}});
+  const auto in = session.onReply(
+      resultFrame(shot.frame.value(QStringLiteral("id")).toString(),
+                  QStringLiteral("screenshot"),
+                  screenshotPayload(pngHeaderBase64(1280, 3000))));
+  QVERIFY(!in.text.contains(QStringLiteral("capture limit")));
 }
 
 void BrowserBridgeTests::screenshotReply_nonPngFallsBackToPlainSummary() {

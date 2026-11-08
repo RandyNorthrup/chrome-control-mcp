@@ -1174,7 +1174,9 @@ async function main() {
     // The same screenshot -> box -> click_at path across display scales and viewport sizes:
     // 100%/125%/150% desktops, Retina, and dense phones. Each step first resets the result text
     // (JS click) so only a click that lands on the coordinate button at THIS scale satisfies the
-    // wait, and checks the PNG header independently: a screenshot is viewport x scale pixels.
+    // wait, and checks the PNG headers independently: the view an agent is shown is one pixel per
+    // CSS pixel (every viewport here is within its 1568 cap), and a presentation is the viewport
+    // times the scale, saved to a file.
     const scaleMatrix = [
       { device_scale_factor: 1, width: 1280, height: 800 },
       { device_scale_factor: 1.25, width: 1024, height: 768 },
@@ -1218,11 +1220,26 @@ async function main() {
         "base64",
       );
       assert.ok(
+        Math.abs(png.readUInt32BE(16) - metrics.width) <= 1 &&
+          Math.abs(png.readUInt32BE(20) - metrics.height) <= 1,
+        `view PNG ${png.readUInt32BE(16)}x${png.readUInt32BE(20)} at ${tag}`,
+      );
+      const presented = jsonContent(
+        await runTool(
+          "browser_screenshot",
+          { full_page: false, purpose: "presentation" },
+          `presentation screenshot at ${tag}`,
+        ),
+      );
+      assertSafeGeneratedPath(presented.saved, "screenshot-", ".png");
+      generatedFiles.add(presented.saved);
+      const presentedPng = await readFile(presented.saved);
+      assert.ok(
         Math.abs(
-          png.readUInt32BE(16) -
+          presentedPng.readUInt32BE(16) -
             Math.round(metrics.width * metrics.device_scale_factor),
-        ) <= 1,
-        `PNG width ${png.readUInt32BE(16)} at ${tag}`,
+        ) <= 1 && presentedPng.readUInt32BE(16) === presented.width,
+        `presentation PNG width ${presentedPng.readUInt32BE(16)} at ${tag}`,
       );
       const boxAtScale = jsonContent(
         await runTool(

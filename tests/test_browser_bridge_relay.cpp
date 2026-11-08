@@ -20,10 +20,12 @@
 #include <QTemporaryDir>
 #include <QtTest/QtTest>
 
+#include <algorithm>
 #include <atomic>
 #include <chrono>
 #include <cstring>
 #include <functional>
+#include <limits>
 #include <mutex>
 #include <thread>
 #include <vector>
@@ -480,6 +482,7 @@ private slots:
   void relayHandshake_rejectsBadToken();
   void relayHandshake_rejectsProtocolMismatch();
   void relay_forwardsCommandAndReplyOverRealPipe();
+  void relay_answersAsSoonAsTheReplyIsIn();
   void relay_forwardsCancelToAPollingExtensionWhenTheServerAbandons();
   void relay_forwardsProgressBeatsAndStillDeliversTheReply();
   void control_notConnectedReportsError();
@@ -639,6 +642,64 @@ void BrowserBridgeRelayTests::relay_forwardsCommandAndReplyOverRealPipe() {
   // The relay forwarded exactly the server's command, id-transparent.
   QCOMPARE(extension.last_command.value(QStringLiteral("cmd")).toString(),
            QStringLiteral("snapshot"));
+  closeNativeIpcHandle(pipe);
+  server.stop();
+}
+
+// The relay hands the reply to the server as soon as it is in. Its loop looks
+// at the bridge for a cancel every 25 ms, and used to notice the reply only on
+// its next look: every exchange cost a whole tick on top of the extension's own
+// time (replies measured 26, 51, 76 and 101 ms). The reader now wakes the loop.
+// The fastest of five exchanges with an extension that answers at once must
+// come in well under one tick; a loop that sleeps through it never can.
+void BrowserBridgeRelayTests::relay_answersAsSoonAsTheReplyIsIn() {
+  QTemporaryDir dir;
+  BrowserBridgePipeServer server(
+      serverOptions(dir.filePath(QStringLiteral("r.json"))));
+  QString error;
+  QVERIFY2(server.start(&error), qPrintable(error));
+
+  QString token;
+  int protocol = 0;
+  const NativeIpcHandle pipe = relayConnect(
+      dir.filePath(QStringLiteral("r.json")), &token, &protocol, &error);
+  QVERIFY(pipe != kInvalidNativeIpcHandle);
+  QVERIFY2(relayHandshake(pipe, token, protocol, &error), qPrintable(error));
+  QVERIFY(waitUntil([&server] { return server.clientConnected(); }, 5000));
+
+  // The relay's tick lengthened to a second: a reply that waited it out takes
+  // a second, one that woke the wait takes milliseconds, and no load on the
+  // machine running this can make the one look like the other. At the real
+  // 25 ms tick the two were 10 ms apart, and a busy machine closed the gap.
+  constexpr std::chrono::milliseconds kTick{1000};
+  constexpr qint64 kWokenWithinMs = 500;
+  qint64 fastest = std::numeric_limits<qint64>::max();
+  for (int round = 0; round < 3; ++round) {
+    FakeExtension extension;
+    extension.reply_payload = QJsonObject{{QStringLiteral("round"), round}};
+    std::atomic<bool> pumped{false};
+    std::thread relay([&] {
+      pumped =
+          relayPumpOnce(pipe, extension.reader(), extension.writer(), kTick);
+    });
+    QElapsedTimer timer;
+    timer.start();
+    const auto exchange = server.sendCommandAwaitReply(QJsonObject{
+        {QStringLiteral("type"), QStringLiteral("command")},
+        {QStringLiteral("id"), QStringLiteral("fast-%1").arg(round)},
+        {QStringLiteral("cmd"), QStringLiteral("dialog")}});
+    const qint64 elapsed = timer.elapsed();
+    relay.join();
+    QVERIFY2(exchange.ok, qPrintable(exchange.error));
+    QVERIFY(pumped.load());
+    fastest = std::min(fastest, elapsed);
+  }
+  QVERIFY2(fastest < kWokenWithinMs,
+           qPrintable(QStringLiteral("fastest exchange took %1 ms; the relay "
+                                     "waited out its %2 ms tick")
+                          .arg(fastest)
+                          .arg(kTick.count())));
+
   closeNativeIpcHandle(pipe);
   server.stop();
 }

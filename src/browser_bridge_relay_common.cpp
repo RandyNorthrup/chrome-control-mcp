@@ -369,7 +369,8 @@ bool drainProgressToPipe(NativeIpcHandle pipe, RelayProgressQueue *progress) {
 }
 
 bool relayPumpOnce(NativeIpcHandle pipe, const BrowserReadFn &browser_read,
-                   const BrowserWriteFn &browser_write) {
+                   const BrowserWriteFn &browser_write,
+                   std::chrono::milliseconds cancel_poll) {
   QJsonObject command;
   if (!relayReadPipeFrame(pipe, &command)) {
     return false; // the server (MCP process) closed the pipe
@@ -378,7 +379,8 @@ bool relayPumpOnce(NativeIpcHandle pipe, const BrowserReadFn &browser_read,
     return false; // Chrome closed the extension port
   }
   QJsonObject reply;
-  if (!awaitBrowserReply(pipe, browser_read, browser_write, &reply)) {
+  if (!awaitBrowserReply(pipe, browser_read, browser_write, &reply,
+                         cancel_poll)) {
     return false; // the extension/Chrome went away, or the server abandoned
                   // the exchange
   }

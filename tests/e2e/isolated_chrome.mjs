@@ -194,6 +194,9 @@ export async function prepareIsolatedChrome({
   const env = {
     ...process.env,
     CHROME_CONTROL_MCP_RUNTIME_DIR: runtime,
+    // PDFs and presentation screenshots land here rather than in the user's Downloads, and go
+    // with the rest of the run when it is cleaned up.
+    CHROME_CONTROL_MCP_OUTPUT_DIR: path.join(root, "output"),
     ...(process.platform === "win32"
       ? {}
       : {

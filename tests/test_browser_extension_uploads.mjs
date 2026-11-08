@@ -44,6 +44,10 @@ function stagingPage() {
       return undefined;
     }
     const declaration = params.functionDeclaration;
+    // Whether the input is already on screen, before it is brought into view: it is not.
+    if (declaration.startsWith("function whollyInViewFn")) {
+      return { result: { value: false } };
+    }
     if (declaration.includes("pendingBytes: 0")) {
       made += 1;
       const objectId = "stage-" + made;

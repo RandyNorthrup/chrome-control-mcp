@@ -74,13 +74,22 @@ async function drawFrame(message) {
   );
   // The page can change size mid-recording. Resizing the canvas would restart
   // the encoder's stream, so the frame is fitted into the canvas it started
-  // with instead -- the video keeps one resolution throughout.
+  // with instead -- the video keeps one resolution throughout -- and keeps its
+  // own shape, on black, rather than being stretched to the canvas's.
+  const { width, height } = entry.canvas;
+  const scale = Math.min(width / bitmap.width, height / bitmap.height);
+  const drawnWidth = Math.round(bitmap.width * scale);
+  const drawnHeight = Math.round(bitmap.height * scale);
+  if (drawnWidth !== width || drawnHeight !== height) {
+    entry.context.fillStyle = "#000";
+    entry.context.fillRect(0, 0, width, height);
+  }
   entry.context.drawImage(
     bitmap,
-    0,
-    0,
-    entry.canvas.width,
-    entry.canvas.height,
+    Math.floor((width - drawnWidth) / 2),
+    Math.floor((height - drawnHeight) / 2),
+    drawnWidth,
+    drawnHeight,
   );
   bitmap.close();
   entry.frames += 1;

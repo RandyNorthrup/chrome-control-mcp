@@ -197,8 +197,13 @@ private:
   static void fillReadResult(const QJsonObject &frame,
                              const QJsonObject &sent_args, Incoming &incoming);
   static void fillGenericResult(const QJsonObject &frame, Incoming &incoming);
+  // A view or zoom goes to the client as an image; a presentation is written
+  // to a file and only its path goes back.
   static void fillScreenshotResult(const QJsonObject &payload,
+                                   const QJsonObject &sent_args,
                                    Incoming &incoming);
+  static void saveScreenshot(const QByteArray &png, const QJsonObject &payload,
+                             Incoming &incoming);
   static void fillPrintResult(const QJsonObject &payload, Incoming &incoming);
   // Invalidate refs a command's own effect made meaningless: a navigation
   // marks its tab stale, a closed or released tab loses its refs.

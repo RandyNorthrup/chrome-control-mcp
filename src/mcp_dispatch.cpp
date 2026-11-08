@@ -101,7 +101,7 @@ QString serverInstructions() {
       "a page the cheapest way that answers the question: browser_find for "
       "an element you can name (its visible text, or a phrase such as "
       "\"Send message button\") -- its refs work with every element tool; "
-      "browser_screenshot to see a page's layout (about a thousand image "
+      "browser_screenshot to see a page's layout (one to two thousand image "
       "tokens); a whole browser_snapshot only when you need the full "
       "structure. Element refs from browser_find and browser_snapshot are "
       "bound to the tab they came from. Tabs "
@@ -336,6 +336,17 @@ std::optional<QJsonObject> handleToolsCall(const QJsonValue &id,
         QStringLiteral("tools/call arguments must be an object"));
   }
   const QJsonObject arguments = arguments_value.toObject();
+  // A presentation screenshot writes a file. The tool reads; that use of it
+  // does not, so the read-only profile refuses it by its argument.
+  if (policy.read_only_profile && name == QLatin1String("browser_screenshot") &&
+      arguments.value(QStringLiteral("purpose")).toString() ==
+          QLatin1String("presentation")) {
+    return errorResponse(
+        id, kInvalidParams,
+        QStringLiteral("browser_screenshot with purpose \"presentation\" "
+                       "saves a file, which the read-only security profile "
+                       "does not permit; take a view screenshot instead"));
+  }
   if (browser != nullptr && browser->handles(name)) {
     // invoke first: it is what notices a new connection and its versions.
     const ToolResult result = browser->invoke(name, arguments);

@@ -8,6 +8,7 @@ entry's heading opens its GitHub release page and downloads. To hear about new r
 
 | Version                      | Released   | What it is                                                              |
 | ---------------------------- | ---------- | ----------------------------------------------------------------------- |
+| [1.14.0](#1140---2026-11-07) | 2026-11-07 | Faster actions, and screenshots the size a model uses                   |
 | [1.13.0](#1130---2026-11-07) | 2026-11-07 | The extension goes to the Chrome Web Store                              |
 | [1.12.0](#1120---2026-11-07) | 2026-11-07 | Find an element without reading the whole page                          |
 | [1.11.1](#1111---2026-11-07) | 2026-11-07 | A managed install no longer reports a registration mismatch             |
@@ -37,6 +38,54 @@ entry's heading opens its GitHub release page and downloads. To hear about new r
 | [1.1.0](#110---2026-09-21)   | 2026-09-21 | The agent works in a tab of its own                                     |
 | [1.0.1](#101---2026-09-16)   | 2026-09-16 | The bridge recovers when another server takes or removes its record     |
 | [1.0.0](#100---2026-08-20)   | 2026-08-20 | First public release                                                    |
+
+## [1.14.0] - 2026-11-07
+
+Actions in a background tab take milliseconds, not seconds, and screenshots are the size a model
+can use.
+
+### Changed
+
+- **Actions no longer wait for a background tab's frame.** Chrome draws a tab that is not in front
+  about once a second, and acknowledges a mouse event or a scroll only when it draws -- and the
+  agent's tab is behind the user's by design. While an action runs (click, hover, drag, type,
+  select, keys, scroll, upload, clipboard keys) the extension keeps the tab drawing with a
+  one-pixel screencast. Measured on Linux in the tab behind the user's: a scroll by ref took 2.0 to
+  3.1 s and now takes under 100 ms, a click at worst 1.06 s and now under 60 ms. A new live suite,
+  `tests/e2e/action_latency_e2e.mjs`, holds every scroll, click and hover under half a second.
+- A click or hover on an element already wholly in view no longer scrolls it into view and waits
+  for the scroll to settle first.
+- Replies from the browser reach the server as soon as they arrive. The relay used to look for one
+  every 25 ms, so even a listing took 26 ms; `browser_tabs` now takes about 2.
+- **`browser_screenshot` returns a view**: one image pixel per CSS pixel, long edge at most 1,568 --
+  the size Claude shrinks any larger image to before reading it. A 2x display's viewport is a
+  quarter of the bytes it was. A full-page view keeps one pixel per CSS pixel within 8,000 px.
+- Screenshot coordinates follow the view: `browser_click_at`, `browser_hover`'s `x`/`y` and
+  `browser_drag`'s points are view pixels and may be fractions, and `browser_box`'s
+  `screenshot_center` is in view pixels to a tenth. Coordinates outside 0 to 16,384 are refused.
+- Recordings keep the viewport's shape instead of being stretched to 1280x800.
+
+### Added
+
+- **Zoom**: `browser_screenshot` with `ref`, or `x`/`y`/`width`/`height` in view pixels, returns
+  that part of the page at up to the device's own pixels. A zoom never scrolls the page.
+- **`purpose: "presentation"`**: the device's own pixels, lossless, saved as a PNG beside
+  `browser_print`'s PDFs; the reply is the path, not the image. The read-only profile refuses it.
+- `browser_record_start` takes `resolution`: `"standard"` (the default, within 1280x800) or
+  `"full"` (the device's own pixels).
+- `CHROME_CONTROL_MCP_OUTPUT_DIR` names the folder for PDFs and presentation screenshots. The live
+  suites use it, so their files no longer land in the Downloads folder.
+
+### Fixed
+
+- A screenshot of a tab that was being recorded stopped the recording's frames: the screenshot's
+  own screencast replaced the recording's. A recorded tab is already drawing, so its screenshot now
+  uses that.
+- A full-page screenshot of a document past Chrome's 16,384-pixel limit holds only its top-left
+  slice. The extension said so, but the note was dropped on the way to the agent; the reply now
+  gives the document's size and the slice's.
+- A recording whose page changed shape part-way through stretched the later frames; they are
+  fitted on black instead.
 
 ## [1.13.0] - 2026-11-07
 
@@ -1278,6 +1327,7 @@ tried were broken.
 - Unused JSON-RPC client payload helpers and obsolete test-only native-host loop.
 - Redundant quality branch; development and delivery now happen directly on `main`.
 
+[1.14.0]: https://github.com/RandyNorthrup/chrome-control-mcp/releases/tag/v1.14.0
 [1.13.0]: https://github.com/RandyNorthrup/chrome-control-mcp/releases/tag/v1.13.0
 [1.12.0]: https://github.com/RandyNorthrup/chrome-control-mcp/releases/tag/v1.12.0
 [1.11.1]: https://github.com/RandyNorthrup/chrome-control-mcp/releases/tag/v1.11.1

@@ -34,6 +34,19 @@ import {
 // The names pulled out of the worker's scope. Anything not listed here stays private to the
 // worker, which keeps this file from quietly becoming a second copy of its API.
 const EXPORTED = [
+  "whollyInViewFn",
+  "viewFactor",
+  "fullPageViewFactor",
+  "zoomCrop",
+  "zoomFactor",
+  "screenshotRequest",
+  "recordingResolution",
+  "recordingFrame",
+  "pngSize",
+  "base64ToBytes",
+  "bytesToBase64",
+  "screenshotPoint",
+  "tabStateOf",
   "normalizeUrl",
   "tabSettledAt",
   "stripFragment",
@@ -942,6 +955,7 @@ test("scrollContextFn names what the wheel lands on and the chain under it", () 
 function scrollWorker(
   hitAnswers,
   scrollers = [["BODY/DIV[0]#scroll-region", 0, 600]],
+  { whollyVisible = false } = {},
 ) {
   const calls = [];
   const hits = hitAnswers.slice();
@@ -956,6 +970,14 @@ function scrollWorker(
       return Promise.resolve({ object: { objectId: "target-1" } });
     }
     if (method === "Runtime.callFunctionOn") {
+      // The check that skips the scroll into view for an element already on screen. Most cases
+      // here are about the scroll that check would skip, so it answers "not in view" unless the
+      // case says otherwise.
+      if (
+        String(params.functionDeclaration).startsWith("function whollyInViewFn")
+      ) {
+        return Promise.resolve({ result: { value: whollyVisible } });
+      }
       const answer = hits.shift();
       return Promise.resolve({ result: { value: answer } });
     }
@@ -1164,11 +1186,64 @@ test("a point that slips once is re-resolved and the scroll goes ahead", async (
     (c) => c.params && c.params.type === "mouseWheel",
   );
   assert.equal(
-    recovered.calls.filter((c) => c.method === "Runtime.callFunctionOn").length,
+    recovered.calls.filter(
+      (c) =>
+        c.method === "Runtime.callFunctionOn" &&
+        !String(c.params.functionDeclaration).startsWith(
+          "function whollyInViewFn",
+        ),
+    ).length,
     2,
     "the element is asked again after the box is re-read",
   );
   assert.ok(wheel.params.deltaY > 0, "a down scroll pushes the content down");
+});
+
+// Bringing an element into view moves the page and waits for it to settle -- a page-timed pause
+// that was most of a click on an element already on screen. One wholly in view is acted on where
+// it stands; one that is not is scrolled to first, as before.
+test("an element wholly in view is acted on where it stands; one that is not is scrolled to first", async () => {
+  const onTarget = {
+    hit: "DIV#scroll-region",
+    target: "DIV#scroll-region",
+    onTarget: true,
+  };
+  const run = async (whollyVisible) => {
+    const { worker, calls } = scrollWorker(
+      [onTarget],
+      [["BODY/DIV[0]#scroll-region", 0, 600]],
+      { whollyVisible },
+    );
+    const session = worker.makeSession();
+    holdAttached(session, 1);
+    session.tabs.get(1).lastSnapshotEpoch = session.tabs.get(1).domEpoch;
+    const reply = crossRealm(
+      await worker.handleScroll(session, 1, {
+        backendNodeId: 7,
+        direction: "down",
+        amount: 180,
+      }),
+    );
+    assert.equal(reply.ok, true);
+    return calls;
+  };
+  const visible = await run(true);
+  assert.equal(
+    visible.some((c) => c.method === "DOM.scrollIntoViewIfNeeded"),
+    false,
+    "an element already in view is not scrolled into view",
+  );
+  assert.equal(
+    visible.some((c) => c.params && c.params.type === "mouseWheel"),
+    true,
+    "and the action still happens",
+  );
+  const hidden = await run(false);
+  assert.equal(
+    hidden.some((c) => c.method === "DOM.scrollIntoViewIfNeeded"),
+    true,
+    "an element not wholly in view is scrolled into view first",
+  );
 });
 
 // document.elementFromPoint reports the HOST for a point inside a shadow tree, and Node.contains
@@ -3035,5 +3110,336 @@ test("the page read returns the window asked for and the whole text's length", (
     runPageRead(worker, document, null, ["html", "page", "", 0, 100, []])
       .content,
     "<html>whole</html>",
+  );
+});
+
+// An element already wholly on screen is not scrolled into view, so nothing waits for a scroll to
+// settle -- 24 of the ~30 ms a click on a visible element spent in the page. The check has to say
+// no wherever bringing the element into view would have moved something: past an edge of the
+// viewport, clipped by a scrolling container (across a shadow root), in a frame, or on a
+// pinch-zoomed page.
+const PAGE_BODY = { tag: "BODY" };
+
+function inView(element, { top = true, vv = {} } = {}) {
+  const page = {
+    visualViewport: { scale: 1, offsetLeft: 0, offsetTop: 0, ...vv },
+    innerWidth: 1000,
+    innerHeight: 800,
+  };
+  page.top = top ? page : {};
+  const doc = {
+    documentElement: { clientWidth: 1000, clientHeight: 800 },
+    body: PAGE_BODY,
+  };
+  const check = new Function(
+    "window",
+    "document",
+    "getComputedStyle",
+    `return (${w.whollyInViewFn.toString()});`,
+  )(page, doc, (node) => ({
+    overflowX: node.overflow || "visible",
+    overflowY: node.overflow || "visible",
+  }));
+  return check.call(element);
+}
+
+function boxed(rect, parentElement = PAGE_BODY, extra = {}) {
+  return {
+    parentElement,
+    getRootNode: () => ({ host: null }),
+    getBoundingClientRect: () => ({
+      ...rect,
+      right: rect.left + rect.width,
+      bottom: rect.top + rect.height,
+    }),
+    ...extra,
+  };
+}
+
+test("an element wholly on screen is not scrolled; one past an edge, in a frame or on a pinched page is", () => {
+  const box = { left: 10, top: 10, width: 100, height: 20 };
+  assert.equal(
+    inView(boxed(box)),
+    true,
+    "in the viewport, nothing clipping it",
+  );
+  assert.equal(
+    inView(boxed({ ...box, top: 790 })),
+    false,
+    "past the bottom edge",
+  );
+  assert.equal(
+    inView(boxed({ ...box, left: -5 })),
+    false,
+    "past the left edge",
+  );
+  assert.equal(
+    inView(boxed({ ...box, width: 0, height: 0 })),
+    false,
+    "no box to aim at",
+  );
+  assert.equal(
+    inView(boxed(box), { top: false }),
+    false,
+    "in a frame, itself maybe off screen",
+  );
+  assert.equal(
+    inView(boxed(box), { vv: { scale: 2 } }),
+    false,
+    "on a pinch-zoomed page",
+  );
+});
+
+test("an element a scrolling container clips is scrolled, even across a shadow root", () => {
+  const scroller = boxed(
+    { left: 0, top: 0, width: 300, height: 100 },
+    PAGE_BODY,
+    {
+      overflow: "auto",
+    },
+  );
+  assert.equal(
+    inView(boxed({ left: 10, top: 150, width: 100, height: 20 }, scroller)),
+    false,
+    "below its scroller's box",
+  );
+  assert.equal(
+    inView(boxed({ left: 10, top: 40, width: 100, height: 20 }, scroller)),
+    true,
+    "inside its scroller's box",
+  );
+  // An element in a shadow tree reaches the shadow root's host through getRootNode.
+  const host = boxed({ left: 0, top: 0, width: 300, height: 100 }, PAGE_BODY, {
+    overflow: "hidden",
+  });
+  const inShadow = boxed({ left: 10, top: 150, width: 100, height: 20 }, null, {
+    getRootNode: () => ({ host }),
+  });
+  assert.equal(inView(inShadow), false, "clipped by its shadow host");
+});
+
+// -- Screenshots shaped for what they are for --------------------------------------------------
+//
+// A view is one image pixel per CSS pixel with its long edge capped at 1,568 (Claude scales larger
+// images down anyway, and bills by pixels); a zoom is up to the device's own pixels; a full-page
+// view fits within the API's 8,000 px; and browser_click_at reads coordinates back through the
+// same factor the view was shrunk by.
+
+test("a view is one image pixel per CSS pixel, its long edge within 1568, never enlarged", () => {
+  const vp = (dpr, width, height) => ({ dpr, width, height });
+  assert.equal(
+    w.viewFactor(vp(1, 1280, 800)),
+    1,
+    "a 1x desktop is already CSS pixels",
+  );
+  assert.equal(
+    w.viewFactor(vp(2, 1280, 800)),
+    0.5,
+    "a 2x display: half its device pixels",
+  );
+  assert.equal(
+    w.viewFactor(vp(1, 2560, 1440)),
+    1568 / 2561,
+    "a wide 1x window: the cap, allowing for the CSS pixel a capture can run past the viewport",
+  );
+  // Measured: a 1706-pixel viewport at 2.25 captured 3840 device pixels. The view must still fit.
+  const fractional = w.viewFactor(vp(2.25, 1706, 864));
+  assert.ok(
+    Math.round(3840 * fractional) <= 1568,
+    `a capture a CSS pixel past the viewport stays within the cap (${3840 * fractional})`,
+  );
+  assert.equal(w.viewFactor(vp(0.5, 1280, 800)), 1, "50% zoom: never enlarged");
+  assert.equal(
+    w.viewFactor(vp(3, 1920, 1080)),
+    Math.min(1 / 3, 1568 / 5763),
+    "a 3x display: whichever shrinks more",
+  );
+  assert.equal(
+    w.fullPageViewFactor(2, 2560, 40000),
+    8000 / 40000,
+    "a tall page fits 8,000 px",
+  );
+  assert.equal(
+    w.fullPageViewFactor(2, 2560, 4000),
+    0.5,
+    "otherwise CSS pixels",
+  );
+});
+
+test("a zoom crops the device-pixel capture, clamped to it, at up to its own pixels", () => {
+  assert.deepEqual(
+    crossRealm(
+      w.zoomCrop({ x: 100, y: 50, width: 200, height: 100 }, 0.5, 2560, 1600),
+    ),
+    { x: 200, y: 100, width: 400, height: 200 },
+  );
+  assert.deepEqual(
+    crossRealm(
+      w.zoomCrop({ x: 1200, y: 700, width: 400, height: 400 }, 0.5, 2560, 1600),
+    ),
+    { x: 2400, y: 1400, width: 160, height: 200 },
+    "the part past the image's edge is cut off",
+  );
+  assert.equal(
+    w.zoomCrop({ x: 1300, y: 0, width: 50, height: 50 }, 1, 1280, 800),
+    null,
+  );
+  assert.equal(
+    w.zoomFactor({ width: 400, height: 200 }),
+    1,
+    "a small crop at its own pixels",
+  );
+  assert.equal(
+    w.zoomFactor({ width: 3000, height: 1000 }),
+    1568 / 3000,
+    "a large one capped",
+  );
+});
+
+test("a screenshot request is a view unless asked otherwise, and a bad one is refused", () => {
+  assert.equal(w.screenshotRequest({}).purpose, "view");
+  assert.equal(
+    w.screenshotRequest({ purpose: "presentation" }).purpose,
+    "presentation",
+  );
+  assert.throws(
+    () => w.screenshotRequest({ purpose: "print" }),
+    /purpose must be/,
+  );
+  assert.throws(
+    () => w.screenshotRequest({ x: 1, y: 2 }),
+    /all of x, y, width and height/,
+  );
+  assert.throws(
+    () =>
+      w.screenshotRequest({
+        backendNodeId: 7,
+        x: 0,
+        y: 0,
+        width: 5,
+        height: 5,
+      }),
+    /a ref or to a region, not both/,
+  );
+  assert.throws(
+    () => w.screenshotRequest({ full_page: true, backendNodeId: 7 }),
+    /cannot be combined with full_page/,
+  );
+  assert.throws(
+    () => w.screenshotRequest({ x: -1, y: 0, width: 5, height: 5 }),
+    /at least 0/,
+  );
+  const zoom = w.screenshotRequest({ x: 10, y: 20, width: 30, height: 40 });
+  assert.deepEqual(crossRealm(zoom.zoomRegion), {
+    x: 10,
+    y: 20,
+    width: 30,
+    height: 40,
+  });
+});
+
+test("a recording is standard unless asked for full, and nothing else", () => {
+  assert.equal(w.recordingResolution(undefined), "standard");
+  assert.equal(w.recordingResolution("standard"), "standard");
+  assert.equal(w.recordingResolution("full"), "full");
+  assert.throws(() => w.recordingResolution("4k"), /"standard" or "full"/);
+});
+
+test("a recording's frames keep the viewport's shape, in even pixels", () => {
+  const vp = (width, height, dpr) => ({ ok: true, width, height, dpr });
+  // Standard fits 1280x800 without stretching: a 2x 1440x900 viewport is 2880x1800 device
+  // pixels, fitted to 1280x800.
+  const standard = w.recordingFrame("standard", vp(1440, 900, 2));
+  assert.equal(standard.width, 1280);
+  assert.equal(standard.height, 800);
+  assert.equal(standard.quality, 80);
+  // A tall narrow page keeps its shape rather than filling 1280x800.
+  const tall = w.recordingFrame("standard", vp(390, 844, 3));
+  assert.equal(tall.height, 800);
+  assert.equal(tall.width, Math.round((1170 * (800 / 2532)) / 2) * 2);
+  // A small viewport is never scaled up.
+  const small = w.recordingFrame("standard", vp(640, 480, 1));
+  assert.equal(small.width, 640);
+  assert.equal(small.height, 480);
+  // Full is the device's own pixels, rounded to even, at a higher quality.
+  const full = w.recordingFrame("full", vp(1097, 617, 1.75));
+  assert.equal(full.width, Math.round((1097 * 1.75) / 2) * 2);
+  assert.equal(full.height, Math.round((617 * 1.75) / 2) * 2);
+  assert.equal(full.width % 2, 0);
+  assert.equal(full.height % 2, 0);
+  assert.equal(full.quality, 92);
+  // A viewport that cannot be read records at the standard size.
+  const unknown = w.recordingFrame("full", { ok: false });
+  assert.equal(unknown.width, 1280);
+  assert.equal(unknown.height, 800);
+});
+
+test("a PNG's size is read from its header, and base64 round-trips its bytes", () => {
+  const header = Buffer.alloc(24);
+  Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]).copy(header, 0);
+  header.write("IHDR", 12, "latin1");
+  header.writeUInt32BE(3840, 16);
+  header.writeUInt32BE(2160, 20);
+  const bytes = w.base64ToBytes(header.toString("base64"));
+  assert.deepEqual(crossRealm(w.pngSize(bytes)), { width: 3840, height: 2160 });
+  assert.equal(
+    w.pngSize(w.base64ToBytes(Buffer.from("GIF89a....").toString("base64"))),
+    null,
+  );
+  const big = Buffer.alloc(100000, 7);
+  assert.equal(
+    w.bytesToBase64(w.base64ToBytes(big.toString("base64"))),
+    big.toString("base64"),
+  );
+});
+
+test("browser_click_at reads a view's pixels back through the factor it was shrunk by", async () => {
+  const live = {
+    dpr: 2,
+    sx: 0,
+    sy: 0,
+    href: "https://example.test/",
+    iw: 1280,
+    ih: 800,
+    vs: 1,
+    vl: 0,
+    vt: 0,
+  };
+  const worker = loadWorker({
+    "debugger.sendCommand": (_target, method) =>
+      Promise.resolve(
+        method === "Runtime.evaluate" ? { result: { value: live } } : {},
+      ),
+  });
+  const session = worker.makeSession();
+  const tab = worker.makeTabState(3, "opened");
+  tab.attached = true;
+  session.tabs.set(3, tab);
+  tab.lastShot = {
+    tabId: 3,
+    fullPage: false,
+    dpr: 2,
+    scale: 1,
+    factor: 0.5,
+    offsetX: 0,
+    offsetY: 0,
+    scrollX: 0,
+    scrollY: 0,
+    href: "https://example.test/",
+    width: 1280,
+    height: 800,
+    epoch: tab.domEpoch,
+  };
+  // A 2x display shown at half: one image pixel is one CSS pixel.
+  assert.deepEqual(
+    crossRealm(
+      await worker.screenshotPoint(session, 3, 640, 400, "browser_click_at"),
+    ),
+    { x: 640, y: 400 },
+  );
+  // The image is 1280 wide, not the 2560 device pixels it was taken from.
+  await assert.rejects(
+    worker.screenshotPoint(session, 3, 1300, 10, "browser_click_at"),
+    /outside the 1280x800 screenshot/,
   );
 });

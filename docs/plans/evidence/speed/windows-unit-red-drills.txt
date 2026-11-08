@@ -1,0 +1,66 @@
+== drill relay-wake-windows: src/browser_bridge_relay.cpp
+   mutation: '    replied.set();' -> '    (void)0;'
+   suite: test_browser_bridge_relay
+   planted: build exit=0, test_browser_bridge_relay exit=8
+   FAIL!  : BrowserBridgeRelayTests::relay_answersAsSoonAsTheReplyIsIn() 'fastest < kWokenWithinMs' returned FALSE. (fastest exchange took 1009 ms; the relay waited out its 1000 ms tick)
+   Totals: 38 passed, 1 failed, 0 skipped, 0 blacklisted, 10315ms
+   restored byte for byte
+   restored: test_browser_bridge_relay exit=0 Totals: 39 passed, 0 failed, 0 skipped, 0 blacklisted, 4583ms
+== drill presentation-not-saved: src/browser_bridge.cpp
+   mutation: '    saveScreenshot(*decoded, payload, incoming);' -> '    (void)payload;'
+   suite: test_browser_bridge
+   planted: build exit=0, test_browser_bridge exit=8
+   FAIL!  : BrowserBridgeTests::screenshotReply_presentationIsSavedNotShown() Compared values are not the same
+   FAIL!  : BrowserBridgeTests::screenshotReply_presentationThatIsNotPngIsRefused() 'in.is_error' returned FALSE. ()
+   FAIL!  : BrowserBridgeTests::screenshotReply_clippedFullPageSaysSo() 'reply.value(QStringLiteral("clipped")).toString().contains(note)' returned FALSE. ()
+   Totals: 43 passed, 3 failed, 0 skipped, 0 blacklisted, 202ms
+   restored byte for byte
+   restored: test_browser_bridge exit=0 Totals: 46 passed, 0 failed, 0 skipped, 0 blacklisted, 194ms
+== drill clipped-note-dropped: src/browser_bridge.cpp
+   mutation: '  incoming.text += clippedNote(payload);' -> '  incoming.text += QString();'
+   suite: test_browser_bridge
+   planted: build exit=0, test_browser_bridge exit=8
+   FAIL!  : BrowserBridgeTests::screenshotReply_clippedFullPageSaysSo() 'in.text.contains(note)' returned FALSE. (Captured a 1280x16384 PNG screenshot of the active tab.)
+   Totals: 45 passed, 1 failed, 0 skipped, 0 blacklisted, 179ms
+   restored byte for byte
+   restored: test_browser_bridge exit=0 Totals: 46 passed, 0 failed, 0 skipped, 0 blacklisted, 153ms
+== drill read-only-presentation: src/mcp_dispatch.cpp
+   mutation: '  if (policy.read_only_profile && name == QLatin1String("browser_screenshot") &&' -> '  if (policy.read_only_profile && name == QLatin1String("browser_screenshot_drill") &&'
+   suite: test_browser_mcp_server
+   planted: build exit=0, test_browser_mcp_server exit=8
+   FAIL!  : BrowserMcpServerTests::readOnlyRefusesAPresentationScreenshot() Compared values are not the same
+   Totals: 17 passed, 1 failed, 0 skipped, 0 blacklisted, 8086ms
+   restored byte for byte
+   restored: test_browser_mcp_server exit=0 Totals: 18 passed, 0 failed, 0 skipped, 0 blacklisted, 14ms
+== drill coordinates-unchecked: src/browser_contract.cpp
+   mutation: '  if (isScreenshotCoordinate(key)) {' -> '  if (isScreenshotCoordinate(key) && false) {'
+   suite: test_browser_contract
+   planted: build exit=0, test_browser_contract exit=8
+   FAIL!  : BrowserContractTests::buildCommand_screenshotCoordinatesTakeFractions() '!refused.ok' returned FALSE. ()
+   Totals: 73 passed, 1 failed, 0 skipped, 0 blacklisted, 81ms
+   restored byte for byte
+   restored: test_browser_contract exit=0 Totals: 74 passed, 0 failed, 0 skipped, 0 blacklisted, 85ms
+== drill zoom-note-dropped: src/browser_bridge.cpp
+   mutation: '  const QJsonObject zoom = payload.value(QStringLiteral("zoom")).toObject();' -> '  const QJsonObject zoom;'
+   suite: test_browser_bridge
+   planted: build exit=0, test_browser_bridge exit=8
+   FAIL!  : BrowserBridgeTests::screenshotReply_zoomSaysWhatItShows() 'in.text.contains(QStringLiteral("100,50 200x120"))' returned FALSE. (Captured a 400x240 PNG screenshot of the active tab.)
+   Totals: 45 passed, 1 failed, 0 skipped, 0 blacklisted, 175ms
+   restored byte for byte
+   restored: test_browser_bridge exit=0 Totals: 46 passed, 0 failed, 0 skipped, 0 blacklisted, 153ms
+== drill resolution-unchecked: src/browser_contract.cpp
+   mutation: '  if (key == QLatin1String("resolution")) {' -> '  if (key == QLatin1String("resolution_drill")) {'
+   suite: test_browser_contract
+   planted: build exit=0, test_browser_contract exit=8
+   FAIL!  : BrowserContractTests::buildCommand_recordStartResolution() '!unknown.ok' returned FALSE. ()
+   Totals: 73 passed, 1 failed, 0 skipped, 0 blacklisted, 87ms
+   restored byte for byte
+   restored: test_browser_contract exit=0 Totals: 74 passed, 0 failed, 0 skipped, 0 blacklisted, 92ms
+== drill catalog-over-budget: src/browser_contract.cpp
+   mutation: '"path. Control overlay hidden unless included."' -> '"path. Control overlay hidden unless included. This sentence is padding planted by a red drill to push the catalog past its byte budget, which the server suite must notice and refuse."'
+   suite: test_browser_mcp_server
+   planted: build exit=0, test_browser_mcp_server exit=8
+   FAIL!  : BrowserMcpServerTests::catalogStaysWithinItsBudgetAndStable() 'listed.size() <= 43500' returned FALSE. (43601)
+   Totals: 17 passed, 1 failed, 0 skipped, 0 blacklisted, 18ms
+   restored byte for byte
+   restored: test_browser_mcp_server exit=0 Totals: 18 passed, 0 failed, 0 skipped, 0 blacklisted, 13ms

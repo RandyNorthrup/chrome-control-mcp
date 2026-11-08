@@ -1,0 +1,71 @@
+{
+  "ok": false,
+  "bound_ms": 500,
+  "timings": {
+    "click": {
+      "ms": [28, 29, 24],
+      "median": 28,
+      "worst": 29
+    },
+    "hover": {
+      "ms": [44, 47, 49],
+      "median": 47,
+      "worst": 49
+    },
+    "scroll a region by ref": {
+      "ms": [67, 3090, 3083],
+      "median": 3083,
+      "worst": 3090
+    },
+    "scroll the page by ref": {
+      "ms": [3083, 3092, 2083],
+      "median": 3083,
+      "worst": 3092
+    },
+    "scroll the page": {
+      "ms": [266, 1068, 1067],
+      "median": 1067,
+      "worst": 1068
+    },
+    "list tabs": {
+      "ms": [3, 2, 2],
+      "median": 2,
+      "worst": 3
+    },
+    "read the dialog state": {
+      "ms": [4, 8, 5],
+      "median": 5,
+      "worst": 8
+    }
+  },
+  "checks": [
+    {
+      "check": "the agent's tab is behind the browser's own tab, as it is beside a user",
+      "status": "passed"
+    },
+    {
+      "check": "scroll a region by ref replies without waiting for a background frame (worst 3090 ms)",
+      "status": "failed",
+      "detail": "[67,3090,3083] ms, bound 500"
+    },
+    {
+      "check": "scroll the page by ref replies without waiting for a background frame (worst 3092 ms)",
+      "status": "failed",
+      "detail": "[3083,3092,2083] ms, bound 500"
+    },
+    {
+      "check": "scroll the page replies without waiting for a background frame (worst 1068 ms)",
+      "status": "failed",
+      "detail": "[266,1068,1067] ms, bound 500"
+    },
+    {
+      "check": "click replies without waiting for a background frame (worst 29 ms)",
+      "status": "passed"
+    },
+    {
+      "check": "hover replies without waiting for a background frame (worst 49 ms)",
+      "status": "passed"
+    }
+  ],
+  "error": null
+}

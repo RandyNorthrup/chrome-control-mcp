@@ -34,9 +34,10 @@ const LIVE = "only: () => [...sessions][0]";
 
 // Stand in for the offscreen document: record what the worker asked it to do
 // and answer as the real recorder would.
-function bootWorker({ stopAnswer } = {}) {
+function bootWorker({ stopAnswer, viewport } = {}) {
   const toRecorder = [];
   const cdp = [];
+  const cdpParams = [];
   const downloads = [];
   const worker = loadWorker(
     EXPORTED,
@@ -58,8 +59,17 @@ function bootWorker({ stopAnswer } = {}) {
         return Promise.resolve({ ok: true });
       },
       "debugger.attach": () => Promise.resolve(),
-      "debugger.sendCommand": (_target, method) => {
+      "debugger.sendCommand": (_target, method, params) => {
         cdp.push(method);
+        cdpParams.push({ method, params });
+        // The page's own viewport, when a test gives one: the read that sizes the recording.
+        if (
+          viewport &&
+          method === "Runtime.evaluate" &&
+          String(params && params.expression).includes("devicePixelRatio")
+        ) {
+          return Promise.resolve({ result: { value: viewport } });
+        }
         return Promise.resolve({});
       },
       "downloads.download": (options) => {
@@ -80,7 +90,7 @@ function bootWorker({ stopAnswer } = {}) {
   // The tab every test records. A command reaches a handler only for a tab its session holds
   // (the dispatcher sees to that), so the session holds it here as the dispatcher would have.
   worker.only().tabs.set(7, worker.makeTabState(7, "opened"));
-  return { worker, toRecorder, cdp, downloads };
+  return { worker, toRecorder, cdp, cdpParams, downloads };
 }
 
 const sentTo = (toRecorder, type) => toRecorder.filter((m) => m.type === type);
@@ -108,6 +118,55 @@ test("starting a recording attaches, opens an encoder, and turns on screencast",
     sentTo(toRecorder, "record.start")[0].session,
     session.recording.id,
   );
+});
+
+// A 2x 1440x900 viewport, as a laptop's Retina screen reports it.
+const RETINA_VIEWPORT = {
+  dpr: 2,
+  sx: 0,
+  sy: 0,
+  href: "https://example.test/",
+  iw: 1440,
+  ih: 900,
+  vs: 1,
+  vl: 0,
+  vt: 0,
+};
+
+test("a recording's frames are the viewport's shape: standard fits 1280x800, full is every pixel", async () => {
+  // The encoder used to be 1280x800 whatever the page's shape, and every frame was stretched to
+  // fill it; the screencast's frames and the encoder's canvas now agree.
+  for (const [resolution, width, height] of [
+    [undefined, 1280, 800],
+    ["full", 2880, 1800],
+  ]) {
+    const { worker, toRecorder, cdpParams } = bootWorker({
+      viewport: RETINA_VIEWPORT,
+    });
+    const session = worker.only();
+    const started = await worker.handleRecordStart(session, 7, { resolution });
+    assert.equal(started.resolution, resolution ?? "standard");
+    assert.equal(started.width, width);
+    assert.equal(started.height, height);
+    const encoder = sentTo(toRecorder, "record.start")[0];
+    assert.equal(encoder.width, width);
+    assert.equal(encoder.height, height);
+    const cast = cdpParams.find((c) => c.method === "Page.startScreencast");
+    assert.equal(cast.params.maxWidth, width);
+    assert.equal(cast.params.maxHeight, height);
+  }
+});
+
+test("an unknown resolution is refused before anything starts", async () => {
+  const { worker, toRecorder, cdp } = bootWorker({ viewport: RETINA_VIEWPORT });
+  const session = worker.only();
+  await assert.rejects(
+    () => worker.handleRecordStart(session, 7, { resolution: "4k" }),
+    /"standard" or "full"/,
+  );
+  assert.equal(session.recording, null);
+  assert.equal(sentTo(toRecorder, "record.start").length, 0);
+  assert.equal(cdp.includes("Page.startScreencast"), false);
 });
 
 test("a second start for the same session is refused, not silently restarted", async () => {

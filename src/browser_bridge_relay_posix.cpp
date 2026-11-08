@@ -15,7 +15,9 @@
 #include <QFileInfo>
 #include <QtEndian>
 
+#include <array>
 #include <atomic>
+#include <chrono>
 #include <cerrno>
 #include <cstring>
 #include <system_error>
@@ -30,8 +32,6 @@
 
 namespace chrome_control_mcp {
 namespace {
-
-constexpr int kCancelPollMs = 25;
 
 QString errnoText(int value) {
   return QString::fromStdString(
@@ -75,17 +75,56 @@ bool socketWriteAll(int socket_fd, const char *buffer, qsizetype size) {
   return true;
 }
 
+// A pipe the reply's reader writes one byte to once the reply is in, so the
+// loop waiting on the bridge socket wakes for it at once. Without it every
+// exchange waited out the rest of that loop's 25 ms look at the socket: replies
+// measured 26, 51, 76 and 101 ms, whole ticks, however fast the extension was.
+// A pipe that cannot be made leaves the loop as it was, on its tick.
+class WakePipe {
+public:
+  WakePipe() {
+    if (::pipe(ends_.data()) != 0) {
+      ends_ = {-1, -1};
+    }
+  }
+  WakePipe(const WakePipe &) = delete;
+  WakePipe &operator=(const WakePipe &) = delete;
+  WakePipe(WakePipe &&) = delete;
+  WakePipe &operator=(WakePipe &&) = delete;
+  ~WakePipe() {
+    for (const int end : ends_) {
+      if (end >= 0) {
+        ::close(end);
+      }
+    }
+  }
+  [[nodiscard]] int readEnd() const { return ends_.at(0); }
+  void wake() const {
+    if (ends_.at(1) >= 0) {
+      const char byte = 1;
+      // One byte is all it takes; a pipe full of them still wakes the loop, so
+      // a short or failed write changes nothing.
+      [[maybe_unused]] const ssize_t written = ::write(ends_.at(1), &byte, 1);
+    }
+  }
+
+private:
+  std::array<int, 2> ends_{-1, -1};
+};
+
 } // namespace
 
 bool awaitBrowserReply(NativeIpcHandle pipe, const BrowserReadFn &browser_read,
-                       const BrowserWriteFn &browser_write,
-                       QJsonObject *reply) {
+                       const BrowserWriteFn &browser_write, QJsonObject *reply,
+                       std::chrono::milliseconds cancel_poll) {
   std::atomic<bool> finished{false};
   bool readOk = false;
   RelayProgressQueue progress;
+  const WakePipe replied;
   std::thread reader([&] {
     readOk = readBrowserReplyPastProgress(browser_read, &progress, reply);
     finished.store(true, std::memory_order_release);
+    replied.wake();
   });
 
   bool socketOk = true;
@@ -97,17 +136,23 @@ bool awaitBrowserReply(NativeIpcHandle pipe, const BrowserReadFn &browser_read,
       socketOk = false;
       break;
     }
-    pollfd descriptor{pipe, POLLIN, 0};
-    const int ready = poll(&descriptor, 1, kCancelPollMs);
+    // The socket for a cancel, and the wake pipe for the reply. The tick still
+    // bounds the wait, so progress queued by the reader is forwarded as before.
+    std::array<pollfd, 2> descriptors{pollfd{pipe, POLLIN, 0},
+                                      pollfd{replied.readEnd(), POLLIN, 0}};
+    const nfds_t watched = replied.readEnd() >= 0 ? 2 : 1;
+    const int ready = poll(descriptors.data(), watched,
+                           static_cast<int>(cancel_poll.count()));
     if (ready < 0 && errno == EINTR) {
       continue;
     }
-    if (ready < 0 || pollReportedEnd(descriptor.revents)) {
+    const pollfd &socket = descriptors.at(0);
+    if (ready < 0 || pollReportedEnd(socket.revents)) {
       socketOk = false;
       break;
     }
-    if (ready == 0 || !pollReported(descriptor.revents, POLLIN)) {
-      continue;
+    if (ready == 0 || !pollReported(socket.revents, POLLIN)) {
+      continue; // nothing from the server: a tick, or the reply's wake
     }
     QJsonObject frame;
     if (!relayReadPipeFrame(pipe, &frame) ||
