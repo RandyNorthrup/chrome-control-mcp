@@ -18,21 +18,21 @@ before this work ran again against the 1.14.0 build (AC-SPD-COMPAT).
 
 ### 1.14.0: suites
 
-| Where                                                        | Result                                                                                                   |
-| ------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------- |
-| Windows 11, local (MSVC, Qt 6.10.3): ctest                   | 28/28                                                                                                    |
-| Local: `npm run test:js`                                     | 275/275                                                                                                  |
-| Windows, local: MCP smoke, full and read-only                | 54 and 15 tools                                                                                          |
-| Linux, Ubuntu 26.04.1 laptop (GCC 15.2.0, Qt 6.10.2): build  | 0 warnings; ctest 27/27                                                                                  |
-| Linux, laptop: clang-tidy 21.1.8, cppcheck 2.19.0, Semgrep   | 0 findings each (221 rules, 58 files)                                                                    |
-| Linux, Chrome for Testing 153: action latency (new)          | 6/6; worst click 34 ms, hover 50, scrolls 83, 82 and 51, `browser_tabs` 2                                |
-| Linux, Chrome for Testing 153: display matrix                | 35/35 configurations, 3,475/3,475 checks, each screenshot as a view and a presentation                   |
-| Linux, Chrome for Testing 153: full browser                  | ok: 49 tools, 207 live cases                                                                             |
-| Linux, Chrome for Testing 153: interference, multi-agent     | 10/10; 25/25                                                                                             |
-| Linux, Chrome for Testing 153: clipboard, large upload       | 24/24, 7/7                                                                                               |
-| Linux, Chrome for Testing 153: extension version             | current 9/9, store key 9/9, older 12/12, released 1.11.1 12/12                                           |
-| Linux, Chrome for Testing 153: profiles, upgrade             | 14/14, 4/4                                                                                               |
-| CI, release tag `923700b`: every live suite, three platforms | passed ([run 42499004055](https://github.com/RandyNorthrup/chrome-control-mcp/actions/runs/42499004055)) |
+| Where                                                        | Result                                                                                                                   |
+| ------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------ |
+| Windows 11, local (MSVC, Qt 6.10.3): ctest                   | 28/28                                                                                                                    |
+| Local: `npm run test:js`                                     | 275/275                                                                                                                  |
+| Windows, local: MCP smoke, full profile                      | 54 tools; the read-only profile's 15 by ctest's server suite (the smoke ran the full profile only; corrected 2026-11-08) |
+| Linux, Ubuntu 26.04.1 laptop (GCC 15.2.0, Qt 6.10.2): build  | 0 warnings; ctest 27/27                                                                                                  |
+| Linux, laptop: clang-tidy 21.1.8, cppcheck 2.19.0, Semgrep   | 0 findings each (221 rules, 58 files)                                                                                    |
+| Linux, Chrome for Testing 153: action latency (new)          | 6/6; worst click 34 ms, hover 50, scrolls 83, 82 and 51, `browser_tabs` 2                                                |
+| Linux, Chrome for Testing 153: display matrix                | 35/35 configurations, 3,475/3,475 checks, each screenshot as a view and a presentation                                   |
+| Linux, Chrome for Testing 153: full browser                  | ok: 49 tools, 207 live cases                                                                                             |
+| Linux, Chrome for Testing 153: interference, multi-agent     | 10/10; 25/25                                                                                                             |
+| Linux, Chrome for Testing 153: clipboard, large upload       | 24/24, 7/7                                                                                                               |
+| Linux, Chrome for Testing 153: extension version             | current 9/9, store key 9/9, older 12/12, released 1.11.1 12/12                                                           |
+| Linux, Chrome for Testing 153: profiles, upgrade             | 14/14, 4/4                                                                                                               |
+| CI, release tag `923700b`: every live suite, three platforms | passed ([run 42499004055](https://github.com/RandyNorthrup/chrome-control-mcp/actions/runs/42499004055))                 |
 
 Measured on the laptop in the agent's tab behind the browser's own, 1.13.0 took 2,036 to 3,092 ms
 for a scroll by ref and up to 1,057 ms for a click; with the frame-forcing cast removed (the live
@@ -130,7 +130,7 @@ Ubuntu laptop rather than the WSL mirror.
 | ----------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
 | Windows 11, local (MSVC, Qt 6.10.3): ctest                  | 28/28, among them `test_store_publish`                                                                                                   |
 | Local: `npm run test:js`                                    | 255/255                                                                                                                                  |
-| Windows, local: MCP smoke, full and read-only               | 54 and 15 tools                                                                                                                          |
+| Windows, local: MCP smoke, full profile                     | 54 tools; the read-only profile's 15 by ctest's server suite (the smoke ran the full profile only; corrected 2026-11-08)                 |
 | Windows, local: `register_native_host.ps1` on a test key    | both origins written and read back; a bad ID refused; unregistered                                                                       |
 | Linux, Ubuntu 26.04.1 laptop (GCC 15.2.0, Qt 6.10.2): build | 0 warnings; ctest 27/27                                                                                                                  |
 | Linux, laptop: clang-tidy 21.1.8, cppcheck 2.19.0, Semgrep  | 0 findings each (221 rules, 58 files)                                                                                                    |
