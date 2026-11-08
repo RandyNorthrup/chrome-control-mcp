@@ -24,7 +24,9 @@ import { fileURLToPath } from "node:url";
 import {
   CwsError,
   SCOPE,
+  extensionIdForKey,
   googleMessage,
+  keyBody,
   run,
 } from "../scripts/cws_publish.mjs";
 import {
@@ -536,7 +538,44 @@ test("--dry-run signs in and reads the status, and changes nothing", async (t) =
   });
   await assert.rejects(
     runAgainst(elsewhere, { mode: "dry-run", expectedPublicKey: publicKey }),
-    /reach a different item/,
+    /gives the ID [a-p]{32}, not mbkacllnbffbadcajpkkpelifdkfgcbd: these credentials reach a different item/,
+  );
+});
+
+test("--dry-run checks the ID the item's key gives, whatever wrapping the store sends it in", async (t) => {
+  // The first real dry run (2026-11-08) was refused by a byte-for-byte comparison of the key the
+  // store returned with the one in the repository: the same key, wrapped differently.
+  const publicKey = fs
+    .readFileSync(path.join(ROOT, "browser/store-public-key.txt"), "utf8")
+    .trim();
+  const pem = `-----BEGIN PUBLIC KEY-----\n${publicKey.match(/.{1,64}/g).join("\n")}\n-----END PUBLIC KEY-----\n`;
+  assert.equal(extensionIdForKey(publicKey), ITEM);
+  assert.equal(extensionIdForKey(pem), ITEM);
+  assert.equal(keyBody(pem), publicKey);
+
+  const api = await recordedApi(t, {
+    status: () => [200, { itemId: ITEM, publicKey: pem }],
+  });
+  const result = await runAgainst(api, {
+    mode: "dry-run",
+    expectedPublicKey: publicKey,
+  });
+  assert.match(
+    result.lines[0],
+    /its key gives mbkacllnbffbadcajpkkpelifdkfgcbd/,
+  );
+
+  // The right item, but not the key this repository records: said as that, not as another item.
+  const other = crypto
+    .generateKeyPairSync("rsa", { modulusLength: 2048 })
+    .publicKey.export({ type: "spki", format: "der" })
+    .toString("base64");
+  const recorded = await recordedApi(t, {
+    status: () => [200, { itemId: ITEM, publicKey }],
+  });
+  await assert.rejects(
+    runAgainst(recorded, { mode: "dry-run", expectedPublicKey: other }),
+    /is not the one in browser\/store-public-key\.txt$/,
   );
 });
 

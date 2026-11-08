@@ -1,0 +1,13 @@
+Chrome Web Store check, dry-run, run 42430524883 on 97840fa (https://github.com/RandyNorthrup/chrome-control-mcp/actions/runs/42430524883): signed in and read the item, then refused by an exact comparison of the item's public key with browser/store-public-key.txt.
+2026-11-08T00:36:45.3037426Z   node scripts/store_package.mjs --version "$version" --out "$RUNNER_TEMP/store.zip"
+2026-11-08T00:36:45.3038121Z   node scripts/cws_publish.mjs --package "$RUNNER_TEMP/store.zip" --upload-only
+2026-11-08T00:36:45.3038610Z else
+2026-11-08T00:36:45.3038908Z   node scripts/cws_publish.mjs --dry-run
+2026-11-08T00:36:45.3039264Z fi
+2026-11-08T00:36:45.3135028Z shell: /usr/bin/bash -e ***0***
+2026-11-08T00:36:45.3135393Z env:
+2026-11-08T00:36:45.3145522Z   CWS_SERVICE_ACCOUNT_JSON: ***
+2026-11-08T00:36:45.3145851Z   MODE: dry-run
+2026-11-08T00:36:45.3146129Z ##[endgroup]
+2026-11-08T00:36:45.7558146Z chrome web store: The item's public key is not the one in browser/store-public-key.txt: these credentials reach a different item
+2026-11-08T00:36:45.7617892Z ##[error]Process completed with exit code 1.

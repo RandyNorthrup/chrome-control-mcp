@@ -17,8 +17,9 @@
 //   CWS_SERVICE_ACCOUNT_JSON=... node scripts/cws_publish.mjs --dry-run
 //   CWS_SERVICE_ACCOUNT_JSON=... node scripts/cws_publish.mjs --package pkg.zip --upload-only
 //
-// --dry-run signs in and reads the item's status, and checks the item's public key is the one in
-// browser/store-public-key.txt: proof the credentials and IDs are right, with nothing changed.
+// --dry-run signs in and reads the item's status, and checks that the item's public key gives the
+// item's ID and is the key in browser/store-public-key.txt (compared without its PEM armour or line
+// breaks): proof the credentials and IDs are right, with nothing changed.
 // --upload-only uploads and waits for the store to accept the package, without submitting it.
 //
 // CWS_PUBLISHER_ID and CWS_ITEM_ID override the IDs below; CWS_API_BASE overrides the API's
@@ -251,6 +252,27 @@ export async function uploadPackage(
   }
 }
 
+// The base64 body of a public key, whether it comes PEM-armoured or bare, without whitespace.
+export function keyBody(key) {
+  return String(key)
+    .replace(/-----(BEGIN|END)[^-]*-----/g, "")
+    .replace(/\s+/g, "");
+}
+
+// The ID Chrome gives an extension signed with @p key: the first 128 bits of the SHA-256 of the
+// key's DER bytes, as the letters a to p.
+export function extensionIdForKey(key) {
+  const digest = crypto
+    .createHash("sha256")
+    .update(Buffer.from(keyBody(key), "base64"))
+    .digest();
+  let id = "";
+  for (const byte of digest.subarray(0, 16)) {
+    id += String.fromCharCode(97 + (byte >> 4), 97 + (byte & 0x0f));
+  }
+  return id;
+}
+
 // A one-line account of fetchStatus's reply.
 export function describeStatus(status) {
   const revision = (label, value) => {
@@ -294,16 +316,29 @@ export async function run({
   const store = new StoreItem({ fetchImpl, token, publisher, item, base });
   if (mode === "dry-run") {
     const status = await store.fetchStatus();
-    if (
-      expectedPublicKey &&
-      status.publicKey &&
-      status.publicKey !== expectedPublicKey
-    ) {
-      throw new CwsError(
-        "The item's public key is not the one in browser/store-public-key.txt: these credentials reach a different item",
-      );
+    let keyNote = "";
+    if (status.publicKey) {
+      // The ID the item's own key gives it is what Chrome and the native host see, so that is
+      // what is checked; the key's wrapping (PEM armour, line breaks) is not.
+      const derived = extensionIdForKey(status.publicKey);
+      if (derived !== item) {
+        throw new CwsError(
+          `The item's public key gives the ID ${derived}, not ${item}: these credentials reach a different item`,
+        );
+      }
+      if (
+        expectedPublicKey &&
+        keyBody(status.publicKey) !== keyBody(expectedPublicKey)
+      ) {
+        throw new CwsError(
+          "The item's public key is not the one in browser/store-public-key.txt",
+        );
+      }
+      keyNote = `; its key gives ${derived}`;
     }
-    log(`Signed in as ${account.clientEmail}; ${describeStatus(status)}`);
+    log(
+      `Signed in as ${account.clientEmail}; ${describeStatus(status)}${keyNote}`,
+    );
     return { status };
   }
   if (!packageBytes) {
