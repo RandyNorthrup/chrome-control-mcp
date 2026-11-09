@@ -69,8 +69,10 @@ among them, published the GitHub release at 18:58:36 UTC, and published the four
 
 The Chrome Web Store job built the store package (11 files, 182,604 bytes, no `key`) and the store
 refused the upload with the same "FAILED_PRECONDITION: You may not edit or publish an item that is
-in review": 1.13.0 is still in Google's review. Once it is out, running this release's failed job
-again submits 1.15.0, which takes 1.14.0's place in the queue.
+in review": 1.13.0 was still in Google's review. Google approved 1.13.0 the next day, and the job,
+run again at 22:40 UTC on 2026-11-09, uploaded the same package and submitted 1.15.0 in 1.14.0's
+place: the store answered `PENDING_REVIEW`. It is submitted to publish as soon as Google approves
+it.
 
 ### 1.15.0: found on the way
 
