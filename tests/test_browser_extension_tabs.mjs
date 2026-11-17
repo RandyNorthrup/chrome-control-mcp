@@ -33,6 +33,7 @@ const EXPORTED = [
   "standDownIdle",
   "noteOfferedServers",
   "probeForServers",
+  "CC_HUB",
   "agentArg",
   "claimPopup",
   "agentColor",
@@ -41,7 +42,8 @@ const EXPORTED = [
   "IDLE_RELEASE_MS",
 ];
 const LIVE =
-  "sessions, probeOpenedAt: () => probeOpenedAt, refused: () => refusedServers";
+  "sessions, probeOpenedAt: () => CC_HUB.probeOpenedAt," +
+  " refused: () => refusedServers";
 
 // The browser model, bound to the names this suite reads.
 const attachedBrowser = (server = "100", options = {}) =>
@@ -668,7 +670,7 @@ test("a lost port parks the tabs; the server coming back resumes them", async ()
   assert.ok(b.tabs.has(tab.id));
 
   // A new port reaches the same server, which is still running.
-  b.worker.probeForServers({ force: true });
+  b.worker.probeForServers(b.worker.CC_HUB, { force: true });
   const next = b.ports[b.ports.length - 1];
   next.emit({ type: "bridge_offers", protocol: PROTOCOL, servers: ["100"] });
   next.emit({ type: "bridge_ready", protocol: PROTOCOL });
@@ -690,7 +692,8 @@ test("a server that is gone has its tabs cleaned up: opened closed, borrowed han
 
   b.port.drop();
   await settle();
-  b.worker.noteOfferedServers(["200"]); // a relay lists the live servers; 100 is not among them
+  // A relay lists the live servers; 100 is not among them.
+  b.worker.noteOfferedServers(b.worker.CC_HUB, ["200"]);
   await settle();
   await settle();
 
@@ -797,7 +800,7 @@ test("a new server is picked up by one probe, however many relays report it", as
 
 test("a server that refused is not asked again straight away", async () => {
   const b = await attachedBrowser("100");
-  b.worker.probeForServers({ force: true });
+  b.worker.probeForServers(b.worker.CC_HUB, { force: true });
   const probe = b.ports[b.ports.length - 1];
   probe.emit({
     type: "bridge_offers",

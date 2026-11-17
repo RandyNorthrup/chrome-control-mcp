@@ -111,6 +111,54 @@ export function makeFakePort() {
   };
 }
 
+// S.A.K. Utility's native host: the extension's second, optional one. Unless a suite says
+// otherwise it is not installed -- the browser of a Chrome Control MCP user without S.A.K. -- and
+// a port for it is answered the way Chrome answers one for any host it cannot find: it
+// disconnects at once, with this as chrome.runtime.lastError.
+export const SAK_HOST_NAME = "com.sak.browsercontrol";
+export const HOST_NOT_FOUND = "Specified native messaging host not found.";
+
+// A port for a host Chrome cannot find. @p overrides is the chrome stub's override map, where
+// chrome.runtime.lastError is set for as long as the disconnect is being delivered.
+export function makeMissingHostPort(overrides) {
+  const port = makeFakePort();
+  setTimeout(() => {
+    const had = Object.prototype.hasOwnProperty.call(
+      overrides,
+      "runtime.lastError",
+    );
+    const before = overrides["runtime.lastError"];
+    overrides["runtime.lastError"] = { message: HOST_NOT_FOUND };
+    try {
+      port.drop();
+    } finally {
+      if (had) {
+        overrides["runtime.lastError"] = before;
+      } else {
+        delete overrides["runtime.lastError"];
+      }
+    }
+  }, 0);
+  return port;
+}
+
+// Route chrome.runtime.connectNative by host name: Chrome Control MCP's host to whatever the
+// suite gave (or the recording stub), S.A.K.'s to @p sakHost, or to a host that is not there.
+// Done in place, so a suite that changes its override map later is still heard.
+function routeHosts(overrides, sakHost) {
+  const own = overrides["runtime.connectNative"];
+  overrides["runtime.connectNative"] = (name, ...rest) => {
+    if (name === SAK_HOST_NAME) {
+      return sakHost
+        ? sakHost(name, ...rest)
+        : makeMissingHostPort(overrides);
+    }
+    return own
+      ? own(name, ...rest)
+      : makeChromeStub(overrides, "runtime.connectNative");
+  };
+}
+
 // Let the worker's own promise chain run to completion. handleCommand is async and replies
 // through port.postMessage, so a test that emits a command has to yield before asserting on
 // what came back. A handful of turns covers the deepest chain the worker builds.
@@ -125,10 +173,25 @@ export async function settle(turns = 12) {
 //
 // `extra` is appended to the epilogue verbatim, so a suite can take a closure over a live
 // `let` binding (`ready: () => bridgeReady`) instead of a snapshot of its value at load time.
-export function loadWorker(exported, overrides = {}, extra = "") {
+// `sakHost`, when given, answers connectNative for S.A.K.'s host (see SAK_HOST_NAME); without it
+// that host is not installed. `console`, when given, is the worker's console, so a suite can say
+// what it logged; without it the worker logs nowhere.
+export function loadWorker(
+  exported,
+  overrides = {},
+  extra = "",
+  { sakHost, console: sink } = {},
+) {
+  routeHosts(overrides, sakHost);
   const context = vm.createContext({
     chrome: makeChromeStub(overrides),
-    console: { log() {}, warn() {}, error() {}, debug() {}, info() {} },
+    console: sink || {
+      log() {},
+      warn() {},
+      error() {},
+      debug() {},
+      info() {},
+    },
     setTimeout,
     clearTimeout,
     setInterval,

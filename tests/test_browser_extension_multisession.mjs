@@ -17,6 +17,7 @@ import assert from "node:assert/strict";
 import { loadWorker, makeFakePort, settle } from "./extension_harness.mjs";
 
 const EXPORTED = [
+  "CC_HUB",
   "connect",
   "handleSelectTab",
   "leaseHolder",
@@ -96,7 +97,7 @@ test("a port with no server left to take goes away instead of retrying", async (
   await settle();
   assert.equal(worker.sessions.size, 1);
 
-  worker.connect(); // stands in for the alarm's probe
+  worker.connect(worker.CC_HUB); // stands in for the alarm's probe
   await settle();
   assert.equal(opened.length, 2);
 
@@ -287,6 +288,7 @@ test("the command table is not empty, so the check above cannot pass vacuously",
 // tab, which is what it had just refused.
 
 const WINDOW_EXPORTS = [
+  "CC_HUB",
   "connect",
   "sessionWindow",
   "leaseHolder",

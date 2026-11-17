@@ -27,6 +27,7 @@ import { loadWorker, makeFakePort, settle } from "./extension_harness.mjs";
 
 // Functions reached directly. Everything else is driven through the port.
 const EXPORTED = [
+  "CC_HUB",
   "connect",
   "send",
   "setBridgePaused",
@@ -47,7 +48,7 @@ const LIVE =
   " port: s.port, bridgeReady: s.bridgeReady," +
   " commandGeneration: s.commandGeneration, tabs: s.tabs.size," +
   " serverId: s.serverId, health: s.health, surplus: s.surplus } : {}; }," +
-  " retryDelay: () => reconnectDelayMs, paused: () => bridgePaused";
+  " retryDelay: () => CC_HUB.reconnectDelayMs, paused: () => bridgePaused";
 
 // Load the worker with a port under the test's control. The worker calls connect() at top
 // level, so the port is already open and both listeners are registered when this returns.
@@ -250,7 +251,7 @@ test("pausing closes the bridge and stops every attempt", async (t) => {
   t.mock.timers.tick(worker.RECONNECT_MAX_MS * 2);
   worker.reconnectOnActivity();
   assert.equal(
-    worker.connect({ force: true }),
+    worker.connect(worker.CC_HUB, { force: true }),
     null,
     "even a forced attempt is refused",
   );
@@ -259,7 +260,7 @@ test("pausing closes the bridge and stops every attempt", async (t) => {
   // And resuming works.
   await worker.setBridgePaused(false);
   assert.equal(worker.paused(), false);
-  assert.notEqual(worker.connect({ force: true }), null);
+  assert.notEqual(worker.connect(worker.CC_HUB, { force: true }), null);
   assert.equal(opened.length, whilePaused + 1);
 });
 
@@ -272,7 +273,7 @@ test("connecting gives the port a session of its own", () => {
   assert.equal(worker.sessions.size, 1);
   assert.equal(worker.peek().port, port);
 
-  worker.connect();
+  worker.connect(worker.CC_HUB);
 
   assert.equal(worker.sessions.size, 2, "a second port is a second session");
 });
