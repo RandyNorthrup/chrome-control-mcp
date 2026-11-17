@@ -218,6 +218,57 @@ test("each host names its own tab groups", async () => {
   );
 });
 
+// What a held tab's refusal says names the asking session's own program: S.A.K.'s e2e and its
+// assistant read "another S.A.K. assistant session", Chrome Control MCP's agents read what they
+// always have.
+test("a tab another session of the same host holds is refused in that host's words", () => {
+  const worker = loadWorker(
+    [
+      "CC_HUB",
+      "SAK_HUB",
+      "makeSession",
+      "makeTabState",
+      "requireUnleasedTab",
+      "protocolMismatchText",
+    ],
+    {},
+    LIVE,
+  );
+  const tabId = 4242;
+  for (const [hub, words, foreign] of [
+    [worker.SAK_HUB, /driven by another S\.A\.K\. assistant session/, /MCP/],
+    [
+      worker.CC_HUB,
+      /driven by another Chrome Control MCP session/,
+      /S\.A\.K\./,
+    ],
+  ]) {
+    worker.sessions.clear();
+    const holder = worker.makeSession(hub);
+    holder.label = "Helper";
+    holder.tabs.set(tabId, worker.makeTabState(tabId, "opened"));
+    worker.sessions.add(holder);
+    const asking = worker.makeSession(hub);
+    worker.sessions.add(asking);
+    assert.throws(
+      () => worker.requireUnleasedTab(asking, { id: tabId }),
+      (error) => words.test(error.message) && !foreign.test(error.message),
+    );
+  }
+  worker.sessions.clear();
+
+  // A protocol mismatch says what to do with the program that asked.
+  const sak = worker.protocolMismatchText(3, worker.SAK_HUB);
+  assert.match(sak, /S\.A\.K\. Utility/);
+  assert.doesNotMatch(sak, /Chrome Control MCP|editor/);
+  const cc = worker.protocolMismatchText(3, worker.CC_HUB);
+  assert.match(
+    cc,
+    /The Chrome Control MCP extension loaded in Chrome is older/,
+  );
+  assert.equal(worker.protocolMismatchText(3), cc);
+});
+
 // -- Chrome Control MCP users without S.A.K. ------------------------------------------------------
 
 // The log lines that would be about S.A.K.'s host.

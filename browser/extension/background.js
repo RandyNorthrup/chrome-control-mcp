@@ -1015,7 +1015,8 @@ function requireUnleasedTab(session, tab) {
   }
   if (holder) {
     throw new Error(
-      "That tab is being driven by another Chrome Control MCP session" +
+      "That tab is being driven by another " +
+        session.hub.sessionName +
         (holder.label ? " (" + holder.label + ")" : "") +
         (holder.serverId
           ? " (server " + relayServerId(holder.hub, holder.serverId) + ")"
@@ -1140,6 +1141,10 @@ const CC_HUB = makeHub({
   groupTitle: "AI CONTROL",
   groupPrefix: "AI \u00b7 ",
   logTag: "[ChromeControlMCP]",
+  // What this host's agents are told the other sessions, the extension and their own program are.
+  sessionName: "Chrome Control MCP session",
+  badgeText: "AI",
+  badgeTitle: "Chrome Control MCP assistant is controlling this tab",
   optional: false,
   // The profile's account email names the profile to Chrome Control MCP; nobody else is told it.
   shareProfileEmail: true,
@@ -1157,6 +1162,9 @@ const SAK_HUB = makeHub({
   groupTitle: "S.A.K. CONTROL",
   groupPrefix: "S.A.K. \u00b7 ",
   logTag: "[ChromeControlMCP:S.A.K.]",
+  sessionName: "S.A.K. assistant session",
+  badgeText: "SAK",
+  badgeTitle: "S.A.K. assistant is controlling this tab",
   optional: true,
   shareProfileEmail: false,
   reportsInstalledCopy: false,
@@ -1392,8 +1400,10 @@ async function loadHubBackoff(hub) {
   hub.backoffLoaded = true;
 }
 
-// What a session says when its server speaks another bridge protocol, in terms of what to do.
-function protocolMismatchText(hostProtocol) {
+// What a session says when its server speaks another bridge protocol, in terms of what to do --
+// and what to do depends on the program: Chrome Control MCP installs the extension's files beside
+// its server, S.A.K. Utility has Chrome install it from the Chrome Web Store.
+function protocolMismatchText(hostProtocol, hub = CC_HUB) {
   const newer = Number(hostProtocol) > BRIDGE_PROTOCOL;
   return (
     "Bridge protocol mismatch: host " +
@@ -1401,12 +1411,26 @@ function protocolMismatchText(hostProtocol) {
     ", extension " +
     BRIDGE_PROTOCOL +
     ". " +
-    (newer
-      ? "The Chrome Control MCP extension loaded in Chrome is older than the server: reload it " +
-        "at chrome://extensions (or restart Chrome) so Chrome loads the copy installed with the server."
-      : "The server is older than this extension: restart the editor or agent that started it so " +
-        "it runs the installed version.")
+    (hub.optional
+      ? sakProtocolAdvice(newer)
+      : chromeControlProtocolAdvice(newer))
   );
+}
+
+function chromeControlProtocolAdvice(newer) {
+  return newer
+    ? "The Chrome Control MCP extension loaded in Chrome is older than the server: reload it " +
+        "at chrome://extensions (or restart Chrome) so Chrome loads the copy installed with the server."
+    : "The server is older than this extension: restart the editor or agent that started it so " +
+        "it runs the installed version.";
+}
+
+function sakProtocolAdvice(newer) {
+  return newer
+    ? "The browser extension loaded in Chrome is older than S.A.K. Utility: restart Chrome so it " +
+        "updates the extension from the Chrome Web Store."
+    : "S.A.K. Utility is older than this browser extension: update S.A.K. Utility, then start " +
+        "its assistant again.";
 }
 
 // A server newer than this extension means the files on disk were updated and Chrome is still
@@ -2226,7 +2250,7 @@ function onHostMessage(session, msg) {
     showBridgeState();
     session.bridgeReady = msg.protocol === BRIDGE_PROTOCOL;
     if (!session.bridgeReady) {
-      session.health.error = protocolMismatchText(msg.protocol);
+      session.health.error = protocolMismatchText(msg.protocol, session.hub);
       noteServerRefused(session.serverId);
       if (session.hub.reportsInstalledCopy) {
         void reloadForNewerHost(msg.protocol);
@@ -8425,9 +8449,12 @@ function setTabControlBadge(tabId, on) {
   const settle = (p) => {
     Promise.resolve(p).catch(ignore);
   };
+  // The chip and its tooltip say which program is driving the tab.
+  const held = holderOf(tabId);
+  const hub = held ? held.session.hub : CC_HUB;
   try {
     if (on) {
-      settle(chrome.action.setBadgeText({ tabId, text: "AI" }));
+      settle(chrome.action.setBadgeText({ tabId, text: hub.badgeText }));
       settle(
         chrome.action.setBadgeBackgroundColor({
           tabId,
@@ -8437,7 +8464,7 @@ function setTabControlBadge(tabId, on) {
       settle(
         chrome.action.setTitle({
           tabId,
-          title: "Chrome Control MCP assistant is controlling this tab",
+          title: hub.badgeTitle,
         }),
       );
     } else {
