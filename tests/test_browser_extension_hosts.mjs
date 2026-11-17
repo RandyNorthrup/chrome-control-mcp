@@ -207,14 +207,14 @@ test("each host names its own tab groups", async () => {
   assert.equal(b.worker.groupTitle(b.sakSession, ""), "S.A.K. CONTROL");
   b.ccSession.label = "Codex";
   b.sakSession.label = "Assistant";
-  assert.equal(b.worker.groupTitle(b.ccSession, ""), "AI · Codex");
+  assert.equal(b.worker.groupTitle(b.ccSession, ""), "AI \u00b7 Codex");
   assert.equal(
     b.worker.groupTitle(b.sakSession, ""),
-    "S.A.K. · Assistant",
+    "S.A.K. \u00b7 Assistant",
   );
   assert.equal(
     b.worker.groupTitle(b.sakSession, "research"),
-    "S.A.K. · research",
+    "S.A.K. \u00b7 research",
   );
 });
 

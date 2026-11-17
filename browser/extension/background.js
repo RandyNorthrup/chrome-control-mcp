@@ -1138,7 +1138,7 @@ const CC_HUB = makeHub({
   serverPrefix: "",
   backoffKey: BACKOFF_KEY,
   groupTitle: "AI CONTROL",
-  groupPrefix: "AI · ",
+  groupPrefix: "AI \u00b7 ",
   logTag: "[ChromeControlMCP]",
   optional: false,
   // The profile's account email names the profile to Chrome Control MCP; nobody else is told it.
@@ -1155,7 +1155,7 @@ const SAK_HUB = makeHub({
   serverPrefix: "sak:",
   backoffKey: "chrome_control_mcp.sak.backoff",
   groupTitle: "S.A.K. CONTROL",
-  groupPrefix: "S.A.K. · ",
+  groupPrefix: "S.A.K. \u00b7 ",
   logTag: "[ChromeControlMCP:S.A.K.]",
   optional: true,
   shareProfileEmail: false,
