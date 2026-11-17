@@ -231,7 +231,8 @@ Build:
 
 - Extension IDs: `iojehhmnaigcejfcpmilpclmeljhlkaa` (unpacked) and
   `mbkacllnbffbadcajpkkpelifdkfgcbd` (Chrome Web Store)
-- Native host: `com.chromecontrolmcp.browser`
+- Native host: `com.chromecontrolmcp.browser`; and S.A.K. Utility's, `com.sak.browsercontrol`,
+  which the extension also connects to when it is installed (see below)
 - Windows pipe prefix: `ChromeControlMCP_BrowserBridge`
 - Unix runtime namespace: `chrome-control-mcp-<uid>`
 
@@ -246,6 +247,22 @@ Publishing to the store uses a Google Cloud service account whose key is only th
 secret `CWS_SERVICE_ACCOUNT_JSON`, read by the release workflow's store job and nowhere else
 ([CHROME_WEB_STORE.md](CHROME_WEB_STORE.md)). The extension sends nothing to the developer; see
 [PRIVACY.md](PRIVACY.md).
+
+### A second application: S.A.K. Utility
+
+The extension also serves S.A.K. Utility, through that program's own native host,
+`com.sak.browsercontrol`, which S.A.K. registers and this project never writes. The two hosts are
+kept apart inside the extension: each has its own sessions; a session never sees the other host's
+sessions or the tabs they hold, and a command naming such a tab is refused without saying who holds
+it; every frame is answered on the port it came in on, and nothing is relayed between hosts; the
+profile's account email goes to this project's host only. A tab either host holds is held: neither
+may take the other's. The toolbar switch pauses both. Which host a port reaches is Chrome's
+decision, made from the host name and the registration's `allowed_origins`, so a page can no more
+choose the host than it can choose the server.
+
+When S.A.K. is not installed its host is not registered, Chrome reports it missing, and the
+extension asks for it again only after ten minutes, doubling up to six hours, without logging
+anything; no process is started by asking.
 
 ## What setup writes
 

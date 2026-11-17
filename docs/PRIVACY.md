@@ -1,6 +1,6 @@
 # Privacy policy
 
-Chrome Control MCP, the Chrome extension and the MCP server it works with. Effective 2026-11-07.
+Chrome Control MCP, the Chrome extension and the MCP server it works with. Effective 2026-11-17.
 
 ## In short
 
@@ -45,7 +45,13 @@ choose, which tabs each agent holds, and its own update and pause state.
    VS Code, Cursor or any other. What that client does with a page it was given -- for example,
    sending it to an AI model -- is governed by that client's and that model provider's terms, which
    you chose when you connected them.
-3. **To files on your computer.** Recordings, PDFs and downloads are saved where the agent's call
+3. **To S.A.K. Utility, if it is installed and you use it, on the same computer.** The extension
+   also works for S.A.K. Utility, a separate program by the same developer, through its own
+   native-messaging host. What S.A.K.'s assistant asks for goes to S.A.K. on this computer, in the
+   same way, and is handled under S.A.K. Utility's own terms. The two programs never see each
+   other's tabs or messages, and your profile's account email is never given to S.A.K. Without
+   S.A.K. Utility installed, nothing goes to it.
+4. **To files on your computer.** Recordings, PDFs and downloads are saved where the agent's call
    or Chrome's download settings say. A screenshot goes back to the agent in the reply, except
    one taken for presentation, which is saved as a file instead.
 

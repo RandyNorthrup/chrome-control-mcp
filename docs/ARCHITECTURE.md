@@ -156,6 +156,14 @@ command. Before this check a server whose relay died between commands -- Chrome 
 extension reloading -- held the endpoint until a command happened along to fail; one was observed
 unreachable for a whole day.
 
+The extension reaches two native hosts: this project's, and S.A.K. Utility's
+(`com.sak.browsercontrol`), the other application the extension serves. Each is a hub in
+`background.js` with its own ports, sessions, server ids (S.A.K.'s are kept as `sak:<pid>` so equal
+pids never collide), reconnect interval and tab-group names. A session of one hub sees nothing of
+the other's: its tabs are left out of every listing and refused by every command, and every frame
+goes back on the port it came in on. S.A.K.'s host is optional; while it is not installed it is
+asked for after ten minutes, doubling up to six hours, and never logged.
+
 ## Sessions, tabs, and agents
 
 A session is one server's port. It holds tabs, not one tab: those it opened (`browser_new_tab`,

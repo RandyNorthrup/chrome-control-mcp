@@ -8,6 +8,7 @@ entry's heading opens its GitHub release page and downloads. To hear about new r
 
 | Version                      | Released   | What it is                                                              |
 | ---------------------------- | ---------- | ----------------------------------------------------------------------- |
+| [1.16.0](#1160---2026-11-17) | 2026-11-17 | One extension for Chrome Control MCP and S.A.K. Utility                 |
 | [1.15.0](#1150---2026-11-08) | 2026-11-08 | Actions say what they changed, and forms fill in one call               |
 | [1.14.0](#1140---2026-11-08) | 2026-11-08 | Faster actions, and screenshots the size a model uses                   |
 | [1.13.0](#1130---2026-11-07) | 2026-11-07 | The extension goes to the Chrome Web Store                              |
@@ -39,6 +40,37 @@ entry's heading opens its GitHub release page and downloads. To hear about new r
 | [1.1.0](#110---2026-09-21)   | 2026-09-21 | The agent works in a tab of its own                                     |
 | [1.0.1](#101---2026-09-16)   | 2026-09-16 | The bridge recovers when another server takes or removes its record     |
 | [1.0.0](#100---2026-08-20)   | 2026-08-20 | First public release                                                    |
+
+## [1.16.0] - 2026-11-17
+
+The Chrome Web Store extension serves S.A.K. Utility as well as Chrome Control MCP, each through
+its own native host, and three calls no longer do what they did not ask for.
+
+### Added
+
+- **A second native host, S.A.K. Utility's** (`com.sak.browsercontrol`). Each host's sessions see
+  only that host's sessions and tabs: `browser_tabs`, the window tab counts and the server's
+  profile lookup leave out tabs the other host holds, and a command naming one is refused without
+  saying who holds it. Every frame is answered on the port it came in on and nothing passes
+  between hosts; the profile's account email goes to Chrome Control MCP only; S.A.K.'s tab groups
+  are titled "S.A.K. ...". The toolbar switch pauses both.
+- `tests/test_browser_extension_hosts.mjs`: two hosts at once, their isolation, the email, the
+  toolbar switch, and the S.A.K. host missing.
+
+### Changed
+
+- S.A.K.'s host is optional. When it is not installed the extension asks for it at startup, then
+  after ten minutes, doubling to six hours, and logs nothing about it; the wait is kept in session
+  storage, so a browser restart, a toolbar click or the host answering ends it. Chrome Control
+  MCP's own reconnect timing and messages are unchanged.
+
+### Fixed
+
+- `browser_window` focus/close with `window_id: null` addressed window 0 (and was refused as "not
+  in the listing"); it now asks for a window id.
+- `browser_download` with `timeout_ms: null` took a one-second budget instead of the 30 s default.
+- `browser_group_tabs` with an unknown colour grouped the tabs before refusing; the colour is now
+  checked first.
 
 ## [1.15.0] - 2026-11-08
 
@@ -1367,6 +1399,7 @@ tried were broken.
 - Unused JSON-RPC client payload helpers and obsolete test-only native-host loop.
 - Redundant quality branch; development and delivery now happen directly on `main`.
 
+[1.16.0]: https://github.com/RandyNorthrup/chrome-control-mcp/releases/tag/v1.16.0
 [1.15.0]: https://github.com/RandyNorthrup/chrome-control-mcp/releases/tag/v1.15.0
 [1.14.0]: https://github.com/RandyNorthrup/chrome-control-mcp/releases/tag/v1.14.0
 [1.13.0]: https://github.com/RandyNorthrup/chrome-control-mcp/releases/tag/v1.13.0
