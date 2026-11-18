@@ -232,7 +232,8 @@ Build:
 - Extension IDs: `iojehhmnaigcejfcpmilpclmeljhlkaa` (unpacked) and
   `mbkacllnbffbadcajpkkpelifdkfgcbd` (Chrome Web Store)
 - Native host: `com.chromecontrolmcp.browser`; and S.A.K. Utility's, `com.sak.browsercontrol`,
-  which the extension also connects to when it is installed (see below)
+  which the extension also connects to only while an administrator's policy turns it on (see
+  below)
 - Windows pipe prefix: `ChromeControlMCP_BrowserBridge`
 - Unix runtime namespace: `chrome-control-mcp-<uid>`
 
@@ -251,18 +252,66 @@ secret `CWS_SERVICE_ACCOUNT_JSON`, read by the release workflow's store job and 
 ### A second application: S.A.K. Utility
 
 The extension also serves S.A.K. Utility, through that program's own native host,
-`com.sak.browsercontrol`, which S.A.K. registers and this project never writes. The two hosts are
-kept apart inside the extension: each has its own sessions; a session never sees the other host's
-sessions or the tabs they hold, and a command naming such a tab is refused without saying who holds
-it; every frame is answered on the port it came in on, and nothing is relayed between hosts; the
-profile's account email goes to this project's host only. A tab either host holds is held: neither
-may take the other's. The toolbar switch pauses both. Which host a port reaches is Chrome's
-decision, made from the host name and the registration's `allowed_origins`, so a page can no more
-choose the host than it can choose the server.
+`com.sak.browsercontrol`, which S.A.K. registers and this project never writes.
 
-When S.A.K. is not installed its host is not registered, Chrome reports it missing, and the
-extension asks for it again only after ten minutes, doubling up to six hours, without logging
-anything; no process is started by asking.
+**Off unless an administrator turns it on.** A native host's name belongs to whoever registers it,
+and any program running as the user can register one under the user's own registry key
+(`HKCU\Software\Google\Chrome\NativeMessagingHosts`) naming this extension in its
+`allowed_origins`. On most computers `com.sak.browsercontrol` is registered by nobody, so a program
+that claimed it would be handed the whole command set -- the debugger, cookies including HttpOnly
+ones, downloads -- without anyone noticing. So the extension opens a port to S.A.K.'s host only
+while Chrome's policy for this extension holds `sakHostEnabled: true` (`chrome.storage.managed`,
+declared by `storage.managed_schema` in the manifest; `managed_schema.json`). On Windows that policy
+lives under `Software\Policies\Google\Chrome\3rdparty\extensions\<id>\policy` (Edge:
+`Software\Policies\Microsoft\Edge\...`) in HKCU or HKLM, and both `Software\Policies` keys are
+writable by administrators and SYSTEM only: the user's own account has read access. Checked on a
+Windows 11 25H2 test PC joined to no domain (2026-11-17): a process with the user's standard token
+was refused creating the policy key under HKCU and HKLM, writing a value on HKCU's `Policies`,
+taking ownership of it, changing its permissions, deleting it and renaming it. On the same PC Chrome
+157, Edge 157 and Chrome for Testing 157 (which reads its own `Google\Chrome for Testing` key)
+handed the value to the extension (`chrome://policy`: Platform, Current user, Mandatory, OK),
+within about 17 seconds of it being written while the browser ran; Chrome applied 3rdparty policy
+the same way to an extension it had force-installed from the Chrome Web Store. S.A.K. Utility runs as an administrator and writes the value when its Browser Control
+is turned on (also when it reuses a copy of the extension already installed), and removes it when
+it is turned off. Without the value the host is never asked for -- not by a forced retry, not by
+the toolbar button -- and a value of any other type than `true` counts as off. When the policy is
+removed while the browser runs, every S.A.K. session ends at once and its tabs go back to the user.
+
+What remains: once an administrator has turned it on, the host's registration is still the user's
+to change, as every user-level native host's is; a program running as the user could point
+`com.sak.browsercontrol` at itself. That is the same exposure Chrome Control MCP's own host has, and
+a program with that much access to the account can already change the user's Chrome in other ways.
+
+**Kept apart.** The two hosts are separate inside the extension: each has its own sessions, and a
+session never sees the other host's sessions or the tabs they hold. Those tabs are left out of
+every tab listing, its count and its numbering (a listing's indices are the tab's place among the
+tabs the session may see, so no gap marks where the other's tab sits); a window holding only the
+other host's tabs is not listed, and other windows' tab counts leave them out. A command naming
+such a tab by id is refused in exactly the words used for an id that names no tab at all, so an id
+cannot be probed for whether the other application holds it. No command reaches one: grouping or
+ungrouping the active tab, focusing a window whose active tab it is, and closing a window that
+holds one (or a tab another session of the same host holds) are refused. Every frame is answered on
+the port it came in on, and nothing is relayed between hosts. The profile's account email goes to
+this project's host only: S.A.K. is told the name the user gave the profile, or a generated one,
+never the email in any field. A reload the extension makes for a newer server waits until no
+session of either host is using it. Which host a port reaches is Chrome's decision, made from the
+host name and the registration's `allowed_origins`, so a page can no more choose the host than it
+can choose the server. The toolbar switch pauses both.
+
+**Shared, because it is the profile's.** Both hosts drive the same Chrome profile, so its cookies,
+sign-ins, site settings and download folder are shared between them, as they are with the user.
+While a session of one host holds a tab on a site, a `browser_cookies` or `browser_permission` call
+from the other host for that site -- the tab's host name, a domain above it or one below it -- is
+refused. At any other time those calls reach the profile's cookies and settings for any site, and
+either host can open a page of its own on a site where the user is signed in. This is stated in
+[PRIVACY.md](PRIVACY.md).
+
+When S.A.K.'s host is turned on but not installed (Chrome reports it missing, or cannot start the
+program its registration names, as when a portable folder was deleted), the extension asks for it
+again only after ten minutes, doubling up to six hours, without logging anything; no process is
+started by asking. When it is installed but S.A.K. is not running, its relay starts, finds nothing
+to attach to and exits; that is asked again on the usual doubling interval, but up to ten minutes
+rather than two, and is not logged either.
 
 ## What setup writes
 

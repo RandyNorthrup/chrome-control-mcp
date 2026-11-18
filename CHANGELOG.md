@@ -44,25 +44,48 @@ entry's heading opens its GitHub release page and downloads. To hear about new r
 ## [1.16.0] - 2026-11-17
 
 The Chrome Web Store extension serves S.A.K. Utility as well as Chrome Control MCP, each through
-its own native host, and three calls no longer do what they did not ask for.
+its own native host, when an administrator turns that on; and three calls no longer do what they
+did not ask for.
 
 ### Added
 
-- **A second native host, S.A.K. Utility's** (`com.sak.browsercontrol`). Each host's sessions see
-  only that host's sessions and tabs: `browser_tabs`, the window tab counts and the server's
-  profile lookup leave out tabs the other host holds, and a command naming one is refused without
-  saying who holds it. Every frame is answered on the port it came in on and nothing passes
-  between hosts; the profile's account email goes to Chrome Control MCP only; S.A.K.'s tab groups
-  are titled "S.A.K. ...". The toolbar switch pauses both.
-- `tests/test_browser_extension_hosts.mjs`: two hosts at once, their isolation, the email, the
-  toolbar switch, and the S.A.K. host missing.
+- **A second native host, S.A.K. Utility's** (`com.sak.browsercontrol`), reached only while
+  Chrome's policy for this extension holds `sakHostEnabled: true` (`chrome.storage.managed`, from
+  the new `managed_schema.json`). That policy is writable by administrators only, so a program
+  running as the user that registers a host of that name gets nothing. S.A.K. Utility sets it when
+  its Browser Control is turned on and removes it when it is turned off; removed while Chrome runs,
+  every S.A.K. session ends and its tabs go back to the user. No permission is added: `storage`
+  already covers it.
+- Each host's sessions see only that host's sessions and tabs. Tabs the other host holds are left
+  out of `browser_tabs`, its count and its numbering (an index is the tab's place among the tabs
+  the session may see), a window holding only them is not listed, and window tab counts leave them
+  out. A command naming one by id is refused in the words used for an id that names no tab;
+  grouping or ungrouping the active tab, focusing a window whose active tab it is, and closing a
+  window holding one (or a tab another session of the same host holds) are refused. Every frame is
+  answered on the port it came in on and nothing passes between hosts. The profile's account email
+  goes to Chrome Control MCP only, in no field to S.A.K. (an unrenamed profile is named to S.A.K.
+  by its generated name). S.A.K.'s tab groups are titled "S.A.K. ...". The toolbar switch pauses
+  both.
+- While one host holds a tab on a site, the other host's `browser_cookies` and
+  `browser_permission` calls for that site are refused. Otherwise the profile's cookies and site
+  settings are shared between the two, as PRIVACY.md and SECURITY.md say.
+- `tests/test_browser_extension_hosts.mjs`: two hosts at once; their isolation both ways for every
+  command that names a tab, an index or a window; the email in no S.A.K. frame; the policy; the
+  shared site state; the toolbar switch; and the S.A.K. host missing, unable to start, or idle.
 
 ### Changed
 
-- S.A.K.'s host is optional. When it is not installed the extension asks for it at startup, then
-  after ten minutes, doubling to six hours, and logs nothing about it; the wait is kept in session
-  storage, so a browser restart, a toolbar click or the host answering ends it. Chrome Control
+- S.A.K.'s host is optional. When it is not installed, or Chrome cannot start the program its
+  registration names, the extension asks for it at startup, then after ten minutes, doubling to six
+  hours, and logs nothing about it; the wait is kept in session storage, so a browser restart, a
+  toolbar click or the host answering ends it. When it is installed but S.A.K. is not running, it
+  is asked again on the usual doubling interval up to ten minutes, also silently. Chrome Control
   MCP's own reconnect timing and messages are unchanged.
+- A reload for a server that speaks a newer bridge protocol now waits, like the reload for a newer
+  install, until no session of either host is using the extension.
+- A relay's server id containing ":" is ignored, so a Chrome Control MCP server can never be taken
+  for S.A.K.'s server of the same number.
+- The manifest's description names both programs.
 
 ### Fixed
 
