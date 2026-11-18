@@ -1068,7 +1068,11 @@ test("a command that starts while storage answers stops the protocol reload, and
   starting = true;
   fresh.emit({ type: "bridge_ready", protocol: PROTOCOL + 1 });
   await settle();
-  assert.deepEqual(reloads, [], "reloaded under a command that had just started");
+  assert.deepEqual(
+    reloads,
+    [],
+    "reloaded under a command that had just started",
+  );
   assert.equal(
     local.get("chrome_control_mcp.reloadedForProtocol"),
     null,
