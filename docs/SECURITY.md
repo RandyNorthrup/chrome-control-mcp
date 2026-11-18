@@ -293,9 +293,16 @@ such a tab by id is refused in exactly the words used for an id that names no ta
 cannot be probed for whether the other application holds it. No command reaches one: grouping or
 ungrouping the active tab, focusing a window whose active tab it is, and closing a window that
 holds one (or a tab another session of the same host holds) are refused. Every frame is answered on
-the port it came in on, and nothing is relayed between hosts. The profile's account email goes to
-this project's host only: S.A.K. is told the name the user gave the profile, or a generated one,
-never the email in any field. A reload the extension makes for a newer server waits until no
+the port it came in on, and nothing is relayed between hosts. Asked whether a tab id exists
+(`findTab`, the server's question before it routes a call), the extension answers for the other
+host's tab exactly as for no tab, field for field. The profile's identity (its account email) goes
+to this project's host only: S.A.K. is told the name the user gave the profile, or a generated one,
+never the account email in any field of the extension's own. A tab's title and page are the page's
+content, not the profile's identity: a title that shows the email (a mail inbox's often does)
+reaches whichever host lists or reads that tab, as any other page text does. A session that ends
+while one of its commands is still running (the toolbar pause, or the policy removed) is marked
+ended first, and that command can then hold no tab, group none and attach the debugger to none. A
+reload the extension makes for a newer server waits until no
 session of either host is using it. Which host a port reaches is Chrome's decision, made from the
 host name and the registration's `allowed_origins`, so a page can no more choose the host than it
 can choose the server. The toolbar switch pauses both.
@@ -304,13 +311,26 @@ can choose the server. The toolbar switch pauses both.
 sign-ins, site settings and download folder are shared between them, as they are with the user.
 While a session of one host holds a tab on a site, a `browser_cookies` or `browser_permission` call
 from the other host for that site -- the tab's host name, a domain above it or one below it -- is
-refused. At any other time those calls reach the profile's cookies and settings for any site, and
-either host can open a page of its own on a site where the user is signed in. This is stated in
-[PRIVACY.md](PRIVACY.md).
+refused. The site is read from both the address the tab shows and the one it is loading, and a
+host name's trailing dot (`mail.google.com.`) is taken off on both sides. A cookie of a domain above
+that site is also sent to its neighbours, so a call for a sibling site (`accounts.google.com` beside
+`mail.google.com`) is checked cookie by cookie: a get leaves out every cookie whose domain is the
+other host's site or a domain above it, and says how many (`withheld`); a remove or set is refused
+when a cookie of that name for the url is such a cookie. At any other time those calls reach the
+profile's cookies and settings for any site, and either host can open a page of its own on a site
+where the user is signed in. This is stated in [PRIVACY.md](PRIVACY.md).
+
+**What a session can still infer.** Leaving the other host's tabs out cannot hide every trace of
+them. When the other host holds a window's active tab, a listing of that window shows no active tab,
+and a command that would take the active tab is refused as in use by another application connected
+to the browser; when the front window holds only the other host's tabs, a listing has nothing in it
+for that window. None of this says which application, which tab or what is in it.
 
 When S.A.K.'s host is turned on but not installed (Chrome reports it missing, or cannot start the
-program its registration names, as when a portable folder was deleted), the extension asks for it
-again only after ten minutes, doubling up to six hours, without logging anything; no process is
+program its registration names, as when a portable folder was deleted or moved with Browser
+Control left on), the extension asks for it again only after ten minutes, doubling up to six hours,
+without logging anything (turning the extension off and on again with its toolbar button, or
+restarting Chrome, asks at once); no process is
 started by asking. When it is installed but S.A.K. is not running, its relay starts, finds nothing
 to attach to and exits; that is asked again on the usual doubling interval, but up to ten minutes
 rather than two, and is not logged either.

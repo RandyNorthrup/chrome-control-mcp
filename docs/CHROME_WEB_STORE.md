@@ -170,7 +170,7 @@ here has been submitted.
   > declared in the manifest's storage.managed_schema); S.A.K. Utility runs as an administrator and
   > sets that policy only when the technician turns its Browser Control on. The two programs are
   > isolated from each other inside the extension: neither sees the other's tabs, sessions or
-  > messages, and the profile's account email is never given to S.A.K. Utility.
+  > messages, and the profile's identity (its account email) is never given to S.A.K. Utility.
 
 ## Test instructions for review
 

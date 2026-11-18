@@ -59,8 +59,10 @@ connect to S.A.K. Utility.
    when you turn it off. A program that registers a host of that name without it gets nothing.
    What S.A.K.'s assistant asks for goes to S.A.K. on this computer, in the same way, and is
    handled under S.A.K. Utility's own terms. The two programs never see each other's tabs, windows
-   or messages, and your profile's account email is never given to S.A.K. Utility. Without that
-   policy, nothing goes to it.
+   or messages, and the profile's identity (its account email) is never given to S.A.K. Utility.
+   A tab's title and its page are the page's own content, though, not the profile's identity: a tab
+   of yours whose title shows your email (a mail inbox's often does) shows it to either program
+   that lists or reads your tabs. Without that policy, nothing goes to it.
 4. **To files on your computer.** Recordings, PDFs and downloads are saved where the agent's call
    or Chrome's download settings say. A screenshot goes back to the agent in the reply, except
    one taken for presentation, which is saved as a file instead.
@@ -76,8 +78,12 @@ settings (permissions such as camera or notifications), the profile's download f
 pages either one can open. Neither program can see the other's tabs, but each can open a page of
 its own on a site where you, or the other program, are signed in, and act there as you. While one
 program is working in a tab on a site, the extension refuses the other's requests to read or change
-that site's cookies or its site settings (`browser_cookies`, `browser_permission`); at any other
-time they are the profile's, open to both.
+that site's cookies or its site settings (`browser_cookies`, `browser_permission`), and the same for
+a domain above or below that site. A cookie of a domain above it is also sent to that site's
+neighbours (a `.google.com` sign-in cookie reaches both `mail.google.com` and
+`accounts.google.com`), so a cookie listing for any other site leaves such a cookie out and says how
+many it left out, and removing or replacing a cookie of that name there is refused. At any other
+time cookies and site settings are the profile's, open to both.
 
 ## What is never collected
 

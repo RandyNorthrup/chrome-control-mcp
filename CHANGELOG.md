@@ -54,21 +54,29 @@ did not ask for.
   the new `managed_schema.json`). That policy is writable by administrators only, so a program
   running as the user that registers a host of that name gets nothing. S.A.K. Utility sets it when
   its Browser Control is turned on and removes it when it is turned off; removed while Chrome runs,
-  every S.A.K. session ends and its tabs go back to the user. No permission is added: `storage`
-  already covers it.
+  every S.A.K. session ends and its tabs go back to the user, and so do tabs an earlier worker had
+  parked for S.A.K. when a new one finds the policy off. A command still running when its session
+  ends holds, groups and attaches to no tab afterwards. No permission is added: `storage` already
+  covers it.
 - Each host's sessions see only that host's sessions and tabs. Tabs the other host holds are left
   out of `browser_tabs`, its count and its numbering (an index is the tab's place among the tabs
   the session may see), a window holding only them is not listed, and window tab counts leave them
   out. A command naming one by id is refused in the words used for an id that names no tab;
   grouping or ungrouping the active tab, focusing a window whose active tab it is, and closing a
-  window holding one (or a tab another session of the same host holds) are refused. Every frame is
-  answered on the port it came in on and nothing passes between hosts. The profile's account email
-  goes to Chrome Control MCP only, in no field to S.A.K. (an unrenamed profile is named to S.A.K.
-  by its generated name). S.A.K.'s tab groups are titled "S.A.K. ...". The toolbar switch pauses
-  both.
-- While one host holds a tab on a site, the other host's `browser_cookies` and
-  `browser_permission` calls for that site are refused. Otherwise the profile's cookies and site
-  settings are shared between the two, as PRIVACY.md and SECURITY.md say.
+  window holding one (or a tab another session of the same host holds) are refused; asked whether
+  such a tab exists, the extension answers as for no tab, field for field. Every frame is answered
+  on the port it came in on and nothing passes between hosts. The profile's identity (its account
+  email) goes to Chrome Control MCP only, in no field of the extension's to S.A.K. (an unrenamed
+  profile is named to S.A.K. by its generated name); a tab's title is page content, and a page that
+  puts the email in its title shows it to either. S.A.K.'s tab groups are titled "S.A.K. ...". The
+  toolbar switch pauses both.
+- While one host holds a tab on a site (by the address it shows or the one it is loading), the
+  other host's `browser_cookies` and `browser_permission` calls for that site, a domain above it or
+  one below it are refused, a trailing dot on either name making no difference. For any other site,
+  a cookie also sent to the held site (a sign-in cookie of the domain above it) is left out of a
+  get, which says how many it left out (`withheld`), and removing or setting a cookie of that name
+  is refused. Otherwise the profile's cookies and site settings are shared between the two, as
+  PRIVACY.md and SECURITY.md say.
 - `tests/test_browser_extension_hosts.mjs`: two hosts at once; their isolation both ways for every
   command that names a tab, an index or a window; the email in no S.A.K. frame; the policy; the
   shared site state; the toolbar switch; and the S.A.K. host missing, unable to start, or idle.
