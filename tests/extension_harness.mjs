@@ -149,9 +149,7 @@ function routeHosts(overrides, sakHost) {
   const own = overrides["runtime.connectNative"];
   overrides["runtime.connectNative"] = (name, ...rest) => {
     if (name === SAK_HOST_NAME) {
-      return sakHost
-        ? sakHost(name, ...rest)
-        : makeMissingHostPort(overrides);
+      return sakHost ? sakHost(name, ...rest) : makeMissingHostPort(overrides);
     }
     return own
       ? own(name, ...rest)
