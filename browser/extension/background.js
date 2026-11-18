@@ -1407,7 +1407,8 @@ async function loadHostPolicy() {
 }
 
 // The administrator changed the policy while the browser runs (Chrome rereads it on its own
-// schedule, or at once from chrome://policy). Turned on: the host is asked for now, its waits
+// schedule, or at once from chrome://policy's Reload; a value written to the registry is not
+// noticed before that). Turned on: the host is asked for now, its waits
 // forgotten. Turned off: every session of it ends, its ports close and its tabs go back to the user,
 // and nothing is asked of it again.
 function noteHostPolicy(changes, area) {

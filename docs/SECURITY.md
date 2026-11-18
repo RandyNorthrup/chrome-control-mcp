@@ -269,9 +269,11 @@ Windows 11 25H2 test PC joined to no domain (2026-11-17): a process with the use
 was refused creating the policy key under HKCU and HKLM, writing a value on HKCU's `Policies`,
 taking ownership of it, changing its permissions, deleting it and renaming it. On the same PC Chrome
 157, Edge 157 and Chrome for Testing 157 (which reads its own `Google\Chrome for Testing` key)
-handed the value to the extension (`chrome://policy`: Platform, Current user, Mandatory, OK),
-within about 17 seconds of it being written while the browser ran; Chrome applied 3rdparty policy
-the same way to an extension it had force-installed from the Chrome Web Store. S.A.K. Utility runs as an administrator and writes the value when its Browser Control
+handed the value to the extension (`chrome://policy`: Platform, Current user, Mandatory, OK);
+Chrome applied 3rdparty policy the same way to an extension it had force-installed from the Chrome
+Web Store. Chrome reads the value when it starts, and a running Chrome when it rereads its policy
+(on its own schedule, or from `chrome://policy`'s Reload): it then reaches the extension as a
+`chrome.storage.onChanged` event, and the extension connects, or ends S.A.K.'s sessions, at once. S.A.K. Utility runs as an administrator and writes the value when its Browser Control
 is turned on (also when it reuses a copy of the extension already installed), and removes it when
 it is turned off. Without the value the host is never asked for -- not by a forced retry, not by
 the toolbar button -- and a value of any other type than `true` counts as off. When the policy is
