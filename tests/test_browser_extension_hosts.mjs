@@ -39,6 +39,8 @@ const EXPORTED = [
   "versionReload",
   "reloadWhenIdle",
   "RELOAD_QUIET_MS",
+  "holdTab",
+  "ensureAttached",
 ];
 const LIVE = "sessions";
 
@@ -577,8 +579,19 @@ test("findTab, selectTab, closeTab and release by tab_id treat the other host's 
     const theirs = b.addTab({});
     b.worker.setCurrentTab(way.holder, b.copy(theirs));
     await settle();
+    // The whole reply, not one field: a reply shaped differently for the other host's tab than for
+    // an id that names no tab would tell the two apart as surely as a different answer.
+    // (The first call takes any tab ids the session was still to be told are gone, which a reply
+    // carries once, so the two compared are asked in the same state.)
+    await command(way.port, "findTab", { tab_id: NO_SUCH_TAB });
     const found = await command(way.port, "findTab", { tab_id: theirs.id });
-    assert.equal(found.payload.exists, false, way.name);
+    const none = await command(way.port, "findTab", { tab_id: NO_SUCH_TAB });
+    assert.equal(found.type, "result", `${way.name}: ${JSON.stringify(found)}`);
+    assert.deepEqual(
+      { ...found, id: null },
+      { ...none, id: null },
+      `${way.name}: findTab`,
+    );
     for (const cmd of ["selectTab", "closeTab", "release"]) {
       const reply = await command(way.port, cmd, { tab_id: theirs.id });
       assert.equal(
@@ -932,11 +945,12 @@ test("cookies and site settings of a site the other host is working on are refus
       `https://${parent}/account`,
       `https://login.${site}/`,
     ]) {
-      for (const action of ["get", "remove"]) {
+      for (const action of ["get", "remove", "set"]) {
         const reply = await command(way.port, "cookies", {
           action,
           url,
           name: "sid",
+          value: "x",
         });
         assert.equal(
           reply.type,
@@ -961,6 +975,7 @@ test("cookies and site settings of a site the other host is working on are refus
       reads,
       `${way.name}: a cookie was read`,
     );
+    assert.deepEqual(b.calls.cookieSets, [], `${way.name}: a cookie was set`);
     assert.equal(
       b.calls.settings.length,
       settings,
@@ -982,6 +997,164 @@ test("cookies and site settings of a site the other host is working on are refus
       "result",
       `${way.name}: ${JSON.stringify(otherSetting)}`,
     );
+  }
+});
+
+// The profile's cookie jar for the tests below: the sign-in cookie of a parent domain, which Chrome
+// sends to every host under it; a cookie of the sibling site alone; one of the other site alone.
+function signInJar() {
+  return [
+    { name: "SID", domain: ".example.org", value: "signed-in" },
+    { name: "pref", domain: "accounts.example.org", value: "dark" },
+    { name: "inbox", domain: "mail.example.org", value: "view" },
+  ];
+}
+
+function cookieNames(reply) {
+  assert.equal(reply.type, "result", JSON.stringify(reply));
+  return reply.payload.cookies.map((cookie) => cookie.name).sort();
+}
+
+test("a get for a sibling site leaves out the cookies sent to the other host's site, both ways", async () => {
+  for (const way of ["sak", "cc"]) {
+    const b = await bothHosts({ cookies: signInJar() });
+    const [asker, holder, holderPort] =
+      way === "sak" ? [b.sak, b.ccSession, b.cc] : [b.cc, b.sakSession, b.sak];
+    const theirs = b.addTab({ url: "https://mail.example.org/inbox" });
+    b.worker.setCurrentTab(holder, b.copy(theirs));
+    await settle();
+    // accounts.example.org is neither mail.example.org nor above or below it, but .example.org's
+    // sign-in cookie is sent to both.
+    const reply = await command(asker, "cookies", {
+      action: "get",
+      url: "https://accounts.example.org/",
+    });
+    assert.deepEqual(cookieNames(reply), ["pref"], way);
+    assert.equal(reply.payload.count, 1, way);
+    assert.equal(reply.payload.withheld, 1, way);
+    assert.doesNotMatch(JSON.stringify(reply), /signed-in/, way);
+    // With nothing of the other host's there, the whole jar is the session's to read.
+    const released = await command(holderPort, "release", {
+      tab_id: theirs.id,
+    });
+    assert.equal(released.type, "result", JSON.stringify(released));
+    const after = await command(asker, "cookies", {
+      action: "get",
+      url: "https://accounts.example.org/",
+    });
+    assert.deepEqual(cookieNames(after), ["SID", "pref"], way);
+    assert.equal(after.payload.withheld, undefined, way);
+  }
+});
+
+test("a remove or set through a sibling site cannot reach the other host's site's cookie, both ways", async () => {
+  for (const way of ["sak", "cc"]) {
+    const b = await bothHosts({ cookies: signInJar() });
+    const [asker, holder] =
+      way === "sak" ? [b.sak, b.ccSession] : [b.cc, b.sakSession];
+    const theirs = b.addTab({ url: "https://mail.example.org/inbox" });
+    b.worker.setCurrentTab(holder, b.copy(theirs));
+    await settle();
+    for (const action of ["remove", "set"]) {
+      const reply = await command(asker, "cookies", {
+        action,
+        url: "https://accounts.example.org/",
+        name: "SID",
+        value: "replaced",
+      });
+      assert.equal(
+        reply.type,
+        "error",
+        `${way} ${action}: ${JSON.stringify(reply)}`,
+      );
+      assert.match(
+        reply.error,
+        /also sent to a site another application connected to this browser is working on/,
+      );
+    }
+    assert.deepEqual(b.calls.cookieRemovals, [], `${way}: nothing removed`);
+    assert.deepEqual(b.calls.cookieSets, [], `${way}: nothing set`);
+    // A cookie of the sibling's own is the session's to change.
+    const removed = await command(asker, "cookies", {
+      action: "remove",
+      url: "https://accounts.example.org/",
+      name: "pref",
+    });
+    assert.equal(removed.type, "result", `${way}: ${JSON.stringify(removed)}`);
+    assert.equal(removed.payload.removed, true, way);
+    const set = await command(asker, "cookies", {
+      action: "set",
+      url: "https://accounts.example.org/",
+      name: "fresh",
+      value: "1",
+    });
+    assert.equal(set.type, "result", `${way}: ${JSON.stringify(set)}`);
+  }
+});
+
+test("a trailing dot on the url, the other host's tab or a cookie's domain does not get past the site check", async () => {
+  for (const way of ["sak", "cc"]) {
+    for (const [tabUrl, askedUrl] of [
+      ["https://mail.example.org/inbox", "https://mail.example.org./"],
+      ["https://mail.example.org./inbox", "https://mail.example.org/"],
+      ["https://mail.example.org./inbox", "https://example.org./"],
+    ]) {
+      const b = await bothHosts({ cookies: signInJar() });
+      const [asker, holder] =
+        way === "sak" ? [b.sak, b.ccSession] : [b.cc, b.sakSession];
+      const theirs = b.addTab({ url: tabUrl });
+      b.worker.setCurrentTab(holder, b.copy(theirs));
+      await settle();
+      const reply = await command(asker, "cookies", {
+        action: "get",
+        url: askedUrl,
+      });
+      assert.equal(
+        reply.type,
+        "error",
+        `${way} ${tabUrl} ${askedUrl}: ${JSON.stringify(reply)}`,
+      );
+      assert.match(reply.error, /working on that site/);
+    }
+    // A cookie whose domain carries the dot is still the parent domain's.
+    const b = await bothHosts({
+      cookies: [{ name: "SID", domain: ".example.org.", value: "signed-in" }],
+    });
+    const [asker, holder] =
+      way === "sak" ? [b.sak, b.ccSession] : [b.cc, b.sakSession];
+    const theirs = b.addTab({ url: "https://mail.example.org/inbox" });
+    b.worker.setCurrentTab(holder, b.copy(theirs));
+    await settle();
+    const reply = await command(asker, "cookies", {
+      action: "get",
+      url: "https://accounts.example.org/",
+    });
+    assert.deepEqual(cookieNames(reply), [], way);
+    assert.equal(reply.payload.withheld, 1, way);
+  }
+});
+
+test("the site check reads a loading tab's address as well as the one it shows", async () => {
+  const b = await bothHosts({ cookies: signInJar() });
+  for (const way of directions(b)) {
+    const theirs = b.addTab({
+      url: "about:blank",
+      pendingUrl: `https://mail${way.base}.example.org/inbox`,
+    });
+    b.worker.setCurrentTab(way.holder, b.copy(theirs));
+    await settle();
+    const reply = await command(way.port, "cookies", {
+      action: "get",
+      url: `https://mail${way.base}.example.org/`,
+    });
+    assert.equal(reply.type, "error", `${way.name}: ${JSON.stringify(reply)}`);
+    assert.match(reply.error, /working on that site/);
+    const permission = await command(way.port, "permission", {
+      name: "camera",
+      setting: "block",
+      origin: `https://mail${way.base}.example.org`,
+    });
+    assert.equal(permission.type, "error", JSON.stringify(permission));
   }
 });
 
@@ -1317,4 +1490,186 @@ test("the administrator turning the policy on connects at once; off ends S.A.K.'
   }
   await settle();
   assert.equal(b.sakPorts.length, 1, "and it is not asked for again");
+});
+
+// What an earlier worker saved for S.A.K.'s server 100: one tab it had borrowed (an adopted tab).
+const LEASES_KEY = "chrome_control_mcp.leases";
+function sakLeaseRecord(tabId) {
+  return {
+    [LEASES_KEY]: {
+      "sak:100": {
+        tabs: [[tabId, "adopted", "", null]],
+        groups: [],
+        colors: [],
+        current: tabId,
+        window: 1,
+        label: "",
+      },
+    },
+  };
+}
+
+test("a new worker lets go of S.A.K.'s parked tabs when the administrator's policy is off", async () => {
+  for (const policy of [false, true]) {
+    const b = fakeBrowser({
+      exported: EXPORTED,
+      live: LIVE,
+      sakHost: true,
+      sakPolicy: policy,
+      overrides: {
+        "storage.session.get": () => Promise.resolve(sakLeaseRecord(300)),
+      },
+    });
+    // The tab is open as the new worker starts: Chrome kept it, as it keeps the worker's storage.
+    b.addTab({ id: 300, url: "https://parked.example.org/" });
+    await settle();
+    const cc = b.ports[0];
+    cc.emit({ type: "bridge_offers", protocol: PROTOCOL, servers: ["100"] });
+    cc.emit({ type: "bridge_ready", protocol: PROTOCOL });
+    await settle();
+    const tabs = listed(await command(cc, "listTabs"));
+    if (policy) {
+      // On: the holdings wait, parked, for S.A.K.'s next offer, as before.
+      assert.ok(b.worker.pendingLeases.has("sak:100"), "kept while on");
+      assert.ok(!tabs.includes(300), "and still S.A.K.'s");
+      continue;
+    }
+    // Off (removed while no worker ran, so no change event comes): S.A.K. is never asked for again,
+    // and nothing it held may stay hidden from Chrome Control MCP on its account.
+    assert.equal(b.worker.pendingLeases.has("sak:100"), false, "stood down");
+    assert.ok(tabs.includes(300), "the tab is the user's again, listed");
+    assert.ok(b.tabs.has(300), "and open");
+    assert.equal(b.sakPorts.length, 0);
+  }
+});
+
+test("a policy turned off that the worker already read as off still stands S.A.K.'s parked tabs down", async () => {
+  // The worker read the policy as on, S.A.K.'s session parked (its port dropped), and the worker
+  // then read the policy as off before Chrome's change event arrived.
+  const b = await bothHosts();
+  const tab = b.addTab({ url: "https://parked.example.org/" });
+  b.worker.setCurrentTab(b.sakSession, b.copy(tab));
+  await settle();
+  b.sak.drop();
+  await settle();
+  assert.ok(b.worker.pendingLeases.has("sak:100"), "parked");
+  b.worker.SAK_HUB.policyEnabled = false;
+  b.fire(
+    "storage.onChanged",
+    { sakHostEnabled: { oldValue: true } },
+    "managed",
+  );
+  await settle();
+  assert.equal(b.worker.pendingLeases.has("sak:100"), false, "stood down");
+  assert.ok(listed(await command(b.cc, "listTabs")).includes(tab.id));
+});
+
+test("a command that outlives its session takes no tab, group or debugger", async () => {
+  let open;
+  const gate = new Promise((resolve) => {
+    open = resolve;
+  });
+  let b = null;
+  b = await bothHosts({
+    overrides: {
+      // Chrome takes its time creating the tab, and the session ends meanwhile.
+      "tabs.create": (props) =>
+        gate.then(() => {
+          const tab = b.addTab({
+            windowId: props.windowId,
+            url: props.url,
+            active: props.active,
+          });
+          b.fire("tabs.onCreated", b.copy(tab));
+          return b.copy(tab);
+        }),
+    },
+  });
+  const before = new Set(b.tabs.keys());
+  const cdpBefore = b.calls.cdp.length;
+  b.sak.emit({ type: "command", id: "late", cmd: "newTab" });
+  await settle();
+  b.fire(
+    "storage.onChanged",
+    { sakHostEnabled: { oldValue: true } },
+    "managed",
+  );
+  await settle();
+  open();
+  await settle();
+  await settle();
+  const created = [...b.tabs.keys()].filter((id) => !before.has(id));
+  assert.equal(created.length, 1, "Chrome opened the tab");
+  const [id] = created;
+  assert.equal(b.sakSession.tabs.has(id), false, "nobody holds it");
+  assert.equal(b.tabs.get(id).groupId, -1, "it is in no group");
+  assert.deepEqual(
+    [...b.groups.values()].map((group) => group.title),
+    [],
+    "no group was made",
+  );
+  assert.equal(b.attached.has(id), false, "no debugger is on it");
+  assert.equal(b.calls.cdp.length, cdpBefore, "nothing was sent to it");
+});
+
+test("an ended session holds no tab and attaches to none it still lists", async () => {
+  const b = await bothHosts();
+  const tab = b.addTab({});
+  const session = b.worker.makeSession(b.worker.SAK_HUB);
+  // A session part way through its stand-down: a tab still listed, not yet handed back.
+  b.worker.holdTab(session, b.copy(tab), "adopted");
+  session.ended = true;
+  await assert.rejects(b.worker.ensureAttached(session, tab.id), /ended/);
+  assert.equal(b.attached.has(tab.id), false);
+  assert.deepEqual(
+    b.calls.cdp.filter((call) => call.tabId === tab.id),
+    [],
+    "nothing was sent to the tab",
+  );
+  const other = b.addTab({});
+  assert.throws(
+    () => b.worker.holdTab(session, b.copy(other), "opened"),
+    /ended/,
+  );
+  assert.equal(session.tabs.has(other.id), false);
+});
+
+test("while the policy is still being read, nothing asks for S.A.K.'s host", async () => {
+  for (const policy of [{ sakHostEnabled: true }, {}]) {
+    let answer;
+    const managed = new Promise((resolve) => {
+      answer = resolve;
+    });
+    const b = fakeBrowser({
+      exported: EXPORTED,
+      live: LIVE,
+      sakHost: true,
+      overrides: { "storage.managed.get": () => managed },
+    });
+    await settle();
+    // The startup window: tab events, the alarm, and the user's own toolbar click (which clears
+    // the optional host's stored wait, so only the policy holds it back) all fire before the
+    // policy store has answered.
+    for (let i = 0; i < 5; i += 1) {
+      const tab = b.addTab({});
+      b.fire("tabs.onUpdated", tab.id, { status: "loading" }, b.copy(tab));
+      b.fire("tabs.onActivated", { tabId: tab.id, windowId: tab.windowId });
+      b.worker.reconnectHub(b.worker.SAK_HUB);
+    }
+    await b.worker.setBridgePaused(true);
+    await b.worker.onActionClicked();
+    await settle();
+    assert.equal(
+      b.sakPorts.length,
+      0,
+      `${JSON.stringify(policy)}: asked for before the policy was read`,
+    );
+    answer(policy);
+    await settle();
+    assert.equal(
+      b.sakPorts.length,
+      policy.sakHostEnabled ? 1 : 0,
+      `${JSON.stringify(policy)}: once read`,
+    );
+  }
 });

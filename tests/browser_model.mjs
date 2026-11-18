@@ -23,8 +23,12 @@ export const PROTOCOL = 2;
 //
 // Windows are the windowIds the tabs carry; windows.getAll and windows.get with populate list
 // their tabs in strip order, and windows.remove closes them (recorded in calls.windowsRemoved).
-// Cookies (cookies.getAll) and site settings (contentSettings.<type>.set) are recorded in
-// calls.cookieReads and calls.settings. storage.onChanged is a listener a suite fires.
+// Cookies (cookies.getAll, cookies.remove) and site settings (contentSettings.<type>.set) are
+// recorded in calls.cookieReads and calls.settings. @p cookies is the profile's cookie jar
+// ({ name, domain, value }, a domain with a leading dot sent to every host below it as well), empty
+// by default: getAll answers from it as Chrome does, remove takes a cookie out of it (recorded in
+// calls.cookieRemovals) and set puts a host-only one in (calls.cookieSets). storage.onChanged is a
+// listener a suite fires.
 export function fakeBrowser({
   exported,
   live = "",
@@ -33,6 +37,7 @@ export function fakeBrowser({
   overrides: extra = {},
   sakHost = false,
   sakPolicy = sakHost,
+  cookies: jar = [],
   console: sink,
 } = {}) {
   let removalsRefused = 0;
@@ -50,6 +55,8 @@ export function fakeBrowser({
     cdp: [],
     windowsRemoved: [],
     cookieReads: [],
+    cookieRemovals: [],
+    cookieSets: [],
     settings: [],
   };
   let nextTabId = 100;
@@ -71,6 +78,19 @@ export function fakeBrowser({
     }
   };
   const copy = (tab) => ({ ...tab });
+  // The cookies of the jar Chrome sends to @p url (named @p name, when given): a cookie's domain is
+  // the url's host or, written with a leading dot, a domain above it.
+  const cookieHost = (url) => new URL(url).hostname.replace(/\.$/, "");
+  const cookiesFor = ({ url, name }) => {
+    const host = cookieHost(url);
+    return jar.filter((c) => {
+      const domain = c.domain.replace(/^\./, "").replace(/\.$/, "");
+      const sent =
+        host === domain ||
+        (c.domain.startsWith(".") && host.endsWith("." + domain));
+      return sent && (name === undefined || c.name === name);
+    });
+  };
   const windowTabs = (windowId) =>
     [...tabs.values()]
       .filter((t) => t.windowId === windowId)
@@ -237,11 +257,28 @@ export function fakeBrowser({
     },
     "cookies.getAll": (details) => {
       calls.cookieReads.push(details);
-      return Promise.resolve([]);
+      return Promise.resolve(cookiesFor(details).map((c) => ({ ...c })));
     },
     "cookies.remove": (details) => {
       calls.cookieReads.push(details);
-      return Promise.resolve(null);
+      const found = cookiesFor(details)[0];
+      if (!found) {
+        return Promise.resolve(null);
+      }
+      jar.splice(jar.indexOf(found), 1);
+      calls.cookieRemovals.push({ ...found });
+      return Promise.resolve({ url: details.url, name: details.name });
+    },
+    "cookies.set": (details) => {
+      const cookie = {
+        name: details.name,
+        value: details.value,
+        domain: cookieHost(details.url),
+        path: details.path || "/",
+      };
+      jar.push(cookie);
+      calls.cookieSets.push({ ...cookie });
+      return Promise.resolve({ ...cookie });
     },
     "windows.getLastFocused": () => Promise.resolve({ ...focusedWindow }),
     "debugger.attach": ({ tabId }) => {

@@ -1372,7 +1372,13 @@ async function setBridgePaused(paused) {
 }
 
 // Close @p session's port and hand its tabs back to the user as they stand.
+//
+// A command of the session's can still be running when it ends (the user paused the bridge, or the
+// administrator turned the host off, mid-command), and nothing it does afterwards is anyone's: so
+// the session is marked ended first, and holdTab, ensureAttached and the group sync refuse it. Left
+// unmarked, a tab that command opened was held, grouped and attached by a session nobody can reach.
 function endSession(session) {
+  session.ended = true;
   const port = session.port;
   session.port = null;
   void standDown(session, { closeOpened: false });
@@ -1411,33 +1417,61 @@ async function loadHostPolicy() {
 // noticed before that). Turned on: the host is asked for now, its waits
 // forgotten. Turned off: every session of it ends, its ports close and its tabs go back to the user,
 // and nothing is asked of it again.
+//
+// Off is applied whatever this worker last believed: a worker that read the policy as off at start
+// (loadHostPolicy) and then hears it turned off has still to stand down what it holds.
 function noteHostPolicy(changes, area) {
   if (area !== "managed" || !changes || !changes[SAK_HOST_POLICY]) {
     return;
   }
   const on = changes[SAK_HOST_POLICY].newValue === true;
   for (const hub of HUBS) {
-    if (!hub.requiresPolicy || hub.policyEnabled === on) {
+    if (!hub.requiresPolicy) {
       continue;
     }
+    const was = hub.policyEnabled;
     hub.policyEnabled = on;
-    if (on) {
+    if (!on) {
+      standDownHub(hub);
+    } else if (!was) {
       resetReconnectDelay(hub);
       connect(hub, { force: true });
-      continue;
     }
-    for (const session of [...sessions]) {
-      if (session.hub === hub) {
-        endSession(session);
-      }
+  }
+}
+
+// End every session of @p hub, live or parked, and hand its tabs back to the user as they stand.
+function standDownHub(hub) {
+  let ended = false;
+  for (const session of [...sessions]) {
+    if (session.hub === hub) {
+      endSession(session);
+      ended = true;
     }
-    for (const [serverId, parked] of [...pendingLeases]) {
-      if (parked.hub === hub) {
-        pendingLeases.delete(serverId);
-        void standDown(parked, { closeOpened: false });
-      }
+  }
+  for (const [serverId, parked] of [...pendingLeases]) {
+    if (parked.hub === hub) {
+      pendingLeases.delete(serverId);
+      parked.ended = true;
+      void standDown(parked, { closeOpened: false });
+      ended = true;
     }
+  }
+  if (ended) {
     persistLeases();
+  }
+}
+
+// Once a new worker knows both the policy and what an earlier worker held: holdings of a host whose
+// policy is off are stood down now. The policy may have been removed while no worker ran (Chrome
+// retires one after ~30 s idle), and then no change event ever comes: without this, the tabs that
+// earlier worker had parked for S.A.K. came back parked, hidden from Chrome Control MCP's sessions,
+// for up to PARKED_MAX_MS, held for a host that is never asked for again.
+function standDownHostsWithoutPolicy() {
+  for (const hub of HUBS) {
+    if (hub.requiresPolicy && !hub.policyEnabled) {
+      standDownHub(hub);
+    }
   }
 }
 
@@ -1712,17 +1746,17 @@ async function handleProfileState(session) {
 }
 
 // Whether this profile has tab @p tab_id: how the server finds the profile of a tab it has not
-// seen, before sending the call that names it.
+// seen, before sending the call that names it. The reply for a tab the session may not see (the
+// other host's) is the reply for one that does not exist, field for field: a reply shaped any
+// differently would tell the other host's tab ids from unused ones.
 async function handleFindTab(session, args) {
   const tabId = Number(args && args.tab_id);
-  if (!Number.isInteger(tabId)) {
-    return { exists: false };
-  }
-  if (heldByOtherHost(session, tabId)) {
-    return { exists: false };
+  const none = { exists: false, held: false };
+  if (!Number.isInteger(tabId) || heldByOtherHost(session, tabId)) {
+    return none;
   }
   const tab = await chrome.tabs.get(tabId).catch(() => null);
-  return { exists: Boolean(tab), held: session.tabs.has(tabId) };
+  return tab ? { exists: true, held: session.tabs.has(tabId) } : none;
 }
 
 const profileIdentityLoad = loadProfileIdentity();
@@ -3573,6 +3607,10 @@ async function ungroupFromSession(session, tabIds) {
 // @p agent, when given, is the agent the tab is for, which decides its group; a held tab given a
 // new agent name moves to that agent's group.
 function holdTab(session, tab, origin, agent) {
+  if (session.ended) {
+    // Its command outlived it (endSession): the tab stays the user's, unmarked.
+    throw new Error("This session has ended.");
+  }
   let state = session.tabs.get(tab.id);
   if (state && typeof agent === "string" && agent !== state.agent) {
     state.agent = agent;
@@ -5926,6 +5964,11 @@ async function enableSessionDomains(session, state) {
 }
 
 async function ensureAttached(session, tabId) {
+  if (session.ended) {
+    // A command that outlived its session (endSession) attaches to nothing and draws nothing: the
+    // stand-down is handing its tabs back, and may not have reached this one yet.
+    throw new Error("This session has ended.");
+  }
   const state = session.tabs.get(tabId);
   if (!state) {
     throw new Error("Tab " + tabId + " is not one of this session's tabs.");
@@ -13001,49 +13044,104 @@ function originPattern(origin) {
 // a tab on a site, a browser_cookies or browser_permission call for that site is refused: reading
 // its cookies would hand over the other application's signed-in session, and changing them or its
 // settings would change that session's page under it. "That site" is the host name of a tab the
-// other host holds, a domain above it, or one below it -- the hosts a cookie set for one can be
-// sent to -- compared on the tab's address now. Anything else is shared, and the docs say so
-// (PRIVACY.md, SECURITY.md).
+// other host holds, a domain above it, or one below it, compared on both the address the tab shows
+// and the one it is loading (a tab still loading shows about:blank).
+//
+// A sibling is not "that site", but its cookies can be: a cookie of a parent domain is sent to every
+// host below it, so the .google.com sign-in cookies of a tab on mail.google.com are also among
+// accounts.google.com's. So a browser_cookies call for any site is checked cookie by cookie: a get
+// leaves out every cookie that is sent to a host the other application holds a tab on, and a remove
+// or set is refused when a cookie of that name for the url is. Anything else is shared, and the docs
+// say so (PRIVACY.md, SECURITY.md).
 function relatedHosts(a, b) {
   return a === b || a.endsWith("." + b) || b.endsWith("." + a);
 }
 
+// A host name or a cookie's domain as the two are compared: lower case, with one trailing dot taken
+// off ("mail.google.com." is the fully qualified spelling of mail.google.com, and reaches the same
+// cookies).
+function bareHost(name) {
+  const host = String(name || "").toLowerCase();
+  return host.endsWith(".") ? host.slice(0, -1) : host;
+}
+
 function hostOf(url) {
   try {
-    const host = new URL(url).hostname.toLowerCase();
-    return host.replace(/^\[|\]$/g, "") || null;
+    const host = new URL(url).hostname.replace(/^\[|\]$/g, "");
+    return bareHost(host) || null;
   } catch (_e) {
     return null;
   }
 }
 
-async function otherHostOnSite(session, url) {
-  const host = hostOf(url);
-  if (!host) {
-    return false;
-  }
+// Whether a cookie whose domain is @p domain is sent to @p host: the domain is the host, or a domain
+// above it. A host-only cookie is held to the same rule, which can only leave out more.
+function cookieReaches(domain, host) {
+  const bare = bareHost(String(domain || "").replace(/^\./, ""));
+  return bare.length > 0 && (host === bare || host.endsWith("." + bare));
+}
+
+// The host names of every tab a session of another host than @p session's holds, live or parked.
+async function otherHostSites(session) {
+  const hosts = new Set();
   for (const holder of [...sessions, ...pendingLeases.values()]) {
     if (!otherHost(session, holder)) {
       continue;
     }
     for (const tabId of holder.tabs.keys()) {
       const tab = await chrome.tabs.get(tabId).catch(() => null);
-      const shown = tab ? hostOf(tab.url || tab.pendingUrl || "") : null;
-      if (shown && relatedHosts(host, shown)) {
-        return true;
+      for (const address of tab ? [tab.url, tab.pendingUrl] : []) {
+        const host = address ? hostOf(address) : null;
+        if (host) {
+          hosts.add(host);
+        }
       }
     }
   }
-  return false;
+  return [...hosts];
 }
 
+function siteRefusal(tool) {
+  return new Error(
+    tool +
+      " was refused: another application connected to this browser is working on that site, " +
+      "and its cookies and site settings are the profile's, shared with it. Try again when it " +
+      "is done there.",
+  );
+}
+
+// Throws for @p url on or beside a site the other host is working on; else returns that host's
+// sites, for the cookie-by-cookie check.
 async function requireSiteNotOtherHosts(session, url, tool) {
-  if (await otherHostOnSite(session, url)) {
+  const host = hostOf(url);
+  const sites = await otherHostSites(session);
+  if (host && sites.some((site) => relatedHosts(host, site))) {
+    throw siteRefusal(tool);
+  }
+  return sites;
+}
+
+// Whether @p cookie is sent to any of @p sites.
+function cookieReachesAny(cookie, sites) {
+  return sites.some((site) => cookieReaches(cookie && cookie.domain, site));
+}
+
+// A remove or set of the cookie @p name for @p url, refused when a cookie of that name for that url
+// is sent to one of the other host's @p sites: removing it would sign that application out, and
+// setting it would put a value beside the one that application's page reads.
+async function requireCookieNotOtherHosts(url, name, sites, action) {
+  if (sites.length === 0) {
+    return;
+  }
+  const same = await chrome.cookies.getAll({ url, name });
+  if ((same || []).some((cookie) => cookieReachesAny(cookie, sites))) {
     throw new Error(
-      tool +
-        " was refused: another application connected to this browser is working on that site, " +
-        "and its cookies and site settings are the profile's, shared with it. Try again when it " +
-        "is done there.",
+      "browser_cookies " +
+        action +
+        " was refused: a cookie named " +
+        JSON.stringify(name) +
+        " for that url is also sent to a site another application connected to this browser is " +
+        "working on, and the profile's cookies are shared with it. Try again when it is done there.",
     );
   }
 }
@@ -13477,20 +13575,31 @@ async function handleCookies(session, args) {
       "browser_cookies needs a valid http(s) url (or an active http(s) tab).",
     );
   }
-  await requireSiteNotOtherHosts(session, url, "browser_cookies");
+  const sites = await requireSiteNotOtherHosts(session, url, "browser_cookies");
   if (action === "get") {
-    const all = await chrome.cookies.getAll({ url });
-    return {
+    // Every cookie sent to a site the other application is working on is left out, and the reply
+    // says how many were: a list that silently came back shorter would read as the whole jar.
+    const every = await chrome.cookies.getAll({ url });
+    const all = every.filter((cookie) => !cookieReachesAny(cookie, sites));
+    const reply = {
       ok: true,
       url,
       count: all.length,
       capped: all.length > 100,
       cookies: all.slice(0, 100).map(cookieView),
     };
+    if (all.length < every.length) {
+      reply.withheld = every.length - all.length;
+      reply.withheld_reason =
+        "Cookies also sent to a site another application connected to this browser is working " +
+        "on are left out; the profile's cookies are shared with it.";
+    }
+    return reply;
   }
   if (!args || typeof args.name !== "string" || args.name.length === 0) {
     throw new Error("browser_cookies " + action + " needs a name.");
   }
+  await requireCookieNotOtherHosts(url, String(args.name), sites, action);
   if (action === "remove") {
     const removed = await chrome.cookies.remove({
       url,
@@ -13718,6 +13827,11 @@ const bridgeStateLoad = loadBridgeState();
 
 // What an earlier worker held, parked until the first offer says whose servers are still there.
 leasesLoaded = loadLeases().catch(() => {});
+
+// And once both are known, what was held for a host whose policy is now off is let go of.
+void Promise.all([bridgeStateLoad, leasesLoaded]).then(
+  standDownHostsWithoutPolicy,
+);
 
 // Ordinary browsing re-arms the bridge too. The 2 s timer below lives only as long as this
 // worker, and Chrome coalesces a background worker's timers into seconds, so a bridge that came up
