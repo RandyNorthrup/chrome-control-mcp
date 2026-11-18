@@ -30,6 +30,15 @@ const EXPORTED = [
   "suppliedNumber",
   "groupUpdateFrom",
   "pendingLeases",
+  "makeSession",
+  "COMMAND_TABLE",
+  "MAX_LIST_TABS",
+  "reconnectHub",
+  "reconnectOnActivity",
+  "onActionClicked",
+  "versionReload",
+  "reloadWhenIdle",
+  "RELOAD_QUIET_MS",
 ];
 const LIVE = "sessions";
 
@@ -72,6 +81,15 @@ function listed(reply) {
 
 function attachFrame(port) {
   return port.posted.find((frame) => frame.type === "attach_session");
+}
+
+// A tab id no tab has, and the error @p cmd gets for it on @p port with @p asked substituted for
+// that id: what a refusal of the other host's tab @p asked must read, word for word.
+const NO_SUCH_TAB = 987654;
+async function noTabError(port, cmd, asked, args = {}) {
+  const reply = await command(port, cmd, { ...args, tab_id: NO_SUCH_TAB });
+  assert.equal(reply.type, "error", JSON.stringify(reply));
+  return reply.error.split(String(NO_SUCH_TAB)).join(String(asked));
 }
 
 test("each host gets its own session, even for a server with the same pid", async () => {
@@ -122,8 +140,10 @@ test("a command naming the other host's tab is refused without saying who holds 
 
   const refused = await command(b.sak, "read", { tab_id: ccTab.id });
   assert.equal(refused.type, "error", JSON.stringify(refused));
-  assert.match(refused.error, /in use by another application/);
   assert.doesNotMatch(refused.error, /Codex|Chrome Control MCP|server/);
+  // Word for word what an id that names no tab at all gets: an id cannot be probed for whether the
+  // other application is using it.
+  assert.equal(refused.error, await noTabError(b.sak, "read", ccTab.id));
   assert.equal(b.sakSession.tabs.has(ccTab.id), false);
   assert.equal(b.ccSession.tabs.has(ccTab.id), true, "and the tab stays held");
 
@@ -187,18 +207,74 @@ test("the toolbar switch stops both hosts' sessions", async () => {
   assert.equal(b.worker.sessions.size, 0);
 });
 
-test("the profile's account email is told to Chrome Control MCP only", async () => {
+// The profile's account email names an unrenamed signed-in profile to Chrome Control MCP. S.A.K.
+// must not learn it under any field: not profile_email, and not profile_name, which for such a
+// profile IS the email. Every frame S.A.K.'s port carries is searched, after every command that
+// reports the profile.
+test("the profile's account email reaches S.A.K. in no frame and no reply", async () => {
+  const EMAIL = "person@example.test";
+  const b = await bothHosts({
+    overrides: {
+      "identity.getProfileUserInfo": () => Promise.resolve({ email: EMAIL }),
+    },
+  });
+  const ccAttach = attachFrame(b.cc);
+  assert.equal(ccAttach.profile_email, EMAIL);
+  assert.equal(
+    ccAttach.profile_name,
+    EMAIL,
+    "Chrome Control MCP's naming is unchanged",
+  );
+
+  const sakAttach = attachFrame(b.sak);
+  assert.ok(sakAttach, "S.A.K.'s relay is answered");
+  assert.equal("profile_email" in sakAttach, false);
+  assert.match(sakAttach.profile_name, /^profile-[0-9a-f]{6}$/);
+
+  const user = b.addTab({ active: true, title: "user page" });
+  b.worker.setCurrentTab(b.sakSession, b.copy(b.addTab({})));
+  await settle();
+  const replies = [];
+  for (const [cmd, args] of [
+    ["profileState", {}],
+    ["listTabs", {}],
+    ["listWindows", {}],
+    ["findTab", { tab_id: user.id }],
+    ["read", {}],
+  ]) {
+    replies.push(await command(b.sak, cmd, args));
+  }
+  assert.equal(replies[0].payload.profile_name, sakAttach.profile_name);
+  assert.equal(replies[1].payload.profile, sakAttach.profile_name);
+  assert.equal(replies[2].payload.profile, sakAttach.profile_name);
+  for (const frame of b.sak.posted) {
+    assert.ok(
+      !JSON.stringify(frame).includes(EMAIL),
+      "S.A.K. was sent the email: " + JSON.stringify(frame),
+    );
+  }
+  // Chrome Control MCP is still told it where it always was.
+  const ccState = await command(b.cc, "profileState");
+  assert.equal(ccState.payload.profile_email, EMAIL);
+  assert.equal((await command(b.cc, "listTabs")).payload.profile, EMAIL);
+});
+
+test("a profile the user named is called by that name to both hosts", async () => {
   const b = await bothHosts({
     overrides: {
       "identity.getProfileUserInfo": () =>
         Promise.resolve({ email: "person@example.test" }),
+      "storage.local.get": (key) =>
+        Promise.resolve(
+          [].concat(key).includes("chrome_control_mcp.profileName")
+            ? { "chrome_control_mcp.profileName": "work" }
+            : {},
+        ),
     },
   });
-  assert.equal(attachFrame(b.cc).profile_email, "person@example.test");
-  const sakAttach = attachFrame(b.sak);
-  assert.ok(sakAttach, "S.A.K.'s relay is answered");
-  assert.equal("profile_email" in sakAttach, false);
-  assert.equal(typeof sakAttach.profile_name, "string");
+  assert.equal(attachFrame(b.cc).profile_name, "work");
+  assert.equal(attachFrame(b.sak).profile_name, "work");
+  assert.equal("profile_email" in attachFrame(b.sak), false);
 });
 
 test("each host names its own tab groups", async () => {
@@ -429,4 +505,812 @@ test("a group colour Chrome does not know is refused before any tab is grouped",
   assert.equal(reply.type, "error");
   assert.match(reply.error, /must be one of/);
   assert.equal(b.calls.grouped.length, groupedBefore, "nothing was grouped");
+});
+
+// -- Isolation, both ways, for every command that names a tab or a window ---------------------------
+
+// Both directions: S.A.K. asking about Chrome Control MCP's tab, and the other way round.
+function directions(b) {
+  return [
+    {
+      name: "S.A.K. -> Chrome Control MCP",
+      port: b.sak,
+      asker: b.sakSession,
+      holder: b.ccSession,
+      base: 1000,
+    },
+    {
+      name: "Chrome Control MCP -> S.A.K.",
+      port: b.cc,
+      asker: b.ccSession,
+      holder: b.sakSession,
+      base: 2000,
+    },
+  ];
+}
+
+test("every tab-scoped command refuses the other host's tab exactly as it refuses no tab, both ways", async () => {
+  const b = await bothHosts();
+  const scoped = [...b.worker.COMMAND_TABLE.entries()]
+    .filter(([, entry]) => entry.tab)
+    .map(([cmd]) => cmd);
+  assert.ok(
+    scoped.length > 30,
+    "the command table lists the tab-scoped commands",
+  );
+  for (const way of directions(b)) {
+    const theirs = b.addTab({});
+    b.worker.setCurrentTab(way.holder, b.copy(theirs));
+    const own = b.addTab({});
+    b.worker.setCurrentTab(way.asker, b.copy(own));
+    await settle();
+    const cdpBefore = b.calls.cdp.filter((c) => c.tabId === theirs.id).length;
+    for (const cmd of scoped) {
+      const reply = await command(way.port, cmd, { tab_id: theirs.id });
+      assert.equal(
+        reply.type,
+        "error",
+        `${way.name} ${cmd}: ${JSON.stringify(reply)}`,
+      );
+      assert.equal(
+        reply.error,
+        await noTabError(way.port, cmd, theirs.id),
+        `${way.name} ${cmd}`,
+      );
+    }
+    assert.equal(
+      b.calls.cdp.filter((c) => c.tabId === theirs.id).length,
+      cdpBefore,
+      `${way.name}: nothing was sent to the other host's tab`,
+    );
+    assert.ok(
+      way.holder.tabs.has(theirs.id),
+      `${way.name}: the tab stays held`,
+    );
+    assert.ok(!way.asker.tabs.has(theirs.id));
+  }
+});
+
+test("findTab, selectTab, closeTab and release by tab_id treat the other host's tab as no tab, both ways", async () => {
+  const b = await bothHosts();
+  for (const way of directions(b)) {
+    const theirs = b.addTab({});
+    b.worker.setCurrentTab(way.holder, b.copy(theirs));
+    await settle();
+    const found = await command(way.port, "findTab", { tab_id: theirs.id });
+    assert.equal(found.payload.exists, false, way.name);
+    for (const cmd of ["selectTab", "closeTab", "release"]) {
+      const reply = await command(way.port, cmd, { tab_id: theirs.id });
+      assert.equal(
+        reply.type,
+        "error",
+        `${way.name} ${cmd}: ${JSON.stringify(reply)}`,
+      );
+      assert.equal(
+        reply.error,
+        await noTabError(way.port, cmd, theirs.id),
+        `${way.name} ${cmd}`,
+      );
+    }
+    assert.ok(b.tabs.has(theirs.id), `${way.name}: the tab is still open`);
+    assert.ok(
+      way.holder.tabs.has(theirs.id),
+      `${way.name}: and still the other host's`,
+    );
+    assert.equal(b.calls.removed.includes(theirs.id), false);
+  }
+});
+
+test("a listing numbers only the tabs a session may see: no gap, no count of the other host's", async () => {
+  const b = await bothHosts();
+  for (const way of directions(b)) {
+    const windowId = way.base + 1;
+    const user = b.addTab({ windowId });
+    const theirs = b.addTab({ windowId });
+    const own = b.addTab({ windowId });
+    b.worker.setCurrentTab(way.holder, b.copy(theirs));
+    b.worker.setCurrentTab(way.asker, b.copy(own));
+    await settle();
+    const listing = (await command(way.port, "listTabs")).payload;
+    assert.deepEqual(
+      // Array.from: an array of this realm, not the worker's, for a strict comparison.
+      Array.from(listing.tabs, (t) => [t.index, t.tab_id]),
+      [
+        [0, user.id],
+        [1, own.id],
+      ],
+      way.name,
+    );
+    assert.equal(
+      listing.count,
+      2,
+      `${way.name}: the count leaves the other host's tab out`,
+    );
+    assert.equal(listing.capped, false);
+    // The index of a tab, wherever a reply reports one, is the same numbering.
+    const selected = await command(way.port, "selectTab", { index: 1 });
+    assert.equal(selected.payload.tab_id, own.id, way.name);
+    assert.equal(selected.payload.index, 1, way.name);
+    const opened = await command(way.port, "newTab", {});
+    assert.equal(
+      opened.payload.index,
+      2,
+      `${way.name}: a new tab's index counts only the tabs the session may see`,
+    );
+    // Past the end is past the end, however many tabs Chrome has there.
+    await command(way.port, "listTabs");
+    const past = await command(way.port, "selectTab", { index: 3 });
+    assert.equal(past.type, "error");
+    assert.match(past.error, /No tab at index 3/);
+    // Closing by index closes the tab shown there, never the other host's.
+    const closed = await command(way.port, "closeTab", { index: 1 });
+    assert.equal(closed.payload.tab_id, own.id, way.name);
+    assert.equal(closed.payload.index, 1, way.name);
+    assert.ok(
+      b.tabs.has(theirs.id),
+      `${way.name}: the other host's tab is still open`,
+    );
+  }
+});
+
+test("a listing's count and cap leave the other host's tabs out", async () => {
+  const b = await bothHosts();
+  const max = b.worker.MAX_LIST_TABS;
+  const own = b.addTab({ windowId: 21 });
+  b.worker.setCurrentTab(b.sakSession, b.copy(own));
+  for (let i = 0; i < max - 1; i += 1) {
+    b.addTab({ windowId: 21 });
+  }
+  for (let i = 0; i < 3; i += 1) {
+    const theirs = b.addTab({ windowId: 21 });
+    b.worker.setCurrentTab(b.ccSession, b.copy(theirs));
+  }
+  await settle();
+  const listing = (await command(b.sak, "listTabs")).payload;
+  assert.equal(listing.tabs.length, max);
+  assert.equal(
+    listing.count,
+    max,
+    "the other host's three tabs are not counted",
+  );
+  assert.equal(
+    listing.capped,
+    false,
+    "and do not push the listing over its cap",
+  );
+});
+
+test("group and ungroup by index reach only the tabs a session may see, both ways", async () => {
+  const b = await bothHosts();
+  for (const way of directions(b)) {
+    const windowId = way.base + 2;
+    const user = b.addTab({ windowId });
+    const theirs = b.addTab({ windowId });
+    const own = b.addTab({ windowId });
+    b.worker.setCurrentTab(way.holder, b.copy(theirs));
+    b.worker.setCurrentTab(way.asker, b.copy(own));
+    await settle();
+    await command(way.port, "listTabs");
+    const theirGroup = b.tabs.get(theirs.id).groupId;
+    const grouped = await command(way.port, "groupTabs", {
+      tab_indices: "0,1",
+    });
+    assert.equal(
+      grouped.type,
+      "result",
+      `${way.name}: ${JSON.stringify(grouped)}`,
+    );
+    assert.equal(grouped.payload.tab_count, 2);
+    assert.equal(b.tabs.get(user.id).groupId, grouped.payload.group_id);
+    assert.equal(
+      b.tabs.get(theirs.id).groupId,
+      theirGroup,
+      `${way.name}: the other host's tab was regrouped`,
+    );
+    await command(way.port, "listTabs");
+    const beyond = await command(way.port, "ungroupTabs", { tab_indices: "2" });
+    assert.equal(beyond.type, "error", way.name);
+    assert.match(beyond.error, /No tab at index 2/);
+    assert.equal(b.tabs.get(theirs.id).groupId, theirGroup, way.name);
+  }
+  // A listed index naming a tab another session of the same host drives is refused, in that
+  // host's words: grouping it would take the tab out of that session's group under it.
+  const own = b.addTab({ windowId: 3001 });
+  const siblingTab = b.addTab({ windowId: 3001 });
+  b.worker.setCurrentTab(b.ccSession, b.copy(own));
+  const sibling = b.worker.makeSession(b.worker.CC_HUB);
+  b.worker.sessions.add(sibling);
+  b.worker.setCurrentTab(sibling, b.copy(siblingTab));
+  await settle();
+  const listing = (await command(b.cc, "listTabs")).payload.tabs;
+  const at = listing.find((t) => t.tab_id === siblingTab.id);
+  assert.ok(at && at.controlled_by_other_session, JSON.stringify(listing));
+  const siblingGroup = b.tabs.get(siblingTab.id).groupId;
+  for (const cmd of ["groupTabs", "ungroupTabs"]) {
+    const refused = await command(b.cc, cmd, { tab_indices: String(at.index) });
+    assert.equal(refused.type, "error", JSON.stringify(refused));
+    assert.match(refused.error, /driven by another Chrome Control MCP session/);
+    assert.equal(b.tabs.get(siblingTab.id).groupId, siblingGroup, cmd);
+  }
+});
+
+test("group and ungroup with no indices refuse an active tab another session holds, both ways", async () => {
+  const b = await bothHosts();
+  for (const way of directions(b)) {
+    const windowId = way.base + 3;
+    const own = b.addTab({ windowId });
+    const theirs = b.addTab({ windowId, active: true });
+    b.worker.setCurrentTab(way.asker, b.copy(own));
+    b.worker.setCurrentTab(way.holder, b.copy(theirs));
+    await settle();
+    const theirGroup = b.tabs.get(theirs.id).groupId;
+    assert.ok(theirGroup >= 0, "the holder's tab is in its group");
+    for (const cmd of ["groupTabs", "ungroupTabs"]) {
+      const reply = await command(way.port, cmd, {});
+      assert.equal(
+        reply.type,
+        "error",
+        `${way.name} ${cmd}: ${JSON.stringify(reply)}`,
+      );
+      assert.match(reply.error, /in use by another application/);
+      assert.equal(
+        b.tabs.get(theirs.id).groupId,
+        theirGroup,
+        `${way.name} ${cmd}: the other host's active tab was moved`,
+      );
+    }
+  }
+  // Another session of the SAME host holding the active tab is refused too, in that host's words.
+  const own = b.addTab({ windowId: 43 });
+  const held = b.addTab({ windowId: 43, active: true });
+  b.worker.setCurrentTab(b.ccSession, b.copy(own));
+  const sibling = b.worker.makeSession(b.worker.CC_HUB);
+  b.worker.sessions.add(sibling);
+  b.worker.setCurrentTab(sibling, b.copy(held));
+  await settle();
+  const reply = await command(b.cc, "groupTabs", {});
+  assert.equal(reply.type, "error", JSON.stringify(reply));
+  assert.match(reply.error, /driven by another Chrome Control MCP session/);
+});
+
+test("windows: the other host's own windows are not listed, and counts leave its tabs out, both ways", async () => {
+  const b = await bothHosts();
+  for (const way of directions(b)) {
+    const shared = way.base + 4;
+    const alone = way.base + 5;
+    const own = b.addTab({ windowId: shared });
+    const theirsShared = b.addTab({ windowId: shared });
+    b.addTab({ windowId: shared });
+    const theirsAlone = b.addTab({ windowId: alone });
+    b.worker.setCurrentTab(way.asker, b.copy(own));
+    b.worker.setCurrentTab(way.holder, b.copy(theirsShared));
+    b.worker.setCurrentTab(way.holder, b.copy(theirsAlone));
+    await settle();
+    const windows = (await command(way.port, "listWindows")).payload.windows;
+    const ids = windows.map((w) => w.window_id);
+    assert.ok(ids.includes(shared), way.name);
+    assert.ok(
+      !ids.includes(alone),
+      `${way.name}: a window of only the other host's tabs is listed`,
+    );
+    assert.equal(
+      windows.find((w) => w.window_id === shared).tab_count,
+      2,
+      `${way.name}: the shared window's count leaves the other host's tab out`,
+    );
+    // Not listed, so not addressable either.
+    for (const action of ["focus", "close"]) {
+      const reply = await command(way.port, "window", {
+        action,
+        window_id: alone,
+      });
+      assert.equal(reply.type, "error", way.name);
+      assert.match(reply.error, /not in the current window listing/);
+    }
+    assert.ok(!b.calls.windowsRemoved.includes(alone), way.name);
+  }
+});
+
+test("a window holding a tab another session or host drives is not closed, both ways", async () => {
+  const b = await bothHosts();
+  for (const way of directions(b)) {
+    const held = way.base + 6;
+    const free = way.base + 7;
+    const own = b.addTab({ windowId: held });
+    const theirs = b.addTab({ windowId: held });
+    const userOnly = b.addTab({ windowId: free });
+    b.worker.setCurrentTab(way.asker, b.copy(own));
+    b.worker.setCurrentTab(way.holder, b.copy(theirs));
+    await settle();
+    await command(way.port, "listWindows");
+    const refused = await command(way.port, "window", {
+      action: "close",
+      window_id: held,
+    });
+    assert.equal(
+      refused.type,
+      "error",
+      `${way.name}: ${JSON.stringify(refused)}`,
+    );
+    assert.match(refused.error, /not closed/);
+    assert.ok(
+      !b.calls.windowsRemoved.includes(held),
+      `${way.name}: the window was closed`,
+    );
+    assert.ok(b.tabs.has(theirs.id) && way.holder.tabs.has(theirs.id));
+    // A window with nothing anyone else holds still closes: the refusal is about the other's tab.
+    const closed = await command(way.port, "window", {
+      action: "close",
+      window_id: free,
+    });
+    assert.equal(
+      closed.type,
+      "result",
+      `${way.name}: ${JSON.stringify(closed)}`,
+    );
+    assert.ok(b.calls.windowsRemoved.includes(free));
+    assert.ok(!b.tabs.has(userOnly.id));
+  }
+  // The same for another session of the same host.
+  const own = b.addTab({ windowId: 91 });
+  const held = b.addTab({ windowId: 91 });
+  b.worker.setCurrentTab(b.ccSession, b.copy(own));
+  const sibling = b.worker.makeSession(b.worker.CC_HUB);
+  b.worker.sessions.add(sibling);
+  b.worker.setCurrentTab(sibling, b.copy(held));
+  await settle();
+  await command(b.cc, "listWindows");
+  const refused = await command(b.cc, "window", {
+    action: "close",
+    window_id: 91,
+  });
+  assert.equal(refused.type, "error", JSON.stringify(refused));
+  assert.ok(!b.calls.windowsRemoved.includes(91));
+});
+
+test("window focus refuses an active tab the other host holds, and counts without its tabs", async () => {
+  const b = await bothHosts();
+  for (const way of directions(b)) {
+    const home = way.base + 8;
+    const theirsFront = way.base + 9;
+    const userFront = way.base + 10;
+    const own = b.addTab({ windowId: home });
+    b.worker.setCurrentTab(way.asker, b.copy(own));
+    b.addTab({ windowId: theirsFront });
+    const theirsActive = b.addTab({ windowId: theirsFront, active: true });
+    b.worker.setCurrentTab(way.holder, b.copy(theirsActive));
+    const userActive = b.addTab({ windowId: userFront, active: true });
+    const theirs = b.addTab({ windowId: userFront });
+    b.worker.setCurrentTab(way.holder, b.copy(theirs));
+    await settle();
+    await command(way.port, "listWindows");
+    const refused = await command(way.port, "window", {
+      action: "focus",
+      window_id: theirsFront,
+    });
+    assert.equal(refused.type, "error", way.name);
+    assert.equal(
+      way.asker.currentTabId,
+      own.id,
+      `${way.name}: the session moved`,
+    );
+    const focused = await command(way.port, "window", {
+      action: "focus",
+      window_id: userFront,
+    });
+    assert.equal(
+      focused.type,
+      "result",
+      `${way.name}: ${JSON.stringify(focused)}`,
+    );
+    assert.equal(
+      focused.payload.tab_count,
+      1,
+      `${way.name}: the count leaves the other host's tab out`,
+    );
+    assert.equal(way.asker.currentTabId, userActive.id);
+  }
+});
+
+// -- The profile's shared site state ----------------------------------------------------------------
+
+test("cookies and site settings of a site the other host is working on are refused, both ways", async () => {
+  const b = await bothHosts();
+  for (const way of directions(b)) {
+    const site = way.base === 1000 ? "mail.example.org" : "bank.example.net";
+    const elsewhere = `https://elsewhere${way.base}.example.com`;
+    const theirs = b.addTab({ url: `https://${site}/inbox` });
+    b.worker.setCurrentTab(way.holder, b.copy(theirs));
+    const own = b.addTab({ url: `${elsewhere}/` });
+    b.worker.setCurrentTab(way.asker, b.copy(own));
+    await settle();
+    const reads = b.calls.cookieReads.length;
+    const settings = b.calls.settings.length;
+    const parent = site.split(".").slice(1).join(".");
+    for (const url of [
+      `https://${site}/`,
+      `https://${parent}/account`,
+      `https://login.${site}/`,
+    ]) {
+      for (const action of ["get", "remove"]) {
+        const reply = await command(way.port, "cookies", {
+          action,
+          url,
+          name: "sid",
+        });
+        assert.equal(
+          reply.type,
+          "error",
+          `${way.name} ${action} ${url}: ${JSON.stringify(reply)}`,
+        );
+        assert.match(
+          reply.error,
+          /another application connected to this browser is working on that site/,
+        );
+      }
+    }
+    const permission = await command(way.port, "permission", {
+      name: "camera",
+      setting: "block",
+      origin: `https://${site}`,
+    });
+    assert.equal(permission.type, "error", JSON.stringify(permission));
+    assert.match(permission.error, /working on that site/);
+    assert.equal(
+      b.calls.cookieReads.length,
+      reads,
+      `${way.name}: a cookie was read`,
+    );
+    assert.equal(
+      b.calls.settings.length,
+      settings,
+      `${way.name}: a setting was changed`,
+    );
+    // Another site's are the session's to use, as before.
+    const other = await command(way.port, "cookies", {
+      action: "get",
+      url: `${elsewhere}/`,
+    });
+    assert.equal(other.type, "result", `${way.name}: ${JSON.stringify(other)}`);
+    const otherSetting = await command(way.port, "permission", {
+      name: "camera",
+      setting: "block",
+      origin: elsewhere,
+    });
+    assert.equal(
+      otherSetting.type,
+      "result",
+      `${way.name}: ${JSON.stringify(otherSetting)}`,
+    );
+  }
+});
+
+// -- One host's reload never cuts the other off ------------------------------------------------------
+
+test("a server's newer protocol reloads the extension only once nobody, of either host, is using it", async () => {
+  const reloads = [];
+  const local = new Map();
+  const b = await bothHosts({
+    overrides: {
+      "runtime.reload": () => reloads.push(Date.now()),
+      "storage.local.get": (key) =>
+        Promise.resolve(local.has(key) ? { [key]: local.get(key) } : {}),
+      "storage.local.set": (items) => {
+        for (const [key, value] of Object.entries(items)) {
+          local.set(key, value);
+        }
+        return Promise.resolve();
+      },
+    },
+  });
+  // S.A.K.'s assistant is at work in a tab.
+  const sakTab = b.addTab({});
+  b.worker.setCurrentTab(b.sakSession, b.copy(sakTab));
+  await settle();
+  // A newer Chrome Control MCP server starts; its relay speaks protocol 3.
+  b.cc.emit({ type: "bridge_servers", servers: ["100", "200"] });
+  await settle();
+  const fresh = b.ports[b.ports.length - 1];
+  assert.notEqual(fresh, b.cc, "a port is opened for the new server");
+  fresh.emit({
+    type: "bridge_offers",
+    protocol: PROTOCOL,
+    servers: ["100", "200"],
+  });
+  fresh.emit({ type: "bridge_ready", protocol: PROTOCOL + 1 });
+  await settle();
+  assert.deepEqual(reloads, [], "S.A.K.'s session was cut off by the reload");
+  assert.equal(b.worker.versionReload.protocol, PROTOCOL + 1);
+  // S.A.K. lets go of its tab; once the quiet period has passed, the reload goes ahead.
+  await command(b.sak, "release", {});
+  b.worker.versionReload.lastCommandEndedAt =
+    Date.now() - b.worker.RELOAD_QUIET_MS - 1;
+  await b.worker.reloadWhenIdle();
+  await settle();
+  assert.equal(reloads.length, 1);
+  clearTimeout(b.worker.versionReload.timer);
+});
+
+// A command can start in the moment the reload waits for storage: the reload is then put off, the
+// version it was for put back, and a later look still reloads.
+test("a command that starts while storage answers stops the protocol reload, and a later look still reloads", async () => {
+  const reloads = [];
+  const local = new Map();
+  let starting = false;
+  let b = null;
+  b = await bothHosts({
+    overrides: {
+      "runtime.reload": () => reloads.push(Date.now()),
+      "storage.local.get": (key) => {
+        if (starting) {
+          b.worker.versionReload.commandsRunning += 1;
+          starting = false;
+        }
+        return Promise.resolve(local.has(key) ? { [key]: local.get(key) } : {});
+      },
+      "storage.local.set": (items) => {
+        for (const [key, value] of Object.entries(items)) {
+          local.set(key, value);
+        }
+        return Promise.resolve();
+      },
+    },
+  });
+  b.cc.emit({ type: "bridge_servers", servers: ["100", "200"] });
+  await settle();
+  const fresh = b.ports[b.ports.length - 1];
+  assert.notEqual(fresh, b.cc, "a port is opened for the new server");
+  fresh.emit({
+    type: "bridge_offers",
+    protocol: PROTOCOL,
+    servers: ["100", "200"],
+  });
+  starting = true;
+  fresh.emit({ type: "bridge_ready", protocol: PROTOCOL + 1 });
+  await settle();
+  assert.deepEqual(reloads, [], "reloaded under a command that had just started");
+  assert.equal(
+    local.get("chrome_control_mcp.reloadedForProtocol"),
+    null,
+    "the protocol it was for is put back",
+  );
+  b.worker.versionReload.commandsRunning -= 1;
+  b.worker.versionReload.lastCommandEndedAt =
+    Date.now() - b.worker.RELOAD_QUIET_MS - 1;
+  await b.worker.reloadWhenIdle();
+  await settle();
+  assert.equal(reloads.length, 1);
+  clearTimeout(b.worker.versionReload.timer);
+});
+
+// -- Server ids ---------------------------------------------------------------------------------------
+
+test("a Chrome Control MCP relay cannot offer a server id that is S.A.K.'s key", async () => {
+  const b = await bothHosts();
+  b.cc.emit({ type: "bridge_servers", servers: ["100", "sak:5"] });
+  await settle();
+  // The id with the prefix separator is dropped: no port is opened for it.
+  assert.equal(b.ports.length, 1, "a port was opened for 'sak:5'");
+  // Offered to a fresh port, it is not taken either.
+  b.worker.CC_HUB.nextAttemptAt = 0;
+  b.worker.reconnectHub(b.worker.CC_HUB);
+  b.worker.CC_HUB.lastSafetyProbeAt = 0;
+  b.worker.reconnectHub(b.worker.CC_HUB);
+  await settle();
+  const probe = b.ports[b.ports.length - 1];
+  assert.notEqual(probe, b.cc, "the safety probe opens a port");
+  probe.emit({ type: "bridge_offers", protocol: PROTOCOL, servers: ["sak:5"] });
+  await settle();
+  assert.equal(attachFrame(probe).session, "");
+  for (const session of b.worker.sessions) {
+    assert.notEqual(
+      session.hub === b.worker.CC_HUB && session.serverId,
+      "sak:5",
+    );
+  }
+  // S.A.K.'s own server 5 is still S.A.K.'s.
+  b.sak.emit({ type: "bridge_servers", servers: ["100", "5"] });
+  await settle();
+  const sakFresh = b.sakPorts[b.sakPorts.length - 1];
+  assert.notEqual(sakFresh, b.sak);
+  sakFresh.emit({
+    type: "bridge_offers",
+    protocol: PROTOCOL,
+    servers: ["100", "5"],
+  });
+  await settle();
+  assert.equal(attachFrame(sakFresh).session, "5");
+  const sakFive = [...b.worker.sessions].find((s) => s.port === sakFresh);
+  assert.equal(sakFive.serverId, "sak:5");
+  assert.equal(sakFive.hub, b.worker.SAK_HUB);
+});
+
+// -- S.A.K.'s host when it cannot start, or has nothing to attach to ------------------------------------
+
+test("S.A.K.'s host that cannot start is waited for like a missing one, silently", async () => {
+  const { logged, sink } = recordingConsole();
+  const overrides = {};
+  let attempts = 0;
+  const worker = loadWorker(
+    ["SAK_HUB", "OPTIONAL_HOST_MISSING_MIN_MS", "reconnectHub"],
+    overrides,
+    LIVE,
+    {
+      sakHost: () => {
+        attempts += 1;
+        const port = makeFakePort();
+        setTimeout(() => {
+          overrides["runtime.lastError"] = {
+            message: "Failed to start native messaging host.",
+          };
+          try {
+            port.drop();
+          } finally {
+            delete overrides["runtime.lastError"];
+          }
+        }, 0);
+        return port;
+      },
+      console: sink,
+    },
+  );
+  await settle();
+  assert.equal(attempts, 1);
+  assert.equal(
+    worker.SAK_HUB.missingDelayMs,
+    worker.OPTIONAL_HOST_MISSING_MIN_MS,
+  );
+  for (let i = 0; i < 50; i += 1) {
+    worker.reconnectHub(worker.SAK_HUB);
+  }
+  await settle();
+  assert.equal(attempts, 1, "nothing is asked while the long wait runs");
+  assert.deepEqual(sakLines(logged), []);
+});
+
+test("S.A.K.'s relay with nothing to attach to is asked for on a growing interval, up to ten minutes, silently", async () => {
+  const { logged, sink } = recordingConsole();
+  const ports = [];
+  const worker = loadWorker(
+    [
+      "SAK_HUB",
+      "RECONNECT_MAX_MS",
+      "OPTIONAL_HOST_IDLE_MAX_MS",
+      "reconnectHub",
+    ],
+    {},
+    LIVE,
+    {
+      sakHost: () => {
+        const port = makeFakePort();
+        ports.push(port);
+        return port;
+      },
+      console: sink,
+    },
+  );
+  await settle();
+  const delays = [];
+  for (let round = 0; round < 12; round += 1) {
+    const port = ports[ports.length - 1];
+    // S.A.K. is not running: the relay offers nothing and exits.
+    port.emit({ type: "bridge_offers", protocol: PROTOCOL, servers: [] });
+    await settle();
+    port.drop();
+    await settle();
+    delays.push(worker.SAK_HUB.reconnectDelayMs);
+    // The retry timer's wait, as if it had passed.
+    for (const session of [...worker.sessions]) {
+      if (session.hub === worker.SAK_HUB && session.reconnectTimer) {
+        clearTimeout(session.reconnectTimer);
+        session.reconnectTimer = null;
+        worker.sessions.delete(session);
+      }
+    }
+    worker.SAK_HUB.nextAttemptAt = 0;
+    worker.reconnectHub(worker.SAK_HUB);
+    await settle();
+  }
+  assert.equal(ports.length, 13, "one attempt per round");
+  assert.ok(
+    delays[delays.length - 1] > worker.RECONNECT_MAX_MS,
+    "it waits longer than two minutes",
+  );
+  assert.equal(delays[delays.length - 1], worker.OPTIONAL_HOST_IDLE_MAX_MS);
+  assert.equal(worker.OPTIONAL_HOST_IDLE_MAX_MS, 10 * MINUTE_MS);
+  assert.deepEqual(sakLines(logged), [], "nothing is logged about it");
+});
+
+// -- The administrator's switch (managed policy) ----------------------------------------------------
+
+test("without the administrator's policy, S.A.K.'s host is never asked for, even when registered", async () => {
+  const b = fakeBrowser({
+    exported: EXPORTED,
+    live: LIVE,
+    sakHost: true,
+    sakPolicy: false,
+  });
+  await settle();
+  assert.equal(b.ports.length, 1, "Chrome Control MCP's host is asked for");
+  for (let i = 0; i < 20; i += 1) {
+    b.worker.reconnectHub(b.worker.SAK_HUB);
+    b.worker.reconnectOnActivity();
+  }
+  // Not even for the user's click on the toolbar button: the policy is the administrator's.
+  await b.worker.setBridgePaused(true);
+  await b.worker.onActionClicked();
+  await settle();
+  assert.equal(
+    b.sakPorts.length,
+    0,
+    "S.A.K.'s host was asked for without the policy",
+  );
+  assert.ok(b.ports.length > 1, "while Chrome Control MCP's was, on the click");
+});
+
+test("only the value true turns S.A.K.'s host on", async () => {
+  for (const value of [1, "true", "yes", {}, null]) {
+    const b = fakeBrowser({
+      exported: EXPORTED,
+      live: LIVE,
+      sakHost: true,
+      overrides: {
+        "storage.managed.get": () => Promise.resolve({ sakHostEnabled: value }),
+      },
+    });
+    await settle();
+    b.worker.reconnectHub(b.worker.SAK_HUB);
+    await settle();
+    assert.equal(b.sakPorts.length, 0, JSON.stringify(value));
+  }
+});
+
+test("the administrator turning the policy on connects at once; off ends S.A.K.'s sessions", async () => {
+  const b = fakeBrowser({
+    exported: EXPORTED,
+    live: LIVE,
+    sakHost: true,
+    sakPolicy: false,
+  });
+  await settle();
+  assert.equal(b.sakPorts.length, 0);
+  b.fire(
+    "storage.onChanged",
+    { sakHostEnabled: { newValue: true } },
+    "managed",
+  );
+  await settle();
+  assert.equal(
+    b.sakPorts.length,
+    1,
+    "turned on: S.A.K.'s host is asked for now",
+  );
+  const sak = b.sakPorts[0];
+  sak.emit({ type: "bridge_offers", protocol: PROTOCOL, servers: ["100"] });
+  sak.emit({ type: "bridge_ready", protocol: PROTOCOL });
+  await settle();
+  const session = [...b.worker.sessions].find((s) => s.port === sak);
+  const tab = b.addTab({});
+  b.worker.setCurrentTab(session, b.copy(tab));
+  await settle();
+
+  // A change in another storage area is not this switch.
+  b.fire("storage.onChanged", { sakHostEnabled: { newValue: false } }, "local");
+  await settle();
+  assert.equal(sak.connected, true);
+
+  b.fire(
+    "storage.onChanged",
+    { sakHostEnabled: { oldValue: true } },
+    "managed",
+  );
+  await settle();
+  assert.equal(sak.connected, false, "turned off: its port is closed");
+  assert.ok(![...b.worker.sessions].some((s) => s.hub === b.worker.SAK_HUB));
+  assert.ok(b.tabs.has(tab.id), "its tab goes back to the user, open");
+  for (let i = 0; i < 10; i += 1) {
+    b.worker.reconnectHub(b.worker.SAK_HUB);
+  }
+  await settle();
+  assert.equal(b.sakPorts.length, 1, "and it is not asked for again");
 });

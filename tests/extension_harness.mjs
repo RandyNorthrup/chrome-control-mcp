@@ -167,20 +167,34 @@ export async function settle(turns = 12) {
   }
 }
 
+// The administrator's policy that lets the extension reach S.A.K.'s host, as chrome.storage.managed
+// reports it (managed_schema.json).
+export const SAK_HOST_POLICY = "sakHostEnabled";
+
+// chrome.storage.managed holding @p policy, unless the suite's override map already answers it.
+function managedPolicy(overrides, policy) {
+  if (!Object.prototype.hasOwnProperty.call(overrides, "storage.managed.get")) {
+    overrides["storage.managed.get"] = () => Promise.resolve({ ...policy });
+  }
+}
+
 // Evaluate the worker and hand back the names in `exported`.
 //
 // `extra` is appended to the epilogue verbatim, so a suite can take a closure over a live
 // `let` binding (`ready: () => bridgeReady`) instead of a snapshot of its value at load time.
 // `sakHost`, when given, answers connectNative for S.A.K.'s host (see SAK_HOST_NAME); without it
-// that host is not installed. `console`, when given, is the worker's console, so a suite can say
-// what it logged; without it the worker logs nowhere.
+// that host is not installed. `sakPolicy` says whether an administrator turned S.A.K.'s host on
+// (SAK_HOST_POLICY): by default it is on exactly when the host is installed, as S.A.K. sets both
+// together; a suite's own "storage.managed.get" override wins over it. `console`, when given, is
+// the worker's console, so a suite can say what it logged; without it the worker logs nowhere.
 export function loadWorker(
   exported,
   overrides = {},
   extra = "",
-  { sakHost, console: sink } = {},
+  { sakHost, sakPolicy = Boolean(sakHost), console: sink } = {},
 ) {
   routeHosts(overrides, sakHost);
+  managedPolicy(overrides, sakPolicy ? { [SAK_HOST_POLICY]: true } : {});
   const context = vm.createContext({
     chrome: makeChromeStub(overrides),
     console: sink || {

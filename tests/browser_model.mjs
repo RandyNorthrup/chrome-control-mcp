@@ -17,8 +17,14 @@ export const PROTOCOL = 2;
 // debugger command is recorded in calls.cdp. @p overrides adds or replaces chrome.* members by
 // dotted name, for a suite that needs one this model does not give (runtime.reload, storage).
 // @p sakHost, when true, installs S.A.K.'s native host too: every port the worker opens to it is
-// recorded in sakPorts. Without it, that host is not installed. @p console is the worker's console
-// (see loadWorker).
+// recorded in sakPorts. Without it, that host is not installed. @p sakPolicy is whether an
+// administrator's policy turns that host on (by default, whenever it is installed; see loadWorker).
+// @p console is the worker's console (see loadWorker).
+//
+// Windows are the windowIds the tabs carry; windows.getAll and windows.get with populate list
+// their tabs in strip order, and windows.remove closes them (recorded in calls.windowsRemoved).
+// Cookies (cookies.getAll) and site settings (contentSettings.<type>.set) are recorded in
+// calls.cookieReads and calls.settings. storage.onChanged is a listener a suite fires.
 export function fakeBrowser({
   exported,
   live = "",
@@ -26,6 +32,7 @@ export function fakeBrowser({
   cdp = () => undefined,
   overrides: extra = {},
   sakHost = false,
+  sakPolicy = sakHost,
   console: sink,
 } = {}) {
   let removalsRefused = 0;
@@ -41,6 +48,9 @@ export function fakeBrowser({
     grouped: [],
     connects: 0,
     cdp: [],
+    windowsRemoved: [],
+    cookieReads: [],
+    settings: [],
   };
   let nextTabId = 100;
   let nextGroupId = 500;
@@ -61,6 +71,24 @@ export function fakeBrowser({
     }
   };
   const copy = (tab) => ({ ...tab });
+  const windowTabs = (windowId) =>
+    [...tabs.values()]
+      .filter((t) => t.windowId === windowId)
+      .sort((a, b) => a.index - b.index)
+      .map(copy);
+  const windowOf = (windowId, populate) => {
+    const win = {
+      id: windowId,
+      focused: windowId === focusedWindow.id && focusedWindow.focused,
+      incognito: false,
+      type: "normal",
+      state: "normal",
+    };
+    if (populate) {
+      win.tabs = windowTabs(windowId);
+    }
+    return win;
+  };
 
   function addTab(props) {
     const id = props.id ?? nextTabId++;
@@ -138,7 +166,10 @@ export function fakeBrowser({
         id = nextGroupId++;
         groups.set(id, {
           id,
-          windowId: createProperties.windowId,
+          // Chrome puts a group made with no window named in the window of its first tab.
+          windowId: createProperties
+            ? createProperties.windowId
+            : tabs.get(tabIds[0]).windowId,
           title: "",
           color: "grey",
         });
@@ -182,7 +213,36 @@ export function fakeBrowser({
     },
     "tabGroups.query": () =>
       Promise.resolve([...groups.values()].map((g) => ({ ...g }))),
-    "windows.get": (id) => Promise.resolve({ id }),
+    "windows.get": (id, opts) =>
+      Promise.resolve(opts && opts.populate ? windowOf(id, true) : { id }),
+    "windows.getAll": (opts) =>
+      Promise.resolve(
+        [...new Set([...tabs.values()].map((t) => t.windowId))]
+          .sort((a, b) => a - b)
+          .map((id) => windowOf(id, Boolean(opts && opts.populate))),
+      ),
+    "windows.remove": (id) => {
+      calls.windowsRemoved.push(id);
+      for (const tab of [...tabs.values()]) {
+        if (tab.windowId === id) {
+          tabs.delete(tab.id);
+          attached.delete(tab.id);
+          fire("tabs.onRemoved", tab.id, {
+            windowId: id,
+            isWindowClosing: true,
+          });
+        }
+      }
+      return Promise.resolve();
+    },
+    "cookies.getAll": (details) => {
+      calls.cookieReads.push(details);
+      return Promise.resolve([]);
+    },
+    "cookies.remove": (details) => {
+      calls.cookieReads.push(details);
+      return Promise.resolve(null);
+    },
     "windows.getLastFocused": () => Promise.resolve({ ...focusedWindow }),
     "debugger.attach": ({ tabId }) => {
       attached.add(tabId);
@@ -198,6 +258,10 @@ export function fakeBrowser({
       return Promise.resolve(answer === undefined ? {} : answer);
     },
     "debugger.getTargets": () => Promise.resolve([]),
+    "contentSettings.camera.set": (details) => {
+      calls.settings.push(details);
+      return Promise.resolve();
+    },
     "scripting.executeScript": () => Promise.resolve([]),
   };
   for (const name of [
@@ -211,6 +275,7 @@ export function fakeBrowser({
     "debugger.onDetach",
     "debugger.onEvent",
     "webNavigation.onCreatedNavigationTarget",
+    "storage.onChanged",
   ]) {
     overrides[name] = on(name);
   }
@@ -223,6 +288,7 @@ export function fakeBrowser({
           return port;
         }
       : undefined,
+    sakPolicy,
     console: sink,
   });
   return {

@@ -1,0 +1,10 @@
+{
+  "type": "object",
+  "properties": {
+    "sakHostEnabled": {
+      "title": "Serve S.A.K. Utility's native host",
+      "description": "When true, the extension also connects to S.A.K. Utility's native messaging host (com.sak.browsercontrol). Without it, that host is never contacted, even when one is registered. S.A.K. Utility sets it when its Browser Control is turned on and removes it when it is turned off. Only an administrator can set it.",
+      "type": "boolean"
+    }
+  }
+}
