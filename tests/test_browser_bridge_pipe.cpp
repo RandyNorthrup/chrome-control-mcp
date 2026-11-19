@@ -356,6 +356,25 @@ struct EchoRelay {
   }
 };
 
+// A test's client thread, joined however the test ends. Declared before the
+// server, as EchoRelay is: a failed check then destroys the server first, which
+// closes the client's connection, and the thread has an end to reach. A
+// std::thread destroyed while still joinable calls std::terminate, and the
+// abort takes every test after it in this binary down with it. Whatever the
+// thread touches by reference must also be declared before this.
+struct JoinedThread {
+  std::thread thread;
+
+  JoinedThread() = default;
+  JoinedThread(const JoinedThread &) = delete;
+  JoinedThread &operator=(const JoinedThread &) = delete;
+  ~JoinedThread() {
+    if (thread.joinable()) {
+      thread.join();
+    }
+  }
+};
+
 } // namespace
 
 class BrowserBridgePipeTests : public QObject {
@@ -714,19 +733,29 @@ void BrowserBridgePipeTests::closingPeer_isReportedAsClosedNotSilent() {
 // failure reported for work that was proceeding normally, and a reset for a
 // browser that was perfectly healthy.
 //
-// Here the peer takes four times its silence budget to answer, and says so
-// while it works.
+// Here the peer takes twice its silence budget to answer, and says so while it
+// works.
+//
+// Each beat leaves most of the budget unspent. With a beat every 150 ms against
+// a 300 ms budget, one late wake-up on a loaded macOS runner left a gap past
+// the budget, and the test reported a reset for a peer that was beating; what
+// it proves is that beats keep the exchange alive past one budget, not how
+// promptly a runner schedules a thread.
 void BrowserBridgePipeTests::workingPeer_beatsHoldTheConnectionOpen() {
+  constexpr int kSilenceBudgetMs = 1000;
+  constexpr int kBeatEveryMs = 200;
+  constexpr int kBeats = 10; // 2000 ms of work: twice the budget
   QTemporaryDir dir;
+  std::atomic<bool> asked_for_progress{false};
+  JoinedThread client; // before the server: see JoinedThread
   BrowserBridgePipeServer server(
-      testOptions(dir.filePath(QStringLiteral("r.json")), 300));
+      testOptions(dir.filePath(QStringLiteral("r.json")), kSilenceBudgetMs));
   QString error;
   QVERIFY2(server.start(&error), qPrintable(error));
 
   const QString name = server.pipeName();
   const QString token = server.token();
-  std::atomic<bool> asked_for_progress{false};
-  std::thread client([&] {
+  client.thread = std::thread([name, token, &asked_for_progress] {
     const NativeIpcHandle handle = connectAndHandshake(name, token);
     if (handle == kInvalidNativeIpcHandle) {
       return;
@@ -741,16 +770,16 @@ void BrowserBridgePipeTests::workingPeer_beatsHoldTheConnectionOpen() {
     // plain silence budget.
     asked_for_progress.store(
         command.value(QStringLiteral("progress")).toBool(false));
-    // Four beats at 150 ms: every one of them lands inside the 300 ms budget,
-    // and together they carry the exchange to twice what a silent peer is
-    // allowed.
-    for (int beat = 0; beat < 4; ++beat) {
-      sleepMilliseconds(150);
+    // Every beat lands well inside the budget, and together they carry the
+    // exchange to twice what a silent peer is allowed.
+    for (int beat = 0; beat < kBeats; ++beat) {
+      sleepMilliseconds(kBeatEveryMs);
       if (!clientWrite(
               handle,
-              QJsonObject{{QStringLiteral("type"), QStringLiteral("progress")},
-                          {QStringLiteral("id"), QStringLiteral("b-1")},
-                          {QStringLiteral("elapsed_ms"), 150 * (beat + 1)}})) {
+              QJsonObject{
+                  {QStringLiteral("type"), QStringLiteral("progress")},
+                  {QStringLiteral("id"), QStringLiteral("b-1")},
+                  {QStringLiteral("elapsed_ms"), kBeatEveryMs * (beat + 1)}})) {
         closeNativeIpcHandle(handle);
         return;
       }
@@ -764,11 +793,20 @@ void BrowserBridgePipeTests::workingPeer_beatsHoldTheConnectionOpen() {
   });
 
   QVERIFY(waitUntil([&server] { return server.clientConnected(); }, 5000));
+  QElapsedTimer timer;
+  timer.start();
   const auto exchange = server.sendCommandAwaitReply(
       QJsonObject{{QStringLiteral("type"), QStringLiteral("command")},
                   {QStringLiteral("id"), QStringLiteral("b-1")},
                   {QStringLiteral("cmd"), QStringLiteral("download")}});
+  const qint64 took_ms = timer.elapsed();
   QVERIFY2(exchange.ok, qPrintable(exchange.error));
+  // Otherwise the exchange never needed the beats, and this proves nothing.
+  QVERIFY2(took_ms > kSilenceBudgetMs,
+           qPrintable(QStringLiteral("the exchange took %1 ms, inside one "
+                                     "%2 ms budget")
+                          .arg(took_ms)
+                          .arg(kSilenceBudgetMs)));
   QVERIFY(asked_for_progress.load());
   QCOMPARE(exchange.reply.value(QStringLiteral("payload"))
                .toObject()
@@ -779,7 +817,7 @@ void BrowserBridgePipeTests::workingPeer_beatsHoldTheConnectionOpen() {
   QCOMPARE(exchange.reply.value(QStringLiteral("type")).toString(),
            QStringLiteral("result"));
 
-  client.join();
+  client.thread.join();
   server.stop();
 }
 
