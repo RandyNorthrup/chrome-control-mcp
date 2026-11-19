@@ -1,6 +1,6 @@
 # Privacy policy
 
-Chrome Control MCP, the Chrome extension and the MCP server it works with. Effective 2026-11-17.
+Chrome Control MCP, the Chrome extension and the MCP server it works with. Effective 2026-11-18.
 
 ## In short
 

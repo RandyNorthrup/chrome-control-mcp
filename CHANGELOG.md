@@ -8,7 +8,7 @@ entry's heading opens its GitHub release page and downloads. To hear about new r
 
 | Version                      | Released   | What it is                                                              |
 | ---------------------------- | ---------- | ----------------------------------------------------------------------- |
-| [1.16.0](#1160---2026-11-17) | 2026-11-17 | One extension for Chrome Control MCP and S.A.K. Utility                 |
+| [1.16.0](#1160---2026-11-18) | 2026-11-18 | One extension for Chrome Control MCP and S.A.K. Utility                 |
 | [1.15.0](#1150---2026-11-08) | 2026-11-08 | Actions say what they changed, and forms fill in one call               |
 | [1.14.0](#1140---2026-11-08) | 2026-11-08 | Faster actions, and screenshots the size a model uses                   |
 | [1.13.0](#1130---2026-11-07) | 2026-11-07 | The extension goes to the Chrome Web Store                              |
@@ -41,7 +41,7 @@ entry's heading opens its GitHub release page and downloads. To hear about new r
 | [1.0.1](#101---2026-09-16)   | 2026-09-16 | The bridge recovers when another server takes or removes its record     |
 | [1.0.0](#100---2026-08-20)   | 2026-08-20 | First public release                                                    |
 
-## [1.16.0] - 2026-11-17
+## [1.16.0] - 2026-11-18
 
 The Chrome Web Store extension serves S.A.K. Utility as well as Chrome Control MCP, each through
 its own native host, when an administrator turns that on; and three calls no longer do what they
