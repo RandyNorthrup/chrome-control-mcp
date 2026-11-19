@@ -1938,7 +1938,7 @@ function onDisconnect(session) {
   // program is not running): the interval below grows for it, up to its own longer cap, and it is
   // not a fault worth a log line.
   if (!(hub.optional && !session.everReady)) {
-    console.warn(hub.logTag + " host disconnected:", session.health.error);
+    console.warn("%s host disconnected:", hub.logTag, session.health.error);
   }
   // Losing the port is not, by itself, the server going away: a relay can drop while its server
   // runs on. The session's tabs are parked rather than dropped -- debugger detached, highlight off,
@@ -1987,7 +1987,7 @@ function connect(hub, { force = false } = {}) {
       noteOptionalHostMissing(hub);
       return null;
     }
-    console.error(hub.logTag + " connectNative threw:", e);
+    console.error("%s connectNative threw:", hub.logTag, e);
     scheduleReconnect(session);
     return null;
   }
@@ -2000,7 +2000,8 @@ function connect(hub, { force = false } = {}) {
 function send(session, reply) {
   if (!session.port) {
     console.warn(
-      session.hub.logTag + " no port to reply on; dropping",
+      "%s no port to reply on; dropping",
+      session.hub.logTag,
       reply && reply.id,
     );
     return;
@@ -2013,7 +2014,7 @@ function send(session, reply) {
     // known here. Posting a second frame down the same port cannot work either, so the port is
     // torn down at once -- the app fails in milliseconds with the connection gone, and the next
     // command arrives only after a fresh handshake.
-    console.error(session.hub.logTag + " postMessage threw:", e);
+    console.error("%s postMessage threw:", session.hub.logTag, e);
     const dead = session.port;
     session.port = null;
     try {
@@ -2435,7 +2436,7 @@ function onHostMessage(session, msg) {
     if (session.hub.reportsInstalledCopy) {
       noteInstalledVersion(msg.version);
     }
-    console.info(session.hub.logTag + " bridge ready, protocol", msg.protocol);
+    console.info("%s bridge ready, protocol", session.hub.logTag, msg.protocol);
     return;
   }
   if (msg.type === "bridge_unavailable") {
@@ -2447,7 +2448,8 @@ function onHostMessage(session, msg) {
     // again, and each asking is a process: set it aside for a while instead.
     noteServerRefused(session.serverId);
     console.warn(
-      session.hub.logTag + " bridge unavailable:",
+      "%s bridge unavailable:",
+      session.hub.logTag,
       session.health.error,
     );
     return;
