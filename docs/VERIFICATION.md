@@ -5,7 +5,79 @@ after [Earlier evidence](#earlier-evidence) is a dated record of the build it na
 suite counts and versions were true of that build and are not current. A result is recorded here
 only when a command actually produced it.
 
-## Current: 1.15.0 (2026-11-08)
+## Current: 1.16.0 (2026-11-18)
+
+1.16.0 lets the Chrome Web Store extension serve S.A.K. Utility as a second local program, through
+its own native host (`com.sak.browsercontrol`), once an administrator turns that on with the
+extension's `sakHostEnabled` policy. Each host's sessions see only their own tabs, windows and
+groups, and the profile's account email goes to Chrome Control MCP only. The work was done on the
+`sak-host` branch and merged as [PR #6](https://github.com/RandyNorthrup/chrome-control-mcp/pull/6).
+It kept no plan or ledger under [plans/](plans/), and the raw outputs of its test-PC runs are not
+in the repository: the rows marked "PR #6" are as its commits and description report them. The
+other rows were produced while it was merged and released.
+
+### 1.16.0: suites
+
+| Where                                                                                     | Result                                                                                                   |
+| ----------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
+| Windows 11, local: `npm run test:js` on `837ee44`                                         | 331/331                                                                                                  |
+| Windows 11, local: Prettier, ESLint, Semgrep 1.180.0 (`--config auto`) on `background.js` | clean, clean, 0 findings (200 rules)                                                                     |
+| Windows test PC (PR #6): `npm ci`, `format:check`, `eslint`, `test:js`                    | exit 0 each                                                                                              |
+| Windows test PC, unmanaged, Chrome 157 (PR #6): the policy gate                           | 5/5                                                                                                      |
+| Same (PR #6): S.A.K. Utility and Chrome Control MCP 1.15.0 at once; user interference     | 9/9; 13/13                                                                                               |
+| Same (PR #6): Edge 157, installed by hand                                                 | 4/4                                                                                                      |
+| CI, release tag `61a9816`: every live suite, three platforms                              | passed ([run 44469011980](https://github.com/RandyNorthrup/chrome-control-mcp/actions/runs/44469011980)) |
+
+`837ee44` is PR #6's last code commit. The release commit `61a9816` has the same tree as the PR's
+head, `4f17260`, which after it changed only the release date in CHANGELOG.md, README.md and
+PRIVACY.md.
+
+On the release run's latency suite the slowest click and hover were 29 and 50 ms on Windows
+(1.15.0's release run: 38 and 62), 29 and 50 ms on Linux (38 and 49), and 122 and 426 ms on macOS
+(98 and 496). macOS hover's three rounds took 182, 426 and 112 ms against the suite's 500 ms bound.
+
+### 1.16.0: red drills
+
+PR #6 reports 53 mutation drills, each guard broken and its test seen red, then restored and green
+again, and that its new tests fail 9 of 42 against the `background.js` from before the review
+fixes. Their raw outputs are not in the repository. The pipe test's two drills are under "found on
+the way".
+
+### 1.16.0: CI and the release
+
+PR #6's last code commit, `837ee44` ([run 44436403372](https://github.com/RandyNorthrup/chrome-control-mcp/actions/runs/44436403372)): builds, tests, analysis and both sanitizers
+passed on all three platforms. The release commit `61a9816` on main ([run 44438244271](https://github.com/RandyNorthrup/chrome-control-mcp/actions/runs/44438244271)) passed
+the same. The `v1.16.0` tag on it ([run 44469011980](https://github.com/RandyNorthrup/chrome-control-mcp/actions/runs/44469011980)) built and tested the four archives,
+passed every live suite on all three platforms, published the GitHub release at 06:16:01 UTC on
+2026-11-19, and published the four VS Code packages.
+
+The Chrome Web Store job built the store package (12 files, 191,945 bytes, no `key`; the twelfth is
+`managed_schema.json`), uploaded it and submitted 1.16.0: the store answered `PENDING_REVIEW`. The
+store's dry run at 06:28 UTC ([run 44472429724](https://github.com/RandyNorthrup/chrome-control-mcp/actions/runs/44472429724)) read the item as published at 1.15.0, with
+1.16.0 in review.
+
+### 1.16.0: found on the way
+
+- **Semgrep blocked PR #6.** Six log lines that the branch had changed to start with
+  `hub.logTag + "..."` gave `console.*` a non-literal first argument (`unsafe-formatstring`,
+  blocking). The branch's own checks had run Prettier, ESLint and the JavaScript tests, but not
+  Semgrep. The lines now pass a constant `"%s ..."` format with the tag as its first value
+  (`837ee44`), and print the same text.
+- **A pipe test failed once on macOS** on PR #6's first run ([run 44432093508](https://github.com/RandyNorthrup/chrome-control-mcp/actions/runs/44432093508)), which changed no
+  bridge code: `workingPeer_beatsHoldTheConnectionOpen` reported "browser did not reply within
+  300 ms (connection reset)". The server resets its silence budget on every progress frame, so one
+  gap between the client's frames had passed 300 ms. The beats were 150 ms apart, and one late
+  wake-up on the runner used up that margin; the next run passed unchanged. The failed check also
+  left the test's client thread joinable, so the binary aborted (SIGABRT) and the 22 tests after it
+  went unreported. [PR #7](https://github.com/RandyNorthrup/chrome-control-mcp/pull/7) gives each beat
+  800 ms of slack against a 1000 ms budget, checks that the exchange did outlast one budget, and
+  joins the thread however the test ends. Red drills on Windows, each restored byte for byte: three
+  beats fail the new check ("the exchange took 621 ms, inside one 1000 ms budget"); a 150 ms budget
+  fails with the CI run's message, and the 22 later tests still report.
+- **The release date** in CHANGELOG.md, README.md and PRIVACY.md was the day the release was
+  prepared, 2026-11-17. It was moved to the tag's day before tagging.
+
+### 1.15.0 (2026-11-08)
 
 1.15.0 makes every action say what it changed on the page, lets an action return the page in the
 same call (`snapshot: true`), fills a form in one call with `browser_fill_form`, and answers a
@@ -71,8 +143,8 @@ The Chrome Web Store job built the store package (11 files, 182,604 bytes, no `k
 refused the upload with the same "FAILED_PRECONDITION: You may not edit or publish an item that is
 in review": 1.13.0 was still in Google's review. Google approved 1.13.0 the next day, and the job,
 run again at 22:40 UTC on 2026-11-09, uploaded the same package and submitted 1.15.0 in 1.14.0's
-place: the store answered `PENDING_REVIEW`. It is submitted to publish as soon as Google approves
-it.
+place: the store answered `PENDING_REVIEW`. The store's dry run on 2026-11-19 ([run 44472429724](https://github.com/RandyNorthrup/chrome-control-mcp/actions/runs/44472429724))
+read 1.15.0 as published.
 
 ### 1.15.0: found on the way
 
