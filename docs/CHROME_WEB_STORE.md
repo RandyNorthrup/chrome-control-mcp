@@ -51,7 +51,9 @@ job says so and skips.
 ## The listing
 
 Entered in the dashboard (Store listing and Privacy tabs). The summary is the manifest's
-description.
+description. The dashboard is on the store's own pages, which Chrome lets no extension script, this
+one included ("The extensions gallery cannot be scripted"), so an agent cannot fill it in through
+Chrome Control MCP.
 
 **Name**: Chrome Control MCP
 
@@ -146,20 +148,23 @@ creditworthiness or lending.
 
 **Privacy policy**: <https://github.com/RandyNorthrup/chrome-control-mcp/blob/main/docs/PRIVACY.md>
 
-## Dashboard answers for 1.16.0 (draft; the owner enters them)
+## Dashboard answers for 1.16.0 (entered 2026-11-19)
 
 1.16.0 is the first version that serves a second program, so the store's review may ask about the
-single purpose. The sections above are the dashboard's fields as they should read when 1.16.0 is
-submitted; the listing's summary is the manifest's description, which the package carries. Nothing
-here has been submitted.
+single purpose. Google approved the 1.16.0 package with the listing and privacy answers still worded
+for 1.15.0. On 2026-11-19 the sections above were entered in the dashboard as written and submitted
+for review on their own, with publishing after review left on. The public listing keeps the 1.15.0
+wording until that review passes. The listing's summary is the manifest's description, which
+arrived with the package.
 
-- **Store listing**: the summary (from the manifest) and the description, with its S.A.K. Utility
-  paragraph and its new privacy line.
-- **Privacy, single purpose**: as above.
+- **Store listing**: the description replaced, with its S.A.K. Utility paragraph and its new
+  privacy line.
+- **Privacy, single purpose**: replaced.
 - **Privacy, permission justifications**: `nativeMessaging`, `storage`, `identity` and
-  `identity.email` change as above; the others are as in 1.15.0. No permission is added: the
+  `identity.email` replaced; the others left as in 1.15.0. No permission is added: the
   administrator policy needs only `storage`, which the extension already has.
-- **Privacy, data usage**: the same categories as 1.15.0; the wording above says where each goes.
+- **Privacy, data usage**: the categories, the three certifications and the policy address already
+  matched and were left alone.
 - **If the review asks about the single purpose**:
 
   > The extension has one purpose: to let AI agents the user runs on their own computer operate
