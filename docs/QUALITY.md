@@ -28,8 +28,11 @@ The gates run in three tiers (2026-11-01):
   dependency audit, PowerShell and native and semantic analysis, builds with ctest and the smoke
   test on Windows, Linux and macOS, and both sanitizers. A push that changes only Markdown and
   `docs/` runs the formatting, lint and secret scan and the checks that read those documents
-  (`test_release_versions`, `test_vscode_payload`); nothing is built. A newer push to the same
-  branch cancels the run it replaces.
+  (`test_release_versions`, `test_vscode_payload`); nothing is built. On `main` "changes only" means
+  since the push before, and every push's run finishes. On any other branch it means since the
+  branch left `main`, and a newer push cancels the run it replaces: a branch with code in it builds
+  on every push, so a push of documents cannot cancel the run for a push of code and then build
+  nothing itself (2026-11-19, after PR #7 showed green with its code never built).
 - **Every release** (the release workflow, on a version tag): the four archives, each built and
   tested and smoke-tested, and the live browser suites on all three platforms (`live.yml`). Nothing
   is published until all of them pass: then the GitHub release, and after it the VS Code
