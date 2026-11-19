@@ -6,15 +6,24 @@ on:
 permissions:
   contents: read
 
+# A newer push to a branch cancels the run it replaces. That loses nothing: the changes job below
+# judges a branch by everything it changed since it left the default branch, not by its last push.
+# The default branch is judged by its last push, so none of its runs may be cancelled: each of its
+# commits gets a group of its own.
 concurrency:
-  group: quality-${{ github.ref }}
+  group: quality-${{ github.ref_name == github.event.repository.default_branch && github.sha || github.ref }}
   cancel-in-progress: true
 
 jobs:
   # Whether anything but documents changed. A push of Markdown and docs/ alone -- release notes,
   # evidence, a verification record -- has nothing to build: it gets the formatting, lint and secret
-  # scan below and the checks that read those documents, and every other job is skipped. A new
-  # branch or a tag, which has nothing to compare with, counts as code.
+  # scan below and the checks that read those documents, and every other job is skipped.
+  #
+  # "Changed" is measured from the last point whose run is known to have covered it. On the default
+  # branch that is the push before, whose run was not cancelled (see concurrency). On any other
+  # branch it is where the branch left the default branch: comparing with the push before would let
+  # a push of documents, landing while the run for a push of code is still going, cancel that run
+  # and then build nothing itself. A tag, or a base that cannot be found, counts as code.
   changes:
     name: What changed
     runs-on: ubuntu-latest
@@ -29,16 +38,25 @@ jobs:
         shell: bash
         env:
           BEFORE: ${{ github.event.before }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
         run: |
           code=true
-          if [ "$GITHUB_REF_TYPE" != "tag" ] && [ -n "$BEFORE" ] &&
-            [ "$BEFORE" != "0000000000000000000000000000000000000000" ] &&
-            git cat-file -e "$BEFORE^{commit}" 2>/dev/null; then
-            if ! git diff --name-only "$BEFORE" "$GITHUB_SHA" | grep -vE '\.md$|^docs/' | grep -q .; then
+          base=
+          if [ "$GITHUB_REF_TYPE" = "branch" ] && [ -n "$DEFAULT_BRANCH" ]; then
+            if [ "$GITHUB_REF_NAME" = "$DEFAULT_BRANCH" ]; then
+              base="$BEFORE"
+            else
+              base="$(git merge-base "origin/$DEFAULT_BRANCH" "$GITHUB_SHA" 2>/dev/null || true)"
+            fi
+          fi
+          if [ -n "$base" ] && [ "$base" != "0000000000000000000000000000000000000000" ] &&
+            git cat-file -e "$base^{commit}" 2>/dev/null; then
+            if ! git diff --name-only "$base" "$GITHUB_SHA" | grep -vE '\.md$|^docs/' | grep -q .; then
               code=false
             fi
           fi
           echo "code=$code" >> "$GITHUB_OUTPUT"
+          echo "Compared with: ${base:-nothing}"
           echo "Anything but documents changed: $code"
 
   quality:
