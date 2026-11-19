@@ -56,6 +56,11 @@ The Chrome Web Store job built the store package (12 files, 191,945 bytes, no `k
 store's dry run at 06:28 UTC ([run 44472429724](https://github.com/RandyNorthrup/chrome-control-mcp/actions/runs/44472429724)) read the item as published at 1.15.0, with
 1.16.0 in review.
 
+Google approved 1.16.0 the same day: by 19:16 UTC the dashboard showed it as published. The listing
+and privacy answers in [CHROME_WEB_STORE.md](CHROME_WEB_STORE.md#dashboard-answers-for-1160-entered-2026-11-19)
+were entered after that and submitted for review on their own. The store's dry run at 19:34 UTC
+([run 44599694191](https://github.com/RandyNorthrup/chrome-control-mcp/actions/runs/44599694191)) read 1.16.0 as published, with that submission in review.
+
 ### 1.16.0: found on the way
 
 - **Semgrep blocked PR #6.** Six log lines that the branch had changed to start with
