@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.25)
 
-project(chrome_control_mcp VERSION 1.15.0 LANGUAGES CXX)
+project(chrome_control_mcp VERSION 1.16.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -467,6 +467,15 @@ if(BUILD_TESTING)
                 "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_browser_extension_uploads.mjs"
     )
     set_tests_properties(test_browser_extension_uploads PROPERTIES TIMEOUT 120)
+
+    # Two applications through one extension: Chrome Control MCP's native host and S.A.K.
+    # Utility's, each with its own sessions, tabs and replies, and S.A.K.'s host, when it is not
+    # installed, asked for rarely and silently.
+    add_test(NAME test_browser_extension_hosts
+        COMMAND "${NODE_EXECUTABLE}" --test
+                "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_browser_extension_hosts.mjs"
+    )
+    set_tests_properties(test_browser_extension_hosts PROPERTIES TIMEOUT 120)
 
     # Every version string agrees, and the version being shipped has its changelog entry and
     # release note -- checked on each push, not first discovered by the release workflow.

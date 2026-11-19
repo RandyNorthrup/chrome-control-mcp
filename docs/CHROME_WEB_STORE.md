@@ -55,8 +55,8 @@ description.
 
 **Name**: Chrome Control MCP
 
-**Summary** (132 characters at most): Lets AI agents drive your real Chrome over MCP, in tabs of their
-own with a visible cursor. Your mouse and keyboard stay yours.
+**Summary** (132 characters at most): Lets AI agents in Chrome Control MCP, or S.A.K. Utility when
+enabled, drive your Chrome in their own tabs with a visible cursor.
 
 **Category**: Developer Tools. **Language**: English.
 
@@ -69,6 +69,12 @@ own with a visible cursor. Your mouse and keyboard stay yours.
 > This extension is half of it. The other half is the Chrome Control MCP server, a small program
 > you install on your computer from GitHub (free, open source, MIT licence):
 > https://github.com/RandyNorthrup/chrome-control-mcp
+>
+> The same extension also serves S.A.K. Utility, a technician's toolkit for Windows by the same
+> developer, whose assistant can work in Chrome the same way. That connection is off unless an
+> administrator turns it on: S.A.K. Utility, which runs as an administrator, does so through
+> Chrome's policy for this extension when its Browser Control is turned on, and removes it when
+> it is turned off. The two programs never see each other's tabs or messages.
 >
 > What agents get:
 >
@@ -83,9 +89,10 @@ own with a visible cursor. Your mouse and keyboard stay yours.
 > - A clipboard per agent, kept apart from yours.
 > - Several Chrome profiles, chosen per call ("work", "personal").
 >
-> Privacy: what the extension reads from a page goes only to the Chrome Control MCP server on your
-> own computer, through Chrome's native messaging. There is no account, no analytics and no server
-> of ours; nothing is sent to the developer. Policy:
+> Privacy: what the extension reads from a page goes only to the program on your own computer that
+> asked for it -- the Chrome Control MCP server, or S.A.K. Utility when turned on -- through
+> Chrome's native messaging. There is no account, no analytics and no server of ours; nothing is
+> sent to the developer. Policy:
 > https://github.com/RandyNorthrup/chrome-control-mcp/blob/main/docs/PRIVACY.md
 >
 > Click the toolbar button to stop every agent at once; click it again to let them back.
@@ -100,39 +107,70 @@ own with a visible cursor. Your mouse and keyboard stay yours.
 
 ## Privacy practices
 
-**Single purpose**: Lets AI agents the user runs on their own computer, through the Chrome Control
-MCP server, open, read and operate browser tabs on the user's behalf.
+**Single purpose**: Lets AI agents the user runs on their own computer open, read and operate
+browser tabs on the user's behalf. The agents reach it through a program on the same computer: the
+Chrome Control MCP server, or S.A.K. Utility's assistant when an administrator has turned that
+connection on. Both are clients of the one purpose, through the same commands; neither adds a
+function the other lacks.
 
 **Permission justifications**:
 
-| Permission                   | Why                                                                                                                                                                                                                                                                                             |
-| ---------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `nativeMessaging`            | The only channel to the Chrome Control MCP server on the user's computer; every command arrives and every answer leaves through it.                                                                                                                                                             |
-| `debugger`                   | Reads pages (accessibility tree, screenshots, console, network) and sends real input to the tabs an agent works in, through the DevTools Protocol.                                                                                                                                              |
-| `tabs`                       | Opens, lists, selects and closes the tabs agents work in.                                                                                                                                                                                                                                       |
-| `tabGroups`                  | Puts each agent's tabs in a coloured group of its own, so the user sees which agent holds which tab.                                                                                                                                                                                            |
-| `contentSettings`            | Answers an agent's request to allow or block a site permission (camera, notifications) for the page it works on.                                                                                                                                                                                |
-| `cookies`                    | Reads and sets cookies for the page an agent works on, when the agent asks.                                                                                                                                                                                                                     |
-| `downloads`                  | Saves files an agent downloads and reports where they went.                                                                                                                                                                                                                                     |
-| `offscreen`                  | Encodes tab recordings to video in an offscreen document; the service worker has no DOM to do it in.                                                                                                                                                                                            |
-| `alarms`                     | Reconnects to the server after Chrome stops the service worker.                                                                                                                                                                                                                                 |
-| `storage`                    | Keeps the extension's own state: the profile's name, which tabs each agent holds, pause and update state.                                                                                                                                                                                       |
-| `scripting`                  | Takes the agent's frame and clipboard hooks back off a page after the debugger has left it (for example when the user cancels Chrome's debugging bar).                                                                                                                                          |
-| `webNavigation`              | Knows when a page in an agent's tab has finished loading or moved to another address.                                                                                                                                                                                                           |
-| `identity`                   | Reads which account the Chrome profile is signed in to (chrome.identity.getProfileUserInfo) to name the profile, so an agent can be told which profile to work in. No sign-in or OAuth token is requested.                                                                                      |
-| `identity.email`             | Lets getProfileUserInfo return the account's email, which becomes the profile's default name. It goes only to the local server, and the user can rename the profile on the extension's options page.                                                                                            |
-| Host permission `<all_urls>` | Agents work on whatever site the user asks them to, so the sites cannot be listed in advance. The extension reads and drives only the tabs an agent opened or was handed, each marked with a coloured tab group and a frame, and only when the user's own MCP client on the same computer asks. |
+| Permission                   | Why                                                                                                                                                                                                                                                                                                                                                                                                          |
+| ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `nativeMessaging`            | The only channel to the programs on the user's computer that drive it: the Chrome Control MCP server (host `com.chromecontrolmcp.browser`) and, only while an administrator's policy for this extension turns it on, S.A.K. Utility (host `com.sak.browsercontrol`). Every command arrives and every answer leaves through it, each on its own program's port; nothing passes from one program to the other. |
+| `debugger`                   | Reads pages (accessibility tree, screenshots, console, network) and sends real input to the tabs an agent works in, through the DevTools Protocol.                                                                                                                                                                                                                                                           |
+| `tabs`                       | Opens, lists, selects and closes the tabs agents work in.                                                                                                                                                                                                                                                                                                                                                    |
+| `tabGroups`                  | Puts each agent's tabs in a coloured group of its own, so the user sees which agent holds which tab.                                                                                                                                                                                                                                                                                                         |
+| `contentSettings`            | Answers an agent's request to allow or block a site permission (camera, notifications) for the page it works on.                                                                                                                                                                                                                                                                                             |
+| `cookies`                    | Reads and sets cookies for the page an agent works on, when the agent asks.                                                                                                                                                                                                                                                                                                                                  |
+| `downloads`                  | Saves files an agent downloads and reports where they went.                                                                                                                                                                                                                                                                                                                                                  |
+| `offscreen`                  | Encodes tab recordings to video in an offscreen document; the service worker has no DOM to do it in.                                                                                                                                                                                                                                                                                                         |
+| `alarms`                     | Reconnects to the server after Chrome stops the service worker.                                                                                                                                                                                                                                                                                                                                              |
+| `storage`                    | Keeps the extension's own state: the profile's name, which tabs each agent holds, pause and update state. Also reads the one administrator policy the extension declares (`storage.managed_schema`), which turns the S.A.K. Utility connection on or off.                                                                                                                                                    |
+| `scripting`                  | Takes the agent's frame and clipboard hooks back off a page after the debugger has left it (for example when the user cancels Chrome's debugging bar).                                                                                                                                                                                                                                                       |
+| `webNavigation`              | Knows when a page in an agent's tab has finished loading or moved to another address.                                                                                                                                                                                                                                                                                                                        |
+| `identity`                   | Reads which account the Chrome profile is signed in to (chrome.identity.getProfileUserInfo) to name the profile, so a Chrome Control MCP agent can be told which profile to work in. No sign-in or OAuth token is requested.                                                                                                                                                                                 |
+| `identity.email`             | Lets getProfileUserInfo return the account's email, which becomes the profile's default name for Chrome Control MCP. It goes only to the Chrome Control MCP server on the user's computer, never to S.A.K. Utility (which is told the name the user gave the profile, or a generated one), and the user can rename the profile on the extension's options page.                                              |
+| Host permission `<all_urls>` | Agents work on whatever site the user asks them to, so the sites cannot be listed in advance. The extension reads and drives only the tabs an agent opened or was handed, each marked with a coloured tab group and a frame, and only when the user's own MCP client on the same computer asks.                                                                                                              |
 
 **Remote code**: No. Every script is in the package.
 
 **Data usage**: the form's categories that apply, all handled only to provide the single purpose and
-sent only to the server on the user's own computer: personally identifiable information (the
-profile's account email), authentication information (cookies, when an agent reads them), web
-history (open tabs' titles and addresses), user activity (input the agent sends), and website
-content. The three certifications are made: no sale or transfer to third parties outside the
-approved uses, no use unrelated to the single purpose, and no use for creditworthiness or lending.
+sent only to a program on the user's own computer -- the Chrome Control MCP server, or S.A.K.
+Utility when an administrator has turned it on: personally identifiable information (the profile's
+account email, to the Chrome Control MCP server only), authentication information (cookies, when an
+agent reads them), web history (open tabs' titles and addresses), user activity (input the agent
+sends), and website content. The three certifications are made: no sale or transfer to third
+parties outside the approved uses, no use unrelated to the single purpose, and no use for
+creditworthiness or lending.
 
 **Privacy policy**: <https://github.com/RandyNorthrup/chrome-control-mcp/blob/main/docs/PRIVACY.md>
+
+## Dashboard answers for 1.16.0 (draft; the owner enters them)
+
+1.16.0 is the first version that serves a second program, so the store's review may ask about the
+single purpose. The sections above are the dashboard's fields as they should read when 1.16.0 is
+submitted; the listing's summary is the manifest's description, which the package carries. Nothing
+here has been submitted.
+
+- **Store listing**: the summary (from the manifest) and the description, with its S.A.K. Utility
+  paragraph and its new privacy line.
+- **Privacy, single purpose**: as above.
+- **Privacy, permission justifications**: `nativeMessaging`, `storage`, `identity` and
+  `identity.email` change as above; the others are as in 1.15.0. No permission is added: the
+  administrator policy needs only `storage`, which the extension already has.
+- **Privacy, data usage**: the same categories as 1.15.0; the wording above says where each goes.
+- **If the review asks about the single purpose**:
+
+  > The extension has one purpose: to let AI agents the user runs on their own computer operate
+  > browser tabs on the user's behalf. Chrome Control MCP and S.A.K. Utility are two local programs
+  > through which such agents reach it; both use the same commands, and the extension does nothing
+  > for one that it does not do for the other. S.A.K. Utility's connection is off unless an
+  > administrator turns it on through Chrome's policy for this extension (chrome.storage.managed,
+  > declared in the manifest's storage.managed_schema); S.A.K. Utility runs as an administrator and
+  > sets that policy only when the technician turns its Browser Control on. The two programs are
+  > isolated from each other inside the extension: neither sees the other's tabs, sessions or
+  > messages, and the profile's identity (its account email) is never given to S.A.K. Utility.
 
 ## Test instructions for review
 

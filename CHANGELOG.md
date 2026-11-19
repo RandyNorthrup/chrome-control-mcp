@@ -8,6 +8,7 @@ entry's heading opens its GitHub release page and downloads. To hear about new r
 
 | Version                      | Released   | What it is                                                              |
 | ---------------------------- | ---------- | ----------------------------------------------------------------------- |
+| [1.16.0](#1160---2026-11-18) | 2026-11-18 | One extension for Chrome Control MCP and S.A.K. Utility                 |
 | [1.15.0](#1150---2026-11-08) | 2026-11-08 | Actions say what they changed, and forms fill in one call               |
 | [1.14.0](#1140---2026-11-08) | 2026-11-08 | Faster actions, and screenshots the size a model uses                   |
 | [1.13.0](#1130---2026-11-07) | 2026-11-07 | The extension goes to the Chrome Web Store                              |
@@ -39,6 +40,68 @@ entry's heading opens its GitHub release page and downloads. To hear about new r
 | [1.1.0](#110---2026-09-21)   | 2026-09-21 | The agent works in a tab of its own                                     |
 | [1.0.1](#101---2026-09-16)   | 2026-09-16 | The bridge recovers when another server takes or removes its record     |
 | [1.0.0](#100---2026-08-20)   | 2026-08-20 | First public release                                                    |
+
+## [1.16.0] - 2026-11-18
+
+The Chrome Web Store extension serves S.A.K. Utility as well as Chrome Control MCP, each through
+its own native host, when an administrator turns that on; and three calls no longer do what they
+did not ask for.
+
+### Added
+
+- **A second native host, S.A.K. Utility's** (`com.sak.browsercontrol`), reached only while
+  Chrome's policy for this extension holds `sakHostEnabled: true` (`chrome.storage.managed`, from
+  the new `managed_schema.json`). That policy is writable by administrators only, so a program
+  running as the user that registers a host of that name gets nothing. S.A.K. Utility sets it when
+  its Browser Control is turned on and removes it when it is turned off; removed while Chrome runs,
+  every S.A.K. session ends and its tabs go back to the user, and so do tabs an earlier worker had
+  parked for S.A.K. when a new one finds the policy off. A command still running when its session
+  ends holds, groups and attaches to no tab afterwards. No permission is added: `storage` already
+  covers it.
+- Each host's sessions see only that host's sessions and tabs. Tabs the other host holds are left
+  out of `browser_tabs`, its count and its numbering (an index is the tab's place among the tabs
+  the session may see), a window holding only them is not listed, and window tab counts leave them
+  out. A command naming one by id is refused in the words used for an id that names no tab;
+  grouping or ungrouping the active tab, focusing a window whose active tab it is, and closing a
+  window holding one (or a tab another session of the same host holds) are refused; asked whether
+  such a tab exists, the extension answers as for no tab, field for field. Every frame is answered
+  on the port it came in on and nothing passes between hosts. The profile's identity (its account
+  email) goes to Chrome Control MCP only, in no field of the extension's to S.A.K. (an unrenamed
+  profile is named to S.A.K. by its generated name); a tab's title is page content, and a page that
+  puts the email in its title shows it to either. S.A.K.'s tab groups are titled "S.A.K. ...". The
+  toolbar switch pauses both.
+- While one host holds a tab on a site (by the address it shows or the one it is loading), the
+  other host's `browser_cookies` and `browser_permission` calls for that site, a domain above it or
+  one below it are refused, a trailing dot on either name making no difference. For any other site,
+  a cookie also sent to the held site (a sign-in cookie of the domain above it) is left out of a
+  get, which says how many it left out (`withheld`), and removing or setting a cookie of that name
+  is refused. Otherwise the profile's cookies and site settings are shared between the two, as
+  PRIVACY.md and SECURITY.md say.
+- `tests/test_browser_extension_hosts.mjs`: two hosts at once; their isolation both ways for every
+  command that names a tab, an index or a window; the email in no S.A.K. frame; the policy; the
+  shared site state; the toolbar switch; and the S.A.K. host missing, unable to start, or idle.
+
+### Changed
+
+- S.A.K.'s host is optional. When it is not installed, or Chrome cannot start the program its
+  registration names, the extension asks for it at startup, then after ten minutes, doubling to six
+  hours, and logs nothing about it; the wait is kept in session storage, so a browser restart, a
+  toolbar click or the host answering ends it. When it is installed but S.A.K. is not running, it
+  is asked again on the usual doubling interval up to ten minutes, also silently. Chrome Control
+  MCP's own reconnect timing and messages are unchanged.
+- A reload for a server that speaks a newer bridge protocol now waits, like the reload for a newer
+  install, until no session of either host is using the extension.
+- A relay's server id containing ":" is ignored, so a Chrome Control MCP server can never be taken
+  for S.A.K.'s server of the same number.
+- The manifest's description names both programs.
+
+### Fixed
+
+- `browser_window` focus/close with `window_id: null` addressed window 0 (and was refused as "not
+  in the listing"); it now asks for a window id.
+- `browser_download` with `timeout_ms: null` took a one-second budget instead of the 30 s default.
+- `browser_group_tabs` with an unknown colour grouped the tabs before refusing; the colour is now
+  checked first.
 
 ## [1.15.0] - 2026-11-08
 
@@ -1367,6 +1430,7 @@ tried were broken.
 - Unused JSON-RPC client payload helpers and obsolete test-only native-host loop.
 - Redundant quality branch; development and delivery now happen directly on `main`.
 
+[1.16.0]: https://github.com/RandyNorthrup/chrome-control-mcp/releases/tag/v1.16.0
 [1.15.0]: https://github.com/RandyNorthrup/chrome-control-mcp/releases/tag/v1.15.0
 [1.14.0]: https://github.com/RandyNorthrup/chrome-control-mcp/releases/tag/v1.14.0
 [1.13.0]: https://github.com/RandyNorthrup/chrome-control-mcp/releases/tag/v1.13.0

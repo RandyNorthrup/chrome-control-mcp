@@ -16,12 +16,29 @@ export const PROTOCOL = 2;
 // debugger command (tabId, method, params) when it returns anything but undefined. Every
 // debugger command is recorded in calls.cdp. @p overrides adds or replaces chrome.* members by
 // dotted name, for a suite that needs one this model does not give (runtime.reload, storage).
+// @p sakHost, when true, installs S.A.K.'s native host too: every port the worker opens to it is
+// recorded in sakPorts. Without it, that host is not installed. @p sakPolicy is whether an
+// administrator's policy turns that host on (by default, whenever it is installed; see loadWorker).
+// @p console is the worker's console (see loadWorker).
+//
+// Windows are the windowIds the tabs carry; windows.getAll and windows.get with populate list
+// their tabs in strip order, and windows.remove closes them (recorded in calls.windowsRemoved).
+// Cookies (cookies.getAll, cookies.remove) and site settings (contentSettings.<type>.set) are
+// recorded in calls.cookieReads and calls.settings. @p cookies is the profile's cookie jar
+// ({ name, domain, value }, a domain with a leading dot sent to every host below it as well), empty
+// by default: getAll answers from it as Chrome does, remove takes a cookie out of it (recorded in
+// calls.cookieRemovals) and set puts a host-only one in (calls.cookieSets). storage.onChanged is a
+// listener a suite fires.
 export function fakeBrowser({
   exported,
   live = "",
   refuseRemovals = 0,
   cdp = () => undefined,
   overrides: extra = {},
+  sakHost = false,
+  sakPolicy = sakHost,
+  cookies: jar = [],
+  console: sink,
 } = {}) {
   let removalsRefused = 0;
   const tabs = new Map();
@@ -29,12 +46,18 @@ export function fakeBrowser({
   const listeners = new Map();
   const attached = new Set();
   const ports = [];
+  const sakPorts = [];
   const calls = {
     removed: [],
     ungrouped: [],
     grouped: [],
     connects: 0,
     cdp: [],
+    windowsRemoved: [],
+    cookieReads: [],
+    cookieRemovals: [],
+    cookieSets: [],
+    settings: [],
   };
   let nextTabId = 100;
   let nextGroupId = 500;
@@ -55,6 +78,37 @@ export function fakeBrowser({
     }
   };
   const copy = (tab) => ({ ...tab });
+  // The cookies of the jar Chrome sends to @p url (named @p name, when given): a cookie's domain is
+  // the url's host or, written with a leading dot, a domain above it.
+  const cookieHost = (url) => new URL(url).hostname.replace(/\.$/, "");
+  const cookiesFor = ({ url, name }) => {
+    const host = cookieHost(url);
+    return jar.filter((c) => {
+      const domain = c.domain.replace(/^\./, "").replace(/\.$/, "");
+      const sent =
+        host === domain ||
+        (c.domain.startsWith(".") && host.endsWith("." + domain));
+      return sent && (name === undefined || c.name === name);
+    });
+  };
+  const windowTabs = (windowId) =>
+    [...tabs.values()]
+      .filter((t) => t.windowId === windowId)
+      .sort((a, b) => a.index - b.index)
+      .map(copy);
+  const windowOf = (windowId, populate) => {
+    const win = {
+      id: windowId,
+      focused: windowId === focusedWindow.id && focusedWindow.focused,
+      incognito: false,
+      type: "normal",
+      state: "normal",
+    };
+    if (populate) {
+      win.tabs = windowTabs(windowId);
+    }
+    return win;
+  };
 
   function addTab(props) {
     const id = props.id ?? nextTabId++;
@@ -132,7 +186,10 @@ export function fakeBrowser({
         id = nextGroupId++;
         groups.set(id, {
           id,
-          windowId: createProperties.windowId,
+          // Chrome puts a group made with no window named in the window of its first tab.
+          windowId: createProperties
+            ? createProperties.windowId
+            : tabs.get(tabIds[0]).windowId,
           title: "",
           color: "grey",
         });
@@ -176,7 +233,53 @@ export function fakeBrowser({
     },
     "tabGroups.query": () =>
       Promise.resolve([...groups.values()].map((g) => ({ ...g }))),
-    "windows.get": (id) => Promise.resolve({ id }),
+    "windows.get": (id, opts) =>
+      Promise.resolve(opts && opts.populate ? windowOf(id, true) : { id }),
+    "windows.getAll": (opts) =>
+      Promise.resolve(
+        [...new Set([...tabs.values()].map((t) => t.windowId))]
+          .sort((a, b) => a - b)
+          .map((id) => windowOf(id, Boolean(opts && opts.populate))),
+      ),
+    "windows.remove": (id) => {
+      calls.windowsRemoved.push(id);
+      for (const tab of [...tabs.values()]) {
+        if (tab.windowId === id) {
+          tabs.delete(tab.id);
+          attached.delete(tab.id);
+          fire("tabs.onRemoved", tab.id, {
+            windowId: id,
+            isWindowClosing: true,
+          });
+        }
+      }
+      return Promise.resolve();
+    },
+    "cookies.getAll": (details) => {
+      calls.cookieReads.push(details);
+      return Promise.resolve(cookiesFor(details).map((c) => ({ ...c })));
+    },
+    "cookies.remove": (details) => {
+      calls.cookieReads.push(details);
+      const found = cookiesFor(details)[0];
+      if (!found) {
+        return Promise.resolve(null);
+      }
+      jar.splice(jar.indexOf(found), 1);
+      calls.cookieRemovals.push({ ...found });
+      return Promise.resolve({ url: details.url, name: details.name });
+    },
+    "cookies.set": (details) => {
+      const cookie = {
+        name: details.name,
+        value: details.value,
+        domain: cookieHost(details.url),
+        path: details.path || "/",
+      };
+      jar.push(cookie);
+      calls.cookieSets.push({ ...cookie });
+      return Promise.resolve({ ...cookie });
+    },
     "windows.getLastFocused": () => Promise.resolve({ ...focusedWindow }),
     "debugger.attach": ({ tabId }) => {
       attached.add(tabId);
@@ -192,6 +295,10 @@ export function fakeBrowser({
       return Promise.resolve(answer === undefined ? {} : answer);
     },
     "debugger.getTargets": () => Promise.resolve([]),
+    "contentSettings.camera.set": (details) => {
+      calls.settings.push(details);
+      return Promise.resolve();
+    },
     "scripting.executeScript": () => Promise.resolve([]),
   };
   for (const name of [
@@ -205,17 +312,29 @@ export function fakeBrowser({
     "debugger.onDetach",
     "debugger.onEvent",
     "webNavigation.onCreatedNavigationTarget",
+    "storage.onChanged",
   ]) {
     overrides[name] = on(name);
   }
   Object.assign(overrides, extra);
-  const worker = loadWorker(exported, overrides, live);
+  const worker = loadWorker(exported, overrides, live, {
+    sakHost: sakHost
+      ? () => {
+          const port = makeFakePort();
+          sakPorts.push(port);
+          return port;
+        }
+      : undefined,
+    sakPolicy,
+    console: sink,
+  });
   return {
     worker,
     tabs,
     groups,
     attached,
     ports,
+    sakPorts,
     calls,
     fire,
     addTab,

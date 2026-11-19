@@ -548,8 +548,15 @@ const PARKED_CURSOR = Object.freeze({ x: 24, y: 24 });
 // command names the tab it means. When this record held one "current tab" with one snapshot, one
 // screenshot transform and one debugger attachment, agent B opening a tab silently moved agent A,
 // and switching between two tabs detached the first and wiped its logs, refs and dialog arm.
-function makeSession() {
+function makeSession(hub = CC_HUB) {
   return {
+    // The native host this session's port belongs to (see "Native hosts"). Every session of one
+    // host is invisible to every session of the other.
+    hub,
+
+    // Whether the relay behind this port has sent anything yet (see anyPortOpen).
+    heardFrom: false,
+
     port: null,
 
     // The recording this session is making, or null. Holding it here rather
@@ -879,12 +886,14 @@ function attachedHolderOf(tabId) {
 //
 // A timestamp rather than a flag because a flag that is set and never cleared stops discovery for
 // the life of the worker -- which is exactly what happened when a probe port could not be opened,
-// or was lost before its offer arrived. A probe older than this is presumed lost.
-let probeOpenedAt = 0;
+// or was lost before its offer arrived. A probe older than this is presumed lost. Kept per host
+// (hub.probeOpenedAt): each host's servers are looked for on that host's ports.
 const PROBE_STALE_MS = 15000;
 
-function probeInFlight() {
-  return probeOpenedAt !== 0 && Date.now() - probeOpenedAt < PROBE_STALE_MS;
+function probeInFlight(hub) {
+  return (
+    hub.probeOpenedAt !== 0 && Date.now() - hub.probeOpenedAt < PROBE_STALE_MS
+  );
 }
 
 // Open a port to look for servers nothing holds, unless one is already looking.
@@ -893,14 +902,14 @@ function probeInFlight() {
 // rationed: the alarm's safety net is not forced and so obeys the reconnect backoff, and only a
 // relay's own report that a server nothing holds has published -- an event, not a timer -- may
 // skip the wait.
-function probeForServers({ force = false } = {}) {
-  if (probeInFlight()) {
+function probeForServers(hub, { force = false } = {}) {
+  if (probeInFlight(hub)) {
     return;
   }
-  probeOpenedAt = Date.now();
-  const opened = connect({ force });
+  hub.probeOpenedAt = Date.now();
+  const opened = connect(hub, { force });
   if (!opened) {
-    probeOpenedAt = 0;
+    hub.probeOpenedAt = 0;
     return;
   }
   for (const session of sessions) {
@@ -911,9 +920,12 @@ function probeForServers({ force = false } = {}) {
 }
 
 // A session is attached to at most one server; these say what the worker holds.
+//
+// A port to an optional host counts only once its relay has spoken: until then it may be a port
+// Chrome is about to report the host missing on, and the toolbar must not call that "connected".
 function anyPortOpen() {
   for (const session of sessions) {
-    if (session.port) {
+    if (session.port && (!session.hub.optional || session.heardFrom)) {
       return true;
     }
   }
@@ -993,11 +1005,22 @@ function leaseHolder(tabId, session) {
 // can tell "busy" from "gone".
 function requireUnleasedTab(session, tab) {
   const holder = tab && leaseHolder(tab.id, session);
+  if (holder && otherHost(session, holder)) {
+    // Held by the other application this extension serves: refused like any held tab, but nothing
+    // about who holds it is said -- that application's sessions are not this one's business.
+    throw new Error(
+      "That tab is in use by another application connected to this browser. Choose a different " +
+        "tab, or open one with browser_new_tab.",
+    );
+  }
   if (holder) {
     throw new Error(
-      "That tab is being driven by another Chrome Control MCP session" +
+      "That tab is being driven by another " +
+        session.hub.sessionName +
         (holder.label ? " (" + holder.label + ")" : "") +
-        (holder.serverId ? " (server " + holder.serverId + ")" : "") +
+        (holder.serverId
+          ? " (server " + relayServerId(holder.hub, holder.serverId) + ")"
+          : "") +
         ". Choose a different tab, or open one with browser_new_tab.",
     );
   }
@@ -1046,11 +1069,10 @@ function originOf(url) {
 const RECONNECT_MIN_MS = 2000;
 const RECONNECT_MAX_MS = 120000;
 
-// Kept at module scope, not on a session: the point is to remember across the sessions that keep
+// The interval and the next allowed attempt are kept per native host (hub.reconnectDelayMs,
+// hub.nextAttemptAt), not on a session: the point is to remember across the sessions that keep
 // failing, each of which is a fresh record. Chrome retires this worker after ~30 s idle, so both
 // values are mirrored into session storage -- a backoff that forgets every 30 s is not a backoff.
-let reconnectDelayMs = RECONNECT_MIN_MS;
-let nextAttemptAt = 0;
 
 // Whether the user has switched the bridge off from the toolbar. Remembered where the browser
 // keeps it across a restart: somebody who turned it off because it was in their way must not find
@@ -1063,40 +1085,214 @@ let bridgePaused = false;
 // say, and a user's click would be undone by a race they cannot see.
 let bridgePauseDecided = false;
 
-// The same for the interval: once an attempt has failed, the live values are the truth and a
-// seed that arrives afterwards is stale.
-let backoffTouched = false;
+// The same for the interval (hub.backoffTouched): once an attempt has failed, the live values are
+// the truth and a seed that arrives afterwards is stale.
 
 const BRIDGE_PAUSED_KEY = "chrome_control_mcp.paused";
 const BACKOFF_KEY = "chrome_control_mcp.backoff";
 
+// -- Native hosts -------------------------------------------------------------------------------
+//
+// The extension serves two applications, each through a native host of its own: Chrome Control
+// MCP's, and S.A.K. Utility's. Each host is a hub: its own ports, its own sessions, its own server
+// ids, its own reconnect interval and its own tab-group names. The hubs never meet. A session sees
+// only its own host's sessions; a tab a session of the other host holds is left out of every
+// listing and refused by every command; and every frame is answered on the port it came in on, so
+// nothing one application sends can reach the other.
+//
+// What the hubs share is the user's: the toolbar switch pauses both, and a tab held by either is
+// held -- no session of the other may take it.
+const SAK_HOST_NAME = "com.sak.browsercontrol";
+
+// S.A.K.'s host is optional: most Chrome Control MCP users do not have S.A.K. installed, and for
+// them its host is simply not registered. Asking Chrome for a host that is not there starts no
+// process, but it is still an attempt that fails the same way every time, so after the first one
+// it is asked for again only after a long wait, doubling: ten minutes, then up to six hours. The
+// wait is kept in session storage, so it ends when the browser restarts -- and the moment the host
+// answers. Nothing is logged for it: a missing optional host is not a fault.
+const OPTIONAL_HOST_MISSING_MIN_MS = 10 * 60000;
+const OPTIONAL_HOST_MISSING_MAX_MS = 6 * 3600000;
+
+// S.A.K.'s host when it IS there but its program is not running: the relay starts, finds no server
+// to offer and exits, and the port closes without ever reaching a bridge. That is the ordinary state
+// of a portable tool between uses, so it is not logged, and it is asked for again on the usual
+// doubling interval but up to ten minutes rather than two. The toolbar switch, turned off and on
+// again, asks at once.
+const OPTIONAL_HOST_IDLE_MAX_MS = 10 * 60000;
+
+// S.A.K.'s host is reached only when an administrator has turned it on for this extension, through
+// Chrome's policy for it (chrome.storage.managed; managed_schema.json). The name of a native host is
+// claimed by whoever registers it, and a program running as the user can register one under the
+// user's own registry key; the policy keys under Software\Policies are writable by administrators
+// alone. So a program that registers com.sak.browsercontrol without an administrator's say gets
+// nothing: the extension never opens a port to it. S.A.K. Utility, run as an administrator, sets
+// this value when its Browser Control is turned on and removes it when it is turned off.
+const SAK_HOST_POLICY = "sakHostEnabled";
+
+function makeHub(fields) {
+  return {
+    probeOpenedAt: 0,
+    reconnectDelayMs: RECONNECT_MIN_MS,
+    reconnectMaxMs: RECONNECT_MAX_MS,
+    // A host that needs an administrator's policy (requiresPolicy) is reached only while it is on.
+    requiresPolicy: false,
+    policyEnabled: false,
+    nextAttemptAt: 0,
+    backoffTouched: false,
+    // Until the stored interval has been read back, an optional host is not asked for at all: a
+    // worker that wakes every thirty seconds would otherwise make a fresh attempt each time.
+    backoffLoaded: !fields.optional,
+    // How long the optional host is being waited for after it was last found missing, or 0.
+    missingDelayMs: 0,
+    lastOfferedServers: new Set(),
+    offersSeen: false,
+    lastSafetyProbeAt: Date.now(),
+    ...fields,
+  };
+}
+
+const CC_HUB = makeHub({
+  id: "chrome_control_mcp",
+  hostName: HOST_NAME,
+  // Chrome Control MCP's server ids go unprefixed, as they always have, so what it stores
+  // (holdings, the interval) is exactly what it stored before there were two hosts.
+  serverPrefix: "",
+  backoffKey: BACKOFF_KEY,
+  groupTitle: "AI CONTROL",
+  groupPrefix: "AI \u00b7 ",
+  logTag: "[ChromeControlMCP]",
+  // What this host's agents are told the other sessions, the extension and their own program are.
+  sessionName: "Chrome Control MCP session",
+  badgeText: "AI",
+  badgeTitle: "Chrome Control MCP assistant is controlling this tab",
+  optional: false,
+  // The profile's account email names the profile to Chrome Control MCP; nobody else is told it.
+  shareProfileEmail: true,
+  // This host installs the extension's files beside its server, so a newer copy it reports is one
+  // Chrome should reload to pick up. S.A.K. installs from the Chrome Web Store, which updates the
+  // extension itself.
+  reportsInstalledCopy: true,
+});
+
+const SAK_HUB = makeHub({
+  id: "sak",
+  hostName: SAK_HOST_NAME,
+  serverPrefix: "sak:",
+  backoffKey: "chrome_control_mcp.sak.backoff",
+  groupTitle: "S.A.K. CONTROL",
+  groupPrefix: "S.A.K. \u00b7 ",
+  logTag: "[ChromeControlMCP:S.A.K.]",
+  sessionName: "S.A.K. assistant session",
+  badgeText: "SAK",
+  badgeTitle: "S.A.K. assistant is controlling this tab",
+  optional: true,
+  reconnectMaxMs: OPTIONAL_HOST_IDLE_MAX_MS,
+  requiresPolicy: true,
+  shareProfileEmail: false,
+  reportsInstalledCopy: false,
+});
+
+const HUBS = [CC_HUB, SAK_HUB];
+
+// A server id as this worker keys it: the relay's pid string, prefixed with the hub's own prefix,
+// so two hosts' servers can never be taken for one another. "" stays "".
+function qualifyServer(hub, id) {
+  return id === "" ? "" : hub.serverPrefix + id;
+}
+
+// The id the relay offered, as it is sent back to that relay.
+function relayServerId(hub, id) {
+  return hub.serverPrefix && id.startsWith(hub.serverPrefix)
+    ? id.slice(hub.serverPrefix.length)
+    : id;
+}
+
+// The hub a stored server key belongs to.
+function hubForServer(id) {
+  return (
+    HUBS.find((hub) => hub.serverPrefix && id.startsWith(hub.serverPrefix)) ||
+    CC_HUB
+  );
+}
+
+// Whether @p other is a session of another host than @p session's: everything about it is then
+// none of @p session's business.
+function otherHost(session, other) {
+  return Boolean(session && other && other.hub !== session.hub);
+}
+
+// Whether a session of another host than @p session's holds @p tabId.
+function heldByOtherHost(session, tabId) {
+  const held = holderOf(tabId);
+  return Boolean(held) && otherHost(session, held.session);
+}
+
+// Whether any of @p hub's sessions has a port open.
+function hubPortOpen(hub) {
+  for (const session of sessions) {
+    if (session.port && session.hub === hub) {
+      return true;
+    }
+  }
+  return false;
+}
+
 // Storage is best-effort throughout. It can be absent (the unit harness stubs `chrome` without
 // it), and a bridge that refuses to work because it could not save a preference would be a worse
 // failure than forgetting one.
-function rememberBackoff() {
+function rememberBackoff(hub) {
+  const saved = {
+    delayMs: hub.reconnectDelayMs,
+    nextAttemptAt: hub.nextAttemptAt,
+  };
+  if (hub.optional) {
+    saved.missingDelayMs = hub.missingDelayMs;
+  }
   try {
-    void chrome.storage.session.set({
-      [BACKOFF_KEY]: { delayMs: reconnectDelayMs, nextAttemptAt },
-    });
+    void chrome.storage.session.set({ [hub.backoffKey]: saved });
   } catch (_e) {
     // Nothing to do: the in-memory values above still hold for this worker.
   }
 }
 
-function growReconnectDelay() {
-  backoffTouched = true;
-  reconnectDelayMs = Math.min(reconnectDelayMs * 2, RECONNECT_MAX_MS);
-  rememberBackoff();
+function growReconnectDelay(hub) {
+  hub.backoffTouched = true;
+  hub.reconnectDelayMs = Math.min(hub.reconnectDelayMs * 2, hub.reconnectMaxMs);
+  rememberBackoff(hub);
 }
 
 // A bridge answered, so the next one that does not gets the short interval again. Without this the
 // backoff would be a one-way ratchet: an editor restarted after a long quiet spell would be found
 // two minutes later rather than two seconds.
-function resetReconnectDelay() {
-  backoffTouched = true;
-  reconnectDelayMs = RECONNECT_MIN_MS;
-  nextAttemptAt = 0;
-  rememberBackoff();
+function resetReconnectDelay(hub) {
+  hub.backoffTouched = true;
+  hub.backoffLoaded = true; // what is set now is the truth; a stored seed read later is stale
+  hub.reconnectDelayMs = RECONNECT_MIN_MS;
+  hub.nextAttemptAt = 0;
+  hub.missingDelayMs = 0;
+  rememberBackoff(hub);
+}
+
+// An optional host Chrome could not find: not registered, or registered without this extension
+// among its allowed origins. Chrome says so on the port's lastError. A host Chrome could not START
+// is the same for an optional one: its registration names a program that is gone (a portable
+// folder deleted or moved without turning browser control off), and that answer does not change
+// from one attempt to the next.
+const HOST_MISSING_PATTERN =
+  /native messaging host not found|access to the specified native messaging host is forbidden|failed to start native messaging host/i;
+
+function hostMissingError(message) {
+  return typeof message === "string" && HOST_MISSING_PATTERN.test(message);
+}
+
+// The optional host is not there: wait long before asking again, longer each time, and say nothing.
+function noteOptionalHostMissing(hub) {
+  hub.backoffTouched = true;
+  hub.missingDelayMs = hub.missingDelayMs
+    ? Math.min(hub.missingDelayMs * 2, OPTIONAL_HOST_MISSING_MAX_MS)
+    : OPTIONAL_HOST_MISSING_MIN_MS;
+  hub.nextAttemptAt = Date.now() + hub.missingDelayMs;
+  rememberBackoff(hub);
 }
 
 // Whether an attempt may be made now.
@@ -1109,11 +1305,22 @@ function resetReconnectDelay() {
 //
 // `force` never overrides the pause. Pausing is the one state the extension does not get to talk
 // itself out of.
-function connectAttemptAllowed(force) {
+function connectAttemptAllowed(hub, force) {
   if (bridgePaused) {
     return false;
   }
-  return force || Date.now() >= nextAttemptAt;
+  // Nor is it the extension's to override an administrator's policy: without it, a host that
+  // requires one is never asked for, forced, clicked for or not.
+  if (hub.requiresPolicy && !hub.policyEnabled) {
+    return false;
+  }
+  // An optional host is never asked for on a guess: not before its stored wait is known, and,
+  // once it has been found missing, not before that wait is over -- forced or not. Only a user's
+  // own click (onActionClicked) or the host answering clears it.
+  if (hub.optional && (!hub.backoffLoaded || hub.missingDelayMs > 0)) {
+    return hub.backoffLoaded && Date.now() >= hub.nextAttemptAt;
+  }
+  return force || Date.now() >= hub.nextAttemptAt;
 }
 
 // What the toolbar icon says. Only the paused state gets a badge: an extension that decorates
@@ -1157,19 +1364,113 @@ async function setBridgePaused(paused) {
     return;
   }
   for (const session of [...sessions]) {
-    const port = session.port;
-    session.port = null;
     // Everything goes back to the user as it stands: nothing is closed, because pausing says
     // "stop driving my browser", not "throw away what you were doing" -- the user may well want to
     // look at it. The tabs leave the AI group and lose the highlight, so nothing still claims them.
-    void standDown(session, { closeOpened: false });
-    sessions.delete(session);
-    if (port) {
-      try {
-        port.disconnect();
-      } catch (_e) {
-        // Already gone, which is the state we wanted.
-      }
+    endSession(session);
+  }
+}
+
+// Close @p session's port and hand its tabs back to the user as they stand.
+//
+// A command of the session's can still be running when it ends (the user paused the bridge, or the
+// administrator turned the host off, mid-command), and nothing it does afterwards is anyone's: so
+// the session is marked ended first, and holdTab, ensureAttached and the group sync refuse it. Left
+// unmarked, a tab that command opened was held, grouped and attached by a session nobody can reach.
+function endSession(session) {
+  session.ended = true;
+  const port = session.port;
+  session.port = null;
+  void standDown(session, { closeOpened: false });
+  sessions.delete(session);
+  if (port) {
+    try {
+      port.disconnect();
+    } catch (_e) {
+      // Already gone, which is the state we wanted.
+    }
+  }
+}
+
+// Whether the administrator's policy turns S.A.K.'s host on: exactly true, nothing else. A value of
+// another type, an unreadable policy store, or none at all leaves it off.
+function hostPolicyOn(managed) {
+  return Boolean(managed) && managed[SAK_HOST_POLICY] === true;
+}
+
+async function loadHostPolicy() {
+  let managed = null;
+  try {
+    managed = await chrome.storage.managed.get(SAK_HOST_POLICY);
+  } catch (_e) {
+    // No policy store (the unit harness, or a browser without one): the host stays off.
+  }
+  for (const hub of HUBS) {
+    if (hub.requiresPolicy) {
+      hub.policyEnabled = hostPolicyOn(managed);
+    }
+  }
+}
+
+// The administrator changed the policy while the browser runs (Chrome rereads it on its own
+// schedule, or at once from chrome://policy's Reload; a value written to the registry is not
+// noticed before that). Turned on: the host is asked for now, its waits
+// forgotten. Turned off: every session of it ends, its ports close and its tabs go back to the user,
+// and nothing is asked of it again.
+//
+// Off is applied whatever this worker last believed: a worker that read the policy as off at start
+// (loadHostPolicy) and then hears it turned off has still to stand down what it holds.
+function noteHostPolicy(changes, area) {
+  if (area !== "managed" || !changes || !changes[SAK_HOST_POLICY]) {
+    return;
+  }
+  const on = changes[SAK_HOST_POLICY].newValue === true;
+  for (const hub of HUBS) {
+    if (!hub.requiresPolicy) {
+      continue;
+    }
+    const was = hub.policyEnabled;
+    hub.policyEnabled = on;
+    if (!on) {
+      standDownHub(hub);
+    } else if (!was) {
+      resetReconnectDelay(hub);
+      connect(hub, { force: true });
+    }
+  }
+}
+
+// End every session of @p hub, live or parked, and hand its tabs back to the user as they stand.
+function standDownHub(hub) {
+  let ended = false;
+  for (const session of [...sessions]) {
+    if (session.hub === hub) {
+      endSession(session);
+      ended = true;
+    }
+  }
+  for (const [serverId, parked] of [...pendingLeases]) {
+    if (parked.hub === hub) {
+      pendingLeases.delete(serverId);
+      parked.ended = true;
+      void standDown(parked, { closeOpened: false });
+      ended = true;
+    }
+  }
+  if (ended) {
+    persistLeases();
+  }
+}
+
+// Once a new worker knows both the policy and what an earlier worker held: holdings of a host whose
+// policy is off are stood down now. The policy may have been removed while no worker ran (Chrome
+// retires one after ~30 s idle), and then no change event ever comes: without this, the tabs that
+// earlier worker had parked for S.A.K. came back parked, hidden from Chrome Control MCP's sessions,
+// for up to PARKED_MAX_MS, held for a host that is never asked for again.
+function standDownHostsWithoutPolicy() {
+  for (const hub of HUBS) {
+    if (hub.requiresPolicy && !hub.policyEnabled) {
+      standDownHub(hub);
     }
   }
 }
@@ -1185,28 +1486,49 @@ async function loadBridgeState() {
   } catch (_e) {
     // Running is the safe default: the bridge is what the extension is for.
   }
-  try {
-    const stored = backoffTouched
-      ? null
-      : await chrome.storage.session.get(BACKOFF_KEY);
-    const saved = stored && stored[BACKOFF_KEY];
-    if (saved && typeof saved.delayMs === "number") {
-      reconnectDelayMs = Math.min(
-        Math.max(saved.delayMs, RECONNECT_MIN_MS),
-        RECONNECT_MAX_MS,
-      );
-    }
-    if (saved && typeof saved.nextAttemptAt === "number") {
-      nextAttemptAt = saved.nextAttemptAt;
-    }
-  } catch (_e) {
-    // A forgotten interval costs one extra attempt, which is the old behaviour once.
+  await loadHostPolicy();
+  for (const hub of HUBS) {
+    await loadHubBackoff(hub);
   }
   showBridgeState();
 }
 
-// What a session says when its server speaks another bridge protocol, in terms of what to do.
-function protocolMismatchText(hostProtocol) {
+async function loadHubBackoff(hub) {
+  try {
+    const stored = hub.backoffTouched
+      ? null
+      : await chrome.storage.session.get(hub.backoffKey);
+    const saved = stored && stored[hub.backoffKey];
+    if (saved && typeof saved.delayMs === "number") {
+      hub.reconnectDelayMs = Math.min(
+        Math.max(saved.delayMs, RECONNECT_MIN_MS),
+        hub.reconnectMaxMs,
+      );
+    }
+    if (saved && typeof saved.nextAttemptAt === "number") {
+      hub.nextAttemptAt = saved.nextAttemptAt;
+    }
+    if (
+      hub.optional &&
+      saved &&
+      typeof saved.missingDelayMs === "number" &&
+      saved.missingDelayMs >= 0
+    ) {
+      hub.missingDelayMs = Math.min(
+        saved.missingDelayMs,
+        OPTIONAL_HOST_MISSING_MAX_MS,
+      );
+    }
+  } catch (_e) {
+    // A forgotten interval costs one extra attempt, which is the old behaviour once.
+  }
+  hub.backoffLoaded = true;
+}
+
+// What a session says when its server speaks another bridge protocol, in terms of what to do --
+// and what to do depends on the program: Chrome Control MCP installs the extension's files beside
+// its server, S.A.K. Utility has Chrome install it from the Chrome Web Store.
+function protocolMismatchText(hostProtocol, hub = CC_HUB) {
   const newer = Number(hostProtocol) > BRIDGE_PROTOCOL;
   return (
     "Bridge protocol mismatch: host " +
@@ -1214,12 +1536,26 @@ function protocolMismatchText(hostProtocol) {
     ", extension " +
     BRIDGE_PROTOCOL +
     ". " +
-    (newer
-      ? "The Chrome Control MCP extension loaded in Chrome is older than the server: reload it " +
-        "at chrome://extensions (or restart Chrome) so Chrome loads the copy installed with the server."
-      : "The server is older than this extension: restart the editor or agent that started it so " +
-        "it runs the installed version.")
+    (hub.optional
+      ? sakProtocolAdvice(newer)
+      : chromeControlProtocolAdvice(newer))
   );
+}
+
+function chromeControlProtocolAdvice(newer) {
+  return newer
+    ? "The Chrome Control MCP extension loaded in Chrome is older than the server: reload it " +
+        "at chrome://extensions (or restart Chrome) so Chrome loads the copy installed with the server."
+    : "The server is older than this extension: restart the editor or agent that started it so " +
+        "it runs the installed version.";
+}
+
+function sakProtocolAdvice(newer) {
+  return newer
+    ? "The browser extension loaded in Chrome is older than S.A.K. Utility: restart Chrome so it " +
+        "updates the extension from the Chrome Web Store."
+    : "S.A.K. Utility is older than this browser extension: update S.A.K. Utility, then start " +
+        "its assistant again.";
 }
 
 // A server newer than this extension means the files on disk were updated and Chrome is still
@@ -1228,16 +1564,32 @@ function protocolMismatchText(hostProtocol) {
 // extension loaded from a folder that was NOT updated (the files really are old) cannot loop.
 const RELOADED_FOR_KEY = "chrome_control_mcp.reloadedForProtocol";
 
+//
+// A reload ends every session of every host, so, like the reload for a newer install below, it waits
+// until nobody is using the extension: the server that asked is refused until then, but another
+// application's agent mid-task -- S.A.K.'s, or another editor's -- is never cut off for it. The
+// look is repeated after each command and on the reconnect alarm (reloadWhenIdle).
 async function reloadForNewerHost(hostProtocol) {
   if (!(Number(hostProtocol) > BRIDGE_PROTOCOL)) {
     return;
   }
+  versionReload.protocol = hostProtocol;
+  if (extensionInUse()) {
+    return;
+  }
   try {
     const stored = await chrome.storage.local.get(RELOADED_FOR_KEY);
-    if (stored && stored[RELOADED_FOR_KEY] === hostProtocol) {
+    const before = stored ? stored[RELOADED_FOR_KEY] : undefined;
+    if (before === hostProtocol) {
+      versionReload.protocol = null;
       return;
     }
     await chrome.storage.local.set({ [RELOADED_FOR_KEY]: hostProtocol });
+    // Asked again with nothing awaited between the answer and the reload, as below.
+    if (extensionInUse()) {
+      await chrome.storage.local.set({ [RELOADED_FOR_KEY]: before ?? null });
+      return;
+    }
     chrome.runtime.reload();
   } catch (_e) {
     // Not reloaded: the session's error already tells the user how to do it by hand.
@@ -1289,16 +1641,22 @@ function generatedProfileName() {
   );
 }
 
-function profileName() {
+// The profile's name as @p hub's server is told it. The account email names an unrenamed profile
+// only to a host that is told the email anyway (Chrome Control MCP's): S.A.K.'s gets the name the
+// user gave the profile, else the generated one, so it never learns the email under another field.
+function profileName(hub = CC_HUB) {
   return (
-    profileIdentity.custom || profileIdentity.email || profileIdentity.generated
+    profileIdentity.custom ||
+    (hub.shareProfileEmail ? profileIdentity.email : "") ||
+    profileIdentity.generated
   );
 }
 
-// The profile as the server is told it.
-function profileFields() {
-  const fields = { profile_name: profileName() };
-  if (profileIdentity.email) {
+// The profile as @p hub's server is told it. The account email only ever goes to a host that
+// names profiles by it (Chrome Control MCP's); S.A.K.'s never learns it, in any field.
+function profileFields(hub = CC_HUB) {
+  const fields = { profile_name: profileName(hub) };
+  if (profileIdentity.email && hub.shareProfileEmail) {
     fields.profile_email = profileIdentity.email;
   }
   return fields;
@@ -1378,29 +1736,33 @@ function noteWindowFocus(windowId) {
 
 // Which profile this is, and whether and when the user was last in it: what the server asks every
 // profile when an agent's new tab names none.
-async function handleProfileState(_session) {
+async function handleProfileState(session) {
   const last = await chrome.windows.getLastFocused().catch(() => null);
   return {
-    ...profileFields(),
+    ...profileFields(session.hub),
     focused: Boolean(last && last.focused),
     focused_at: profileIdentity.focusedAt,
   };
 }
 
 // Whether this profile has tab @p tab_id: how the server finds the profile of a tab it has not
-// seen, before sending the call that names it.
+// seen, before sending the call that names it. The reply for a tab the session may not see (the
+// other host's) is the reply for one that does not exist, field for field: a reply shaped any
+// differently would tell the other host's tab ids from unused ones.
 async function handleFindTab(session, args) {
   const tabId = Number(args && args.tab_id);
-  if (!Number.isInteger(tabId)) {
-    return { exists: false };
+  const none = { exists: false, held: false };
+  if (!Number.isInteger(tabId) || heldByOtherHost(session, tabId)) {
+    return none;
   }
   const tab = await chrome.tabs.get(tabId).catch(() => null);
-  return { exists: Boolean(tab), held: session.tabs.has(tabId) };
+  return tab ? { exists: true, held: session.tabs.has(tabId) } : none;
 }
 
 const profileIdentityLoad = loadProfileIdentity();
 if (chrome.storage && chrome.storage.onChanged) {
   chrome.storage.onChanged.addListener(noteProfileStorage);
+  chrome.storage.onChanged.addListener(noteHostPolicy);
 }
 if (chrome.windows && chrome.windows.onFocusChanged) {
   chrome.windows.onFocusChanged.addListener(noteWindowFocus);
@@ -1450,6 +1812,9 @@ const RELOAD_QUIET_MS = 10000;
 const versionReload = {
   // The newest installed version a relay has reported that is newer than this extension, or null.
   newer: null,
+  // A bridge protocol newer than this extension's that a server answered with, or null: the reload
+  // for it (reloadForNewerHost) waits for the same quiet.
+  protocol: null,
   commandsRunning: 0,
   lastCommandEndedAt: 0,
   timer: null,
@@ -1488,7 +1853,7 @@ function extensionInUse() {
 // Look again a quiet period from now, replacing any look already due: after a command the period
 // runs from that command's end.
 function scheduleVersionReload() {
-  if (versionReload.newer === null) {
+  if (versionReload.newer === null && versionReload.protocol === null) {
     return;
   }
   if (versionReload.timer !== null) {
@@ -1496,8 +1861,18 @@ function scheduleVersionReload() {
   }
   versionReload.timer = setTimeout(() => {
     versionReload.timer = null;
-    void reloadForNewerInstall();
+    void reloadWhenIdle();
   }, RELOAD_QUIET_MS);
+}
+
+// Whichever reload is waiting, if nobody is using the extension now: the protocol's first, since a
+// server that speaks a newer protocol is refused until it happens.
+async function reloadWhenIdle() {
+  if (versionReload.protocol !== null) {
+    await reloadForNewerHost(versionReload.protocol);
+    return;
+  }
+  await reloadForNewerInstall();
 }
 
 async function reloadForNewerInstall() {
@@ -1538,20 +1913,33 @@ function scheduleReconnect(session) {
     // for a fresh one, not reviving this record.
     sessions.delete(session);
     // Forced because THIS is the interval: the timer above already waited it out.
-    connect({ force: true });
-  }, reconnectDelayMs);
+    connect(session.hub, { force: true });
+  }, session.hub.reconnectDelayMs);
 }
 
 function onDisconnect(session) {
+  const hub = session.hub;
   const err = chrome.runtime.lastError;
   session.health.connected = false;
   session.health.error = err ? err.message : "port closed";
   session.bridgeReady = false; // the next host must handshake again before it can command us
   session.port = null;
   if (session.probe) {
-    probeOpenedAt = 0; // this probe is over, whatever it found; the next one may go
+    hub.probeOpenedAt = 0; // this probe is over, whatever it found; the next one may go
   }
-  console.warn("[ChromeControlMCP] host disconnected:", session.health.error);
+  if (hub.optional && hostMissingError(session.health.error)) {
+    // Not installed on this machine, which for an optional host is the ordinary case: no session
+    // to keep, nothing to retry soon, and nothing to say.
+    sessions.delete(session);
+    noteOptionalHostMissing(hub);
+    return;
+  }
+  // An optional host whose relay never reached a bridge is there with nothing to attach to (its
+  // program is not running): the interval below grows for it, up to its own longer cap, and it is
+  // not a fault worth a log line.
+  if (!(hub.optional && !session.everReady)) {
+    console.warn("%s host disconnected:", hub.logTag, session.health.error);
+  }
   // Losing the port is not, by itself, the server going away: a relay can drop while its server
   // runs on. The session's tabs are parked rather than dropped -- debugger detached, highlight off,
   // group and holdings kept -- and the next offer decides: the server is still offered, so a port
@@ -1567,15 +1955,15 @@ function onDisconnect(session) {
   // so it keeps the short interval it earned.
   // The window opens here, where the failure is known. Until an attempt has actually failed there
   // is nothing to hold off, which is why two editors can each open a port at once.
-  nextAttemptAt = Date.now() + reconnectDelayMs;
-  rememberBackoff();
+  hub.nextAttemptAt = Date.now() + hub.reconnectDelayMs;
+  rememberBackoff(hub);
   scheduleReconnect(session);
   // Longer NEXT time, not this time: a server that has only just gone (or that was a moment from
   // starting) is still picked up at the short interval, and it is the run of failures after that
   // which earns the waiting. A port that reached a bridge and then lost it keeps the short
   // interval outright -- the server going away is a different fact from one never being there.
   if (!session.everReady) {
-    growReconnectDelay();
+    growReconnectDelay(hub);
   }
 }
 
@@ -1585,17 +1973,21 @@ function onDisconnect(session) {
 // relay behind it attaches to exactly one server. The session is closed over by
 // this port's listeners, which is why no frame ever has to be matched back to a
 // session by searching -- the closure already knows.
-function connect({ force = false } = {}) {
-  if (!connectAttemptAllowed(force)) {
+function connect(hub, { force = false } = {}) {
+  if (!connectAttemptAllowed(hub, force)) {
     return null;
   }
-  const session = makeSession();
+  const session = makeSession(hub);
   try {
-    session.port = chrome.runtime.connectNative(HOST_NAME);
+    session.port = chrome.runtime.connectNative(hub.hostName);
   } catch (e) {
     session.health.connected = false;
     session.health.error = String(e);
-    console.error("[ChromeControlMCP] connectNative threw:", e);
+    if (hub.optional && hostMissingError(session.health.error)) {
+      noteOptionalHostMissing(hub);
+      return null;
+    }
+    console.error("%s connectNative threw:", hub.logTag, e);
     scheduleReconnect(session);
     return null;
   }
@@ -1608,7 +2000,8 @@ function connect({ force = false } = {}) {
 function send(session, reply) {
   if (!session.port) {
     console.warn(
-      "[ChromeControlMCP] no port to reply on; dropping",
+      "%s no port to reply on; dropping",
+      session.hub.logTag,
       reply && reply.id,
     );
     return;
@@ -1621,7 +2014,7 @@ function send(session, reply) {
     // known here. Posting a second frame down the same port cannot work either, so the port is
     // torn down at once -- the app fails in milliseconds with the connection gone, and the next
     // command arrives only after a fresh handshake.
-    console.error("[ChromeControlMCP] postMessage threw:", e);
+    console.error("%s postMessage threw:", session.hub.logTag, e);
     const dead = session.port;
     session.port = null;
     try {
@@ -1925,10 +2318,24 @@ async function saveRecordingFile(url, filename) {
 
 // -- Frame dispatch ----------------------------------------------------------
 
+// The server ids a relay listed, as this worker keys them for that relay's host. A relay's ids are
+// process ids; one holding the ":" that separates a host's prefix from an id is not one, and is
+// dropped: unprefixed, Chrome Control MCP's "sak:5" would be the very key S.A.K.'s server 5 has,
+// and the two hosts' servers -- and the holdings stored under them -- would be taken for one another.
+function offeredServers(hub, servers) {
+  return Array.isArray(servers)
+    ? servers
+        .map(String)
+        .filter((id) => !id.includes(":"))
+        .map((id) => qualifyServer(hub, id))
+    : [];
+}
+
 function onHostMessage(session, msg) {
   if (!msg || typeof msg !== "object") {
     return;
   }
+  session.heardFrom = true;
   if (msg.type === "bridge_offers") {
     // The relay lists the servers publishing a bridge record and asks which one
     // this port should attach to. This worker cannot discover them by itself --
@@ -1939,11 +2346,12 @@ function onHostMessage(session, msg) {
     // this channel. A frame sent unprompted would be read by an older relay as
     // the reply to a command it had not yet sent, putting every later exchange
     // one step out of phase.
-    const offered = Array.isArray(msg.servers) ? msg.servers.map(String) : [];
+    const hub = session.hub;
+    const offered = offeredServers(hub, msg.servers);
     if (session.probe) {
-      probeOpenedAt = 0;
+      hub.probeOpenedAt = 0;
     }
-    noteOfferedServers(offered);
+    noteOfferedServers(hub, offered);
     // One port per server: this port takes a server nothing else holds. If every
     // offered server is already taken, this port has no work -- it answers with
     // no session, and the relay reports the bridge unavailable and exits rather
@@ -1956,9 +2364,9 @@ function onHostMessage(session, msg) {
     const attach = () =>
       send(session, {
         type: "attach_session",
-        session: session.serverId,
+        session: relayServerId(hub, session.serverId),
         version: extensionVersion(),
-        ...profileFields(),
+        ...profileFields(hub),
       });
     if (profileIdentity.loaded) {
       attach();
@@ -1988,7 +2396,7 @@ function onHostMessage(session, msg) {
     if (available.length > 1) {
       // Not a retry: this port's own offer named a server nothing holds, so the next port has
       // somewhere to go. The waiting interval is about bridges that are NOT there.
-      connect({ force: true });
+      connect(hub, { force: true });
     }
     return;
   }
@@ -1998,10 +2406,10 @@ function onHostMessage(session, msg) {
     // unlike the alarm's probe, which has to start one to ask. A server nothing holds gets a
     // port now rather than up to a probe interval later; one that went away settles the
     // tabs its session left parked. Never answered: the relay does not wait for anything.
-    const live = Array.isArray(msg.servers) ? msg.servers.map(String) : [];
-    noteOfferedServers(live);
+    const live = offeredServers(session.hub, msg.servers);
+    noteOfferedServers(session.hub, live);
     if (unheldServers(live).length > 0) {
-      probeForServers({ force: true });
+      probeForServers(session.hub, { force: true });
     }
     return;
   }
@@ -2010,20 +2418,25 @@ function onHostMessage(session, msg) {
     session.health.bridge = "ready";
     session.health.error = null;
     session.everReady = true;
-    resetReconnectDelay();
+    resetReconnectDelay(session.hub);
     showBridgeState();
     session.bridgeReady = msg.protocol === BRIDGE_PROTOCOL;
     if (!session.bridgeReady) {
-      session.health.error = protocolMismatchText(msg.protocol);
+      session.health.error = protocolMismatchText(msg.protocol, session.hub);
       noteServerRefused(session.serverId);
-      void reloadForNewerHost(msg.protocol);
+      if (session.hub.reportsInstalledCopy) {
+        void reloadForNewerHost(msg.protocol);
+      }
     } else {
       // A server whose relay dropped and came back finds its tabs where it left them.
       resumeParkedSession(session);
     }
     // The relay's own version is the installed one: newer than this means the files were updated.
-    noteInstalledVersion(msg.version);
-    console.info("[ChromeControlMCP] bridge ready, protocol", msg.protocol);
+    // Only a host that installs the extension's files has such a copy to report.
+    if (session.hub.reportsInstalledCopy) {
+      noteInstalledVersion(msg.version);
+    }
+    console.info("%s bridge ready, protocol", session.hub.logTag, msg.protocol);
     return;
   }
   if (msg.type === "bridge_unavailable") {
@@ -2035,7 +2448,8 @@ function onHostMessage(session, msg) {
     // again, and each asking is a process: set it aside for a while instead.
     noteServerRefused(session.serverId);
     console.warn(
-      "[ChromeControlMCP] bridge unavailable:",
+      "%s bridge unavailable:",
+      session.hub.logTag,
       session.health.error,
     );
     return;
@@ -2873,7 +3287,6 @@ async function explainUnreachablePage(tab, error) {
 // collapsed by us, so no held tab is ever hidden from the user. A tab the user had already put in a
 // group of their own stays there: pulling it out would rearrange their tab strip.
 const CONTROL_GROUP_TITLE = "AI CONTROL";
-const CONTROL_GROUP_PREFIX = "AI · ";
 const IDLE_GROUP_SUFFIX = " (idle)";
 // In the order groups are given them. Pink first, the colour the page frame always had; then the
 // colours that sit furthest from it and from each other, so two or three agents side by side are
@@ -2902,13 +3315,21 @@ const GROUP_COLOR_HEX = Object.freeze({
   orange: "#fa903e",
 });
 
-function groupTitle(session, agent) {
-  let base = CONTROL_GROUP_TITLE;
+// What a session's group (and the frame on its pages) is called: its host's prefix and the
+// agent's or client's name, else its host's own title. Chrome Control MCP's sessions keep "AI";
+// S.A.K.'s say "S.A.K.", so the user can tell the two applications' tabs apart at a glance.
+function hostLabel(hub, agent, clientLabel) {
   if (agent) {
-    base = CONTROL_GROUP_PREFIX + agent;
-  } else if (session.label) {
-    base = CONTROL_GROUP_PREFIX + session.label;
+    return hub.groupPrefix + agent;
   }
+  if (clientLabel) {
+    return hub.groupPrefix + clientLabel;
+  }
+  return hub.groupTitle;
+}
+
+function groupTitle(session, agent) {
+  const base = hostLabel(session.hub, agent, session.label);
   return session.idle ? base + IDLE_GROUP_SUFFIX : base;
 }
 
@@ -2958,8 +3379,10 @@ function presenceColorFor(tabId) {
 function isControlGroupTitle(title) {
   return (
     typeof title === "string" &&
-    (title.startsWith(CONTROL_GROUP_TITLE) ||
-      title.startsWith(CONTROL_GROUP_PREFIX))
+    HUBS.some(
+      (hub) =>
+        title.startsWith(hub.groupTitle) || title.startsWith(hub.groupPrefix),
+    )
   );
 }
 
@@ -3186,6 +3609,10 @@ async function ungroupFromSession(session, tabIds) {
 // @p agent, when given, is the agent the tab is for, which decides its group; a held tab given a
 // new agent name moves to that agent's group.
 function holdTab(session, tab, origin, agent) {
+  if (session.ended) {
+    // Its command outlived it (endSession): the tab stays the user's, unmarked.
+    throw new Error("This session has ended.");
+  }
   let state = session.tabs.get(tab.id);
   if (state && typeof agent === "string" && agent !== state.agent) {
     state.agent = agent;
@@ -3331,11 +3758,15 @@ async function activeTab(session) {
   return tabs[0];
 }
 
-// A tab this session holds, by id, as the browser has it now. A tab another session holds is
-// refused naming that session; one nobody holds is refused saying how to take it.
+// A tab this session holds, by id, as the browser has it now. A tab another session of this host
+// holds is refused naming that session; one nobody holds is refused saying how to take it -- and
+// so is one the other host holds, word for word as an id that names no tab at all, so that an id
+// cannot be probed for whether the other application is using it.
 async function heldTab(session, tabId) {
   if (!session.tabs.has(tabId)) {
-    requireUnleasedTab(session, { id: tabId });
+    if (!heldByOtherHost(session, tabId)) {
+      requireUnleasedTab(session, { id: tabId });
+    }
     throw new Error(
       "Tab " +
         tabId +
@@ -4015,22 +4446,21 @@ function resumeParkedSession(session) {
   persistLeases();
 }
 
-// The live servers some relay just listed. A parked session whose server is not among them has
-// ended: its tabs are released the way the agent's own release would -- the ones it opened are
-// closed, the ones it borrowed are handed back.
-let lastOfferedServers = new Set();
-let offersSeen = false;
+// The live servers some relay of @p hub just listed (hub.lastOfferedServers). A parked session of
+// that hub whose server is not among them has ended: its tabs are released the way the agent's own
+// release would -- the ones it opened are closed, the ones it borrowed are handed back. A relay
+// lists only its own host's servers, so it says nothing about the other host's parked sessions.
 let legacyGroupsSwept = false;
 
 // Settles once the holdings an earlier worker saved have been read back (loadLeases). Until then
 // a group this extension made may look like nobody's, and must not be ungrouped as an orphan.
 let leasesLoaded = Promise.resolve();
 
-function noteOfferedServers(live) {
-  lastOfferedServers = new Set(live);
-  offersSeen = true;
+function noteOfferedServers(hub, live) {
+  hub.lastOfferedServers = new Set(live);
+  hub.offersSeen = true;
   for (const [serverId, parked] of [...pendingLeases]) {
-    if (!lastOfferedServers.has(serverId)) {
+    if (parked.hub === hub && !hub.lastOfferedServers.has(serverId)) {
       pendingLeases.delete(serverId);
       sessions.delete(parked);
       void standDown(parked, { closeOpened: true }).then(() => {
@@ -4196,7 +4626,7 @@ async function loadLeases() {
     ) {
       continue;
     }
-    const session = makeSession();
+    const session = makeSession(hubForServer(serverId));
     session.serverId = serverId;
     for (const pair of entry.tabs) {
       const [id, origin, agent, openedFrom] = Array.isArray(pair) ? pair : [];
@@ -4233,8 +4663,10 @@ async function loadLeases() {
   }
   // An offer that arrived while these were being read could not settle them; settle them now,
   // so a server that is gone has its tabs cleaned up at once rather than at the next offer.
-  if (offersSeen) {
-    noteOfferedServers([...lastOfferedServers]);
+  for (const hub of HUBS) {
+    if (hub.offersSeen) {
+      noteOfferedServers(hub, [...hub.lastOfferedServers]);
+    }
   }
 }
 
@@ -5534,6 +5966,11 @@ async function enableSessionDomains(session, state) {
 }
 
 async function ensureAttached(session, tabId) {
+  if (session.ended) {
+    // A command that outlived its session (endSession) attaches to nothing and draws nothing: the
+    // stand-down is handing its tabs back, and may not have reached this one yet.
+    throw new Error("This session has ended.");
+  }
   const state = session.tabs.get(tabId);
   if (!state) {
     throw new Error("Tab " + tabId + " is not one of this session's tabs.");
@@ -8002,12 +8439,9 @@ function controlPresenceScript(x, y, look) {
 function presenceLook(tabId) {
   const held = tabId === null ? null : holderOf(tabId);
   const hex = tabId === null ? GROUP_COLOR_HEX.pink : presenceColorFor(tabId);
-  let label = CONTROL_GROUP_TITLE;
-  if (held && held.tab.agent) {
-    label = CONTROL_GROUP_PREFIX + held.tab.agent;
-  } else if (held && held.session.label) {
-    label = CONTROL_GROUP_PREFIX + held.session.label;
-  }
+  const label = held
+    ? hostLabel(held.session.hub, held.tab.agent, held.session.label)
+    : CONTROL_GROUP_TITLE;
   const rgb = [1, 3, 5]
     .map((at) => parseInt(hex.slice(at, at + 2), 16))
     .join(",");
@@ -8201,9 +8635,12 @@ function setTabControlBadge(tabId, on) {
   const settle = (p) => {
     Promise.resolve(p).catch(ignore);
   };
+  // The chip and its tooltip say which program is driving the tab.
+  const held = holderOf(tabId);
+  const hub = held ? held.session.hub : CC_HUB;
   try {
     if (on) {
-      settle(chrome.action.setBadgeText({ tabId, text: "AI" }));
+      settle(chrome.action.setBadgeText({ tabId, text: hub.badgeText }));
       settle(
         chrome.action.setBadgeBackgroundColor({
           tabId,
@@ -8213,7 +8650,7 @@ function setTabControlBadge(tabId, on) {
       settle(
         chrome.action.setTitle({
           tabId,
-          title: "Chrome Control MCP assistant is controlling this tab",
+          title: hub.badgeTitle,
         }),
       );
     } else {
@@ -11646,17 +12083,32 @@ function capField(entry, key, raw, cap) {
   }
 }
 
+// The tabs of window @p windowId that @p session may see, in tab-strip order: every tab but those
+// a session of the other host holds. What a session is told a tab's index is its place in THIS
+// list, not Chrome's: Chrome's would leave a gap where the other host's tab sits, and the gap
+// alone says that the other application has a tab there.
+async function visibleTabs(session, windowId) {
+  return (await chrome.tabs.query({ windowId }))
+    .filter((t) => !heldByOtherHost(session, t.id))
+    .sort((a, b) => a.index - b.index);
+}
+
+// @p tab's index as @p session is shown it (see visibleTabs), or -1 when it is not among them.
+async function shownIndex(session, tab) {
+  const tabs = await visibleTabs(session, tab.windowId);
+  return tabs.findIndex((t) => t.id === tab.id);
+}
+
 async function handleListTabs(session) {
   // Groups a just-held tab is still being put in would list it ungrouped or under no name.
   await groupsSettled();
-  const tabs = (
-    await chrome.tabs.query({ windowId: await sessionWindow(session) })
-  ).sort((a, b) => a.index - b.index);
+  const windowId = await sessionWindow(session);
   const groupTitles = new Map();
   const list = [];
-  for (const t of tabs.slice(0, MAX_LIST_TABS)) {
+  const visible = await visibleTabs(session, windowId);
+  for (const [shown, t] of visible.slice(0, MAX_LIST_TABS).entries()) {
     const entry = {
-      index: t.index,
+      index: shown,
       id: t.id,
       tab_id: t.id, // the name every tab-scoped tool's tab_id takes; `id` is kept for older callers
       active: Boolean(t.active),
@@ -11697,7 +12149,7 @@ async function handleListTabs(session) {
   // that same tab, in that same window, before it acts. Only the LISTED tabs are remembered: an
   // index past the cap was never shown to the model, so it names nothing it could have confirmed.
   session.lastTabListing = {
-    windowId: tabs.length ? tabs[0].windowId : null,
+    windowId,
     entries: list.map((e) => ({ index: e.index, id: e.id })),
   };
   // Every tab the session holds, wherever it is: an agent working in two windows still sees its
@@ -11719,21 +12171,24 @@ async function handleListTabs(session) {
     capField(entry, "url", tab.url || tab.pendingUrl, MAX_TAB_URL_CHARS);
     yours.push(entry);
   }
+  // Counted from the tabs this session may see: the window's whole count, less the listed ones,
+  // would number the other host's tabs.
   return {
     tabs: list,
-    count: tabs.length,
-    capped: tabs.length > MAX_LIST_TABS,
+    count: visible.length,
+    capped: visible.length > MAX_LIST_TABS,
     your_tabs: yours,
     // Which Chrome profile this listing is from: the server merges every profile's.
-    profile: profileName(),
+    profile: profileName(session.hub),
   };
 }
 
 // An index-addressed tab action is meaningful only against the listing the model read. A tab id
 // is the tab's stable identity for its whole lifetime, so compare THAT: if the tab now sitting
 // at the index is a different tab -- or the query resolved a different window than the one that
-// was listed -- the index no longer names what the operator confirmed.
-function requireListedTab(session, tab) {
+// was listed -- the index no longer names what the operator confirmed. @p index is the index as the
+// session was shown it (see visibleTabs), at which @p tab now sits.
+function requireListedTab(session, tab, index) {
   if (
     !session.lastTabListing ||
     session.lastTabListing.windowId !== tab.windowId
@@ -11743,17 +12198,26 @@ function requireListedTab(session, tab) {
         "tab index.",
     );
   }
-  const listed = session.lastTabListing.entries.find(
-    (e) => e.index === tab.index,
-  );
+  const listed = session.lastTabListing.entries.find((e) => e.index === index);
   if (!listed || typeof tab.id !== "number" || listed.id !== tab.id) {
     throw new Error(
       "The tabs moved since the last listing (index " +
-        tab.index +
+        index +
         " is a different tab now); " +
         "call browser_tabs again before acting on a tab index.",
     );
   }
+}
+
+// The tab at index @p index of the session's window, as the session was shown the window
+// (visibleTabs), proved to be the tab the last listing showed there.
+async function listedTabAt(session, tabs, index) {
+  const tab = tabs[index];
+  if (!tab) {
+    throw new Error("No tab at index " + index + ".");
+  }
+  requireListedTab(session, tab, index);
+  return tab;
 }
 
 const GROUP_COLORS = new Set([
@@ -11768,18 +12232,20 @@ const GROUP_COLORS = new Set([
   "orange",
 ]);
 
-// Resolve a comma-separated zero-based tab-index spec to tab ids; default to the active tab.
+// Resolve a comma-separated zero-based tab-index spec to tab ids; default to the active tab. Every
+// tab it resolves to is one no other session -- of this host or the other -- is driving: grouping
+// or ungrouping one would take it out of that session's group under it.
 async function tabIdsFromIndices(session, spec) {
-  const tabs = await chrome.tabs.query({
-    windowId: await sessionWindow(session),
-  });
+  const windowId = await sessionWindow(session);
   if (spec === undefined || spec === null || String(spec).trim() === "") {
-    const active = tabs.find((t) => t.active);
+    const [active] = await chrome.tabs.query({ windowId, active: true });
     if (!active) {
       throw new Error("No active tab to group.");
     }
+    requireUnleasedTab(session, active);
     return [active.id];
   }
+  const tabs = await visibleTabs(session, windowId);
   // Every token has to name a tab. Dropping the ones that do not parse would act on a SUBSET of
   // what was confirmed, and an empty token is worse than that: Number("") is 0, so "0,,1" or a
   // trailing comma would fabricate tab index 0 -- a tab the caller never named.
@@ -11799,27 +12265,23 @@ async function tabIdsFromIndices(session, spec) {
     });
   const ids = [];
   for (const idx of indices) {
-    const t = tabs.find((x) => x.index === idx);
-    if (!t) {
-      throw new Error("No tab at index " + idx + ".");
-    }
-    requireListedTab(session, t);
+    const t = await listedTabAt(session, tabs, idx);
+    requireUnleasedTab(session, t);
     ids.push(t.id);
   }
   return ids;
 }
 
-async function handleGroupTabs(session, args) {
-  const tabIds = await tabIdsFromIndices(session, args && args.tab_indices);
-  expectGroupChange(tabIds); // the agent arranging tabs is not the user taking one back
-  const groupId = await chrome.tabs.group({ tabIds });
-  session.lastTabListing = null; // grouping moves tabs together: every index after this is unproven
+// Pure: the title and color a browser_group_tabs call asks for, decided BEFORE anything is
+// grouped. A color Chrome does not know is not a color it silently keeps: ignoring it would leave
+// the group whatever shade Chrome picked while the caller believes it named one. And refusing it
+// only after chrome.tabs.group() had run left the tabs regrouped while the call reported failure
+// -- a half-applied action the caller was told did not happen.
+function groupUpdateFrom(args) {
   const update = {};
   if (args && typeof args.title === "string" && args.title.length > 0) {
     update.title = args.title;
   }
-  // A color Chrome does not know is not a color it silently keeps: ignoring it would leave the
-  // group whatever shade Chrome picked while the caller believes it named one.
   if (args && typeof args.color === "string") {
     if (!GROUP_COLORS.has(args.color)) {
       throw new Error(
@@ -11830,6 +12292,15 @@ async function handleGroupTabs(session, args) {
     }
     update.color = args.color;
   }
+  return update;
+}
+
+async function handleGroupTabs(session, args) {
+  const update = groupUpdateFrom(args);
+  const tabIds = await tabIdsFromIndices(session, args && args.tab_indices);
+  expectGroupChange(tabIds); // the agent arranging tabs is not the user taking one back
+  const groupId = await chrome.tabs.group({ tabIds });
+  session.lastTabListing = null; // grouping moves tabs together: every index after this is unproven
   if (Object.keys(update).length > 0) {
     await chrome.tabGroups.update(groupId, update);
   }
@@ -11855,15 +12326,8 @@ async function handleUngroupTabs(session, args) {
 }
 
 async function tabByIndex(session, index) {
-  const tabs = await chrome.tabs.query({
-    windowId: await sessionWindow(session),
-  });
-  const tab = tabs.find((t) => t.index === index);
-  if (!tab) {
-    throw new Error("No tab at index " + index + ".");
-  }
-  requireListedTab(session, tab);
-  return tab;
+  const tabs = await visibleTabs(session, await sessionWindow(session));
+  return await listedTabAt(session, tabs, index);
 }
 
 // Text bound for the tab strip, by the server's own rule for agent names: control and format
@@ -11895,7 +12359,11 @@ async function handleSelectTab(session, args) {
     if (!Number.isInteger(named) || named <= 0) {
       throw new Error("tab_id must be a positive integer.");
     }
-    tab = await chrome.tabs.get(named).catch(() => null);
+    // A tab the other host holds is, to this session, no tab at all: the same words as an id that
+    // names none, so the answer says nothing about the other application.
+    tab = heldByOtherHost(session, named)
+      ? null
+      : await chrome.tabs.get(named).catch(() => null);
     if (!tab) {
       throw new Error("There is no tab " + named + ".");
     }
@@ -11912,7 +12380,7 @@ async function handleSelectTab(session, args) {
   const info = await tabInfo(tab.id);
   return {
     ok: true,
-    index: tab.index,
+    index: await shownIndex(session, tab),
     tab_id: tab.id,
     url: info.url,
     title: info.title,
@@ -11968,7 +12436,7 @@ async function handleNewTab(session, args) {
   return {
     ok: true,
     tab_id: tab.id,
-    index: now.index,
+    index: await shownIndex(session, now),
     url: now.url || now.pendingUrl || "",
     title: now.title || "",
     load_complete: loaded,
@@ -11992,12 +12460,13 @@ async function handleCloseTab(session, args) {
     tab = await activeTab(session);
   }
   session.actedTabId = tab.id;
+  const index = await shownIndex(session, tab); // where it was, as this session was shown it
   await chrome.tabs.remove(tab.id);
   // Let go of it now rather than when tabs.onRemoved gets round to it, so THIS reply already tells
   // the server to drop the refs bound to it.
   await dropTab(session, tab.id, { closed: true });
   session.lastTabListing = null; // every index after the closed one has shifted
-  return { ok: true, index: tab.index, tab_id: tab.id };
+  return { ok: true, index, tab_id: tab.id };
 }
 
 // -- browser windows (chrome.windows) ----------------------------------------
@@ -12011,7 +12480,20 @@ async function handleListWindows(session) {
   // Only what the browser actually supplied. A missing type reported as "normal" is a claim about
   // a window nobody read, and an absent tabs array reported as tab_count 0 describes a populated
   // window as empty -- the operator then closes what looks like an empty window.
-  const list = wins.map((w) => {
+  //
+  // A window whose every tab the other host holds is that application's alone and is not listed:
+  // this session could do nothing in it but see that it is there. Its tab count, like every count
+  // here, leaves the other host's tabs out.
+  const list = [];
+  for (const w of wins) {
+    const tabs = Array.isArray(w.tabs) ? w.tabs : null;
+    if (
+      tabs &&
+      tabs.length > 0 &&
+      tabs.every((t) => heldByOtherHost(session, t.id))
+    ) {
+      continue;
+    }
     const entry = {
       window_id: w.id,
       focused: Boolean(w.focused),
@@ -12023,15 +12505,17 @@ async function handleListWindows(session) {
     if (typeof w.state === "string") {
       entry.state = w.state;
     }
-    if (Array.isArray(w.tabs)) {
-      entry.tab_count = w.tabs.length;
+    if (tabs) {
+      entry.tab_count = tabs.filter(
+        (t) => !heldByOtherHost(session, t.id),
+      ).length;
     }
-    return entry;
-  });
+    list.push(entry);
+  }
   // Remember which ids were actually shown, so a focus/close can prove the id it was given names
   // a window the caller was told about rather than one it produced on its own.
   session.lastWindowListing = new Set(list.map((w) => w.window_id));
-  return { windows: list, profile: profileName() };
+  return { windows: list, profile: profileName(session.hub) };
 }
 
 // How long a new window is watched for a compositor-granted focus. The window maps and the
@@ -12104,17 +12588,61 @@ function requireListedWindow(session, windowId) {
 }
 
 // The window as it exists right now, so the reply attributes the action to something observed
-// rather than to the bare integer that was confirmed.
-async function windowFacts(windowId) {
+// rather than to the bare integer that was confirmed. Its tab count, as in the listing, leaves out
+// the other host's tabs; its tabs (null when the browser did not say) are what a close would take.
+async function windowFacts(session, windowId) {
   const win = await chrome.windows.get(windowId, { populate: true });
   const facts = {};
   if (typeof win.type === "string") {
     facts.type = win.type;
   }
-  if (Array.isArray(win.tabs)) {
-    facts.tab_count = win.tabs.length;
+  const tabs = Array.isArray(win.tabs) ? win.tabs : null;
+  if (tabs) {
+    facts.tab_count = tabs.filter(
+      (t) => !heldByOtherHost(session, t.id),
+    ).length;
   }
-  return facts;
+  return { facts, tabs };
+}
+
+// Closing a window closes every tab in it, so one holding a tab that any other session is driving
+// -- of this host or the other -- is not closed: that would end the other agent's work under it.
+// A window whose tabs the browser did not report is not closed either: nobody could say what it
+// would take with it.
+function requireClosableWindow(session, windowId, tabs) {
+  if (!tabs) {
+    throw new Error(
+      "Window " +
+        windowId +
+        "'s tabs could not be read, so it was not closed. Close this session's own tabs " +
+        "with browser_close_tab instead.",
+    );
+  }
+  if (tabs.some((t) => leaseHolder(t.id, session))) {
+    throw new Error(
+      "Window " +
+        windowId +
+        " has a tab that another session or application connected to this browser is using, " +
+        "so it was not closed. Close this session's own tabs with browser_close_tab instead.",
+    );
+  }
+}
+
+// Pure: read a number the caller actually SUPPLIED, or NaN. Number() alone is not enough --
+// Number(null), Number(""), Number("   ") and Number([]) are ALL 0, a plausible-looking value
+// nobody asked for. Two real defects came from that: a browser_window focus/close with no
+// window_id addressed window 0 (and was then refused downstream as "not in the listing", which
+// is not what went wrong), and a browser_download with timeout_ms:null took 0 -> clamped to a
+// ONE-SECOND budget instead of the 30s default, so any slower download reported that it could
+// not be tracked. A numeric string stays usable; everything else is "not supplied".
+function suppliedNumber(raw) {
+  if (typeof raw === "number") {
+    return raw;
+  }
+  if (typeof raw === "string" && raw.trim().length > 0) {
+    return Number(raw);
+  }
+  return NaN;
 }
 
 async function handleWindow(session, args) {
@@ -12182,14 +12710,14 @@ async function handleWindow(session, args) {
     } // never a fabricated "normal"
     return created;
   }
-  const windowId = Number(args && args.window_id);
+  const windowId = suppliedNumber(args && args.window_id);
   if (!Number.isInteger(windowId)) {
     throw new Error(
       "browser_window needs window_id for focus/close (see browser_windows).",
     );
   }
   requireListedWindow(session, windowId);
-  const facts = await windowFacts(windowId);
+  const { facts, tabs } = await windowFacts(session, windowId);
   if (action === "focus") {
     // Make this window the session's working window: its active tab becomes the target of every
     // later command. It is deliberately NOT raised or given OS focus -- that would pull the user's
@@ -12208,7 +12736,8 @@ async function handleWindow(session, args) {
       facts,
     );
   }
-  await chrome.windows.remove(windowId); // action === "close"
+  requireClosableWindow(session, windowId, tabs); // action === "close"
+  await chrome.windows.remove(windowId);
   session.lastWindowListing.delete(windowId); // that window is gone; it can never be named again
   return Object.assign({ ok: true, window_id: windowId, closed: true }, facts);
 }
@@ -12510,6 +13039,115 @@ function originPattern(origin) {
   return parsed.protocol + "//" + parsed.host + "/*";
 }
 
+// -- the profile's shared site state ---------------------------------------------------------
+//
+// Cookies and site settings belong to the Chrome profile, not to a tab or a session, so both
+// applications this extension serves reach the same ones. While a session of the other host holds
+// a tab on a site, a browser_cookies or browser_permission call for that site is refused: reading
+// its cookies would hand over the other application's signed-in session, and changing them or its
+// settings would change that session's page under it. "That site" is the host name of a tab the
+// other host holds, a domain above it, or one below it, compared on both the address the tab shows
+// and the one it is loading (a tab still loading shows about:blank).
+//
+// A sibling is not "that site", but its cookies can be: a cookie of a parent domain is sent to every
+// host below it, so the .google.com sign-in cookies of a tab on mail.google.com are also among
+// accounts.google.com's. So a browser_cookies call for any site is checked cookie by cookie: a get
+// leaves out every cookie that is sent to a host the other application holds a tab on, and a remove
+// or set is refused when a cookie of that name for the url is. Anything else is shared, and the docs
+// say so (PRIVACY.md, SECURITY.md).
+function relatedHosts(a, b) {
+  return a === b || a.endsWith("." + b) || b.endsWith("." + a);
+}
+
+// A host name or a cookie's domain as the two are compared: lower case, with one trailing dot taken
+// off ("mail.google.com." is the fully qualified spelling of mail.google.com, and reaches the same
+// cookies).
+function bareHost(name) {
+  const host = String(name || "").toLowerCase();
+  return host.endsWith(".") ? host.slice(0, -1) : host;
+}
+
+function hostOf(url) {
+  try {
+    const host = new URL(url).hostname.replace(/^\[|\]$/g, "");
+    return bareHost(host) || null;
+  } catch (_e) {
+    return null;
+  }
+}
+
+// Whether a cookie whose domain is @p domain is sent to @p host: the domain is the host, or a domain
+// above it. A host-only cookie is held to the same rule, which can only leave out more.
+function cookieReaches(domain, host) {
+  const bare = bareHost(String(domain || "").replace(/^\./, ""));
+  return bare.length > 0 && (host === bare || host.endsWith("." + bare));
+}
+
+// The host names of every tab a session of another host than @p session's holds, live or parked.
+async function otherHostSites(session) {
+  const hosts = new Set();
+  for (const holder of [...sessions, ...pendingLeases.values()]) {
+    if (!otherHost(session, holder)) {
+      continue;
+    }
+    for (const tabId of holder.tabs.keys()) {
+      const tab = await chrome.tabs.get(tabId).catch(() => null);
+      for (const address of tab ? [tab.url, tab.pendingUrl] : []) {
+        const host = address ? hostOf(address) : null;
+        if (host) {
+          hosts.add(host);
+        }
+      }
+    }
+  }
+  return [...hosts];
+}
+
+function siteRefusal(tool) {
+  return new Error(
+    tool +
+      " was refused: another application connected to this browser is working on that site, " +
+      "and its cookies and site settings are the profile's, shared with it. Try again when it " +
+      "is done there.",
+  );
+}
+
+// Throws for @p url on or beside a site the other host is working on; else returns that host's
+// sites, for the cookie-by-cookie check.
+async function requireSiteNotOtherHosts(session, url, tool) {
+  const host = hostOf(url);
+  const sites = await otherHostSites(session);
+  if (host && sites.some((site) => relatedHosts(host, site))) {
+    throw siteRefusal(tool);
+  }
+  return sites;
+}
+
+// Whether @p cookie is sent to any of @p sites.
+function cookieReachesAny(cookie, sites) {
+  return sites.some((site) => cookieReaches(cookie && cookie.domain, site));
+}
+
+// A remove or set of the cookie @p name for @p url, refused when a cookie of that name for that url
+// is sent to one of the other host's @p sites: removing it would sign that application out, and
+// setting it would put a value beside the one that application's page reads.
+async function requireCookieNotOtherHosts(url, name, sites, action) {
+  if (sites.length === 0) {
+    return;
+  }
+  const same = await chrome.cookies.getAll({ url, name });
+  if ((same || []).some((cookie) => cookieReachesAny(cookie, sites))) {
+    throw new Error(
+      "browser_cookies " +
+        action +
+        " was refused: a cookie named " +
+        JSON.stringify(name) +
+        " for that url is also sent to a site another application connected to this browser is " +
+        "working on, and the profile's cookies are shared with it. Try again when it is done there.",
+    );
+  }
+}
+
 async function handlePermission(session, args) {
   const typeKey =
     PERMISSION_TYPES[String((args && args.name) || "").toLowerCase()];
@@ -12545,6 +13183,7 @@ async function handlePermission(session, args) {
       "browser_permission needs a valid http(s) origin (or an active http(s) tab).",
     );
   }
+  await requireSiteNotOtherHosts(session, origin, "browser_permission");
   const store = chrome.contentSettings[typeKey];
   if (!store || typeof store.set !== "function") {
     throw new Error(
@@ -12938,19 +13577,31 @@ async function handleCookies(session, args) {
       "browser_cookies needs a valid http(s) url (or an active http(s) tab).",
     );
   }
+  const sites = await requireSiteNotOtherHosts(session, url, "browser_cookies");
   if (action === "get") {
-    const all = await chrome.cookies.getAll({ url });
-    return {
+    // Every cookie sent to a site the other application is working on is left out, and the reply
+    // says how many were: a list that silently came back shorter would read as the whole jar.
+    const every = await chrome.cookies.getAll({ url });
+    const all = every.filter((cookie) => !cookieReachesAny(cookie, sites));
+    const reply = {
       ok: true,
       url,
       count: all.length,
       capped: all.length > 100,
       cookies: all.slice(0, 100).map(cookieView),
     };
+    if (all.length < every.length) {
+      reply.withheld = every.length - all.length;
+      reply.withheld_reason =
+        "Cookies also sent to a site another application connected to this browser is working " +
+        "on are left out; the profile's cookies are shared with it.";
+    }
+    return reply;
   }
   if (!args || typeof args.name !== "string" || args.name.length === 0) {
     throw new Error("browser_cookies " + action + " needs a name.");
   }
+  await requireCookieNotOtherHosts(url, String(args.name), sites, action);
   if (action === "remove") {
     const removed = await chrome.cookies.remove({
       url,
@@ -13012,7 +13663,7 @@ async function handleDownload(session, tabId, args) {
     }
     opts.filename = fn;
   }
-  let timeoutMs = Number(args && args.timeout_ms);
+  let timeoutMs = suppliedNumber(args && args.timeout_ms);
   if (!Number.isFinite(timeoutMs)) {
     timeoutMs = 30000;
   }
@@ -13130,12 +13781,14 @@ async function handleHttpAuth(session, tabId, args) {
 
 // Connect when the extension loads, when the browser starts, and on demand from the
 // toolbar button (which also re-arms after a disconnect).
-// Each opens a port only when none is up. connect() now creates a session per
+// Each opens a port only when none of its host's is up. connect() now creates a session per
 // call, so wiring it directly as a listener would spawn a surplus host process
 // every time the toolbar button was pressed.
 const connectIfIdle = () => {
-  if (!anyPortOpen()) {
-    connect();
+  for (const hub of HUBS) {
+    if (!hubPortOpen(hub)) {
+      connect(hub);
+    }
   }
 };
 chrome.runtime.onInstalled.addListener(connectIfIdle);
@@ -13144,19 +13797,27 @@ chrome.runtime.onStartup.addListener(connectIfIdle);
 // The toolbar button fixes whatever the current state is, which is also what the title says it
 // will do. Paused -> resume and connect. Connected -> pause. Neither -> the user can see it is not
 // connected and is asking for an attempt now, so the waiting interval does not apply to it.
+//
+// An attempt the user asks for is made to every host at once, an optional one too: the click is
+// the user's, so the long wait for a host that was missing does not apply to it.
+function reconnectEveryHost() {
+  for (const hub of HUBS) {
+    resetReconnectDelay(hub);
+    connect(hub, { force: true });
+  }
+}
+
 const onActionClicked = async () => {
   if (bridgePaused) {
     await setBridgePaused(false);
-    resetReconnectDelay();
-    connect({ force: true });
+    reconnectEveryHost();
     return;
   }
   if (anyPortOpen()) {
     await setBridgePaused(true);
     return;
   }
-  resetReconnectDelay();
-  connect({ force: true });
+  reconnectEveryHost();
 };
 chrome.action.onClicked.addListener(() => {
   void onActionClicked();
@@ -13164,21 +13825,22 @@ chrome.action.onClicked.addListener(() => {
 
 // Before anything decides whether to connect. A pause the user set yesterday has to be in force
 // for the listeners below, which fire as soon as the browser starts moving.
-void loadBridgeState();
+const bridgeStateLoad = loadBridgeState();
 
 // What an earlier worker held, parked until the first offer says whose servers are still there.
 leasesLoaded = loadLeases().catch(() => {});
+
+// And once both are known, what was held for a host whose policy is now off is let go of.
+void Promise.all([bridgeStateLoad, leasesLoaded]).then(
+  standDownHostsWithoutPolicy,
+);
 
 // Ordinary browsing re-arms the bridge too. The 2 s timer below lives only as long as this
 // worker, and Chrome coalesces a background worker's timers into seconds, so a bridge that came up
 // after the browser did would otherwise wait on the alarm -- up to a minute of the user's time.
 // Every tab event is a moment the worker is awake anyway: a connect attempt then costs nothing and
 // is refused in microseconds while the port is already up.
-const reconnectOnActivity = () => {
-  if (!anyPortOpen()) {
-    connect();
-  }
-};
+const reconnectOnActivity = connectIfIdle;
 chrome.tabs.onUpdated.addListener(reconnectOnActivity);
 chrome.tabs.onActivated.addListener(reconnectOnActivity);
 
@@ -13192,7 +13854,32 @@ chrome.tabs.onActivated.addListener(reconnectOnActivity);
 // harness stubs `chrome` without alarms.
 const RECONNECT_ALARM = "chrome_control_mcp.reconnect";
 const PROBE_SAFETY_NET_MS = 5 * 60000;
-let lastSafetyProbeAt = Date.now();
+
+// One host's part of the alarm.
+function reconnectHub(hub) {
+  // With nothing attached this is the reconnect it always was.
+  if (!hubPortOpen(hub)) {
+    connect(hub);
+    return;
+  }
+  // With something attached, the attached relays report new servers themselves
+  // (bridge_servers) by reading their own directory, which starts no process. A probe -- which
+  // does start one -- is only the safety net: for a relay too old to report, and for a server
+  // that was set aside after refusing and whose wait is now over. It used to run on every
+  // tick, one host process every thirty seconds for as long as an editor was open.
+  const held = new Set(heldServers());
+  const refusalOver = [...hub.lastOfferedServers].some(
+    (id) => !held.has(id) && refusedServers.has(id) && !serverRefused(id),
+  );
+  if (
+    refusalOver ||
+    Date.now() - hub.lastSafetyProbeAt >= PROBE_SAFETY_NET_MS
+  ) {
+    hub.lastSafetyProbeAt = Date.now();
+    probeForServers(hub);
+  }
+}
+
 if (chrome.alarms) {
   chrome.alarms.create(RECONNECT_ALARM, { periodInMinutes: 0.5 });
   chrome.alarms.onAlarm.addListener((alarm) => {
@@ -13201,25 +13888,11 @@ if (chrome.alarms) {
     }
     // Sessions that went quiet are stood down, and parked ones nobody came back for released.
     sweepIdleSessions();
-    // A newer install waiting for nobody to be using this: a tab let go of, or a server gone.
-    void reloadForNewerInstall();
-    // With nothing attached this is the reconnect it always was.
-    if (!anyPortOpen()) {
-      connect();
-      return;
-    }
-    // With something attached, the attached relays report new servers themselves
-    // (bridge_servers) by reading their own directory, which starts no process. A probe -- which
-    // does start one -- is only the safety net: for a relay too old to report, and for a server
-    // that was set aside after refusing and whose wait is now over. It used to run on every
-    // tick, one host process every thirty seconds for as long as an editor was open.
-    const held = new Set(heldServers());
-    const refusalOver = [...lastOfferedServers].some(
-      (id) => !held.has(id) && refusedServers.has(id) && !serverRefused(id),
-    );
-    if (refusalOver || Date.now() - lastSafetyProbeAt >= PROBE_SAFETY_NET_MS) {
-      lastSafetyProbeAt = Date.now();
-      probeForServers();
+    // A reload waiting for nobody to be using this (a newer install, or a server speaking a newer
+    // protocol): a tab let go of, or a server gone.
+    void reloadWhenIdle();
+    for (const hub of HUBS) {
+      reconnectHub(hub);
     }
   });
 }
@@ -13227,14 +13900,13 @@ if (chrome.alarms) {
 // Expose the last health snapshot to a popup / options page later.
 chrome.runtime.onMessage.addListener((request, _sender, sendResponse) => {
   if (request && request.type === "chrome_control_mcp.getHealth") {
-    if (!anyPortOpen()) {
-      connect();
-    }
+    connectIfIdle();
     // One worker now serves several sessions, so health is a list. The first
     // entry is the oldest session, which is the one a single-server install
     // has.
     sendResponse({
       sessions: [...sessions].map((entry) => ({
+        host: entry.hub.hostName,
         server: entry.serverId,
         tabs: entry.tabs.size,
         idle: entry.idle,
@@ -13245,4 +13917,13 @@ chrome.runtime.onMessage.addListener((request, _sender, sendResponse) => {
   return false;
 });
 
-connect();
+connect(CC_HUB);
+// An optional host is first asked for once its stored wait has been read back, so a worker that
+// wakes every thirty seconds does not ask again each time.
+void bridgeStateLoad.then(() => {
+  for (const hub of HUBS) {
+    if (hub.optional && !hubPortOpen(hub)) {
+      connect(hub);
+    }
+  }
+});
